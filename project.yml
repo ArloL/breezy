@@ -1,0 +1,64 @@
+name: Breezy
+options:
+  bundleIdPrefix: local.breezy
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  BreezyKit:
+    path: BreezyKit
+targets:
+  Breezy:
+    type: application
+    platform: macOS
+    sources: [Breezy]
+    dependencies:
+      - package: BreezyKit
+    info:
+      path: Breezy/Info.plist
+      properties:
+        CFBundleDisplayName: Breezy
+        CFBundleIconFile: Breezy
+        LSApplicationCategoryType: public.app-category.productivity
+        NSPrincipalClass: NSApplication
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Breezy Board
+            CFBundleTypeRole: Editor
+            CFBundleTypeIconFile: Board
+            LSHandlerRank: Owner
+            LSItemContentTypes: [local.breezy.board]
+            NSDocumentClass: $(PRODUCT_MODULE_NAME).BoardDocument
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: local.breezy.board
+            UTTypeDescription: Breezy Board
+            UTTypeIconFile: Board
+            UTTypeConformsTo: [public.json]
+            UTTypeTagSpecification:
+              public.filename-extension: [breezy]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.breezy.app
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        GENERATE_INFOPLIST_FILE: NO
+  BreezyUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [BreezyUITests]
+    dependencies:
+      - target: Breezy
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Breezy
+schemes:
+  Breezy:
+    build:
+      targets:
+        Breezy: all
+    test:
+      targets: [BreezyUITests]
