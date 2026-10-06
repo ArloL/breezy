@@ -109,7 +109,3 @@ extension String {
     return String(s)
   }
 }
-
-extension Board {
-  mutating func settle(_ heightOf: HeightOf, held: Set<String> = [], base: Layout? = nil, land: Bool = false) {}
-}
