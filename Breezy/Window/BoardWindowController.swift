@@ -8,13 +8,15 @@ extension NSToolbarItem.Identifier {
 
 /// One board window: the toolbar, the scroll view with the canvas and, from Task 7, the dot grid
 /// behind it.
-final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
   let canvas: CanvasView
   let scrollView = BoardScrollView()
   let zoomItem = NSToolbarItem(itemIdentifier: .zoom)
   private let zoomButton = NSButton(title: "100 %", target: nil, action: nil)
   private let grid = GridView()
   private var restored = false
+  private let finder = NSTextFinder()
+  private lazy var finderClient = BoardFinderClient(canvas: canvas)
 
   init(model: BoardModel) {
     canvas = CanvasView(model: model)
@@ -51,6 +53,15 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+    scrollView.findBarPosition = .aboveContent
+    finder.client = finderClient
+    finder.findBarContainer = scrollView
+    finder.isIncrementalSearchingEnabled = true
+    finder.incrementalSearchingShouldDimContentView = true
+    canvas.onBoardChange = { [weak self] in
+      self?.finder.noteClientStringWillChange()
+      self?.finderClient.invalidate()
+    }
     DispatchQueue.main.async { [weak self] in
       if self?.restored == false { self?.fit() }
     }
@@ -95,6 +106,19 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     restored = true
     place(origin: NSPoint(x: state.decodeDouble(forKey: "originX"), y: state.decodeDouble(forKey: "originY")),
           zoom: state.decodeDouble(forKey: "zoom"))
+  }
+
+  override func performTextFinderAction(_ sender: Any?) {
+    guard let tag = (sender as? NSValidatedUserInterfaceItem)?.tag, let action = NSTextFinder.Action(rawValue: tag) else { return }
+    canvas.endEditing()
+    finder.performAction(action)
+  }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.action == #selector(performTextFinderAction(_:)), let action = NSTextFinder.Action(rawValue: item.tag) {
+      return finder.validateAction(action)
+    }
+    return true
   }
 
   /// Shows the whole board at no more than 100 %, or the origin when the board is empty.

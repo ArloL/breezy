@@ -25,6 +25,7 @@ enum SelfTest {
     case "close-blank-card": closeBlankCard(d)
     case "turn-and-tab": turnAndTab(d)
     case "zoom-and-state": zoomAndState(d)
+    case "find-back": findBack(d)
     default: finish(name, "unknown check")
     }
   }
@@ -184,6 +185,24 @@ extension SelfTest {
         finish(name, "restored to \(o) at \(sv.magnification)")
       }
       finish(name, nil)
+    }
+  }
+}
+
+extension SelfTest {
+  /// ⌘F finds text on a card's back and turns the card over; the find bar also searches lane titles.
+  fileprivate static func findBack(_ d: Driver) {
+    let name = "find-back"
+    d.click(NSPoint(x: 0, y: 600))
+    d.key("f", code: 3, mods: .command)
+    d.later(0.5) {
+      guard d.window.firstResponder is NSTextView, d.canvas.editing == nil else { finish(name, "⌘F did not focus a find field") }
+      d.type("needle")
+      d.key("\r", code: 36)
+      d.later(0.5) {
+        if d.canvas.turned != "a" { finish(name, "the match on the back did not turn card a (turned: \(d.canvas.turned ?? "nil"))") }
+        finish(name, nil)
+      }
     }
   }
 }

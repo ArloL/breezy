@@ -61,4 +61,17 @@ final class BreezyUITests: XCTestCase {
     XCTAssertTrue(app.windows.firstMatch.waitForNonExistence(timeout: 5))
     XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).contains(#""text" : "Kept""#))
   }
+
+  func testFindTurnsACardToAMatchOnItsBack() {
+    open(#"""
+    {"format": 1, "lanes": [],
+     "cards": [{"id": "a", "x": 0, "y": 0, "w": 240, "text": "Front", "notes": "a needle here", "color": 1}]}
+    """#)
+    app.typeKey("f", modifierFlags: .command)
+    app.typeText("needle")
+    app.typeKey(.return, modifierFlags: [])
+    let card = app.groups.matching(identifier: "card").firstMatch
+    expectation(for: NSPredicate(format: "value == 'back'"), evaluatedWith: card)
+    waitForExpectations(timeout: 3)
+  }
 }
