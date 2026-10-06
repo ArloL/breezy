@@ -5,27 +5,27 @@ A personal whiteboard for work thoughts and ideas, in the style of Mural: an inf
 ## Interaction
 
 ### Canvas
-- Infinite board on a dot grid. Grid: 20 px; positions snap to it.
-- Drag empty space: pan. Trackpad scroll: pan. Pinch or ⌘-scroll: zoom, around the cursor, range 0.25–2.
-- ⇧-drag empty space: rubber-band select cards.
+- Infinite board on a dot grid. Grid: 24 px; positions snap to it.
+- Trackpad scroll: pan. Pinch or ⌘-scroll: zoom, around the cursor, range 0.25–2. The toolbar shows the zoom; clicking it or ⇧0 returns to 100 % around the viewport centre. Browser page zoom is left alone.
+- Drag empty space: rubber-band select cards (as in Finder); ⇧-drag adds to the selection.
 
 ### Cards
 - Double-click empty space (including inside a lane): new card at the snapped cursor position, caret ready.
 - Esc or click elsewhere ends editing. A card whose text is empty or whitespace is deleted when editing ends.
-- Plain text. First line renders bold as the title. Width 200 px; height grows with the text.
+- Plain text. First line renders bold as the title. Width 240 px; height grows with the text.
 - Click selects (⇧-click toggles). Double-click edits. Drag moves all selected cards, snapping live.
-- Each card has a back for longer notes, like an XP story card. Space, or clicking the folded corner that marks a card with notes, lifts the card under the pointer (else the selected one) above the others, turns it over and widens it to 400 px. Space, Esc or clicking elsewhere puts it back. Only one card is turned over at a time, and that state is not saved.
+- Each card has a back for longer notes, like an XP story card. Space, or clicking the folded corner that marks a card with notes, lifts the card under the pointer (else the selected one) above the others, turns it over and widens it to 480 px. Space, Esc or clicking elsewhere puts it back. Only one card is turned over at a time, and that state is not saved.
 - Double-click edits the side facing up. Tab while editing turns the card over and keeps editing. A card is deleted only when both sides are blank.
 - Keys `1`–`5` set the colour of selected cards: yellow, pink, blue, green, grey. ⌫ / Delete removes them.
 
 ### Lanes
-- `L` key or the toolbar button: new lane (400 × 600) at the cursor, or at the viewport centre when using the button.
+- `L` key or the toolbar button: new lane (480 × 720) at the cursor, or at the viewport centre when using the button.
 - Drag the header to move. Drag the bottom-right corner to resize (snapped). Double-click the header to rename.
 - Moving a lane carries every card whose centre lies inside it when the drag starts.
 - Lanes render behind all cards. Selecting a lane and pressing ⌫ removes the lane, not its cards.
 
 ### Stacking in lanes
-- A card belongs to the lane its centre is in. Lane cards float up their column (cards overlapping horizontally) to 60 px below the lane top, keeping their order, a grid line at least 10 px apart. Lanes grow to fit, never shrink by themselves. Cards on the open canvas stay where they are put.
+- A card belongs to the lane its centre is in. Lane cards float up their column (cards overlapping horizontally) to 72 px below the lane top, keeping their order, a grid line at least 12 px apart. Lanes grow to fit, never shrink by themselves. Cards on the open canvas stay where they are put.
 - While cards are dragged they stay under the pointer; the others make room where they would land, ordered by centre, and slide back when the drag moves on. Several dragged cards land as one block, ordered by their top card. Dropping moves them into place.
 - Gravity also runs after deleting cards, after creating one, and while typing grows a card. A turned card counts at its front's height.
 - ⌥-drag a lane card takes it and the cards below it in its column.
@@ -35,13 +35,12 @@ A personal whiteboard for work thoughts and ideas, in the style of Mural: an inf
 - Cards are DOM text, so the browser's ⌘F finds them.
 
 ### Look
-Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft paper tints for cards, and a single orange accent (`--accent`) used only for selection and the caret. Lane titles and card-back headings are small spaced capitals. Positions animate with one easing curve, except for what the pointer holds; `prefers-reduced-motion` turns it off.
+Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft paper tints for cards, and a single orange accent (`--accent`) used only for selection and the caret. Lane titles are spaced capitals; a card's title looks the same on both sides. No text is smaller than 1rem. Text sits on a 24 px line, the dot grid, and vertical spacing comes in whole and half lines, so cards are whole grid units tall. Spacing is in rem; hairlines, radii and shadows stay in px. Positions animate with one easing curve, except for what the pointer holds; `prefers-reduced-motion` turns it off.
 
 ### Out of scope
 Arrows between cards, images, markdown, ⌘F on a card's back while it faces front, tags, multiple boards per file, collaboration.
 
 ### Ideas not yet tried
-- Plain drag on empty space draws the selection box (as in Finder), panning by scroll and pinch only.
 - Gravity per lane, so a lane can stay free-form.
 - Bold first line while editing; a textarea cannot style it, so it needs a different editor.
 

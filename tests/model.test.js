@@ -4,20 +4,20 @@ const { GRID, CARD_W, snap, zoomAt, Board } = require("../app/model.js");
 
 const board = (cards = [], lanes = []) => new Board({ rev: 0, view: { x: 0, y: 0, zoom: 1 }, cards, lanes });
 const card = (id, x, y, text = "t") => ({ id, x, y, w: CARD_W, text, color: 1 });
-const lane = (id, x, y, w = 400, h = 600) => ({ id, x, y, w, h, title: "Lane" });
-const h40 = () => 40;
+const lane = (id, x, y, w = 480, h = 720) => ({ id, x, y, w, h, title: "Lane" });
+const h48 = () => 48;
 
 test("snap rounds to the nearest grid line", () => {
-  assert.equal(GRID, 20);
-  assert.equal(snap(29), 20);
-  assert.equal(snap(31), 40);
-  assert.equal(snap(-31), -40);
+  assert.equal(GRID, 24);
+  assert.equal(snap(35), 24);
+  assert.equal(snap(37), 48);
+  assert.equal(snap(-37), -48);
 });
 
 test("addCard snaps and starts empty", () => {
   const b = board();
-  const c = b.addCard(33, 47);
-  assert.deepEqual({ x: c.x, y: c.y, w: c.w, text: c.text, color: c.color }, { x: 40, y: 40, w: 200, text: "", color: 1 });
+  const c = b.addCard(40, 56);
+  assert.deepEqual({ x: c.x, y: c.y, w: c.w, text: c.text, color: c.color }, { x: 48, y: 48, w: 240, text: "", color: 1 });
   assert.equal(b.data.cards.length, 1);
 });
 
@@ -86,76 +86,76 @@ test("editing notes undoes in one step", () => {
 });
 
 test("moveCards snaps relative to the drag origins", () => {
-  const b = board([card("a", 0, 0), card("b", 40, 20)]);
-  b.moveCards([{ id: "a", x: 0, y: 0 }, { id: "b", x: 40, y: 20 }], 27, 9);
-  assert.deepEqual([b.card("a").x, b.card("a").y, b.card("b").x, b.card("b").y], [20, 0, 60, 20]);
+  const b = board([card("a", 0, 0), card("b", 48, 24)]);
+  b.moveCards([{ id: "a", x: 0, y: 0 }, { id: "b", x: 48, y: 24 }], 32, 10);
+  assert.deepEqual([b.card("a").x, b.card("a").y, b.card("b").x, b.card("b").y], [24, 0, 72, 24]);
 });
 
 const drag = (b, ids) => {
   const origins = ids.map((id) => ({ id, x: b.card(id).x, y: b.card(id).y }));
-  const room = { base: b.layout(ids), heightOf: h40 };
+  const room = { base: b.layout(ids), heightOf: h48 };
   return { to: (dx, dy) => b.moveCards(origins, dx, dy, room), land: () => b.land(ids, room) };
 };
 const ys = (b, ...ids) => ids.map((id) => b.card(id).y);
-const stackBoard = (h = 400) => board([card("a", 20, 60), card("b", 20, 120), card("d", 500, 60)], [lane("l", 0, 0, 400, h)]);
+const stackBoard = (h = 480) => board([card("a", 24, 72), card("b", 24, 144), card("d", 600, 72)], [lane("l", 0, 0, 480, h)]);
 
 test("a card held over a stack keeps a place free by its centre, and lands there", () => {
   const b = stackBoard();
   const d = drag(b, ["d"]);
-  d.to(-480, 40);
-  assert.deepEqual(ys(b, "a", "d", "b"), [60, 100, 180]);
+  d.to(-576, 48);
+  assert.deepEqual(ys(b, "a", "d", "b"), [72, 120, 216]);
   d.land();
-  assert.deepEqual(ys(b, "a", "d", "b"), [60, 120, 180]);
+  assert.deepEqual(ys(b, "a", "d", "b"), [72, 144, 216]);
 });
 
 test("dragging away gives cards back their places", () => {
   const b = stackBoard();
   const d = drag(b, ["d"]);
-  d.to(-480, 0);
-  assert.deepEqual(ys(b, "a", "b"), [120, 180]);
+  d.to(-576, 0);
+  assert.deepEqual(ys(b, "a", "b"), [144, 216]);
   d.to(0, 0);
-  assert.deepEqual(ys(b, "a", "b"), [60, 120]);
+  assert.deepEqual(ys(b, "a", "b"), [72, 144]);
 });
 
 test("taking a card out of a stack closes the gap", () => {
-  const b = board([card("a", 20, 60), card("b", 20, 120), card("c", 20, 180)], [lane("l", 0, 0)]);
-  drag(b, ["b"]).to(480, 0);
-  assert.deepEqual(ys(b, "a", "c"), [60, 120]);
+  const b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216)], [lane("l", 0, 0)]);
+  drag(b, ["b"]).to(576, 0);
+  assert.deepEqual(ys(b, "a", "c"), [72, 144]);
 });
 
 test("held cards are ordered as a block by their top card", () => {
-  const b = board([card("a", 20, 60), card("p", 500, 60), card("q", 500, 120)], [lane("l", 0, 0)]);
+  const b = board([card("a", 24, 72), card("p", 600, 72), card("q", 600, 144)], [lane("l", 0, 0)]);
   const d = drag(b, ["p", "q"]);
-  d.to(-480, 0);
+  d.to(-576, 0);
   d.land();
-  assert.deepEqual(ys(b, "p", "q", "a"), [60, 120, 180]);
+  assert.deepEqual(ys(b, "p", "q", "a"), [72, 144, 216]);
 });
 
 test("gravity floats lane cards up their own column and leaves the canvas alone", () => {
   const b = board(
-    [card("a", 20, 60), card("b", 20, 300), card("side", 240, 200), card("free", 600, 300)],
-    [lane("l", 0, 0, 480, 400)],
+    [card("a", 24, 72), card("b", 24, 360), card("side", 288, 240), card("free", 720, 360)],
+    [lane("l", 0, 0, 576, 480)],
   );
-  b.gravity(h40);
-  assert.deepEqual(ys(b, "a", "b", "side", "free"), [60, 120, 60, 300]);
+  b.gravity(h48);
+  assert.deepEqual(ys(b, "a", "b", "side", "free"), [72, 144, 72, 360]);
 });
 
 test("a lane grows to fit its stack and shrinks back", () => {
-  const b = stackBoard(200);
+  const b = stackBoard(240);
   const d = drag(b, ["d"]);
-  d.to(-480, 0);
-  assert.equal(b.lane("l").h, 240);
+  d.to(-576, 0);
+  assert.equal(b.lane("l").h, 288);
   d.to(0, 0);
-  assert.equal(b.lane("l").h, 200);
+  assert.equal(b.lane("l").h, 240);
 });
 
 test("pile takes a lane card and those below it in its column", () => {
   const b = board(
-    [card("a", 20, 60), card("b", 20, 120), card("side", 240, 120), card("c", 20, 200), card("free", 20, 700)],
-    [lane("l", 0, 0, 480, 400)],
+    [card("a", 24, 72), card("b", 24, 144), card("side", 288, 144), card("c", 24, 240), card("free", 24, 840)],
+    [lane("l", 0, 0, 576, 480)],
   );
-  assert.deepEqual(b.pile("b", h40), ["b", "c"]);
-  assert.deepEqual(b.pile("free", h40), ["free"]);
+  assert.deepEqual(b.pile("b", h48), ["b", "c"]);
+  assert.deepEqual(b.pile("free", h48), ["free"]);
 });
 
 test("setColor changes cards only and skips empty selections", () => {
@@ -168,7 +168,7 @@ test("setColor changes cards only and skips empty selections", () => {
 });
 
 test("remove deletes a lane but not the cards on it", () => {
-  const b = board([card("a", 20, 60)], [lane("l", 0, 0)]);
+  const b = board([card("a", 24, 72)], [lane("l", 0, 0)]);
   b.remove(["l"]);
   assert.deepEqual(b.data.lanes, []);
   assert.equal(b.data.cards.length, 1);
@@ -177,26 +177,26 @@ test("remove deletes a lane but not the cards on it", () => {
 });
 
 test("cardsInLane counts cards whose centre is inside", () => {
-  const b = board([card("in", 300, 0), card("out", 320, 0)], [lane("l", 0, 0, 400, 600)]);
-  assert.deepEqual(b.cardsInLane("l", h40).map((c) => c.id), ["in"]);
+  const b = board([card("in", 360, 0), card("out", 384, 0)], [lane("l", 0, 0, 480, 720)]);
+  assert.deepEqual(b.cardsInLane("l", h48).map((c) => c.id), ["in"]);
 });
 
 test("moveLane carries its cards by the snapped delta", () => {
-  const b = board([card("a", 20, 60)], [lane("l", 0, 0)]);
-  b.moveLane({ id: "l", x: 0, y: 0 }, [{ id: "a", x: 20, y: 60 }], 51, -12);
-  assert.deepEqual([b.lane("l").x, b.lane("l").y], [60, -20]);
-  assert.deepEqual([b.card("a").x, b.card("a").y], [80, 40]);
+  const b = board([card("a", 24, 72)], [lane("l", 0, 0)]);
+  b.moveLane({ id: "l", x: 0, y: 0 }, [{ id: "a", x: 24, y: 72 }], 61, -14);
+  assert.deepEqual([b.lane("l").x, b.lane("l").y], [72, -24]);
+  assert.deepEqual([b.card("a").x, b.card("a").y], [96, 48]);
 });
 
 test("resizeLane snaps and keeps a minimum size", () => {
   const b = board([], [lane("l", 0, 0)]);
-  b.resizeLane("l", 433, 10);
-  assert.deepEqual([b.lane("l").w, b.lane("l").h], [440, 100]);
+  b.resizeLane("l", 520, 10);
+  assert.deepEqual([b.lane("l").w, b.lane("l").h], [528, 96]);
 });
 
 test("cardsInRect finds overlapping cards", () => {
-  const b = board([card("a", 0, 0), card("b", 400, 400)]);
-  assert.deepEqual(b.cardsInRect({ x: 190, y: 30, w: 50, h: 50 }, h40).map((c) => c.id), ["a"]);
+  const b = board([card("a", 0, 0), card("b", 480, 480)]);
+  assert.deepEqual(b.cardsInRect({ x: 228, y: 36, w: 60, h: 60 }, h48).map((c) => c.id), ["a"]);
 });
 
 test("undo and redo restore cards and lanes", () => {

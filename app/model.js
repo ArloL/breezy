@@ -1,8 +1,8 @@
-const GRID = 20;
-const CARD_W = 200;
-const LANE_W = 400;
-const LANE_H = 600;
-const LANE_MIN = 100;
+const GRID = 24;
+const CARD_W = 240;
+const LANE_W = 480;
+const LANE_H = 720;
+const LANE_MIN = 4 * GRID;
 const UNDO_LIMIT = 100;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 2;

@@ -17,13 +17,14 @@ Open http://localhost:64570/. Changes are written into the board file half a sec
 | New card | double-click empty space |
 | Edit card | double-click it; Esc or ⌘↩ to finish; first line is the title |
 | Card back | Space over a card (or with one selected), or its folded corner, turns it over to show its notes; double-click to edit, Tab while editing turns it again |
-| Move | drag; ⇧-click or ⇧-drag on empty space to select several |
+| Select | click; ⇧-click to add; drag on empty space for a box, ⇧-drag to add to the selection |
+| Move | drag |
 | Stack | cards in a lane float up their column and make room where you drag one in; ⌥-drag takes a card with those below it |
 | Colour | `1`–`5` |
 | Delete | ⌫ |
 | New lane | `L` at the cursor, or **New Lane** |
 | Lane | drag the header to move it with its cards, the corner to resize, double-click the header to rename |
-| Pan / zoom | drag empty space or scroll / pinch or ⌘-scroll |
+| Pan / zoom | scroll / pinch or ⌘-scroll; ⇧0 or the zoom readout returns to 100 % |
 | Undo / redo | ⌘Z / ⇧⌘Z |
 
 ## Develop

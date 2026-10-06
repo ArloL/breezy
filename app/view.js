@@ -1,5 +1,5 @@
 const FLIP_MS = 260;
-const BACK_W = 400;
+const BACK_W = 480;
 
 class View {
   constructor(root, board) {
@@ -10,6 +10,7 @@ class View {
     this.cardsEl = root.querySelector("#cards");
     this.marqueeEl = root.querySelector("#marquee");
     this.statusEl = document.getElementById("status");
+    this.zoomEl = document.getElementById("zoom");
     this.els = new Map();
     this.selected = new Set();
     this.editing = null;
@@ -22,6 +23,9 @@ class View {
     this.world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`;
     this.root.style.backgroundSize = `${GRID * view.zoom}px ${GRID * view.zoom}px`;
     this.root.style.backgroundPosition = `${view.x}px ${view.y}px`;
+    const percent = Math.round(view.zoom * 100);
+    this.zoomEl.textContent = `${percent} %`;
+    this.zoomEl.disabled = percent === 100;
     const live = new Set();
     for (const lane of lanes) {
       live.add(lane.id);

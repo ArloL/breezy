@@ -23,6 +23,7 @@ class Input {
     window.addEventListener("pointercancel", () => this.up());
     window.addEventListener("keydown", (e) => this.key(e));
     document.getElementById("add-lane").addEventListener("click", () => this.addLaneAtCentre());
+    document.getElementById("zoom").addEventListener("click", () => this.resetZoom());
   }
 
   get editable() {
@@ -45,13 +46,8 @@ class Input {
     if (card) return this.downOnCard(card.dataset.id, e.shiftKey, e.altKey, p);
     if (resize) return this.downOnResize(resize.parentElement.dataset.id, p);
     if (header) return this.downOnLane(header.parentElement.dataset.id, e.shiftKey, p);
-    if (e.shiftKey) {
-      this.drag = { kind: "marquee", start: p, base: [...this.view.selected] };
-      return;
-    }
-    this.view.select([]);
-    const v = this.board.data.view;
-    this.drag = { kind: "pan", sx: e.clientX, sy: e.clientY, vx: v.x, vy: v.y };
+    if (!e.shiftKey) this.view.select([]);
+    this.drag = { kind: "marquee", start: p, base: [...this.view.selected] };
   }
 
   // ⌥ takes the card's pile: it and the cards below it in its lane.
@@ -94,12 +90,6 @@ class Input {
     if (!d) return;
     // released outside the window, so pointerup never arrived
     if (e.buttons === 0) return this.up();
-    if (d.kind === "pan") {
-      const v = this.board.data.view;
-      v.x = d.vx + e.clientX - d.sx;
-      v.y = d.vy + e.clientY - d.sy;
-      return this.board.changed();
-    }
     const p = this.view.toWorld(e.clientX, e.clientY);
     const dx = p.x - d.start.x;
     const dy = p.y - d.start.y;
@@ -121,7 +111,6 @@ class Input {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
-    if (d.kind === "pan") return;
     if (d.kind === "marquee") return this.view.hideMarquee();
     this.root.classList.remove("holding", "holding-lane");
     if (d.kind === "cards" && !d.moved) this.view.select([d.id]);
@@ -214,6 +203,8 @@ class Input {
       e.preventDefault();
       return this.turnCard();
     }
+    // by key position, as ⇧0 types "=" on some layouts
+    if (e.shiftKey && e.code === "Digit0") return this.resetZoom();
     if (e.key === "Escape") return this.view.flipped ? this.view.turn(null) : this.view.select([]);
     if (!this.editable) return;
     if (e.key === "l" || e.key === "L") return this.addLane(this.pointer.x, this.pointer.y);
@@ -231,6 +222,13 @@ class Input {
     const ids = [...this.view.selected];
     const id = this.hovered ?? (ids.length === 1 && this.board.card(ids[0]) ? ids[0] : null);
     this.view.turn(id === this.view.flipped ? null : id);
+  }
+
+  resetZoom() {
+    const v = this.board.data.view;
+    const r = this.root.getBoundingClientRect();
+    Object.assign(v, zoomAt(v, r.width / 2, r.height / 2, 1 / v.zoom));
+    this.board.changed();
   }
 
   wheel(e) {
