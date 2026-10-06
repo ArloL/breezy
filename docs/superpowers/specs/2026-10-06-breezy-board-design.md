@@ -1,0 +1,73 @@
+# Breezy board — design
+
+A personal whiteboard for work thoughts and ideas, in the style of Mural: an infinite canvas of sticky-note cards with optional lanes. Single user, macOS, Firefox first.
+
+## Interaction
+
+### Canvas
+- Infinite board on a dot grid. Grid: 20 px; positions snap to it.
+- Drag empty space: pan. Trackpad scroll: pan. Pinch or ⌘-scroll: zoom, around the cursor, range 0.25–2.
+- ⇧-drag empty space: rubber-band select cards.
+
+### Cards
+- Double-click empty space (including inside a lane): new card at the snapped cursor position, caret ready.
+- Esc or click elsewhere ends editing. A card whose text is empty or whitespace is deleted when editing ends.
+- Plain text. First line renders bold as the title. Width 200 px; height grows with the text.
+- Click selects (⇧-click toggles). Double-click edits. Drag moves all selected cards, snapping live.
+- Keys `1`–`5` set the colour of selected cards: yellow, pink, blue, green, grey. ⌫ / Delete removes them.
+
+### Lanes
+- `L` key or the toolbar button: new lane (400 × 600) at the cursor, or at the viewport centre when using the button.
+- Drag the header to move. Drag the bottom-right corner to resize (snapped). Double-click the header to rename.
+- Moving a lane carries every card whose centre lies inside it when the drag starts.
+- Lanes render behind all cards. Selecting a lane and pressing ⌫ removes the lane, not its cards.
+
+### Everywhere
+- ⌘Z undo, ⇧⌘Z redo; 100 steps. Keyboard shortcuts are ignored while a text field has focus, except Esc.
+- Cards are DOM text, so the browser's ⌘F finds them.
+
+### Out of scope
+Arrows between cards, images, markdown, tags, multiple boards per file, collaboration.
+
+## Architecture
+
+```
+app/index.html   page template; placeholders for CSS, JS and data
+app/board.css
+app/model.js     state, operations, snapping, undo — no DOM
+app/view.js      renders state to DOM
+app/input.js     pointer/keyboard events → model operations
+app/store.js     load from the inlined JSON, debounced save
+breezy.py        server and page assembler (Python stdlib)
+board.html       the user's board: app + data, self-contained
+```
+
+JS files are classic scripts concatenated into one inline `<script>` in the order model, view, store, input. `model.js` ends with `if (typeof module !== "undefined") module.exports = …` so Node can test it.
+
+### Data
+
+```json
+{
+  "rev": 7,
+  "view":  {"x": 0, "y": 0, "zoom": 1},
+  "cards": [{"id": "c…", "x": 40, "y": 60, "w": 200, "text": "Title\nbody", "color": 1}],
+  "lanes": [{"id": "l…", "x": 0, "y": 0, "w": 400, "h": 600, "title": "Ideas"}]
+}
+```
+
+Inlined in the page as `<script type="application/json" id="board-data">`, with `<` escaped as `<`.
+
+### Server: `python3 breezy.py [board.html] [--port 8423]`
+- Binds 127.0.0.1. Creates an empty board if the file does not exist.
+- `GET /`: assembles the page from the current `app/` and the data block from `board.html`.
+- `PUT /data`: JSON body. Rejects with 409 if `rev` differs from the file's `rev`. Otherwise copies the current file to `backups/board-YYYYmmdd-HHMMSS.html` (keeps the newest 50), increments `rev`, writes the assembled page to a temp file and renames it over `board.html`, then returns the new `rev`.
+
+### Client saving
+- Every model change schedules a save 500 ms later; saves never overlap.
+- Status indicator in a corner: `saved`, `saving…`, `not saving: server unreachable` (retries every 5 s), `changed elsewhere — reload` (on 409; saving stops).
+- Opened from `file://`: read-only. The indicator says so, and edits are disabled.
+
+## Testing
+- `node --test`: model operations: create/move/delete cards, snapping, colour, lane move carries cards whose centre is inside, undo/redo, empty-card removal.
+- `python3 -m unittest`: assembly round trip, `<` escaping, PUT writes file and backup, backup pruning at 50, 409 on stale `rev`, new board when the file is missing.
+- Manual pass in the browser for every interaction above; final check in Firefox by the user.
