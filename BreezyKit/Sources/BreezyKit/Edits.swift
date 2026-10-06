@@ -100,6 +100,27 @@ extension Board {
   public func cardsInRect(_ r: Rect, heightOf: HeightOf) -> [Card] {
     cards.filter { r.intersects($0.rect(height: heightOf($0.id))) }
   }
+
+  /// The board moved, if needed, so that its centre is the origin and as much as possible lies
+  /// within ±`limit`; the web version had no bounds, the canvas has.
+  public func recentred(within limit: Double) -> Board {
+    let xs = cards.flatMap { [$0.x, $0.x + $0.w] } + lanes.flatMap { [$0.x, $0.x + $0.w] }
+    let ys = cards.flatMap { [$0.y, $0.y + Metrics.laneHeader] } + lanes.flatMap { [$0.y, $0.y + $0.h] }
+    guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return self }
+    guard minX < -limit || maxX > limit || minY < -limit || maxY > limit else { return self }
+    let dx = snap(-(minX + maxX) / 2)
+    let dy = snap(-(minY + maxY) / 2)
+    var b = self
+    for i in b.cards.indices {
+      b.cards[i].x += dx
+      b.cards[i].y += dy
+    }
+    for i in b.lanes.indices {
+      b.lanes[i].x += dx
+      b.lanes[i].y += dy
+    }
+    return b
+  }
 }
 
 extension String {
