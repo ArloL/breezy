@@ -38,4 +38,27 @@ final class BreezyUITests: XCTestCase {
     XCTAssertEqual(card.frame.minY, lane.frame.minY + 72 * scale, accuracy: 2)
     XCTAssertTrue(lane.frame.contains(CGPoint(x: card.frame.midX, y: card.frame.midY)))
   }
+
+  private var empty: String { #"{"format": 1, "cards": [], "lanes": []}"# }
+
+  func testCreateTypeAndUndoACard() {
+    open(empty)
+    app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
+    app.typeText("Hello")
+    app.typeKey(.escape, modifierFlags: [])
+    let card = app.groups.matching(identifier: "card").firstMatch
+    XCTAssertTrue(card.waitForExistence(timeout: 2))
+    XCTAssertEqual(card.label, "Hello")
+    app.typeKey("z", modifierFlags: .command)
+    XCTAssertEqual(app.groups.matching(identifier: "card").count, 0)
+  }
+
+  func testClosingWhileEditingKeepsText() throws {
+    let url = open(empty)
+    app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
+    app.typeText("Kept")
+    app.typeKey("w", modifierFlags: .command)
+    XCTAssertTrue(app.windows.firstMatch.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).contains(#""text" : "Kept""#))
+  }
 }

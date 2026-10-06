@@ -124,6 +124,4 @@ extension CanvasView {
     return ear > 0 && p.x > r.x + r.w - ear && p.y > r.y + r.h - ear
   }
 
-  /// Completed in Task 9: creates or edits cards and renames lanes.
-  func doubleClick(at p: NSPoint) {}
 }

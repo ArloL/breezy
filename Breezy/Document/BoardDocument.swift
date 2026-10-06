@@ -9,6 +9,9 @@ final class BoardDocument: NSDocument {
   override init() {
     super.init()
     undoManager = model.undoManager
+    // a drag or edit in progress has no undo step yet, but its change is unsaved; closing then
+    // saves it as it stands rather than ending the edit, which would wait on the close's own save
+    model.onPending = { [weak self] pending in self?.updateChangeCount(pending ? .changeDone : .changeUndone) }
   }
 
   override class var autosavesInPlace: Bool { true }
@@ -17,8 +20,13 @@ final class BoardDocument: NSDocument {
     addWindowController(BoardWindowController(model: model))
   }
 
+  /// Saves an edit in progress as it would stand once finished, without ending it.
   override func data(ofType typeName: String) throws -> Data {
-    try BoardFormat.encode(model.board)
+    var board = model.board
+    for case let wc as BoardWindowController in windowControllers {
+      if let id = wc.canvas.editing?.id { board.finishEdit(id) }
+    }
+    return try BoardFormat.encode(board)
   }
 
   override func read(from data: Data, ofType typeName: String) throws {

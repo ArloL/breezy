@@ -8,7 +8,11 @@ public final class BoardModel {
   public let undoManager: UndoManager
   /// Called after every change, undo and redo included, with the board before it.
   public var onChange: ((Board) -> Void)?
+  /// Called with true when a gesture first changes the board, and with false when the gesture
+  /// ends or is cancelled: until then the change has no undo step, yet must count as unsaved.
+  public var onPending: ((Bool) -> Void)?
   private var gestureStart: Board?
+  private var pending = false
 
   public init(board: Board = Board(), undoManager: UndoManager = UndoManager()) {
     self.board = board
@@ -35,22 +39,35 @@ public final class BoardModel {
   public func update(_ change: (inout Board) -> Void) {
     let before = board
     change(&board)
-    if board != before { onChange?(before) }
+    guard board != before else { return }
+    onChange?(before)
+    if gestureStart != nil && !pending {
+      pending = true
+      onPending?(true)
+    }
   }
 
   public func end(_ name: String) {
     guard let start = gestureStart else { return }
-    gestureStart = nil
+    cancelGesture()
     record(start, name)
   }
 
   /// Puts a board read from disk in place, with an empty history.
   public func replace(_ board: Board) {
     let before = self.board
-    gestureStart = nil
+    cancelGesture()
     undoManager.removeAllActions()
     self.board = board
     if board != before { onChange?(before) }
+  }
+
+  private func cancelGesture() {
+    gestureStart = nil
+    if pending {
+      pending = false
+      onPending?(false)
+    }
   }
 
   private func record(_ before: Board, _ name: String) {
@@ -63,7 +80,7 @@ public final class BoardModel {
 
   private func restore(_ state: Board, _ name: String) {
     let now = board
-    gestureStart = nil
+    cancelGesture()
     undoManager.registerUndo(withTarget: self) { $0.restore(now, name) }
     undoManager.setActionName(name)
     board = state

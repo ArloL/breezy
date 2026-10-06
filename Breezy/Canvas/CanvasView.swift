@@ -3,7 +3,7 @@ import BreezyKit
 
 /// The scroll view's document view: draws the board held by `model` and turns pointer and key
 /// input into changes on it. World coordinates, as stored in the board, are offset by `origin`.
-final class CanvasView: NSView {
+final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   static let origin: CGFloat = 834 * 24
   static let size: CGFloat = 2 * origin
 
@@ -29,7 +29,9 @@ final class CanvasView: NSView {
   var laneViews: [String: LaneView] = [:]
   let host = CardHostView()
   let marquee = NSView()
-  var editingID: String? { nil }
+  var editing: CardEditing?
+  var renaming: (id: String, field: NSTextField)?
+  var editingID: String? { editing?.id }
   var drag: Drag?
   /// The card under the pointer, for Space.
   var hovered: String?
@@ -106,6 +108,7 @@ final class CanvasView: NSView {
       laneViews[id] = nil
     }
     heights = Dictionary(uniqueKeysWithValues: board.cards.map { ($0.id, Double(TextMetrics.frontHeight($0.text, width: CGFloat($0.w)))) })
+    if let e = editing, let c = board.card(e.id) { e.view.frame = editorFrame(c, back: e.back) }
     layoutCards()
   }
 

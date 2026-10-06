@@ -110,3 +110,22 @@ import Testing
   #expect(m.board.cards.map(\.id) == ["z"])
   #expect(!m.undoManager.canUndo)
 }
+
+@Test func aGesturesChangeIsPendingUntilItEnds() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  var log: [Bool] = []
+  m.onPending = { log.append($0) }
+  m.begin()
+  m.end("Move")
+  #expect(log.isEmpty)
+  m.begin()
+  m.update { $0.setText("a", "x") }
+  m.update { $0.setText("a", "xy") }
+  #expect(log == [true])
+  m.end("Edit Card")
+  #expect(log == [true, false])
+  m.begin()
+  m.update { $0.setText("a", "z") }
+  m.undoManager.undo()
+  #expect(log == [true, false, true, false])
+}

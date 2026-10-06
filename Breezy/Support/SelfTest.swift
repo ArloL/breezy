@@ -7,9 +7,22 @@ import BreezyKit
 enum SelfTest {
   static func run(_ name: String, _ wc: BoardWindowController) {
     let d = Driver(wc)
+    // a check that blocks the main thread still ends
+    Thread.detachNewThread {
+      Thread.sleep(forTimeInterval: 20)
+      let sheet = (d.window.attachedSheet ?? NSApp.modalWindow).map { w in
+        (w.contentView?.subviews ?? []).compactMap { ($0 as? NSTextField)?.stringValue }.joined(separator: " | ")
+      }
+      print("FAIL \(name): timed out\(sheet.map { "; sheet: " + $0 } ?? "")")
+      fflush(stdout)
+      exit(1)
+    }
     switch name {
     case "drag-into-lane": dragIntoLane(d)
     case "keys-and-piles": keysAndPiles(d)
+    case "create-type-undo": createTypeUndo(d)
+    case "close-while-editing": closeWhileEditing(d)
+    case "close-blank-card": closeBlankCard(d)
     default: finish(name, "unknown check")
     }
   }
@@ -58,6 +71,59 @@ extension SelfTest {
     d.key("z", code: 6, mods: .command)
     if d.board.card("a")?.x != 24 { finish(name, "undo did not restore the pile") }
     finish(name, nil)
+  }
+}
+
+extension SelfTest {
+  /// Double-click makes a card ready to type; Esc finishes; ⌘Z removes it in one step.
+  fileprivate static func createTypeUndo(_ d: Driver) {
+    let name = "create-type-undo"
+    d.doubleClick(d.canvas.visibleWorldCentre)
+    guard d.window.firstResponder is EditorTextView else { finish(name, "no editor after double-click") }
+    d.type("Hello")
+    d.key("\u{1b}", code: 53)
+    if d.canvas.editing != nil { finish(name, "Esc did not finish editing") }
+    if d.board.cards.map(\.text) != ["Hello"] { finish(name, "cards \(d.board.cards.map(\.text))") }
+    d.key("z", code: 6, mods: .command)
+    if !d.board.cards.isEmpty { finish(name, "undo left \(d.board.cards.count) cards") }
+    finish(name, nil)
+  }
+
+  /// Closing the window mid-edit saves the typed text.
+  fileprivate static func closeWhileEditing(_ d: Driver) {
+    let name = "close-while-editing"
+    guard let url = d.wc.document.flatMap({ ($0 as? NSDocument)?.fileURL }) else { finish(name, "no file") }
+    d.doubleClick(d.canvas.visibleWorldCentre)
+    d.type("Kept")
+    d.window.performClose(nil)
+    var tries = 0
+    func poll() {
+      let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+      if text.contains(#""text" : "Kept""#) { finish(name, nil) }
+      tries += 1
+      if tries > 25 {
+        let sheet = d.window.attachedSheet.map { _ in "a sheet is open" } ?? "no sheet"
+        finish(name, "file has no Kept (\(sheet)): \(text.prefix(200))")
+      }
+      d.later(0.2, poll)
+    }
+    d.later(0.2, poll)
+  }
+}
+
+extension SelfTest {
+  /// Closing right after creating a card leaves no blank card in the file.
+  fileprivate static func closeBlankCard(_ d: Driver) {
+    let name = "close-blank-card"
+    guard let url = d.wc.document.flatMap({ ($0 as? NSDocument)?.fileURL }) else { finish(name, "no file") }
+    d.doubleClick(d.canvas.visibleWorldCentre)
+    d.type(" ")
+    d.window.performClose(nil)
+    d.later(1.5) {
+      let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+      guard let b = try? BoardFormat.decode(Data(text.utf8)) else { finish(name, "unreadable file: \(text.prefix(200))") }
+      finish(name, b.cards.isEmpty ? nil : "file has \(b.cards.count) cards")
+    }
   }
 }
 

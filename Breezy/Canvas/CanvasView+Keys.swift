@@ -53,6 +53,4 @@ extension CanvasView {
   /// Completed in Task 10.
   func turnCard() {}
   func turn(_ id: String?) {}
-  /// Completed in Task 9.
-  func endEditing() {}
 }
