@@ -57,7 +57,7 @@ JS files are classic scripts concatenated into one inline `<script>` in the orde
 
 Inlined in the page as `<script type="application/json" id="board-data">`, with `<` escaped as `<`.
 
-### Server: `python3 breezy.py [board.html] [--port 8423]`
+### Server: `python3 breezy.py [board.html] [--port 64570]`
 - Binds 127.0.0.1. Creates an empty board if the file does not exist.
 - `GET /`: assembles the page from the current `app/` and the data block from `board.html`.
 - `PUT /data`: JSON body. Rejects with 409 if `rev` differs from the file's `rev`. Otherwise copies the current file to `backups/board-YYYYmmdd-HHMMSS.html` (keeps the newest 50), increments `rev`, writes the assembled page to a temp file and renames it over `board.html`, then returns the new `rev`.
