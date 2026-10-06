@@ -16,6 +16,7 @@ Open http://localhost:64570/. Changes are written into the board file half a sec
 |---|---|
 | New card | double-click empty space |
 | Edit card | double-click it; Esc or ⌘↩ to finish; first line is the title |
+| Card back | Space over a card (or with one selected), or its folded corner, turns it over to show its notes; double-click to edit, Tab while editing turns it again |
 | Move | drag; ⇧-click or ⇧-drag on empty space to select several |
 | Colour | `1`–`5` |
 | Delete | ⌫ |

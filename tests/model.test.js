@@ -57,6 +57,34 @@ test("a no-op gesture keeps redo available", () => {
   assert.equal(b.card("a").color, 3);
 });
 
+test("finishEdit trims notes and drops blank ones", () => {
+  const b = board([card("a", 0, 0), card("b", 0, 0)]);
+  b.setNotes("a", "As a user\n\n");
+  b.setNotes("b", " \n");
+  b.finishEdit("a");
+  b.finishEdit("b");
+  assert.equal(b.card("a").notes, "As a user");
+  assert.equal("notes" in b.card("b"), false);
+});
+
+test("a card with only notes is kept, one blank on both sides is removed", () => {
+  const b = board([card("a", 0, 0, ""), card("b", 0, 0, "")]);
+  b.setNotes("a", "details");
+  b.finishEdit("a");
+  b.finishEdit("b");
+  assert.deepEqual(b.data.cards.map((c) => c.id), ["a"]);
+});
+
+test("editing notes undoes in one step", () => {
+  const b = board([card("a", 0, 0)]);
+  b.checkpoint();
+  b.setNotes("a", "x");
+  b.setNotes("a", "xy");
+  b.finishEdit("a");
+  b.undo();
+  assert.equal("notes" in b.card("a"), false);
+});
+
 test("moveCards snaps relative to the drag origins", () => {
   const b = board([card("a", 0, 0), card("b", 40, 20)]);
   b.moveCards([{ id: "a", x: 0, y: 0 }, { id: "b", x: 40, y: 20 }], 27, 9);

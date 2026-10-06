@@ -14,6 +14,8 @@ A personal whiteboard for work thoughts and ideas, in the style of Mural: an inf
 - Esc or click elsewhere ends editing. A card whose text is empty or whitespace is deleted when editing ends.
 - Plain text. First line renders bold as the title. Width 200 px; height grows with the text.
 - Click selects (⇧-click toggles). Double-click edits. Drag moves all selected cards, snapping live.
+- Each card has a back for longer notes, like an XP story card. Space, or clicking the folded corner that marks a card with notes, lifts the card under the pointer (else the selected one) above the others, turns it over and widens it to 400 px. Space, Esc or clicking elsewhere puts it back. Only one card is turned over at a time, and that state is not saved.
+- Double-click edits the side facing up. Tab while editing turns the card over and keeps editing. A card is deleted only when both sides are blank.
 - Keys `1`–`5` set the colour of selected cards: yellow, pink, blue, green, grey. ⌫ / Delete removes them.
 
 ### Lanes
@@ -27,7 +29,7 @@ A personal whiteboard for work thoughts and ideas, in the style of Mural: an inf
 - Cards are DOM text, so the browser's ⌘F finds them.
 
 ### Out of scope
-Arrows between cards, images, markdown, tags, multiple boards per file, collaboration.
+Arrows between cards, images, markdown, ⌘F on a card's back while it faces front, tags, multiple boards per file, collaboration.
 
 ## Architecture
 
@@ -51,7 +53,7 @@ JS files are classic scripts concatenated into one inline `<script>` in the orde
 {
   "rev": 7,
   "view":  {"x": 0, "y": 0, "zoom": 1},
-  "cards": [{"id": "c…", "x": 40, "y": 60, "w": 200, "text": "Title\nbody", "color": 1}],
+  "cards": [{"id": "c…", "x": 40, "y": 60, "w": 200, "text": "Title\nbody", "notes": "back of the card", "color": 1}],
   "lanes": [{"id": "l…", "x": 0, "y": 0, "w": 400, "h": 600, "title": "Ideas"}]
 }
 ```

@@ -1,10 +1,11 @@
+:root { --paper: #f4f3ef; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; color: #222; }
 
 #board {
   position: fixed; inset: 0; cursor: default; touch-action: none;
   user-select: none; -webkit-user-select: none;
-  background-color: #f4f3ef;
+  background-color: var(--paper);
   background-image: radial-gradient(circle, #c9c6bd 1px, transparent 1.2px);
 }
 #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
@@ -31,7 +32,25 @@ body { font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans
 }
 .card.selected { outline: 2px solid #3b82f6; outline-offset: 1px; }
 .card .title { font-weight: 600; }
-.card.editing .title, .card.editing .body { display: none; }
+.card.editing .title, .card.editing .body, .card.editing .notes, .card.editing .dog-ear { display: none; }
+
+.card .back, .card.flipped .front { display: none; }
+.card.flipped .back { display: block; }
+.card.flipped {
+  z-index: 1; min-height: 240px; padding: 14px 18px; line-height: 20px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .18), 0 18px 40px rgba(0, 0, 0, .12);
+}
+.card .heading { font-weight: 600; color: rgba(0, 0, 0, .45); }
+.card .back { background: repeating-linear-gradient(transparent 0 19px, rgba(0, 0, 0, .09) 19px 20px); }
+.card .notes:empty::before { content: "Double-click to write on the back"; color: rgba(0, 0, 0, .35); }
+.card .dog-ear {
+  display: none; position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: pointer;
+  background: linear-gradient(to top left, var(--paper) 50%, rgba(0, 0, 0, .14) 50%);
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, .1));
+}
+.card.has-notes .dog-ear, .card.flipped .dog-ear { display: block; }
+.card.flipped .dog-ear { width: 22px; height: 22px; }
+.card.ghost { pointer-events: none; }
 .card textarea {
   display: block; box-sizing: border-box; width: 100%; padding: 0; margin: 0; border: 0; outline: none;
   resize: none; overflow: hidden; background: transparent; font: inherit; color: inherit;

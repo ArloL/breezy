@@ -6,10 +6,15 @@ class Input {
     this.root = view.root;
     this.drag = null;
     this.pointer = { x: 0, y: 0 };
+    this.hovered = null;
     this.root.addEventListener("pointerdown", (e) => this.down(e));
     this.root.addEventListener("dblclick", (e) => this.dblclick(e));
     this.root.addEventListener("pointermove", (e) => {
       this.pointer = view.toWorld(e.clientX, e.clientY);
+      this.hovered = e.target.closest?.(".card")?.dataset.id ?? null;
+    });
+    this.root.addEventListener("pointerleave", () => {
+      this.hovered = null;
     });
     this.root.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
     window.addEventListener("pointermove", (e) => this.move(e));
@@ -30,6 +35,12 @@ class Input {
     const card = e.target.closest(".card");
     const resize = e.target.closest(".lane-resize");
     const header = e.target.closest(".lane-header");
+    const flipped = this.view.flipped;
+    if (flipped && card?.dataset.id !== flipped) this.view.turn(null);
+    if (e.target.closest(".dog-ear")) {
+      this.view.select([card.dataset.id]);
+      return this.view.turn(flipped === card.dataset.id ? null : card.dataset.id);
+    }
     if (card) return this.downOnCard(card.dataset.id, e.shiftKey, p);
     if (resize) return this.downOnResize(resize.parentElement.dataset.id, p);
     if (header) return this.downOnLane(header.parentElement.dataset.id, e.shiftKey, p);
@@ -112,7 +123,7 @@ class Input {
   }
 
   dblclick(e) {
-    if (!this.editable || e.target.closest("textarea, input")) return;
+    if (!this.editable || e.target.closest("textarea, input, .dog-ear")) return;
     const card = e.target.closest(".card");
     const header = e.target.closest(".lane-header");
     if (card) return this.editCard(card.dataset.id, false);
@@ -126,17 +137,31 @@ class Input {
 
   editCard(id, fresh) {
     if (!fresh) this.board.checkpoint();
-    const ta = this.view.openCardEditor(id);
+    this.editSide(id);
+  }
+
+  // Edits the side facing up; Tab turns the card over and goes on editing.
+  editSide(id) {
+    const side = this.view.flipped === id ? "back" : "front";
+    const ta = this.view.openCardEditor(id, side);
+    let turning = false;
     ta.addEventListener("input", () => {
-      this.board.setText(id, ta.value);
+      if (side === "back") this.board.setNotes(id, ta.value);
+      else this.board.setText(id, ta.value);
       this.view.fit(ta);
     });
     ta.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) ta.blur();
+      if (e.key === "Tab") {
+        e.preventDefault();
+        turning = true;
+      }
+      if (turning || e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) ta.blur();
     });
     ta.addEventListener("blur", () => {
       this.view.closeEditor();
-      this.board.finishEdit(id);
+      if (!turning) return this.board.finishEdit(id);
+      this.view.turn(side === "back" ? null : id);
+      this.editSide(id);
     }, { once: true });
   }
 
@@ -176,7 +201,11 @@ class Input {
       return;
     }
     if (mod || e.altKey) return;
-    if (e.key === "Escape") return this.view.select([]);
+    if (e.key === " ") {
+      e.preventDefault();
+      return this.turnCard();
+    }
+    if (e.key === "Escape") return this.view.flipped ? this.view.turn(null) : this.view.select([]);
     if (!this.editable) return;
     if (e.key === "l" || e.key === "L") return this.addLane(this.pointer.x, this.pointer.y);
     if (/^[1-5]$/.test(e.key)) return this.board.setColor([...this.view.selected], Number(e.key));
@@ -185,6 +214,13 @@ class Input {
       this.board.remove([...this.view.selected]);
       this.view.select([]);
     }
+  }
+
+  // Turns over the card under the pointer, else the selected one; turns back the one in hand.
+  turnCard() {
+    const ids = [...this.view.selected];
+    const id = this.hovered ?? (ids.length === 1 && this.board.card(ids[0]) ? ids[0] : null);
+    this.view.turn(id === this.view.flipped ? null : id);
   }
 
   wheel(e) {

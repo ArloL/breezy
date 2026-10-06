@@ -93,17 +93,24 @@ class Board {
     this.changed();
   }
 
+  setNotes(id, notes) {
+    this.card(id).notes = notes;
+    this.changed();
+  }
+
   setLaneTitle(id, title) {
     this.lane(id).title = title;
     this.changed();
   }
 
-  // Ends editing a card or lane title. A blank card is removed.
+  // Ends editing a card or lane title. A card blank on both sides is removed.
   finishEdit(id) {
     const card = this.card(id);
     if (card) {
       card.text = card.text.trimEnd();
-      if (!card.text) this.data.cards = this.data.cards.filter((c) => c !== card);
+      card.notes = card.notes?.trimEnd();
+      if (!card.notes) delete card.notes;
+      if (!card.text && !card.notes) this.data.cards = this.data.cards.filter((c) => c !== card);
     }
     this.dropNoopCheckpoint();
     this.changed();

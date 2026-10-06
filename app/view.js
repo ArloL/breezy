@@ -1,3 +1,6 @@
+const FLIP_MS = 260;
+const BACK_W = 400;
+
 class View {
   constructor(root, board) {
     this.root = root;
@@ -11,6 +14,7 @@ class View {
     this.selected = new Set();
     this.editing = null;
     this.editor = null;
+    this.flipped = null;
   }
 
   render() {
@@ -32,6 +36,7 @@ class View {
       el.remove();
       this.els.delete(id);
       this.selected.delete(id);
+      if (this.flipped === id) this.flipped = null;
     }
   }
 
@@ -52,15 +57,23 @@ class View {
   }
 
   renderCard(c) {
-    const el = this.element(c.id, this.cardsEl, '<div class="title"></div><div class="body"></div>');
-    el.className = this.classes(`card c${c.color}`, c.id);
+    const el = this.element(
+      c.id,
+      this.cardsEl,
+      '<div class="front"><div class="title"></div><div class="body"></div></div>' +
+        '<div class="back"><div class="heading"></div><div class="notes"></div></div><div class="dog-ear"></div>',
+    );
+    const flipped = this.flipped === c.id;
+    el.className = this.classes(`card c${c.color}`, c.id) + (flipped ? " flipped" : "") + (c.notes ? " has-notes" : "");
     el.style.left = `${c.x}px`;
     el.style.top = `${c.y}px`;
-    el.style.width = `${c.w}px`;
+    el.style.width = `${flipped ? BACK_W : c.w}px`;
     if (this.editing === c.id) return;
     const [title, ...body] = c.text.split("\n");
     el.querySelector(".title").textContent = title;
     el.querySelector(".body").textContent = body.join("\n");
+    el.querySelector(".heading").textContent = title;
+    el.querySelector(".notes").textContent = c.notes ?? "";
   }
 
   renderLane(l) {
@@ -93,13 +106,35 @@ class View {
     return { x: (clientX - r.left - v.x) / v.zoom, y: (clientY - r.top - v.y) / v.zoom };
   }
 
-  openCardEditor(id) {
+  // Lifts card `id` and turns it over, putting back the one in hand; null just puts it back.
+  // State changes at once so an editor can take focus; a copy of the old face animates away.
+  turn(id) {
+    if (!this.els.has(id)) id = null;
+    if (this.flipped === id) return;
+    const els = [this.flipped, id].filter(Boolean).map((x) => this.els.get(x));
+    const ghosts = els.map((el) => {
+      for (const a of el.getAnimations()) a.cancel();
+      const ghost = el.cloneNode(true);
+      ghost.classList.add("ghost");
+      el.after(ghost);
+      return ghost;
+    });
+    this.flipped = id;
+    this.render();
+    const half = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : FLIP_MS / 2;
+    const rot = (deg) => ({ transform: `perspective(1000px) rotateY(${deg}deg)` });
+    for (const g of ghosts) g.animate([rot(0), rot(90)], { duration: half, easing: "ease-in" }).finished.then(() => g.remove());
+    for (const el of els) el.animate([rot(-90), rot(0)], { duration: half, delay: half, easing: "ease-out", fill: "backwards" });
+  }
+
+  openCardEditor(id, side) {
     this.editing = id;
     const el = this.els.get(id);
     el.classList.add("editing");
     const ta = document.createElement("textarea");
-    ta.value = this.board.card(id).text;
-    el.append(ta);
+    const card = this.board.card(id);
+    ta.value = side === "back" ? (card.notes ?? "") : card.text;
+    el.querySelector(`.${side}`).append(ta);
     this.fit(ta);
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);
