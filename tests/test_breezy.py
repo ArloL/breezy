@@ -176,5 +176,14 @@ class ServerTest(TempDir):
         self.assertEqual(self.request("GET", "/nope")[0], 404)
 
 
+
+class RealAppTest(unittest.TestCase):
+    def test_real_app_assembles(self):
+        page = breezy.assemble(breezy.empty_data())
+        self.assertEqual(breezy.extract(page), breezy.empty_data())
+        for name in breezy.JS_ORDER:
+            self.assertIn((breezy.APP / name).read_text(encoding="utf-8"), page)
+        self.assertIn((breezy.APP / "board.css").read_text(encoding="utf-8"), page)
+
 if __name__ == "__main__":
     unittest.main()

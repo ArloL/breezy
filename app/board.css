@@ -1,0 +1,51 @@
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; color: #222; }
+
+#board {
+  position: fixed; inset: 0; cursor: default; touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  background-color: #f4f3ef;
+  background-image: radial-gradient(circle, #c9c6bd 1px, transparent 1.2px);
+}
+#world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+.lane {
+  position: absolute; box-sizing: border-box;
+  background: rgba(0, 0, 0, .035); border: 1px solid rgba(0, 0, 0, .1); border-radius: 8px;
+}
+.lane.selected { border-color: #3b82f6; }
+.lane-header {
+  height: 36px; padding: 0 12px; line-height: 36px; font-weight: 600; color: #555;
+  cursor: grab; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.lane-header input { font: inherit; color: inherit; width: 100%; padding: 0; border: 0; background: transparent; outline: none; }
+.lane-resize {
+  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(0, 0, 0, .2) 50%); border-bottom-right-radius: 8px;
+}
+
+.card {
+  position: absolute; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15), 0 2px 6px rgba(0, 0, 0, .06);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.card.selected { outline: 2px solid #3b82f6; outline-offset: 1px; }
+.card .title { font-weight: 600; }
+.card.editing .title, .card.editing .body { display: none; }
+.card textarea {
+  display: block; box-sizing: border-box; width: 100%; padding: 0; margin: 0; border: 0; outline: none;
+  resize: none; overflow: hidden; background: transparent; font: inherit; color: inherit;
+  user-select: text; -webkit-user-select: text;
+}
+.c1 { background: #fff3a8; }
+.c2 { background: #ffc9d9; }
+.c3 { background: #bfe3ff; }
+.c4 { background: #c8f0c0; }
+.c5 { background: #e2e2e2; }
+
+#marquee { position: absolute; border: 1px solid #3b82f6; background: rgba(59, 130, 246, .1); pointer-events: none; }
+
+#toolbar { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 12px; align-items: center; font-size: 12px; color: #777; }
+#toolbar button { font: inherit; padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+#toolbar button:disabled { cursor: default; opacity: .5; }
+#status.error { color: #c0392b; font-weight: 600; }
