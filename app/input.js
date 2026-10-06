@@ -14,6 +14,7 @@ class Input {
     this.root.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
     window.addEventListener("pointermove", (e) => this.move(e));
     window.addEventListener("pointerup", () => this.up());
+    window.addEventListener("pointercancel", () => this.up());
     window.addEventListener("keydown", (e) => this.key(e));
     document.getElementById("add-lane").addEventListener("click", () => this.addLaneAtCentre());
   }
@@ -76,6 +77,8 @@ class Input {
   move(e) {
     const d = this.drag;
     if (!d) return;
+    // released outside the window, so pointerup never arrived
+    if (e.buttons === 0) return this.up();
     if (d.kind === "pan") {
       const v = this.board.data.view;
       v.x = d.vx + e.clientX - d.sx;

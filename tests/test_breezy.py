@@ -1,11 +1,11 @@
 import http.client
 import json
 import shutil
+import socket
 import sys
 import tempfile
 import threading
 import unittest
-from http.server import HTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -132,12 +132,37 @@ class BoardFileTest(TempDir):
         self.assertNotIn("board-20200101-000000-000005.html", names)
         self.assertIn("board-20200101-000000-000006.html", names)
 
+    def test_text_with_a_lone_surrogate_saves(self):
+        board = self.board()
+        board.ensure()
+        text = "half an emoji " + chr(0xD83D)
+        board.save(data(rev=0, text=text))
+        self.assertEqual(board.load()["cards"][0]["text"], text)
+
+    def test_failed_write_leaves_no_temp_file(self):
+        board = self.board()
+        board.ensure()
+        with self.assertRaises(UnicodeEncodeError):
+            board._write(chr(0xD83D))
+        self.assertEqual(list(self.root.glob(".board.html.*")), [])
+
+    def test_backups_of_a_board_with_a_shared_prefix_are_separate(self):
+        board = self.board(backup_interval=600)
+        board.ensure()
+        folder = self.root / "backups"
+        folder.mkdir()
+        for i in range(55):
+            (folder / f"board-ideas-20990101-000000-{i:06d}.html").write_text("other board")
+        board.save(data(rev=0))
+        self.assertEqual(len(list(folder.glob("board-ideas-*.html"))), 55)
+        self.assertEqual(len([n for n in self.backups() if not n.startswith("board-ideas-")]), 1)
+
 
 class ServerTest(TempDir):
     def setUp(self):
         super().setUp()
         self.board().ensure()
-        self.server = HTTPServer(("127.0.0.1", 0), breezy.make_handler(self.board()))
+        self.server = breezy.make_server(self.board(), 0)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
@@ -171,6 +196,14 @@ class ServerTest(TempDir):
 
     def test_foreign_host_is_refused(self):
         self.assertEqual(self.request("GET", "/", host="evil.example:64570")[0], 403)
+
+    def test_idle_connection_does_not_block_others(self):
+        idle = socket.create_connection(("127.0.0.1", self.port))
+        self.addCleanup(idle.close)
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=3)
+        conn.request("GET", "/", headers={"Host": f"127.0.0.1:{self.port}"})
+        self.assertEqual(conn.getresponse().status, 200)
+        conn.close()
 
     def test_unknown_path(self):
         self.assertEqual(self.request("GET", "/nope")[0], 404)

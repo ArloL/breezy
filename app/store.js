@@ -17,8 +17,9 @@ class Store {
   }
 
   schedule(delay = SAVE_DELAY) {
-    if (this.readOnly || this.stopped) return;
+    if (this.readOnly) return;
     this.dirty = true;
+    if (this.stopped) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), delay);
   }
@@ -37,6 +38,7 @@ class Store {
       });
       if (res.status === 409) {
         this.stopped = true;
+        this.dirty = true;
         this.view.setStatus("changed elsewhere — reload", true);
         return;
       }

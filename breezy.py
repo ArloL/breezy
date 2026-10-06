@@ -7,9 +7,10 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -44,7 +45,8 @@ def assemble(data, app=APP):
         "CSS": (app / "board.css").read_text(encoding="utf-8"),
         "JS": "\n".join((app / name).read_text(encoding="utf-8") for name in JS_ORDER),
         # escaped so card text cannot close the script element
-        "DATA": json.dumps(data, ensure_ascii=False).replace("<", "\\u003c"),
+        # ASCII so a lone surrogate from the browser cannot fail to encode
+        "DATA": json.dumps(data).replace("<", "\\u003c"),
     }
     template = (app / "index.html").read_text(encoding="utf-8")
     # one pass, so inserted text is never scanned for placeholders
@@ -66,6 +68,8 @@ class BoardFile:
         self.app = app
         self.backup_interval = backup_interval
         self.backups = self.path.parent / "backups"
+        self.backup_re = re.compile(re.escape(self.path.stem) + r"-\d{8}-\d{6}-\d{6}\.html")
+        self.lock = threading.Lock()
 
     def ensure(self):
         """Creates an empty board if missing; raises ValueError for a file that is not a board."""
@@ -82,34 +86,43 @@ class BoardFile:
 
     def save(self, data):
         validate(data)
-        rev = self.load()["rev"]
-        if data["rev"] != rev:
-            raise Conflict(rev)
-        self._backup()
-        self._write(assemble({**data, "rev": rev + 1}, self.app))
-        return rev + 1
+        with self.lock:
+            rev = self.load()["rev"]
+            if data["rev"] != rev:
+                raise Conflict(rev)
+            self._backup()
+            self._write(assemble({**data, "rev": rev + 1}, self.app))
+            return rev + 1
+
+    def _own_backups(self):
+        return sorted(p for p in self.backups.glob(f"{self.path.stem}-*.html") if self.backup_re.fullmatch(p.name))
 
     def _backup(self):
         self.backups.mkdir(exist_ok=True)
-        pattern = f"{self.path.stem}-*.html"
-        existing = sorted(self.backups.glob(pattern))
+        existing = self._own_backups()
         if existing and time.time() - existing[-1].stat().st_mtime < self.backup_interval:
             return
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         shutil.copyfile(self.path, self.backups / f"{self.path.stem}-{stamp}.html")
-        for old in sorted(self.backups.glob(pattern))[:-BACKUPS_KEPT]:
+        for old in self._own_backups()[:-BACKUPS_KEPT]:
             old.unlink()
 
     def _write(self, html):
         fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=f".{self.path.name}.", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(html)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, self.path)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(html)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, self.path)
+        except BaseException:
+            os.unlink(tmp)
+            raise
 
 
 def make_handler(board):
     class Handler(BaseHTTPRequestHandler):
+        timeout = 30
+
         def do_GET(self):
             if not self._allowed():
                 return
@@ -154,6 +167,12 @@ def make_handler(board):
     return Handler
 
 
+def make_server(board, port):
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(board))
+    server.daemon_threads = True
+    return server
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Serve a Breezy board and save edits into it.")
     parser.add_argument("board", nargs="?", default="board.html", help="board file (default: board.html)")
@@ -164,7 +183,7 @@ def main(argv=None):
         board.ensure()
     except ValueError as e:
         sys.exit(f"breezy: {args.board}: {e}")
-    server = HTTPServer(("127.0.0.1", args.port), make_handler(board))
+    server = make_server(board, args.port)
     print(f"Breezy: http://localhost:{args.port}/ ({board.path.resolve()})")
     try:
         server.serve_forever()
