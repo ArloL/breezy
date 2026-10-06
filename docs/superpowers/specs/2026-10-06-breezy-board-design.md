@@ -55,7 +55,7 @@ JS files are classic scripts concatenated into one inline `<script>` in the orde
 }
 ```
 
-Inlined in the page as `<script type="application/json" id="board-data">`, with `<` escaped as `<`.
+Inlined in the page as `<script type="application/json" id="board-data">`, with `<` escaped as `\u003c`.
 
 ### Server: `python3 breezy.py [board.html] [--port 64570]`
 - Binds 127.0.0.1. Creates an empty board if the file does not exist.
