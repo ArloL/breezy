@@ -28,8 +28,15 @@ A personal whiteboard for work thoughts and ideas, in the style of Mural: an inf
 - ⌘Z undo, ⇧⌘Z redo; 100 steps. Keyboard shortcuts are ignored while a text field has focus, except Esc.
 - Cards are DOM text, so the browser's ⌘F finds them.
 
+### Look
+Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft paper tints for cards, and a single orange accent (`--accent`) used only for selection and the caret. Lane titles and card-back headings are small spaced capitals.
+
 ### Out of scope
 Arrows between cards, images, markdown, ⌘F on a card's back while it faces front, tags, multiple boards per file, collaboration.
+
+### Ideas not yet tried
+- Plain drag on empty space draws the selection box (as in Finder), panning by scroll and pinch only.
+- Bold first line while editing; a textarea cannot style it, so it needs a different editor.
 
 ## Architecture
 

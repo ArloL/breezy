@@ -20,7 +20,7 @@ Open http://localhost:64570/. Changes are written into the board file half a sec
 | Move | drag; ⇧-click or ⇧-drag on empty space to select several |
 | Colour | `1`–`5` |
 | Delete | ⌫ |
-| New lane | `L` at the cursor, or **+ Lane** |
+| New lane | `L` at the cursor, or **New Lane** |
 | Lane | drag the header to move it with its cards, the corner to resize, double-click the header to rename |
 | Pan / zoom | drag empty space or scroll / pinch or ⌘-scroll |
 | Undo / redo | ⌘Z / ⇧⌘Z |
