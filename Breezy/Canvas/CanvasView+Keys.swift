@@ -6,7 +6,7 @@ extension CanvasView {
     let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
     // by key position, as ⇧0 types "=" on some layouts
     if event.keyCode == 29 && mods == .shift {
-      NSApp.sendAction(#selector(BoardWindowController.actualSize(_:)), to: nil, from: self)
+      _ = tryToPerform(#selector(BoardWindowController.actualSize(_:)), with: self)
       return
     }
     guard mods.subtracting(.shift).isEmpty else { return super.keyDown(with: event) }

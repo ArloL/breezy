@@ -14,6 +14,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   let zoomItem = NSToolbarItem(itemIdentifier: .zoom)
   private let zoomButton = NSButton(title: "100 %", target: nil, action: nil)
   private let grid = GridView()
+  private var restored = false
 
   init(model: BoardModel) {
     canvas = CanvasView(model: model)
@@ -50,7 +51,9 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
-    DispatchQueue.main.async { [weak self] in self?.fit() }
+    DispatchQueue.main.async { [weak self] in
+      if self?.restored == false { self?.fit() }
+    }
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -67,6 +70,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     if zoomButton.title != label { zoomButton.title = label }
     grid.update(origin: scrollView.contentView.bounds.origin, zoom: scrollView.magnification)
     canvas.layoutCards()
+    window?.invalidateRestorableState()
   }
 
   var centre: NSPoint {
@@ -78,6 +82,20 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   @objc func zoomOut(_ sender: Any?) { scrollView.animator().setMagnification(scrollView.magnification / 1.25, centeredAt: centre) }
   @objc func actualSize(_ sender: Any?) { scrollView.animator().setMagnification(1, centeredAt: centre) }
   @objc func newLane(_ sender: Any?) { canvas.addLaneAtCentre() }
+
+  func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
+    let o = scrollView.contentView.bounds.origin
+    state.encode(Double(o.x), forKey: "originX")
+    state.encode(Double(o.y), forKey: "originY")
+    state.encode(Double(scrollView.magnification), forKey: "zoom")
+  }
+
+  func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
+    guard state.containsValue(forKey: "zoom") else { return }
+    restored = true
+    place(origin: NSPoint(x: state.decodeDouble(forKey: "originX"), y: state.decodeDouble(forKey: "originY")),
+          zoom: state.decodeDouble(forKey: "zoom"))
+  }
 
   /// Shows the whole board at no more than 100 %, or the origin when the board is empty.
   func fit() {

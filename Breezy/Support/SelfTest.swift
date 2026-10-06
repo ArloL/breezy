@@ -24,6 +24,7 @@ enum SelfTest {
     case "close-while-editing": closeWhileEditing(d)
     case "close-blank-card": closeBlankCard(d)
     case "turn-and-tab": turnAndTab(d)
+    case "zoom-and-state": zoomAndState(d)
     default: finish(name, "unknown check")
     }
   }
@@ -155,6 +156,35 @@ extension SelfTest {
     let u = d.board.card("a")!
     if u.notes != "Back" || u.text != "Front" { finish(name, "undo left \(u.text) / \(u.notes ?? "nil")") }
     finish(name, nil)
+  }
+}
+
+extension SelfTest {
+  /// ⇧0 returns to 100 %; scrolling never edits the document; position and zoom survive window
+  /// restoration.
+  fileprivate static func zoomAndState(_ d: Driver) {
+    let name = "zoom-and-state"
+    let sv = d.wc.scrollView
+    sv.magnification = 0.5
+    d.click(NSPoint(x: 0, y: 600))
+    d.key("=", code: 29, mods: .shift)
+    d.later(0.6) {
+      if abs(sv.magnification - 1) > 0.001 { finish(name, "⇧0 left zoom at \(sv.magnification)") }
+      d.wc.place(origin: NSPoint(x: CanvasView.origin - 300, y: CanvasView.origin - 200), zoom: 0.75)
+      if (d.wc.document as? NSDocument)?.isDocumentEdited == true { finish(name, "scrolling edited the document") }
+      let archiver = NSKeyedArchiver(requiringSecureCoding: false)
+      d.wc.window(d.window, willEncodeRestorableState: archiver)
+      archiver.finishEncoding()
+      d.wc.place(origin: NSPoint(x: CanvasView.origin, y: CanvasView.origin), zoom: 1)
+      guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: archiver.encodedData) else { finish(name, "no state") }
+      unarchiver.requiresSecureCoding = false
+      d.wc.window(d.window, didDecodeRestorableState: unarchiver)
+      let o = sv.contentView.bounds.origin
+      if abs(sv.magnification - 0.75) > 0.001 || abs(o.x - (CanvasView.origin - 300)) > 1 || abs(o.y - (CanvasView.origin - 200)) > 1 {
+        finish(name, "restored to \(o) at \(sv.magnification)")
+      }
+      finish(name, nil)
+    }
   }
 }
 
