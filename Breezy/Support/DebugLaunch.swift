@@ -3,7 +3,8 @@ import AppKit
 /// Launch arguments for scripted checks. With -BreezyBoard <file> the app opens that board and
 /// no untitled one; -BreezyCapture <png> writes a window capture after 1.5 s and quits;
 /// -BreezyBench <json> runs the benchmark and quits; -BreezyAppearance light|dark|switch fixes
-/// the appearance, or starts light and switches to dark before the capture.
+/// the appearance, or starts light and switches to dark before the capture; -BreezyTurn any turns
+/// over the first card with notes; -BreezySelfTest <check> runs a SelfTest check.
 enum DebugLaunch {
   private static let defaults = UserDefaults.standard
   static var board: String? { defaults.string(forKey: "BreezyBoard") }
@@ -22,6 +23,9 @@ enum DebugLaunch {
       guard let wc = doc?.windowControllers.first as? BoardWindowController, let window = wc.window else { exit(1) }
       if appearance == "switch" {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { NSApp.appearance = NSAppearance(named: .darkAqua) }
+      }
+      if defaults.string(forKey: "BreezyTurn") != nil {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wc.canvas.turn(wc.canvas.board.cards.first { $0.notes != nil }?.id) }
       }
       if let check = defaults.string(forKey: "BreezySelfTest") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SelfTest.run(check, wc) }

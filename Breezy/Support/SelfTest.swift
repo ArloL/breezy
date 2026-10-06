@@ -23,6 +23,7 @@ enum SelfTest {
     case "create-type-undo": createTypeUndo(d)
     case "close-while-editing": closeWhileEditing(d)
     case "close-blank-card": closeBlankCard(d)
+    case "turn-and-tab": turnAndTab(d)
     default: finish(name, "unknown check")
     }
   }
@@ -124,6 +125,36 @@ extension SelfTest {
       guard let b = try? BoardFormat.decode(Data(text.utf8)) else { finish(name, "unreadable file: \(text.prefix(200))") }
       finish(name, b.cards.isEmpty ? nil : "file has \(b.cards.count) cards")
     }
+  }
+}
+
+extension SelfTest {
+  /// Space turns the selected card over and back; the folded corner turns it too; a double-click
+  /// edits the back, Tab goes on editing the front, and the session undoes in one step.
+  fileprivate static func turnAndTab(_ d: Driver) {
+    let name = "turn-and-tab"
+    d.click(NSPoint(x: 120, y: 24))
+    d.key(" ", code: 49)
+    if d.canvas.turned != "a" { finish(name, "Space did not turn the selected card") }
+    let back = d.canvas.drawnRect(d.board.card("a")!)
+    if back.w != Metrics.backWidth || back.h < Metrics.backMinHeight { finish(name, "back drawn at \(back)") }
+    d.key(" ", code: 49)
+    if d.canvas.turned != nil { finish(name, "Space did not turn it back") }
+    d.click(NSPoint(x: 236, y: 44))
+    if d.canvas.turned != "a" { finish(name, "the folded corner did not turn the card") }
+    d.doubleClick(NSPoint(x: 120, y: 100))
+    guard let e = d.canvas.editing, e.back else { finish(name, "double-click did not edit the back") }
+    d.type(" more")
+    d.key("\t", code: 48)
+    guard let f = d.canvas.editing, !f.back, d.canvas.turned == nil else { finish(name, "Tab did not switch to the front") }
+    d.type("!")
+    d.key("\u{1b}", code: 53)
+    let c = d.board.card("a")!
+    if c.notes != "Back more" || c.text != "Front!" { finish(name, "card is \(c.text) / \(c.notes ?? "nil")") }
+    d.key("z", code: 6, mods: .command)
+    let u = d.board.card("a")!
+    if u.notes != "Back" || u.text != "Front" { finish(name, "undo left \(u.text) / \(u.notes ?? "nil")") }
+    finish(name, nil)
   }
 }
 

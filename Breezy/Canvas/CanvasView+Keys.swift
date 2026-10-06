@@ -50,7 +50,4 @@ extension CanvasView {
 
   func addLaneAtCentre() { addLane(at: visibleWorldCentre) }
 
-  /// Completed in Task 10.
-  func turnCard() {}
-  func turn(_ id: String?) {}
 }
