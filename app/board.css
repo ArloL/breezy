@@ -79,6 +79,10 @@ body {
 }
 .card.has-notes .dog-ear, .card.flipped .dog-ear { display: block; }
 .card.ghost { pointer-events: none; }
+.card { transition: top .22s cubic-bezier(.2, .8, .2, 1); }
+.lane { transition: height .22s cubic-bezier(.2, .8, .2, 1); }
+.holding .card.selected, .holding-lane .card, .holding-lane .lane { transition: none; }
+@media (prefers-reduced-motion: reduce) { .card, .lane { transition: none; } }
 .card textarea {
   display: block; box-sizing: border-box; width: 100%; padding: 0; margin: 0; border: 0; outline: none;
   resize: none; overflow: hidden; background: transparent; font: inherit; color: inherit;

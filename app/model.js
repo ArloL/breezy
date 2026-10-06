@@ -6,6 +6,8 @@ const LANE_MIN = 100;
 const UNDO_LIMIT = 100;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 2;
+const ROOM = GRID / 2;
+const STACK_TOP = 3 * GRID;
 
 function snap(v) {
   return Math.round(v / GRID) * GRID;
@@ -25,6 +27,21 @@ function zoomAt(view, sx, sy, factor) {
 
 function intersects(a, b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+function centreIn(b, lane) {
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  return cx >= lane.x && cx <= lane.x + lane.w && cy >= lane.y && cy <= lane.y + lane.h;
+}
+
+function sameColumn(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w;
+}
+
+// The first grid line at least ROOM below b.
+function below(b) {
+  return Math.ceil((b.y + b.h + ROOM) / GRID) * GRID;
 }
 
 class Board {
@@ -116,14 +133,76 @@ class Board {
     this.changed();
   }
 
-  moveCards(origins, dx, dy) {
+  // With `room` ({base, heightOf}) the cards are held in a drag: see settle.
+  moveCards(origins, dx, dy, room) {
     for (const o of origins) {
       const c = this.card(o.id);
       if (!c) continue;
       c.x = snap(o.x + dx);
       c.y = snap(o.y + dy);
     }
+    if (room) this.settle(room.heightOf, origins.map((o) => o.id), room.base);
     this.changed();
+  }
+
+  // Ends a drag begun with `room`: the held cards drop into the places kept for them.
+  land(ids, room) {
+    this.settle(room.heightOf, ids, room.base, true);
+    this.changed();
+  }
+
+  gravity(heightOf) {
+    this.settle(heightOf);
+    this.changed();
+  }
+
+  // Where everything but cards `ids` stands, for settle.
+  layout(ids) {
+    return {
+      cards: this.data.cards.filter((c) => !ids.includes(c.id)).map((c) => ({ id: c.id, y: c.y })),
+      lanes: this.data.lanes.map((l) => ({ id: l.id, h: l.h })),
+    };
+  }
+
+  // Floats the cards in each lane up their columns in order of their centres, a ROOM apart; lanes
+  // grow to fit. Cards `held` in a drag stay under the pointer, but are ordered as a block by their
+  // top card and keep their places free; `land` moves them in. With `base` (from layout) the others
+  // start from where they stood when the drag began, so dragging away gives cards back their places.
+  settle(heightOf, held = [], base = null, land = false) {
+    for (const o of base?.cards ?? []) {
+      const c = this.card(o.id);
+      if (c) c.y = o.y;
+    }
+    for (const o of base?.lanes ?? []) {
+      const l = this.lane(o.id);
+      if (l) l.h = o.h;
+    }
+    const boxes = this.data.cards.map((c) => ({ c, x: c.x, y: c.y, w: c.w, h: heightOf(c.id), held: held.includes(c.id) }));
+    const done = new Set();
+    for (const lane of this.data.lanes) {
+      const cards = boxes.filter((b) => !done.has(b) && centreIn(b, lane));
+      for (const b of cards) done.add(b);
+      const top = cards.filter((b) => b.held).sort((a, b) => a.y - b.y)[0];
+      const key = (b) => (b.held ? [top.y + top.h / 2, 0, b.y] : [b.y + b.h / 2, 1, b.y]);
+      const order = cards.map((b) => [key(b), b]).sort(([a], [b]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+      const placed = [];
+      for (const [, b] of order) {
+        let y = lane.y + STACK_TOP;
+        for (const p of placed) if (sameColumn(p, b)) y = Math.max(y, below(p));
+        placed.push({ ...b, y });
+        if (!b.held || land) b.c.y = y;
+        lane.h = Math.max(lane.h, below({ y, h: b.h }) - lane.y);
+      }
+    }
+  }
+
+  // Card `id` and those below it in its lane's column.
+  pile(id, heightOf) {
+    const c = this.card(id);
+    const box = (x) => ({ x: x.x, y: x.y, w: x.w, h: heightOf(x.id) });
+    const lane = this.data.lanes.find((l) => centreIn(box(c), l));
+    if (!lane) return [id];
+    return this.data.cards.filter((x) => x === c || (x.y > c.y && sameColumn(c, x) && centreIn(box(x), lane))).map((x) => x.id);
   }
 
   setColor(ids, color) {
@@ -175,11 +254,7 @@ class Board {
 
   cardsInLane(id, heightOf) {
     const l = this.lane(id);
-    return this.data.cards.filter((c) => {
-      const cx = c.x + c.w / 2;
-      const cy = c.y + heightOf(c.id) / 2;
-      return cx >= l.x && cx <= l.x + l.w && cy >= l.y && cy <= l.y + l.h;
-    });
+    return this.data.cards.filter((c) => centreIn({ x: c.x, y: c.y, w: c.w, h: heightOf(c.id) }, l));
   }
 
   cardsInRect(rect, heightOf) {

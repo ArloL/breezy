@@ -5,6 +5,7 @@ class Input {
     this.store = store;
     this.root = view.root;
     this.drag = null;
+    this.heightOf = (id) => view.heightOf(id);
     this.pointer = { x: 0, y: 0 };
     this.hovered = null;
     this.root.addEventListener("pointerdown", (e) => this.down(e));
@@ -41,7 +42,7 @@ class Input {
       this.view.select([card.dataset.id]);
       return this.view.turn(flipped === card.dataset.id ? null : card.dataset.id);
     }
-    if (card) return this.downOnCard(card.dataset.id, e.shiftKey, p);
+    if (card) return this.downOnCard(card.dataset.id, e.shiftKey, e.altKey, p);
     if (resize) return this.downOnResize(resize.parentElement.dataset.id, p);
     if (header) return this.downOnLane(header.parentElement.dataset.id, e.shiftKey, p);
     if (e.shiftKey) {
@@ -53,16 +54,19 @@ class Input {
     this.drag = { kind: "pan", sx: e.clientX, sy: e.clientY, vx: v.x, vy: v.y };
   }
 
-  downOnCard(id, shift, p) {
+  // ⌥ takes the card's pile: it and the cards below it in its lane.
+  downOnCard(id, shift, alt, p) {
     if (shift) return this.view.toggle(id);
-    if (!this.view.selected.has(id)) this.view.select([id]);
+    if (alt) this.view.select(this.board.pile(id, this.heightOf));
+    else if (!this.view.selected.has(id)) this.view.select([id]);
     if (!this.editable) return;
     const origins = [...this.view.selected]
       .map((s) => this.board.card(s))
       .filter(Boolean)
       .map((c) => ({ id: c.id, x: c.x, y: c.y }));
+    const room = { base: this.board.layout(origins.map((o) => o.id)), heightOf: this.heightOf };
     this.board.checkpoint();
-    this.drag = { kind: "cards", id, start: p, moved: false, origins };
+    this.drag = { kind: "cards", id, start: p, moved: false, origins, room };
   }
 
   downOnLane(id, shift, p) {
@@ -107,7 +111,8 @@ class Input {
     }
     d.moved ||= Math.hypot(dx, dy) * this.board.data.view.zoom > 3;
     if (!d.moved) return;
-    if (d.kind === "cards") this.board.moveCards(d.origins, dx, dy);
+    this.root.classList.add(d.kind === "cards" ? "holding" : "holding-lane");
+    if (d.kind === "cards") this.board.moveCards(d.origins, dx, dy, d.room);
     else if (d.kind === "lane") this.board.moveLane(d.lane, d.cards, dx, dy);
     else if (d.kind === "resize") this.board.resizeLane(d.id, d.w + dx, d.h + dy);
   }
@@ -118,7 +123,9 @@ class Input {
     this.drag = null;
     if (d.kind === "pan") return;
     if (d.kind === "marquee") return this.view.hideMarquee();
+    this.root.classList.remove("holding", "holding-lane");
     if (d.kind === "cards" && !d.moved) this.view.select([d.id]);
+    if (d.kind === "cards" && d.moved) this.board.land(d.origins.map((o) => o.id), d.room);
     this.board.dropNoopCheckpoint();
   }
 
@@ -131,6 +138,7 @@ class Input {
     if (e.target.closest(".lane-resize")) return;
     const p = this.view.toWorld(e.clientX, e.clientY);
     const created = this.board.addCard(p.x, p.y);
+    this.board.gravity(this.heightOf);
     this.view.select([created.id]);
     this.editCard(created.id, true);
   }
@@ -149,6 +157,7 @@ class Input {
       if (side === "back") this.board.setNotes(id, ta.value);
       else this.board.setText(id, ta.value);
       this.view.fit(ta);
+      this.board.gravity(this.heightOf);
     });
     ta.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
@@ -212,6 +221,7 @@ class Input {
     if (e.key === "Backspace" || e.key === "Delete") {
       e.preventDefault();
       this.board.remove([...this.view.selected]);
+      this.board.gravity(this.heightOf);
       this.view.select([]);
     }
   }

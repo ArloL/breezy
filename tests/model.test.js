@@ -91,6 +91,73 @@ test("moveCards snaps relative to the drag origins", () => {
   assert.deepEqual([b.card("a").x, b.card("a").y, b.card("b").x, b.card("b").y], [20, 0, 60, 20]);
 });
 
+const drag = (b, ids) => {
+  const origins = ids.map((id) => ({ id, x: b.card(id).x, y: b.card(id).y }));
+  const room = { base: b.layout(ids), heightOf: h40 };
+  return { to: (dx, dy) => b.moveCards(origins, dx, dy, room), land: () => b.land(ids, room) };
+};
+const ys = (b, ...ids) => ids.map((id) => b.card(id).y);
+const stackBoard = (h = 400) => board([card("a", 20, 60), card("b", 20, 120), card("d", 500, 60)], [lane("l", 0, 0, 400, h)]);
+
+test("a card held over a stack keeps a place free by its centre, and lands there", () => {
+  const b = stackBoard();
+  const d = drag(b, ["d"]);
+  d.to(-480, 40);
+  assert.deepEqual(ys(b, "a", "d", "b"), [60, 100, 180]);
+  d.land();
+  assert.deepEqual(ys(b, "a", "d", "b"), [60, 120, 180]);
+});
+
+test("dragging away gives cards back their places", () => {
+  const b = stackBoard();
+  const d = drag(b, ["d"]);
+  d.to(-480, 0);
+  assert.deepEqual(ys(b, "a", "b"), [120, 180]);
+  d.to(0, 0);
+  assert.deepEqual(ys(b, "a", "b"), [60, 120]);
+});
+
+test("taking a card out of a stack closes the gap", () => {
+  const b = board([card("a", 20, 60), card("b", 20, 120), card("c", 20, 180)], [lane("l", 0, 0)]);
+  drag(b, ["b"]).to(480, 0);
+  assert.deepEqual(ys(b, "a", "c"), [60, 120]);
+});
+
+test("held cards are ordered as a block by their top card", () => {
+  const b = board([card("a", 20, 60), card("p", 500, 60), card("q", 500, 120)], [lane("l", 0, 0)]);
+  const d = drag(b, ["p", "q"]);
+  d.to(-480, 0);
+  d.land();
+  assert.deepEqual(ys(b, "p", "q", "a"), [60, 120, 180]);
+});
+
+test("gravity floats lane cards up their own column and leaves the canvas alone", () => {
+  const b = board(
+    [card("a", 20, 60), card("b", 20, 300), card("side", 240, 200), card("free", 600, 300)],
+    [lane("l", 0, 0, 480, 400)],
+  );
+  b.gravity(h40);
+  assert.deepEqual(ys(b, "a", "b", "side", "free"), [60, 120, 60, 300]);
+});
+
+test("a lane grows to fit its stack and shrinks back", () => {
+  const b = stackBoard(200);
+  const d = drag(b, ["d"]);
+  d.to(-480, 0);
+  assert.equal(b.lane("l").h, 240);
+  d.to(0, 0);
+  assert.equal(b.lane("l").h, 200);
+});
+
+test("pile takes a lane card and those below it in its column", () => {
+  const b = board(
+    [card("a", 20, 60), card("b", 20, 120), card("side", 240, 120), card("c", 20, 200), card("free", 20, 700)],
+    [lane("l", 0, 0, 480, 400)],
+  );
+  assert.deepEqual(b.pile("b", h40), ["b", "c"]);
+  assert.deepEqual(b.pile("free", h40), ["free"]);
+});
+
 test("setColor changes cards only and skips empty selections", () => {
   const b = board([card("a", 0, 0)], [lane("l", 0, 0)]);
   b.setColor(["l"], 2);

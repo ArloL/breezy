@@ -24,18 +24,25 @@ A personal whiteboard for work thoughts and ideas, in the style of Mural: an inf
 - Moving a lane carries every card whose centre lies inside it when the drag starts.
 - Lanes render behind all cards. Selecting a lane and pressing ⌫ removes the lane, not its cards.
 
+### Stacking in lanes
+- A card belongs to the lane its centre is in. Lane cards float up their column (cards overlapping horizontally) to 60 px below the lane top, keeping their order, a grid line at least 10 px apart. Lanes grow to fit, never shrink by themselves. Cards on the open canvas stay where they are put.
+- While cards are dragged they stay under the pointer; the others make room where they would land, ordered by centre, and slide back when the drag moves on. Several dragged cards land as one block, ordered by their top card. Dropping moves them into place.
+- Gravity also runs after deleting cards, after creating one, and while typing grows a card. A turned card counts at its front's height.
+- ⌥-drag a lane card takes it and the cards below it in its column.
+
 ### Everywhere
 - ⌘Z undo, ⇧⌘Z redo; 100 steps. Keyboard shortcuts are ignored while a text field has focus, except Esc.
 - Cards are DOM text, so the browser's ⌘F finds them.
 
 ### Look
-Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft paper tints for cards, and a single orange accent (`--accent`) used only for selection and the caret. Lane titles and card-back headings are small spaced capitals.
+Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft paper tints for cards, and a single orange accent (`--accent`) used only for selection and the caret. Lane titles and card-back headings are small spaced capitals. Positions animate with one easing curve, except for what the pointer holds; `prefers-reduced-motion` turns it off.
 
 ### Out of scope
 Arrows between cards, images, markdown, ⌘F on a card's back while it faces front, tags, multiple boards per file, collaboration.
 
 ### Ideas not yet tried
 - Plain drag on empty space draws the selection box (as in Finder), panning by scroll and pinch only.
+- Gravity per lane, so a lane can stay free-form.
 - Bold first line while editing; a textarea cannot style it, so it needs a different editor.
 
 ## Architecture
@@ -79,6 +86,6 @@ Inlined in the page as `<script type="application/json" id="board-data">`, with 
 - Opened from `file://`: read-only. The indicator says so, and edits are disabled.
 
 ## Testing
-- `node --test`: model operations: create/move/delete cards, snapping, colour, lane move carries cards whose centre is inside, undo/redo, empty-card removal.
+- `node --test`: model operations: create/move/delete cards, snapping, colour, lane move carries cards whose centre is inside, stacking and piles, undo/redo, empty-card removal.
 - `python3 -m unittest`: assembly round trip, `<` escaping, PUT writes file and backup, backup pruning at 50, 409 on stale `rev`, new board when the file is missing.
 - Manual pass in the browser for every interaction above; final check in Firefox by the user.

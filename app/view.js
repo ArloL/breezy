@@ -96,7 +96,9 @@ class View {
     this.render();
   }
 
+  // A turned card counts at its front's height.
   heightOf(id) {
+    if (id === this.flipped) return this.frontHeight;
     return this.els.get(id)?.offsetHeight ?? 0;
   }
 
@@ -112,6 +114,7 @@ class View {
     if (!this.els.has(id)) id = null;
     if (this.flipped === id) return;
     const els = [this.flipped, id].filter(Boolean).map((x) => this.els.get(x));
+    if (id) this.frontHeight = this.els.get(id).offsetHeight;
     const ghosts = els.map((el) => {
       for (const a of el.getAnimations()) a.cancel();
       const ghost = el.cloneNode(true);
