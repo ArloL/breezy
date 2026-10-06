@@ -1,6 +1,6 @@
 import AppKit
 
-/// Holds the card layers above the lanes.
+/// Holds the card layers above the lanes. It takes no clicks: the canvas handles them all.
 final class CardHostView: NSView {
   override var isFlipped: Bool { true }
 
@@ -11,4 +11,6 @@ final class CardHostView: NSView {
   }
 
   required init?(coder: NSCoder) { fatalError() }
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

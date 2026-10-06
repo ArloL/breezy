@@ -30,6 +30,9 @@ final class CanvasView: NSView {
   let host = CardHostView()
   let marquee = NSView()
   var editingID: String? { nil }
+  var drag: Drag?
+  /// The card under the pointer, for Space.
+  var hovered: String?
 
   init(model: BoardModel) {
     self.model = model
@@ -39,6 +42,7 @@ final class CanvasView: NSView {
     marquee.wantsLayer = true
     marquee.isHidden = true
     addSubview(marquee)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
     model.onChange = { [weak self] _ in self?.boardChanged() }
     sync()
   }

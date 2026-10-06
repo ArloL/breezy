@@ -23,6 +23,9 @@ enum DebugLaunch {
       if appearance == "switch" {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { NSApp.appearance = NSAppearance(named: .darkAqua) }
       }
+      if let check = defaults.string(forKey: "BreezySelfTest") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SelfTest.run(check, wc) }
+      }
       if let out = defaults.string(forKey: "BreezyCapture") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
           capture(window, to: out)

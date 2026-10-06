@@ -24,6 +24,12 @@ final class LaneView: NSView {
   override var isFlipped: Bool { true }
   override var wantsUpdateLayer: Bool { true }
 
+  /// Clicks go to the canvas, except into the rename field.
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    guard let hit = super.hitTest(point) else { return nil }
+    return hit is NSText || hit is NSTextField ? hit : nil
+  }
+
   override func updateLayer() {
     layer?.backgroundColor = Theme.laneFill.cgColor
     layer?.borderColor = (selected ? Theme.accent : Theme.hairline).cgColor

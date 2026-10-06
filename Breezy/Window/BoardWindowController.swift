@@ -77,7 +77,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   @objc func zoomIn(_ sender: Any?) { scrollView.animator().setMagnification(scrollView.magnification * 1.25, centeredAt: centre) }
   @objc func zoomOut(_ sender: Any?) { scrollView.animator().setMagnification(scrollView.magnification / 1.25, centeredAt: centre) }
   @objc func actualSize(_ sender: Any?) { scrollView.animator().setMagnification(1, centeredAt: centre) }
-  @objc func newLane(_ sender: Any?) {}
+  @objc func newLane(_ sender: Any?) { canvas.addLaneAtCentre() }
 
   /// Shows the whole board at no more than 100 %, or the origin when the board is empty.
   func fit() {

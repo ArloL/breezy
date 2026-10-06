@@ -1,0 +1,5 @@
+{"format": 1,
+ "lanes": [{"id": "l", "x": 0, "y": 0, "w": 480, "h": 720, "title": "Doing"}],
+ "cards": [{"id": "a", "x": 24, "y": 72, "w": 240, "text": "A", "color": 1},
+           {"id": "b", "x": 24, "y": 144, "w": 240, "text": "B", "color": 1},
+           {"id": "c", "x": 24, "y": 216, "w": 240, "text": "C", "color": 1}]}
