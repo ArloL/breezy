@@ -27,6 +27,10 @@ enum DebugLaunch {
       if defaults.string(forKey: "BreezyTurn") != nil {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wc.canvas.turn(wc.canvas.board.cards.first { $0.notes != nil }?.id) }
       }
+      if let out = defaults.string(forKey: "BreezyBench") {
+        let bench = Bench(wc, out: out)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { bench.run() }
+      }
       if let check = defaults.string(forKey: "BreezySelfTest") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SelfTest.run(check, wc) }
       }

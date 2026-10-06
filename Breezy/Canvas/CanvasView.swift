@@ -123,7 +123,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// scrolling and the memory follow what is on screen, not the size of the board. Moves animate
   /// with one easing curve, except for cards just shown or held by the pointer.
   func layoutCards() {
-    let scale = (window?.backingScaleFactor ?? 2) * pow(2, log2(zoom).rounded(.up))
+    // before it is in its scroll view the canvas counts as all visible
+    guard enclosingScrollView != nil, window != nil else { return }
+    // sharp at the current zoom, in steps of a quarter so a pinch does not redraw on every frame
+    let scale = (window?.backingScaleFactor ?? 2) * max(0.25, (zoom * 4).rounded(.up) / 4)
     let v = visibleRect
     let near = v.insetBy(dx: -v.width / 4, dy: -v.height / 4)
     let dark = effectiveAppearance.isDark

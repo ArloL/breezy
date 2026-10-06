@@ -31,6 +31,11 @@ final class CardLayer: CALayer {
   override init(layer: Any) { super.init(layer: layer) }
   required init?(coder: NSCoder) { fatalError() }
 
+  /// Only moves animate: a cross-faded redraw would hold two bitmaps per card.
+  override func action(forKey event: String) -> CAAction? {
+    event == "position" || event == "bounds" ? super.action(forKey: event) : NSNull()
+  }
+
   func configure(_ look: Look, selected: Bool, scale: CGFloat, appearance: NSAppearance) {
     ring.isHidden = !selected
     guard look != self.look || scale != contentsScale else { return }
@@ -42,6 +47,8 @@ final class CardLayer: CALayer {
     }
     self.look = look
     self.appearance = appearance
+    // let the old bitmap go before the new one is drawn, rather than holding both
+    if scale != contentsScale { contents = nil }
     contentsScale = scale
     setNeedsLayout()
     setNeedsDisplay()
