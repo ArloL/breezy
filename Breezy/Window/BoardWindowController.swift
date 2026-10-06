@@ -12,6 +12,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   let canvas: CanvasView
   let scrollView = BoardScrollView()
   let zoomItem = NSToolbarItem(itemIdentifier: .zoom)
+  private let zoomButton = NSButton(title: "100 %", target: nil, action: nil)
+  private let grid = GridView()
 
   init(model: BoardModel) {
     canvas = CanvasView(model: model)
@@ -24,7 +26,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     window.delegate = self
     let toolbar = NSToolbar(identifier: "board")
     toolbar.delegate = self
-    toolbar.displayMode = .labelOnly
+    toolbar.displayMode = .iconAndLabel
     window.toolbar = toolbar
     window.toolbarStyle = .unified
 
@@ -37,7 +39,14 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.drawsBackground = false
     scrollView.contentView.drawsBackground = false
     scrollView.documentView = canvas
-    window.contentView = scrollView
+    let root = NSView()
+    grid.autoresizingMask = [.width, .height]
+    scrollView.autoresizingMask = [.width, .height]
+    root.addSubview(grid)
+    root.addSubview(scrollView)
+    window.contentView = root
+    grid.frame = root.bounds
+    scrollView.frame = root.bounds
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
@@ -55,7 +64,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
 
   @objc func viewMoved() {
     let label = "\(Int((scrollView.magnification * 100).rounded())) %"
-    if zoomItem.label != label { zoomItem.label = label }
+    if zoomButton.title != label { zoomButton.title = label }
+    grid.update(origin: scrollView.contentView.bounds.origin, zoom: scrollView.magnification)
     canvas.layoutCards()
   }
 
@@ -91,16 +101,21 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     case .newLane:
       let item = NSToolbarItem(itemIdentifier: id)
       item.label = "New Lane"
+      item.image = NSImage(systemSymbolName: "rectangle.split.3x1", accessibilityDescription: "New Lane")
       item.toolTip = "New lane (L)"
       item.isBordered = true
       item.target = self
       item.action = #selector(newLane(_:))
       return item
     case .zoom:
+      zoomButton.bezelStyle = .toolbar
+      zoomButton.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+      zoomButton.target = self
+      zoomButton.action = #selector(actualSize(_:))
+      zoomButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 64).isActive = true
+      zoomItem.view = zoomButton
+      zoomItem.label = "Zoom"
       zoomItem.toolTip = "Actual size (⌘0 or ⇧0)"
-      zoomItem.isBordered = true
-      zoomItem.target = self
-      zoomItem.action = #selector(actualSize(_:))
       return zoomItem
     default:
       return nil
