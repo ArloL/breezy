@@ -37,12 +37,13 @@ app/board.css
 app/model.js     state, operations, snapping, undo — no DOM
 app/view.js      renders state to DOM
 app/input.js     pointer/keyboard events → model operations
+app/main.js      wires model, view, store and input together
 app/store.js     load from the inlined JSON, debounced save
 breezy.py        server and page assembler (Python stdlib)
 board.html       the user's board: app + data, self-contained
 ```
 
-JS files are classic scripts concatenated into one inline `<script>` in the order model, view, store, input. `model.js` ends with `if (typeof module !== "undefined") module.exports = …` so Node can test it.
+JS files are classic scripts concatenated into one inline `<script>` in the order model, view, store, input, main. `model.js` ends with `if (typeof module !== "undefined") module.exports = …` so Node can test it.
 
 ### Data
 
@@ -58,9 +59,10 @@ JS files are classic scripts concatenated into one inline `<script>` in the orde
 Inlined in the page as `<script type="application/json" id="board-data">`, with `<` escaped as `\u003c`.
 
 ### Server: `python3 breezy.py [board.html] [--port 64570]`
-- Binds 127.0.0.1. Creates an empty board if the file does not exist.
+- Binds 127.0.0.1 and answers only requests whose `Host` is `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS rebinding.
+- Creates an empty board if the file does not exist; refuses to start on a file without valid board data.
 - `GET /`: assembles the page from the current `app/` and the data block from `board.html`.
-- `PUT /data`: JSON body. Rejects with 409 if `rev` differs from the file's `rev`. Otherwise copies the current file to `backups/board-YYYYmmdd-HHMMSS.html` (keeps the newest 50), increments `rev`, writes the assembled page to a temp file and renames it over `board.html`, then returns the new `rev`.
+- `PUT /data`: JSON body. Rejects with 409 if `rev` differs from the file's `rev`. Otherwise copies the current file to `backups/board-YYYYmmdd-HHMMSS-ffffff.html` unless the newest backup is under 10 minutes old (keeps the newest 50), increments `rev`, writes the assembled page to a temp file and renames it over `board.html`, then returns the new `rev`.
 
 ### Client saving
 - Every model change schedules a save 500 ms later; saves never overlap.
