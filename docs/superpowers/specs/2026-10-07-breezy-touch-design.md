@@ -64,7 +64,7 @@ Plain JavaScript modules in `web/`, no build step, no dependencies.
 | `index.html`, `style.css`, `manifest.webmanifest`, icon | Page, theme tokens from `Theme.swift` with dark values, safe areas. |
 
 ### Running it
-`python3 -m http.server --directory web 8000` on the Mac; on the iPhone, on the same Wi-Fi, open `http://<mac-ip>:8000` in Safari and Add to Home Screen. Without HTTPS there is no service worker, so it needs the Mac running.
+`npx --yes live-server@1.2.2 web --port=58565 --no-browser` on the Mac, which reloads the page on every save; on the iPhone, on the same Wi-Fi, open `http://<mac-ip>:58565` in Safari and Add to Home Screen. Without HTTPS there is no service worker, so it needs the Mac running.
 
 ## Testing
 - `node --test web/test/`: the rules ported with BreezyKit's stacking and edit tests; the gesture state machine fed synthetic touch sequences.
