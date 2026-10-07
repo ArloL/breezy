@@ -180,10 +180,12 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       cardLayers[id] = nil
       if pool.count < 64 { pool.append(l) }
     }
-    // cards in the margin around the screen can wait a frame for their bitmaps; visible ones cannot
-    let pending = cardLayers.values.filter { $0.needsDisplay() || ($0.deferred && $0.frame.intersects(v)) }
-    prerender(pending.filter { $0.frame.intersects(v) })
-    renderLater(pending.filter { !$0.frame.intersects(v) })
+    // cards in the margin can wait a frame or two for their bitmaps, and so can visible cards that
+    // only change scale, showing the old bitmap stretched; others are drawn now
+    let pending = cardLayers.values.filter { $0.needsDisplay() || ($0.deferred && !$0.refining && $0.frame.intersects(v)) }
+    let now = pending.filter { $0.frame.intersects(v) && !$0.refining }
+    prerender(now)
+    renderLater(pending.filter { !$0.frame.intersects(v) || $0.refining })
     CATransaction.commit()
     settling?.cancel()
     if lagging {

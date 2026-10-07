@@ -44,6 +44,8 @@ final class CardLayer: CALayer {
   var prepared: (Input, IOSurface?)?
   /// Being drawn off the main thread: `display` leaves it for then.
   var deferred = false
+  /// Needs drawing only at a new scale, so its current bitmap can stand in meanwhile.
+  private(set) var refining = false
   /// The selection ring, only while selected: most cards never are, and a layer each is a layer
   /// more to commit and keep.
   private var ring: CALayer?
@@ -72,10 +74,12 @@ final class CardLayer: CALayer {
       shadowRadius = look.back ? 9 : 2
       shadowOffset = CGSize(width: 0, height: look.back ? 5 : 1)
     }
+    // only the scale changed: the old bitmap, stretched, can show until the sharp one is drawn
+    refining = look == self.look && appearance == self.appearance && contents != nil
     self.look = look
     self.appearance = appearance
-    // let the old bitmap go before the new one is drawn, rather than holding both
-    if scale != contentsScale { contents = nil }
+    // otherwise let the old bitmap go before the new one is drawn, rather than holding both
+    if scale != contentsScale && !refining { contents = nil }
     contentsScale = scale
     setNeedsLayout()
     setNeedsDisplay()
@@ -99,6 +103,7 @@ final class CardLayer: CALayer {
 
   func recycle() {
     deferred = false
+    refining = false
     ring?.removeFromSuperlayer()
     ring = nil
     look = nil

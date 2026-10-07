@@ -1,5 +1,6 @@
 import AppKit
 import BreezyKit
+import IOSurface
 
 /// -BreezySelfTest <check>: the UI tests' scenarios driven in-process with synthetic events, for
 /// when XCUITest cannot run (it cannot activate the app while the screen is locked). Prints PASS
@@ -27,6 +28,7 @@ enum SelfTest {
     case "zoom-and-state": zoomAndState(d)
     case "find-back": findBack(d)
     case "card-heights": cardHeights(d)
+    case "zoom-sharp": zoomSharp(d)
     default: finish(name, "unknown check")
     }
   }
@@ -35,6 +37,32 @@ enum SelfTest {
     print(failure.map { "FAIL \(name): \($0)" } ?? "PASS \(name)")
     fflush(stdout)
     exit(failure == nil ? 0 : 1)
+  }
+
+  /// After a zoom in and back, every visible card shows a bitmap drawn at the current scale, not
+  /// the stretched one that stood in while it was drawn.
+  private static func zoomSharp(_ d: Driver) {
+    let name = "zoom-sharp"
+    guard d.window.occlusionState.contains(.visible) else {
+      print("PASS \(name) (window out of sight: not checked)")
+      exit(0)
+    }
+    let centre = NSPoint(x: CanvasView.origin + 264, y: CanvasView.origin + 180)
+    func check(_ zoom: CGFloat, then next: @escaping () -> Void) {
+      d.wc.place(origin: NSPoint(x: centre.x - 450 / zoom, y: centre.y - 300 / zoom), zoom: zoom)
+      d.later(0.8) {
+        let scale = d.window.backingScaleFactor * zoom
+        let shown = d.canvas.cardLayers.values.filter { $0.frame.intersects(d.canvas.visibleRect) }
+        if shown.count < 6 { finish(name, "\(shown.count) cards on screen at \(zoom), want 6") }
+        for l in shown {
+          guard let s = (l.contents as AnyObject?) as? IOSurface else { finish(name, "a card shows no bitmap at \(zoom)") }
+          let want = Int((l.bounds.width * scale).rounded(.up))
+          if s.width != want { finish(name, "a card shows \(s.width) px at zoom \(zoom), want \(want)") }
+        }
+        next()
+      }
+    }
+    check(1.5) { check(1) { finish(name, nil) } }
   }
 
   /// Cards are as tall as their lines: a title, three lines, a title that wraps, a long back.
