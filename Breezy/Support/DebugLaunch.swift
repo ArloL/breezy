@@ -47,15 +47,17 @@ enum DebugLaunch {
     }
   }
 
-  /// The window as the window server composites it; an app may capture its own windows.
   static func capture(_ window: NSWindow, to path: String) {
+    guard let image = image(of: window) else { return print("capture failed") }
+    try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+  }
+
+  /// The window as the window server composites it, frame included; an app may capture its own windows.
+  static func image(of window: NSWindow) -> CGImage? {
     typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
-    guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return print("no capture") }
+    guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
     let create = unsafeBitCast(sym, to: Capture.self)
     // optionIncludingWindow; boundsIgnoreFraming | bestResolution
-    guard let image = create(.null, 1 << 3, UInt32(window.windowNumber), 1 << 0 | 1 << 3)?.takeRetainedValue() else {
-      return print("capture failed")
-    }
-    try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    return create(.null, 1 << 3, UInt32(window.windowNumber), 1 << 0 | 1 << 3)?.takeRetainedValue()
   }
 }

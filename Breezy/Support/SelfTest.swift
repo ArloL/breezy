@@ -30,6 +30,7 @@ enum SelfTest {
     case "card-heights": cardHeights(d)
     case "zoom-sharp": zoomSharp(d)
     case "caret-click": caretClick(d)
+    case "edit-in-place": editInPlace(d)
     default: finish(name, "unknown check")
     }
   }
@@ -278,6 +279,41 @@ extension SelfTest {
   }
 }
 
+extension SelfTest {
+  /// A card's text stays on the same pixels when its editor opens, on either side, in light and
+  /// dark, at zooms that put the card between pixels.
+  fileprivate static func editInPlace(_ d: Driver) {
+    let name = "edit-in-place"
+    guard d.window.occlusionState.contains(.visible) else {
+      print("PASS \(name) (window out of sight: not checked)")
+      exit(0)
+    }
+    var steps: [(zoom: CGFloat, dark: Bool, back: Bool)] = []
+    for zoom in [0.89, 1, 1.3] as [CGFloat] { for dark in [false, true] { for back in [false, true] { steps.append((zoom, dark, back)) } } }
+    func next() {
+      guard let (zoom, dark, back) = steps.popLast() else { finish(name, nil) }
+      NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+      d.canvas.turn(back ? "a" : nil)
+      d.wc.place(origin: NSPoint(x: CanvasView.origin - 40, y: CanvasView.origin - 40), zoom: zoom)
+      d.later(0.6) {
+        let before = d.image()
+        d.canvas.beginEdit("a")
+        d.canvas.editing?.view.insertionPointColor = .clear
+        d.later(0.3) {
+          let during = d.image()
+          d.canvas.endEditing()
+          let r = d.canvas.doc(d.canvas.drawnRect(d.board.card("a")!)).insetBy(dx: 2, dy: 2)
+          let n = d.differing(before, during, in: r)
+          let side = back ? "back" : "front"
+          if n > 10 { finish(name, "\(n) pixels of the \(side) change when it is edited at \(zoom) in \(dark ? "dark" : "light")") }
+          next()
+        }
+      }
+    }
+    next()
+  }
+}
+
 /// Sends synthetic events to a board window; points are world coordinates.
 final class Driver {
   let wc: BoardWindowController
@@ -346,6 +382,24 @@ final class Driver {
   /// Types into whatever text view or field editor has focus.
   func type(_ text: String) {
     (window.firstResponder as? NSTextView)?.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+  }
+
+  func image() -> NSBitmapImageRep {
+    NSBitmapImageRep(cgImage: DebugLaunch.image(of: window)!)
+  }
+
+  /// The pixels that differ visibly between two captures in `rect` of the canvas; text blended onto
+  /// a transparent layer rather than the card differs by less.
+  func differing(_ a: NSBitmapImageRep, _ b: NSBitmapImageRep, in rect: NSRect) -> Int {
+    let w = canvas.convert(rect, to: nil), scale = CGFloat(a.pixelsWide) / window.frame.width
+    var n = 0
+    for y in Int((window.frame.height - w.maxY) * scale)..<Int((window.frame.height - w.minY) * scale) {
+      for x in Int(w.minX * scale)..<Int(w.maxX * scale) {
+        let p = a.colorAt(x: x, y: y)!, q = b.colorAt(x: x, y: y)!
+        if max(abs(p.redComponent - q.redComponent), abs(p.greenComponent - q.greenComponent), abs(p.blueComponent - q.blueComponent)) > 0.1 { n += 1 }
+      }
+    }
+    return n
   }
 
   /// Runs `step` after the run loop has had `delay` seconds, for work AppKit finishes asynchronously.

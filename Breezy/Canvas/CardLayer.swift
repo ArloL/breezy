@@ -4,7 +4,9 @@ import CoreVideo
 import IOSurface
 
 /// A card on the canvas. The sheet, its folded corner and the text are drawn at `contentsScale`,
-/// which the canvas sets from the zoom; shadow and selection ring are layer properties.
+/// which the canvas sets from the zoom; shadow and selection ring are layer properties. The canvas
+/// puts the layer on whole pixels, with bounds of whole pixels: the bitmap then shows unscaled,
+/// as sharp as the card's editor.
 final class CardLayer: CALayer {
   struct Look: Equatable {
     var card: Card
@@ -39,6 +41,10 @@ final class CardLayer: CALayer {
   static var drawCount = 0
 
   private(set) var look: Look?
+  /// The card's size; the bounds round it up to whole pixels.
+  private var size = CGSize.zero
+  /// Where the canvas last put the card, before moving it to whole pixels.
+  var rect: CGRect?
   private var appearance: NSAppearance?
   /// A bitmap drawn ahead, on another thread, for `display` to take if it still fits.
   var prepared: (Input, IOSurface?)?
@@ -65,9 +71,9 @@ final class CardLayer: CALayer {
     event == "position" || event == "bounds" ? super.action(forKey: event) : NSNull()
   }
 
-  func configure(_ look: Look, selected: Bool, scale: CGFloat, appearance: NSAppearance) {
+  func configure(_ look: Look, size: CGSize, selected: Bool, scale: CGFloat, appearance: NSAppearance) {
     setRing(selected, appearance)
-    guard look != self.look || scale != contentsScale else { return }
+    guard look != self.look || size != self.size || scale != contentsScale else { return }
     if look.dark != self.look?.dark { ring?.borderColor = Theme.cg(Theme.accent, in: appearance) }
     if look.back != self.look?.back {
       shadowOpacity = look.back ? 0.24 : 0.16
@@ -75,8 +81,9 @@ final class CardLayer: CALayer {
       shadowOffset = CGSize(width: 0, height: look.back ? 5 : 1)
     }
     // only the scale changed: the old bitmap, stretched, can show until the sharp one is drawn
-    refining = look == self.look && appearance == self.appearance && contents != nil
+    refining = look == self.look && size == self.size && appearance == self.appearance && contents != nil
     self.look = look
+    self.size = size
     self.appearance = appearance
     // otherwise let the old bitmap go before the new one is drawn, rather than holding both
     if scale != contentsScale && !refining { contents = nil }
@@ -96,7 +103,7 @@ final class CardLayer: CALayer {
     r.borderWidth = 2
     r.cornerRadius = 4
     r.borderColor = Theme.cg(Theme.accent, in: appearance)
-    r.frame = bounds.insetBy(dx: -4, dy: -4)
+    r.frame = CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4)
     addSublayer(r)
     ring = r
   }
@@ -107,6 +114,8 @@ final class CardLayer: CALayer {
     ring?.removeFromSuperlayer()
     ring = nil
     look = nil
+    size = .zero
+    rect = nil
     prepared = nil
     contents = nil
     removeFromSuperlayer()
@@ -115,7 +124,7 @@ final class CardLayer: CALayer {
   /// What the bitmap would be drawn from now; nil for a recycled layer.
   var input: Input? {
     guard let look, let appearance else { return nil }
-    return Input(look: look, size: bounds.size, scale: contentsScale, appearance: appearance)
+    return Input(look: look, size: size, scale: contentsScale, appearance: appearance)
   }
 
   /// The sheet with its bottom-right corner folded away, in y-down coordinates when `yDown`.
@@ -130,8 +139,8 @@ final class CardLayer: CALayer {
 
   override func layoutSublayers() {
     super.layoutSublayers()
-    ring?.frame = bounds.insetBy(dx: -4, dy: -4)
-    shadowPath = Self.outline(bounds.size, ear: input?.ear ?? 0, yDown: contentsAreFlipped())
+    ring?.frame = CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4)
+    shadowPath = Self.outline(size, ear: input?.ear ?? 0, yDown: contentsAreFlipped())
   }
 
   /// Shows a surface of its own, which Core Animation shows without a copy, instead of a backing
@@ -164,10 +173,9 @@ final class CardLayer: CALayer {
                               bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
     else { return nil }
     ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
-    // y-down, as the drawing below expects
-    ctx.scaleBy(x: i.scale, y: i.scale)
-    ctx.translateBy(x: 0, y: i.size.height)
-    ctx.scaleBy(x: 1, y: -1)
+    // y-down from the top pixel row, as the drawing below expects
+    ctx.translateBy(x: 0, y: CGFloat(h))
+    ctx.scaleBy(x: i.scale, y: -i.scale)
     paint(i, in: ctx)
     return surface
   }
