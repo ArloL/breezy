@@ -139,12 +139,31 @@ test("velocity is measured over the last 80 ms and is zero after a pause", () =>
   assert.deepEqual(s.log.at(-1)[2], P(0, 0));
 });
 
-test("a cancelled drag ends where it was", () => {
-  const { g, log } = setup();
+test("a cancelled drag is undone, and the touch's lift is ignored", () => {
+  const { g, names } = setup();
   g.down(1, 0, 0, 0);
   g.move(1, 20, 0, 10);
   g.cancel(1);
-  assert.deepEqual(log.at(-1), ["dragEnd", P(20, 0), P(0, 0)]);
+  g.up(1, 20, 0, 20);
+  assert.deepEqual(names(), ["dragStart", "dragCancel"]);
+});
+
+test("a cancelled pinch is undone", () => {
+  const { g, names } = setup();
+  g.down(1, 0, 0, 0);
+  g.down(2, 100, 0, 10);
+  g.move(2, 150, 0, 20);
+  g.cancel(1);
+  assert.deepEqual(names(), ["pinchStart", "pinch", "pinchCancel"]);
+});
+
+test("cancelling all touches undoes what they were doing", () => {
+  const { g, names } = setup();
+  g.down(1, 0, 0, 0);
+  g.move(1, 20, 0, 10);
+  g.cancelAll();
+  assert.deepEqual(names(), ["dragStart", "dragCancel"]);
+  assert.equal(g.points.size, 0);
 });
 
 test("a tap, a quick drag, then a tap nearby within 300 ms are two taps, not a double tap", () => {
@@ -201,12 +220,12 @@ test("a second finger ends a one-finger zoom and starts a pinch", () => {
   assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragEnd", "pinchStart"]);
 });
 
-test("a cancelled one-finger zoom ends", () => {
+test("a cancelled one-finger zoom is undone", () => {
   const { g, names } = setup();
   g.down(1, 10, 10, 0);
   g.up(1, 10, 10, 50);
   g.down(2, 10, 10, 200);
   g.move(2, 10, 30, 220);
   g.cancel(2);
-  assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragEnd"]);
+  assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragCancel"]);
 });

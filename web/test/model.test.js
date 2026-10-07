@@ -94,3 +94,13 @@ test("perform during a gesture records nothing of its own; the gesture's step co
   assert.equal(x(m), 0);
   assert.equal(m.board.cards[0].color, 1);
 });
+
+test("a cancelled gesture puts the board back and records nothing", () => {
+  const m = fresh();
+  m.begin();
+  m.update((b) => (b.cards[0].x = 24));
+  m.cancel();
+  assert.equal(x(m), 0);
+  assert.equal(m.inGesture, false);
+  assert.equal(m.canUndo, false);
+});

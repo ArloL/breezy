@@ -25,6 +25,8 @@ document.getElementById("board").addEventListener("touchstart", (e) => {
 addEventListener("pointermove", (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
+// iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
+document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
 for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (e) => e.preventDefault());
 
 // States for screenshots.
