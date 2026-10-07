@@ -145,17 +145,6 @@ test("a lane grows to fit its stack and shrinks back", () => {
   assert.equal(R.lane(b, "l").h, 240);
 });
 
-test("pile takes a lane card and those below it in its column", () => {
-  const b = board(
-    [card("a", 24, 72), card("b", 24, 144), card("side", 288, 144), card("c", 24, 240), card("free", 24, 840)],
-    [lane("l", 0, 0, 576, 480)],
-  );
-  assert.deepEqual(R.pile(b, "b", h48), ["b", "c"]);
-  assert.deepEqual(R.pile(b, "free", h48), ["free"]);
-  assert.equal(R.laneOf(b, "free", h48), undefined);
-  assert.equal(R.laneOf(b, "b", h48).id, "l");
-});
-
 test("search finds fronts, backs and lane titles in reading order, ignoring case", () => {
   const b = board(
     [card("a", 24, 72, "Plan doing"), { ...card("b", 24, 144, "x"), notes: "doing more" }, card("c", 600, 0, "Doing it")],

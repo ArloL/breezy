@@ -4,6 +4,8 @@ const KEYS_H = 44;
 
 /** Acts on `touchend` and cancels it, so the tap takes no focus from the editor. */
 function press(el, fn) {
+  // Lets iOS apply :active; on the button only, so the board's touches stay as they were.
+  el.addEventListener("touchstart", () => {}, { passive: true });
   el.addEventListener("touchend", (e) => {
     e.preventDefault();
     if (!el.disabled) fn();
@@ -54,7 +56,6 @@ export class UI {
         const [c] = app.selectedCards();
         return c && app.turn(app.state.turned === c.id ? null : c.id);
       }
-      case "pile": return app.takePile();
       case "delete": return app.removeSelection();
       case "key-turn": return app.switchSide();
       case "key-done": return app.endEditing();
@@ -78,10 +79,10 @@ export class UI {
     this.$("#bottom .add").hidden = selecting;
     this.$(".colours").hidden = !cards.length;
     if (cards.length) this.$(".colours .swatch i").className = `c${cards[0].color}`;
+    for (const b of document.querySelectorAll(".colours .menu button")) b.classList.toggle("on", Number(b.dataset.colour) === cards[0]?.color);
     if (!selecting) this.$(".colours .menu").hidden = true;
     const one = cards.length === 1 && !lanes.length ? cards[0] : null;
     this.$('[data-act="turn"]').hidden = !one;
-    this.$('[data-act="pile"]').hidden = !(one && R.laneOf(app.model.board, one.id, app.heightOf));
     this.$("#keys").hidden = !s.editing;
     this.place();
     this.updateZoom();
@@ -119,6 +120,7 @@ export class UI {
   }
 
   openFind() {
+    this.closeMenu();
     this.$("#find").hidden = false;
     const field = this.$("#find input");
     field.focus();
