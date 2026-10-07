@@ -173,7 +173,24 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       cardLayers[id] = nil
       if pool.count < 64 { pool.append(l) }
     }
+    prerender(cardLayers.values.filter { $0.needsDisplay() })
     CATransaction.commit()
+  }
+
+  /// Draws the bitmaps of several cards at once on all cores, as when a zoom step crosses to a new
+  /// scale; the layers show them when Core Animation asks them to display.
+  private func prerender(_ layers: [CardLayer]) {
+    guard layers.count >= 4 else { return }
+    let inputs = layers.map(\.input)
+    var surfaces = [IOSurface?](repeating: nil, count: inputs.count)
+    surfaces.withUnsafeMutableBufferPointer { out in
+      DispatchQueue.concurrentPerform(iterations: inputs.count) { k in out[k] = inputs[k].flatMap(CardLayer.render) }
+    }
+    for (k, l) in layers.enumerated() {
+      guard let i = inputs[k] else { continue }
+      l.prepared = (i, surfaces[k])
+      CardLayer.drawCount += 1
+    }
   }
 
   /// Gives back every card layer and its bitmap. The window server may hold on to bitmaps it last
