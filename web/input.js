@@ -20,9 +20,9 @@ export class Input {
     this.stoppedCoast = false;
   }
 
-  hit(p) {
+  hit(p, touch = true) {
     const { view, state, model } = this.app;
-    return hitTest(model.board, view.toWorld(p), { rectOf: (c) => view.rectOf(c), zoom: view.cam.zoom, turned: state.turned });
+    return hitTest(model.board, view.toWorld(p), { rectOf: (c) => view.rectOf(c), zoom: view.cam.zoom, turned: state.turned, touch });
   }
 
   /** A touch that stops the camera moving does only that: the tap that follows from it is ignored. */
@@ -55,6 +55,14 @@ export class Input {
     if (h.kind === "empty") app.newCard(app.view.toWorld(p));
   }
 
+  /** As on the Mac: edit a card, rename a lane; a new card's top-left goes where the pointer is. */
+  doubleClick(p, h) {
+    const app = this.app;
+    if (isCard(h)) return app.beginEdit(h.id);
+    if (h.kind === "header") return app.beginRename(h.id);
+    if (h.kind === "empty") app.newCard(app.view.toWorld(p), "corner");
+  }
+
   hold(p) {
     this.holdHit = this.hit(p);
     if (!isCard(this.holdHit)) return;
@@ -82,12 +90,17 @@ export class Input {
   }
 
   dragStart(p0, p, held) {
+    const h = held && this.holdHit ? this.holdHit : this.hit(p0);
+    this.holdHit = null;
+    // a touch box starts afresh
+    this.beginDrag(dragAction(h, this.app.state.selection, held), h, p0, p, []);
+  }
+
+  /** Starts drag `action` on hit `h`, pressed at screen point `p0` and now at `p`. A box adds to selection `base`. */
+  beginDrag(action, h, p0, p, base = [...this.app.state.selection]) {
     const app = this.app;
     const s = app.state;
     const b = app.model.board;
-    const h = held && this.holdHit ? this.holdHit : this.hit(p0);
-    this.holdHit = null;
-    const action = dragAction(h, s.selection, held);
     if (action !== "pan") {
       app.endEditing();
       if (s.turned && h.id !== s.turned) app.turn(null);
@@ -117,7 +130,8 @@ export class Input {
       s.held = new Set([h.id]);
       app.model.begin();
     } else if (action === "marquee") {
-      app.select([]);
+      d.base = base;
+      app.select(base);
     }
     this.dragMove(p);
   }
@@ -150,7 +164,7 @@ export class Input {
     if (d.action === "marquee") {
       const r = { x: Math.min(d.w0.x, w.x), y: Math.min(d.w0.y, w.y), w: Math.abs(dx), h: Math.abs(dy) };
       app.state.marquee = r;
-      app.select(R.cardsInRect(app.model.board, r, app.heightOf).map((c) => c.id));
+      app.select([...d.base, ...R.cardsInRect(app.model.board, r, app.heightOf).map((c) => c.id)]);
     }
     this.edgeScroll(p);
   }
