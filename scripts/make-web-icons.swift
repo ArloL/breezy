@@ -1,13 +1,14 @@
 import AppKit
 
-// Writes the web app's home-screen icons, full-bleed as iOS wants them, into the directory given.
+// Writes the web app's home-screen icons, full-bleed as iOS wants them, into the directory given: 180 px
+// for iOS, 192 and 512 for installing on Android.
 let out = URL(fileURLWithPath: CommandLine.arguments[1])
 
 func hex(_ v: UInt32, _ a: CGFloat = 1) -> NSColor {
   NSColor(srgbRed: CGFloat(v >> 16 & 0xff) / 255, green: CGFloat(v >> 8 & 0xff) / 255, blue: CGFloat(v & 0xff) / 255, alpha: a)
 }
 
-for px in [180, 512] {
+for px in [180, 192, 512] {
   let s = CGFloat(px)
   let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
                              hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
