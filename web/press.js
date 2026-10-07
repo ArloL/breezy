@@ -45,7 +45,7 @@ export function track(el, { act, down = () => {} }) {
     el.classList.add("hot");
     if (glass) {
       glass.classList.add("pressed");
-      if (!reduced()) animate(glass, { scale: 1.08 }, GROW);
+      if (!reduced()) animate(glass, { scale: 1.12 }, GROW);
     }
     down(e);
   });

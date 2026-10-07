@@ -8,7 +8,7 @@ The reference is iOS 27 on an iPhone 13 mini: UIKit's standard behaviour, and Fr
 
 | Behaviour | What Freeform does |
 |---|---|
-| Edge auto-scroll while dragging | None 70, 40 or 30 pt from the edge; scrolls 20 pt from it. Starts slowly and speeds up the longer the finger stays: about 40 to 360 pt/s within the first half second. |
+| Edge auto-scroll while dragging | None 70, 40 or 30 pt from the edge; scrolls 20 pt from it. Held there 0.25, 0.5, 0.6, 0.7 and 0.8 s it scrolled 12, 33, 46, 61 and 96 pt, and over 210 pt by 0.9 s: a crawl, then a sharp speed-up. |
 | Pressing a glass toolbar button | The whole capsule grows (about 14 % wider) and its glass lightens; the pressed icon dims. About 80 pt away the icon un-dims, but the capsule stays grown until the finger lifts. Lifting outside does nothing; the capsule springs back. |
 | Coasting after a flick | About 65 ms × the release velocity (19, 44 and 61–67 pt for 0.4, 0.67 and 1 pt/ms), a deceleration of about 0.985 per ms: much shorter than a UIScrollView list's 0.998. |
 | Pull-down menu (…) | Opens on touch-down, morphing out of the button as a blurred blob. Sliding over items highlights them with a glass pill; lifting on one picks it. Resting on an item with a submenu opens the submenu in place. A tap outside closes the menu and does nothing else. |
@@ -30,7 +30,7 @@ Speeds from the dot grid were unreliable past about 12 pt per frame, because the
 - New cards spring in from 0.9×; deleted ones shrink and fade while their neighbours close up.
 - Turning over is one 3D flip on a spring with a slight overshoot.
 - Selection shows at once.
-- Edge auto-scroll matches Freeform: a 24 pt zone at the edge of the visible area, starting at 40 pt/s and speeding up while the finger stays, to at most 600 pt/s after about a second.
+- Edge auto-scroll matches Freeform: a 24 pt zone at the edge of the visible area, crawling at 45–150 pt/s for about 0.7 s, then speeding up sharply to 1,500 pt/s by about a second.
 - With Reduce Motion, springs become short crossfades.
 
 ### 3. Buttons, menus and bars
