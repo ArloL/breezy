@@ -48,6 +48,8 @@ board.addEventListener("contextmenu", (e) => editor(e) || e.preventDefault());
 
 addEventListener("wheel", (e) => {
   e.preventDefault();
+  // should Safari also send the pinch as ⌃-wheel, it would zoom twice
+  if (pinch !== null && e.ctrlKey) return;
   const a = wheelAction(e);
   const view = app.view;
   if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
@@ -67,7 +69,20 @@ addEventListener("keydown", (e) => {
 });
 // iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
-for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (e) => e.preventDefault());
+// Safari reports a trackpad pinch as gesture events, their scale counting from the pinch's start; a touch pinch comes as pointers.
+let pinch = null;
+document.addEventListener("gesturestart", (e) => {
+  e.preventDefault();
+  if (!gestures.points.size) pinch = app.view.cam.zoom;
+});
+document.addEventListener("gesturechange", (e) => {
+  e.preventDefault();
+  if (pinch !== null) app.view.zoomAround({ x: e.clientX, y: e.clientY }, pinch * e.scale);
+});
+document.addEventListener("gestureend", (e) => {
+  e.preventDefault();
+  pinch = null;
+});
 
 // States for screenshots.
 const demo = params.get("demo");
