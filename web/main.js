@@ -37,5 +37,4 @@ if (demo === "find") {
   document.querySelector("#find input").value = "plan";
   app.ui.find("plan");
 }
-if (demo === "settings") app.ui.openSettings();
 if (demo === "add") app.ui.act("add");

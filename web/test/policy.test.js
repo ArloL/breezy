@@ -54,19 +54,5 @@ test("one finger pans unless the drag starts on a selected card or after a hold"
     [{ kind: "corner", id: "l" }, false, "pan"],
     [{ kind: "corner", id: "l" }, true, "resize"],
   ];
-  for (const [hit, held, want] of cases) assert.equal(dragAction("one", hit, sel, held), want, JSON.stringify([hit, held]));
-});
-
-test("with two-finger panning one finger moves, draws a box or moves lanes at once", () => {
-  const sel = new Set();
-  const cases = [
-    [{ kind: "empty" }, "marquee"],
-    [{ kind: "card", id: "b" }, "move"],
-    [{ kind: "header", id: "l" }, "lane"],
-    [{ kind: "corner", id: "l" }, "resize"],
-  ];
-  for (const [hit, want] of cases) {
-    assert.equal(dragAction("two", hit, sel, false), want);
-    assert.equal(dragAction("two", hit, sel, true), want);
-  }
+  for (const [hit, held, want] of cases) assert.equal(dragAction(hit, sel, held), want, JSON.stringify([hit, held]));
 });

@@ -13,7 +13,7 @@ export function sampleBoard() {
       card("c-goals", 0, 2, "Write Q4 goals\nDraft before Friday", 1),
       card("c-flaky", 0, 3, "Fix the flaky login test", 2),
       card("c-dentist", 0, 4, "Book the dentist", 5),
-      card("c-proto", 336, 0, "Touch prototype\nOne finger or two?", 4, "Try each pan mode for a day.\nNote what feels wrong."),
+      card("c-proto", 336, 0, "Touch prototype\nDoes it feel right?", 4, "Use it for a day.\nNote what feels wrong."),
       card("c-relnotes", 336, 1, "Release notes 2.3", 1),
       card("c-interview", 336, 2, "Interview: backend role\nThursday 14:00", 3),
       card("c-search", 672, 0, "Ship search", 4),

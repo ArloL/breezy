@@ -47,4 +47,4 @@ scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scr
 python3 -m http.server --directory web 8000
 ```
 
-On the iPhone, on the same Wi-Fi, open `http://<the Mac's address>:8000` in Safari and Add to Home Screen. ⋯ switches between one-finger and two-finger panning. `node --test web/test/*.test.js` runs its tests; `swift scripts/make-web-icons.swift web` redraws its icons.
+On the iPhone, on the same Wi-Fi, open `http://<the Mac's address>:8000` in Safari and Add to Home Screen. `node --test web/test/*.test.js` runs its tests; `swift scripts/make-web-icons.swift web` redraws its icons.
