@@ -1,7 +1,7 @@
 import AppKit
 import BreezyKit
 
-/// The scripted workload behind -BreezyBench: idle, a pinch-like zoom, a fast pan, a pointer
+/// The scripted workload behind -BreezyBench: idle, a pinch-like zoom, a fast pan, a live resize, a pointer
 /// drag through a lane, typing into a new card and the app hidden. Per phase it records memory
 /// footprint, CPU time, card draws and the main-thread time of each step (the step, display and
 /// commit) as median, 95th percentile and maximum; then the peak footprint and the launch time.
@@ -21,7 +21,7 @@ final class Bench {
     d = Driver(wc)
     results["launch_ms"] = Bench.sinceLaunch()
     mark("idle")
-    let phases: [(String, () -> Void)] = [("zoom", zoom), ("pan", pan), ("drag", dragThroughLane), ("type", typeIntoNewCard)]
+    let phases: [(String, () -> Void)] = [("zoom", zoom), ("pan", pan), ("resize", resize), ("drag", dragThroughLane), ("type", typeIntoNewCard)]
     if let only = UserDefaults.standard.string(forKey: "BreezyBenchOnly"), let phase = phases.first(where: { $0.0 == only }) {
       for _ in 0..<5 { phase.1() }
       mark(only)
@@ -51,6 +51,21 @@ final class Bench {
         let o = sv.contentView.bounds.origin, s: CGFloat = i < 30 ? 1 : -1
         sv.contentView.scroll(to: NSPoint(x: o.x + 30 * s, y: o.y + 15 * s))
         sv.reflectScrolledClipView(sv.contentView)
+      }
+    }
+  }
+
+  /// A live resize: the window grows by 20 pt a step, 30 steps, and shrinks back.
+  private func resize() {
+    guard let w = wc.window else { return }
+    for i in 0..<60 {
+      steps.append {
+        var f = w.frame
+        let d: CGFloat = i < 30 ? 20 : -20
+        f.size.width += d
+        f.size.height += d
+        f.origin.y -= d
+        w.setFrame(f, display: true)
       }
     }
   }
