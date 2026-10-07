@@ -9,6 +9,17 @@ final class CardLayer: CALayer {
     var back: Bool
     var editing: Bool
     var dark: Bool
+
+    init(card: Card, back: Bool, editing: Bool, dark: Bool) {
+      // where the card sits does not change how it looks
+      var c = card
+      c.x = 0
+      c.y = 0
+      self.card = c
+      self.back = back
+      self.editing = editing
+      self.dark = dark
+    }
   }
 
   static var drawCount = 0
