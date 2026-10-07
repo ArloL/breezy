@@ -1,22 +1,36 @@
 import AppKit
 import BreezyKit
 
-/// The scripted workload behind -BreezyBench: idle, a zoom sweep, a trackpad pan and a card drag,
-/// recording memory footprint and CPU time per phase, then the peak footprint.
+/// The scripted workload behind -BreezyBench: idle, a pinch-like zoom, a trackpad pan, a pointer
+/// drag through a lane, typing into a new card and the app hidden. Per phase it records memory
+/// footprint, CPU time, card draws and the main-thread time of each step (the step, display and
+/// commit) as median, 95th percentile and maximum; then the peak footprint and the launch time.
+/// With -BreezyBenchOnly type it only types, into five new cards, for profiling.
 final class Bench {
   private let wc: BoardWindowController
   private let out: String
   private var steps: [() -> Void] = []
   private var results: [String: Any] = [:]
   private var phaseCPU = 0.0
+  private var stepMS: [Double] = []
+  private let d: Driver
 
   init(_ wc: BoardWindowController, out: String) {
     self.wc = wc
     self.out = out
+    d = Driver(wc)
+    results["launch_ms"] = Bench.sinceLaunch()
     let sv = wc.scrollView
     let centre = { NSPoint(x: sv.contentView.bounds.midX, y: sv.contentView.bounds.midY) }
     mark("idle")
-    for m in [0.75, 0.5, 0.35, 0.25, 0.5, 1, 1.5, 2, 1] { steps.append { sv.setMagnification(m, centeredAt: centre()) } }
+    if UserDefaults.standard.string(forKey: "BreezyBenchOnly") == "type" {
+      for _ in 0..<5 { typeIntoNewCard() }
+      mark("type")
+      return
+    }
+    // a pinch: small steps in, out to the minimum and back to 100 %
+    let path = Bench.ramp(1, 2, 50) + Bench.ramp(2, 0.25, 50) + Bench.ramp(0.25, 1, 25)
+    for m in path { steps.append { sv.setMagnification(m, centeredAt: centre()) } }
     mark("zoom")
     for i in 0..<60 {
       let d: Int32 = i < 30 ? -120 : 120
@@ -24,15 +38,61 @@ final class Bench {
       steps.append { sv.scrollWheel(with: Bench.scroll(dx: d, dy: d / 2, phase: phase)) }
     }
     mark("pan")
-    for i in 0..<60 {
-      steps.append {
-        guard let first = wc.canvas.board.cards.first else { return }
-        wc.canvas.model.perform("Bench") { b in
-          b.moveCards([Origin(id: first.id, x: first.x, y: first.y)], dx: i % 2 == 0 ? Metrics.grid : -Metrics.grid, dy: i < 30 ? Metrics.grid : -Metrics.grid)
-        }
+    dragThroughLane()
+    mark("drag")
+    typeIntoNewCard()
+    mark("type")
+    steps.append { NSApp.hide(nil) }
+    for _ in 0..<40 { steps.append {} }
+    mark("hidden")
+  }
+
+  static func ramp(_ a: Double, _ b: Double, _ n: Int) -> [Double] {
+    (1...n).map { a + (b - a) * Double($0) / Double(n) }
+  }
+
+  /// Takes the visible card nearest the top of a lane down through that lane and into the next.
+  private func dragThroughLane() {
+    var start: NSPoint?, end: NSPoint?
+    steps.append { [unowned self] in
+      let b = d.board
+      let visible = d.canvas.visibleRect
+      for l in b.lanes {
+        guard let c = b.cardsInLane(l.id, heightOf: d.canvas.height).first,
+          visible.contains(d.canvas.doc(Rect(x: c.x, y: c.y, w: c.w, h: 1)).origin) else { continue }
+        let next = b.lanes.first { $0.id != l.id && $0.x > l.x }
+        start = NSPoint(x: c.x + c.w / 2, y: c.y + 12)
+        end = next.map { NSPoint(x: $0.x + $0.w / 2, y: $0.y + min($0.h, 600) / 2) } ?? NSPoint(x: c.x + c.w / 2, y: l.y + min(l.h, 600))
+        break
+      }
+      if start == nil, let c = b.cards.first {
+        start = NSPoint(x: c.x + c.w / 2, y: c.y + 12)
+        end = NSPoint(x: c.x + c.w / 2 + 240, y: c.y + 300)
+      }
+      if let start { d.mouse(.leftMouseDown, start) }
+    }
+    // down the lane first, then across: 40 moves down, 40 across
+    for i in 1...80 {
+      steps.append { [unowned self] in
+        guard let a = start, let b = end else { return }
+        let mid = NSPoint(x: a.x, y: b.y)
+        let p = i <= 40
+          ? NSPoint(x: a.x, y: a.y + (mid.y - a.y) * Double(i) / 40)
+          : NSPoint(x: mid.x + (b.x - mid.x) * Double(i - 40) / 40, y: mid.y)
+        d.mouse(.leftMouseDragged, p)
       }
     }
-    mark("drag")
+    steps.append { [unowned self] in if let end { d.mouse(.leftMouseUp, end) } }
+  }
+
+  /// Double-clicks empty space left of the visible area's centre, types 40 characters and finishes.
+  private func typeIntoNewCard() {
+    steps.append { [unowned self] in
+      let v = d.canvas.visibleWorldCentre
+      d.doubleClick(NSPoint(x: v.x - 120, y: v.y))
+    }
+    for ch in "Quick brown fox jumps over the lazy dog!" { steps.append { [unowned self] in d.type(String(ch)) } }
+    steps.append { [unowned self] in d.key("\u{1b}", code: 53) }
   }
 
   /// A trackpad scroll event: precise pixel deltas with a gesture phase (1 began, 2 changed, 4 ended).
@@ -45,9 +105,15 @@ final class Bench {
 
   private func mark(_ name: String) {
     steps.append { [unowned self] in
-      results[name] = ["mb": (footprint().now * 10).rounded() / 10, "cpu_ms": ((cpuSeconds() - phaseCPU) * 1000).rounded(), "draws": CardLayer.drawCount]
+      let ms = stepMS.sorted()
+      func q(_ p: Double) -> Double { ms.isEmpty ? 0 : (ms[min(ms.count - 1, Int(Double(ms.count) * p))] * 100).rounded() / 100 }
+      results[name] = [
+        "mb": (footprint().now * 10).rounded() / 10, "cpu_ms": ((cpuSeconds() - phaseCPU) * 1000).rounded(), "draws": CardLayer.drawCount,
+        "p50_ms": q(0.5), "p95_ms": q(0.95), "max_ms": q(1),
+      ]
       CardLayer.drawCount = 0
       phaseCPU = cpuSeconds()
+      stepMS = []
     }
   }
 
@@ -64,10 +130,23 @@ final class Bench {
       try! json.write(to: URL(fileURLWithPath: out))
       exit(0)
     }
+    let t = CACurrentMediaTime()
     steps.removeFirst()()
     wc.window?.displayIfNeeded()
     CATransaction.flush()
+    stepMS.append((CACurrentMediaTime() - t) * 1000)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { self.next() }
+  }
+
+  /// Milliseconds from process start until now.
+  private static func sinceLaunch() -> Double {
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.size
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    sysctl(&mib, 4, &info, &size, nil, 0)
+    let s = info.kp_proc.p_un.__p_starttime
+    let start = Double(s.tv_sec) + Double(s.tv_usec) / 1e6
+    return ((Date().timeIntervalSince1970 - start) * 1000).rounded()
   }
 
   private func footprint() -> (now: Double, peak: Double) {

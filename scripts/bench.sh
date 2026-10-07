@@ -10,9 +10,9 @@ for board in $@; do
     dir=$(mktemp -d)
     cp $board $dir/run.breezy
     # the display must be awake for rendering to cost what it costs; a stuck run still ends
-    caffeinate -u -t 30 >/dev/null 2>&1 &
+    caffeinate -u -t 45 >/dev/null 2>&1 &
     sleep 1
-    ( sleep 60; pkill -f "BreezyBench $dir" ) >/dev/null 2>&1 &
+    ( sleep 90; pkill -f "BreezyBench $dir" ) >/dev/null 2>&1 &
     $app -ApplePersistenceIgnoreState YES -BreezyBoard $dir/run.breezy -BreezyBench $dir/out.json 2>/dev/null
     echo "{\"label\":\"$label\",\"board\":\"${board:t:r}\",\"r\":$(cat $dir/out.json)}" >> build/bench.jsonl
     rm -rf $dir

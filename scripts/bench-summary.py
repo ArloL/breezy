@@ -2,13 +2,14 @@
 import collections
 import json
 import statistics as st
+import sys
 
 T = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571, 7: 2.447, 8: 2.365, 9: 2.306, 10: 2.262}
-rows = [json.loads(l) for l in open("build/bench.jsonl")]
+rows = [json.loads(l) for l in open(sys.argv[1] if len(sys.argv) > 1 else "build/bench.jsonl")]
 groups = collections.defaultdict(list)
 for r in rows:
     groups[(r["label"], r["board"])].append(r["r"])
-keys = ["idle.mb", "zoom.mb", "pan.mb", "drag.mb", "peak_mb", "zoom.cpu_ms", "pan.cpu_ms", "drag.cpu_ms", "pan.draws"]
+keys = ["launch_ms", "idle.mb", "hidden.mb", "peak_mb", "zoom.p95_ms", "zoom.max_ms", "pan.p95_ms", "pan.max_ms", "drag.p95_ms", "drag.max_ms", "type.p95_ms", "type.max_ms", "zoom.cpu_ms"]
 
 def ci(xs):
     m = st.mean(xs)
