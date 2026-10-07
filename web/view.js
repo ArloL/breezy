@@ -38,7 +38,7 @@ export class View {
     return this.cached(`f|${w}|${text}`, () => {
       this.mFront.style.width = `${w}px`;
       const f = this.mFront.querySelector(".front");
-      f.textContent = !text || text.endsWith("\n") ? text + "​" : text;
+      f.textContent = !text || text.endsWith("\n") ? text + "\u200b" : text;
       return Math.max(1, Math.ceil((f.offsetHeight - R.GRID) / R.GRID)) * R.GRID + R.GRID;
     });
   }
@@ -50,8 +50,8 @@ export class View {
       this.mBack.style.width = `${w}px`;
       const head = this.mBack.querySelector(".heading");
       const body = this.mBack.querySelector(".notes");
-      head.textContent = title || "​";
-      body.textContent = notes.endsWith("\n") ? notes + "​" : notes;
+      head.textContent = title || "\u200b";
+      body.textContent = notes.endsWith("\n") ? notes + "\u200b" : notes;
       return Math.max(R.BACK_MIN_H, Math.ceil((head.offsetHeight + body.offsetHeight) / R.GRID) * R.GRID + 2 * R.GRID);
     });
   }
