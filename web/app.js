@@ -16,6 +16,7 @@ function caretToEnd(el) {
 /** The board, what is selected, turned and being edited, and every action on them. */
 export class App {
   constructor(board) {
+    this.touching = true;
     this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), float: null, marquee: null, found: null };
     this.model = new Model(board);
     this.view = new View(document.getElementById("board"), this.model, this.state);
@@ -122,7 +123,8 @@ export class App {
     el.onblur = () => this.endEditing();
     el.focus({ preventScroll: true });
     caretToEnd(el);
-    if (this.view.cam.zoom < 1) this.view.zoomAround(this.view.toScreen({ x: c.x + c.w / 2, y: c.y }), 1, true);
+    // fingers need the text larger to edit it; a pointer edits at any zoom, as on the Mac
+    if (this.touching && this.view.cam.zoom < 1) this.view.zoomAround(this.view.toScreen({ x: c.x + c.w / 2, y: c.y }), 1, true);
     this.ui.update();
     this.revealEditing();
   }
