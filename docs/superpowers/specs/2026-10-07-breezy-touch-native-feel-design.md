@@ -21,7 +21,7 @@ Speeds from the dot grid were unreliable past about 12 pt per frame, because the
 - A pan coasts from the finger's velocity, decelerating as Freeform's canvas does, 0.985 per millisecond. A touch during a coast stops it and is not a tap.
 - Past 25 % or 200 %, pinch and one-finger zoom stretch with UIKit's rubber band, `(1 − 1 / (x·0.55 / d + 1))·d`. On release a spring returns to the limit, carrying the release speed. Crossing a limit gives a light haptic.
 - After a pinch, the point between the fingers coasts like a pan.
-- Moves the app makes (the zoom readout, revealing a search match, zooming to edit, keeping the editor above the keyboard) are critically damped springs (response about 0.4 s) instead of a fixed CSS curve. A touch catches them where they are.
+- Moves the app makes (revealing a search match, zooming to edit, keeping the editor above the keyboard) are critically damped springs (response about 0.4 s) instead of a fixed CSS curve. A touch catches them where they are.
 
 ### 2. Cards and lanes
 - Lift after the 300 ms hold: a spring to 1.05× with a deeper shadow.
@@ -36,7 +36,7 @@ Speeds from the dot grid were unreliable past about 12 pt per frame, because the
 ### 3. Buttons, menus and bars
 - **Buttons track like UIControl:** highlight on touch-down; un-highlight beyond about 70 pt and re-highlight on return; act only when lifted inside. In glass capsules the whole capsule grows and lightens while a finger is down, the pressed icon dims, and it springs back on release.
 - **Menus are pull-down menus:** they open on touch-down and morph out of their button with a spring. Sliding highlights items with a glass pill and a selection haptic; lifting on an item picks it; lifting elsewhere leaves the menu open. A tap outside closes it and goes no further. Closing morphs it back into the button.
-- **Bars:** the **+** and the selection bar morph into one another with a spring. The bars slide away while editing and return afterwards. Button labels that change, such as the zoom readout, cross-fade.
+- **Bars:** the **+** and the selection bar morph into one another with a spring. The bars slide away while editing and return afterwards. While the zoom changes, its level shows in a capsule that springs in and fades a second after.
 - **Find** is an iOS search field: magnifier inside, clear button once there is text, Cancel to close. It slides in under the top bar with a spring; the keyboard's Search key goes to the next match.
 - **Keyboard bar:** moves with the keyboard's curve (about 0.25 s) when the keyboard comes and goes.
 

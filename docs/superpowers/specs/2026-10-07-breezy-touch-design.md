@@ -20,7 +20,7 @@ A one-finger drag pans unless it starts on the selection; holding first picks th
 | Drag a lane's corner | pans; hold first to resize the lane |
 
 Also:
-- Two fingers pan and pinch-zoom together, anywhere, 25 % to 200 %. Tapping the zoom readout returns to 100 %.
+- Two fingers pan and pinch-zoom together, anywhere, 25 % to 200 %. While the zoom changes, a small capsule under the top bar shows it, fading a second after it stops, as in Freeform; on a whiteboard there is no level worth returning to.
 - Tap, then touch again and drag to zoom with one finger, as in Maps: down zooms in, up zooms out, about twice per 150 pt, around where the finger touched.
 - Tap a card selects it; tap empty space clears the selection. Selection shows at once; a double tap does not wait for it.
 - Double-tap empty space creates a card; double-tap a card edits it; double-tap a lane header renames it.
@@ -30,7 +30,7 @@ Also:
 - A lifted card scales up slightly and casts a shadow. iOS web pages have no haptics.
 
 ### Bars
-Top, below the safe area: undo, redo, zoom readout, search, and a … menu whose Version entry shows the release the page was published from.
+Top, below the safe area: undo and redo, search, and a … menu whose Version entry shows the release the page was published from.
 
 Bottom, above the home indicator: a **+** button offering Card or Lane, placed at the screen centre. While cards are selected, it gives way to the selection bar: a colour button whose menu offers the five colours, Turn and Delete.
 
