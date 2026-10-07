@@ -4,7 +4,8 @@ import AppKit
 /// no untitled one; -BreezyCapture <png> writes a window capture after 1.5 s and quits;
 /// -BreezyBench <json> runs the benchmark and quits; -BreezyAppearance light|dark|switch fixes
 /// the appearance, or starts light and switches to dark before the capture; -BreezyTurn any turns
-/// over the first card with notes; -BreezySelfTest <check> runs a SelfTest check.
+/// over the first card with notes; -BreezyEdit any starts editing the first card; -BreezySelfTest
+/// <check> runs a SelfTest check.
 enum DebugLaunch {
   private static let defaults = UserDefaults.standard
   static var board: String? { defaults.string(forKey: "BreezyBoard") }
@@ -26,6 +27,9 @@ enum DebugLaunch {
       }
       if defaults.string(forKey: "BreezyTurn") != nil {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wc.canvas.turn(wc.canvas.board.cards.first { $0.notes != nil }?.id) }
+      }
+      if defaults.string(forKey: "BreezyEdit") != nil {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { (wc.canvas.turned ?? wc.canvas.board.cards.first?.id).map { wc.canvas.beginEdit($0) } }
       }
       if let out = defaults.string(forKey: "BreezyBench") {
         let bench = Bench(wc, out: out)

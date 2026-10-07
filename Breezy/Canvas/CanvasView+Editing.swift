@@ -25,7 +25,8 @@ extension CanvasView {
   }
 
   func editorFrame(_ c: Card, back: Bool) -> NSRect {
-    let r = doc(drawnRect(c))
+    // a text view sets its lines 1 pt lower than the card's string drawing; text must not jump
+    let r = doc(drawnRect(c)).offsetBy(dx: 0, dy: -1)
     guard back else { return r.insetBy(dx: Typo.padX, dy: Typo.padY) }
     let pad = Typo.backPad
     return NSRect(x: r.minX + pad, y: r.minY + pad + Typo.line, width: r.width - 2 * pad, height: r.height - 2 * pad - Typo.line)
