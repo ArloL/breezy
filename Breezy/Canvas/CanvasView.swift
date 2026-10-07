@@ -47,6 +47,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     host.frame = bounds
     addSubview(host)
     marquee.wantsLayer = true
+    marquee.layer?.borderWidth = 1
     marquee.isHidden = true
     addSubview(marquee)
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
@@ -266,8 +267,13 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
+    tintMarquee()
+    layoutCards()
+  }
+
+  /// The selection box's colours for the current appearance.
+  func tintMarquee() {
     marquee.layer?.borderColor = Theme.cg(Theme.accent, in: effectiveAppearance)
     marquee.layer?.backgroundColor = Theme.cg(Theme.accent.withAlphaComponent(0.08), in: effectiveAppearance)
-    layoutCards()
   }
 }

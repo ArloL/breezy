@@ -82,7 +82,11 @@ extension CanvasView {
     if d.kind == .marquee {
       let r = Rect(x: min(d.start.x, p.x), y: min(d.start.y, p.y), w: abs(dx), h: abs(dy))
       marquee.frame = doc(r)
-      marquee.isHidden = false
+      if marquee.isHidden {
+        // coloured as it appears: the appearance callback does not come at launch
+        tintMarquee()
+        marquee.isHidden = false
+      }
       selection = d.base.union(board.cardsInRect(r, heightOf: height).map(\.id))
       return
     }

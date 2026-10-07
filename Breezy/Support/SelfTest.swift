@@ -108,6 +108,11 @@ extension SelfTest {
     d.key("\u{7f}", code: 51)
     if d.board.card("b") != nil { finish(name, "delete did nothing") }
     if d.board.card("c")?.y != 144 { finish(name, "stack did not close up: c at \(d.board.card("c")!.y)") }
+    d.mouse(.leftMouseDown, NSPoint(x: 600, y: 600))
+    d.mouse(.leftMouseDragged, NSPoint(x: 300, y: 330))
+    let box = d.canvas.marquee
+    if box.isHidden || (box.layer?.borderWidth ?? 0) == 0 || box.layer?.backgroundColor == nil { finish(name, "the selection box does not show") }
+    d.mouse(.leftMouseUp, NSPoint(x: 300, y: 330))
     d.drag(from: NSPoint(x: 600, y: 600), to: NSPoint(x: 10, y: 60))
     if d.canvas.selection != ["a", "c"] { finish(name, "box selected \(d.canvas.selection)") }
     d.drag(from: centre("a"), to: NSPoint(x: 840, y: 96), mods: .option)
