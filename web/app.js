@@ -17,7 +17,6 @@ function caretToEnd(el) {
 export class App {
   constructor(board) {
     this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), marquee: null, found: null };
-    this.switching = false;
     this.model = new Model(board);
     this.view = new View(document.getElementById("board"), this.model, this.state);
     R.gravity(this.model.board, this.view.heightOf);
@@ -110,9 +109,7 @@ export class App {
     el.classList.remove("placeholder");
     el.contentEditable = "plaintext-only";
     el.oninput = () => this.edited();
-    el.onblur = () => {
-      if (!this.switching) this.endEditing();
-    };
+    el.onblur = () => this.endEditing();
     el.focus({ preventScroll: true });
     caretToEnd(el);
     if (this.view.cam.zoom < 1) this.view.zoomAround(this.view.toScreen({ x: c.x + c.w / 2, y: c.y }), 1, true);
@@ -123,7 +120,7 @@ export class App {
   edited() {
     const e = this.state.editing;
     if (!e) return;
-    const raw = this.view.editorOf(e.id, e.back).innerText.replace(/​/g, "");
+    const raw = this.view.editorOf(e.id, e.back).innerText.replace(/\u200b/g, "");
     const text = raw === "\n" ? "" : raw;
     this.model.update((b) => {
       if (e.back) return R.setNotes(b, e.id, text);
@@ -171,14 +168,12 @@ export class App {
   switchSide() {
     const e = this.state.editing;
     if (!e) return;
-    this.switching = true;
     const old = this.view.editorOf(e.id, e.back);
     old.oninput = old.onblur = null;
     this.state.editing = null;
     this.turn(e.back ? null : e.id);
     this.beginEdit(e.id, e.name);
     old.contentEditable = "false";
-    this.switching = false;
   }
 
   beginRename(id) {
