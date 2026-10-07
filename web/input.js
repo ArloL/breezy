@@ -137,15 +137,30 @@ export class Input {
     const w = app.view.toWorld(p);
     const dx = w.x - d.w0.x;
     const dy = w.y - d.w0.y;
-    if (d.action === "move") app.model.update((b) => R.moveCards(b, d.origins, dx, dy, d.room));
-    if (d.action === "lane") app.model.update((b) => R.moveLane(b, d.laneOrigin, d.origins, dx, dy));
-    if (d.action === "resize") app.model.update((b) => R.resizeLane(b, d.id, d.size.w + dx, d.size.h + dy));
+    if (d.action === "move") {
+      app.model.update((b) => R.moveCards(b, d.origins, dx, dy, d.room));
+      this.float(d.origins[0], R.card(app.model.board, d.origins[0].id), dx, dy);
+    }
+    if (d.action === "lane") {
+      app.model.update((b) => R.moveLane(b, d.laneOrigin, d.origins, dx, dy));
+      this.float(d.laneOrigin, R.lane(app.model.board, d.id), dx, dy);
+    }
+    if (d.action === "resize") {
+      app.model.update((b) => R.resizeLane(b, d.id, d.size.w + dx, d.size.h + dy));
+      const l = R.lane(app.model.board, d.id);
+      app.state.float = { w: Math.max(R.LANE_MIN, d.size.w + dx) - l.w, h: Math.max(R.LANE_MIN, d.size.h + dy) - l.h };
+    }
     if (d.action === "marquee") {
       const r = { x: Math.min(d.w0.x, w.x), y: Math.min(d.w0.y, w.y), w: Math.abs(dx), h: Math.abs(dy) };
       app.state.marquee = r;
       app.select(R.cardsInRect(app.model.board, r, app.heightOf).map((c) => c.id));
     }
     this.edgeScroll(p);
+  }
+
+  /** What a finger holds follows it exactly; the board keeps it on the grid, where it lands on release. */
+  float(origin, now, dx, dy) {
+    this.app.state.float = now ? { x: origin.x + dx - now.x, y: origin.y + dy - now.y } : null;
   }
 
   dragEnd(p, v) {
@@ -157,6 +172,7 @@ export class Input {
     const s = app.state;
     s.held = new Set();
     s.lifted = new Set();
+    s.float = null;
     if (d.action === "pan") this.coastFrom(v);
     if (d.action === "move") {
       app.model.update((b) => R.land(b, new Set(d.origins.map((o) => o.id)), d.room));

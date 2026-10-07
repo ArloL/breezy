@@ -58,7 +58,7 @@ Plain JavaScript modules in `web/`, no build step, no dependencies.
 | `model.js` | The board with undo and redo, 100 steps, as board snapshots. `perform` for one change, `begin`/`update`/`end` for a drag or edit session. |
 | `gestures.js` | Turns pointer events into tap, double tap, hold, drag, two-finger pan-and-pinch. A state machine over (pointer id, x, y, time) with no DOM, so it can be tested. |
 | `input.js` | Maps gestures to model changes and view moves. |
-| `view.js` | Renders lanes and cards as DOM elements in a world layer transformed by pan and zoom; diffs boards by id. The dot grid is a CSS background following pan and zoom. Measures card heights, cached by text and width. Positions animate with one easing curve, except what a finger holds; Reduce Motion turns animation off. |
+| `view.js` | Renders lanes and cards as DOM elements in a world layer transformed by pan and zoom; diffs boards by id. The dot grid is a CSS background following pan and zoom. Measures card heights, cached by text and width. Positions animate with one easing curve, except what a finger holds, which follows it off the grid and settles onto it on release; Reduce Motion turns animation off. |
 | `ui.js` | Top bar, bottom and selection bars, keyboard bar, search. |
 | `sample.js` | The sample board: three lanes with about 15 cards, some with backs, and a few loose cards. `?stress` loads 500 cards instead. |
 | `index.html`, `style.css`, `manifest.webmanifest`, icon | Page, theme tokens from `Theme.swift` with dark values, safe areas. |
