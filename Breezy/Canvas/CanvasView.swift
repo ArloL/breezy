@@ -124,6 +124,11 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// Gives a layer to each card near the viewport and takes it back from the rest, so the cost of
   /// scrolling and the memory follow what is on screen, not the size of the board. Moves animate
   /// with one easing curve, except for cards just shown or held by the pointer.
+  override func layout() {
+    super.layout()
+    layoutCards()
+  }
+
   func layoutCards() {
     // before it is in its scroll view the canvas counts as all visible
     guard enclosingScrollView != nil, window != nil else { return }

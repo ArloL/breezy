@@ -80,7 +80,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     let label = "\(Int((scrollView.magnification * 100).rounded())) %"
     zoomButton.readout = label
     grid.update(origin: scrollView.contentView.bounds.origin, zoom: scrollView.magnification)
-    canvas.layoutCards()
+    // a zoom step moves the bounds more than once; the cards follow once, when the frame is laid out
+    canvas.needsLayout = true
     window?.invalidateRestorableState()
   }
 
