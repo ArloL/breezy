@@ -13,6 +13,20 @@ function caretToEnd(el) {
   s.addRange(r);
 }
 
+/**
+ * Firefox draws an empty last line with a <br> after the newline, and the caret before that <br> at the end of the
+ * line above. A second newline, as Chrome uses, puts the caret on the empty line.
+ */
+function newlineForBreak(el) {
+  const br = el.lastChild;
+  if (br?.nodeName !== "BR") return;
+  const sel = getSelection();
+  const atEnd = sel.anchorNode === el && sel.anchorOffset >= el.childNodes.length - 1;
+  br.replaceWith("\n");
+  el.normalize();
+  if (atEnd) sel.collapse(el.lastChild, el.lastChild.length - 1);
+}
+
 /** The board, what is selected, turned and being edited, and every action on them. */
 export class App {
   constructor(board) {
@@ -132,8 +146,11 @@ export class App {
   edited() {
     const e = this.state.editing;
     if (!e) return;
-    const raw = this.view.editorOf(e.id, e.back).innerText.replace(/\u200b/g, "");
-    const text = raw === "\n" ? "" : raw;
+    const el = this.view.editorOf(e.id, e.back);
+    newlineForBreak(el);
+    // An empty last line is drawn from two newlines; the last one is not part of the text.
+    const raw = el.innerText.replace(/\u200b/g, "");
+    const text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
     this.model.update((b) => {
       if (e.back) return R.setNotes(b, e.id, text);
       R.setText(b, e.id, text);
