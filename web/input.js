@@ -7,6 +7,8 @@ const EDGE_SPEED = 12;
 // a flick coasts about 0.6 s and stops without a crawl
 const FRICTION = 0.92;
 const STOP = 0.05;
+// a one-finger zoom doubles or halves for every this many points the finger moves
+const ZOOM_DRAG = 150;
 
 const isCard = (h) => h?.kind === "card" || h?.kind === "fold";
 
@@ -183,6 +185,20 @@ export class Input {
   pinchEnd(v) {
     this.pinchBase = null;
     this.coastFrom(v);
+  }
+
+  zoomDragStart(p) {
+    this.stopCoast();
+    this.pinchBase = { cam: { ...this.app.view.cam }, c: p };
+  }
+
+  /** Down zooms in, up zooms out, as in Maps; the point first touched stays put. */
+  zoomDrag(dy) {
+    this.pinch(this.pinchBase.c, 2 ** (dy / ZOOM_DRAG));
+  }
+
+  zoomDragEnd() {
+    this.pinchBase = null;
   }
 
   /** Near the edge of the visible area a drag scrolls the board, faster the closer it gets. */

@@ -17,7 +17,10 @@ function velocity(track, t) {
   return dt > 0 ? { x: (b.x - a.x) / dt, y: (b.y - a.y) / dt } : { ...ZERO };
 }
 
-/** Turns pointer events into taps, holds, drags and two-finger pinches for `h`; times in ms. */
+/**
+ * Turns pointer events into taps, holds, drags and two-finger pinches for `h`; times in ms. A tap
+ * followed by a touch that moves zooms with one finger, as in Maps.
+ */
 export class Gestures {
   constructor(h) {
     this.h = h;
@@ -36,6 +39,7 @@ export class Gestures {
     } else if (this.points.size === 2) {
       if (this.one?.state === "drag") this.h.dragEnd(this.one.last, { ...ZERO });
       else if (this.one?.state === "held") this.h.holdCancel();
+      else if (this.one?.state === "zoom") this.h.zoomDragEnd();
       this.one = null;
       this.lastTap = null;
       const [a, b] = this.points.values();
@@ -45,10 +49,13 @@ export class Gestures {
     }
   }
 
-  /** Reports a hold once the finger has stayed put for `HOLD_MS`; the page calls it from a timer. */
+  /**
+   * Reports a hold once the finger has stayed put for `HOLD_MS`; the page calls it from a timer. The
+   * second touch of a double tap waits instead to zoom.
+   */
   tick(t) {
     const o = this.one;
-    if (o?.state === "pending" && t - o.t >= HOLD_MS) {
+    if (o?.state === "pending" && !o.double && t - o.t >= HOLD_MS) {
       o.state = "held";
       this.lastTap = null;
       this.h.hold(o.start);
@@ -72,7 +79,14 @@ export class Gestures {
     o.last = p;
     o.track.push({ ...p, t });
     if (o.state === "drag") return this.h.dragMove(p);
+    if (o.state === "zoom") return this.h.zoomDrag(p.y - o.start.y);
     if (dist(o.start, p) < SLOP) return;
+    if (o.double) {
+      o.state = "zoom";
+      this.lastTap = null;
+      this.h.zoomDragStart(o.start);
+      return this.h.zoomDrag(p.y - o.start.y);
+    }
     this.tick(t);
     const held = o.state === "held";
     o.state = "drag";
@@ -98,9 +112,11 @@ export class Gestures {
     o.track.push({ ...p, t });
     if (o.state === "drag") return this.h.dragEnd(p, velocity(o.track, t));
     if (o.state === "held") return this.h.holdEnd(o.start);
+    if (o.state === "zoom") return this.h.zoomDragEnd();
     if (o.double) {
       this.lastTap = null;
-      return this.h.doubleTap(o.start);
+      // held, it was waiting to zoom
+      return t - o.t < HOLD_MS ? this.h.doubleTap(o.start) : undefined;
     }
     this.lastTap = { ...o.start, t };
     this.h.tap(o.start);
@@ -121,5 +137,6 @@ export class Gestures {
     this.one = null;
     if (o.state === "drag") this.h.dragEnd(o.last, { ...ZERO });
     else if (o.state === "held") this.h.holdCancel();
+    else if (o.state === "zoom") this.h.zoomDragEnd();
   }
 }
