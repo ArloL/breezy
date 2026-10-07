@@ -1,11 +1,13 @@
 import { App } from "./app.js";
 import { Gestures, HOLD_MS } from "./gestures.js";
 import { sampleBoard, stressBoard } from "./sample.js";
+import { startUpdates } from "./update.js";
 
 const params = new URLSearchParams(location.search);
 const app = new App(params.has("stress") ? stressBoard() : sampleBoard());
 app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
+startUpdates(app);
 
 const gestures = new Gestures(app.input);
 document.getElementById("board").addEventListener("pointerdown", (e) => {

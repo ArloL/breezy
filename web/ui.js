@@ -71,7 +71,7 @@ export class UI {
       case "undo": return app.undo();
       case "redo": return app.redo();
       case "search": return this.openFind();
-      case "version": b.textContent = b.dataset.version; return;
+      case "version": b.textContent = b.dataset.next ? `${b.dataset.version}, ${b.dataset.next} ready` : b.dataset.version; return;
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
       case "colour": this.closeMenu(); return app.colour(Number(b.dataset.colour));

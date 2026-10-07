@@ -129,6 +129,7 @@ jobs:
       run: |
         sed -i "s/data-version=\"dev\"/data-version=\"${NEW_VERSION}\"/" _site/index.html
         grep --fixed-strings --quiet "data-version=\"${NEW_VERSION}\"" _site/index.html
+        node scripts/make-web-version.mjs _site "${NEW_VERSION}"
     - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
     - name: Make sure build did not change anything
       run: git diff --exit-code
