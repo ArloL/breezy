@@ -32,6 +32,12 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     toolbar.displayMode = .iconAndLabel
     window.toolbar = toolbar
     window.toolbarStyle = .unified
+    // a new window fills the screen, short of the menu bar and the Dock; a restored one gets its
+    // frame back afterwards, and scripted checks keep 1200 × 800 so their numbers stay comparable
+    if !DebugLaunch.active, let screen = NSScreen.main {
+      shouldCascadeWindows = false
+      window.setFrame(screen.visibleFrame, display: false)
+    }
 
     scrollView.hasHorizontalScroller = true
     scrollView.hasVerticalScroller = true
