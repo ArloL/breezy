@@ -219,9 +219,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     guard !layers.isEmpty else { return }
     let inputs = layers.map(\.input)
     for l in layers { l.deferred = true }
-    DispatchQueue.global(qos: .userInitiated).async {
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       let surfaces = Self.render(inputs)
-      DispatchQueue.main.async { [weak self] in
+      DispatchQueue.main.async {
         for (k, l) in layers.enumerated() where l.deferred {
           l.deferred = false
           guard let i = inputs[k], l.input == i else {
