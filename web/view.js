@@ -186,13 +186,14 @@ export class View {
     const r = this.rectOf(c);
     const flags = ["card", c.notes && "notes", turned && "turned", s.selection.has(c.id) && "selected", s.held.has(c.id) && "held",
       s.lifted.has(c.id) && "lifted", s.found === c.id && "found", editing && "editing"].filter(Boolean).join(" ");
+    const f = s.held.has(c.id) && s.float?.x !== undefined ? s.float : { x: 0, y: 0 };
     const e = this.element(c.id, this.cardsEl, SHEET);
-    const key = JSON.stringify([flags, c.x, c.y, r.w, r.h, c.color, c.text, c.notes, i]);
+    const key = JSON.stringify([flags, c.x + f.x, c.y + f.y, r.w, r.h, c.color, c.text, c.notes, i]);
     if (e.key === key) return;
     e.key = key;
     const el = e.el;
     el.className = flags;
-    el.style.transform = `translate(${c.x}px, ${c.y}px)`;
+    el.style.transform = `translate(${c.x + f.x}px, ${c.y + f.y}px)`;
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
     el.style.zIndex = turned || s.lifted.has(c.id) ? 1000000 : i;
@@ -213,15 +214,16 @@ export class View {
     const renaming = s.renaming === l.id;
     const flags = ["lane", s.selection.has(l.id) && "selected", s.held.has(l.id) && "held", s.found === l.id && "found",
       renaming && "renaming"].filter(Boolean).join(" ");
+    const f = { x: 0, y: 0, w: 0, h: 0, ...(s.held.has(l.id) && s.float) };
     const e = this.element(l.id, this.lanesEl, '<div class="header"><div class="title"></div></div><div class="grip"></div>');
-    const key = JSON.stringify([flags, l.x, l.y, l.w, l.h, l.title]);
+    const key = JSON.stringify([flags, l.x + f.x, l.y + f.y, l.w + f.w, l.h + f.h, l.title]);
     if (e.key === key) return;
     e.key = key;
     const el = e.el;
     el.className = flags;
-    el.style.transform = `translate(${l.x}px, ${l.y}px)`;
-    el.style.width = `${l.w}px`;
-    el.style.height = `${l.h}px`;
+    el.style.transform = `translate(${l.x + f.x}px, ${l.y + f.y}px)`;
+    el.style.width = `${l.w + f.w}px`;
+    el.style.height = `${l.h + f.h}px`;
     if (!renaming) el.querySelector(".title").textContent = l.title;
   }
 

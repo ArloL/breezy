@@ -16,7 +16,7 @@ function caretToEnd(el) {
 /** The board, what is selected, turned and being edited, and every action on them. */
 export class App {
   constructor(board) {
-    this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), marquee: null, found: null };
+    this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), float: null, marquee: null, found: null };
     this.model = new Model(board);
     this.view = new View(document.getElementById("board"), this.model, this.state);
     R.gravity(this.model.board, this.view.heightOf);
