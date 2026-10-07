@@ -3,6 +3,7 @@ import { track } from "./press.js";
 import { Menus } from "./menu.js";
 import { haptic } from "./haptics.js";
 import { animate } from "./motion.js";
+import { clampZoom } from "./view.js";
 
 const KEYS_H = 44;
 const MENUS = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
@@ -69,7 +70,6 @@ export class UI {
     switch (name) {
       case "undo": return app.undo();
       case "redo": return app.redo();
-      case "zoom": return app.view.zoomAround(app.view.centre(), 1, true);
       case "search": return this.openFind();
       case "version": b.textContent = b.dataset.version; return;
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
@@ -122,11 +122,20 @@ export class UI {
     this.$('[data-act="turn"]').hidden = !one;
     this.$("#keys").hidden = !s.editing;
     this.place();
-    this.updateZoom();
   }
 
+  /** While the zoom changes, a small capsule shows it, fading a second after it stops, as in Freeform. */
   updateZoom() {
-    this.$('[data-act="zoom"]').textContent = `${Math.round(this.app.view.cam.zoom * 100)} %`;
+    const z = Math.round(clampZoom(this.app.view.cam.zoom) * 100);
+    if (z === this.zoom) return;
+    const first = this.zoom === undefined;
+    this.zoom = z;
+    if (first) return;
+    const level = this.$("#zoom-level");
+    level.textContent = `${z} %`;
+    swap(level, true, { opacity: 0, scale: 0.9 });
+    clearTimeout(this.zoomTimer);
+    this.zoomTimer = setTimeout(() => swap(level, false, { opacity: 0, scale: 0.9 }), 1000);
   }
 
   /** Puts the keyboard bar on the keyboard, wherever iOS has moved the visual viewport. */
