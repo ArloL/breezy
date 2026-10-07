@@ -42,6 +42,8 @@ final class CardLayer: CALayer {
   private var appearance: NSAppearance?
   /// A bitmap drawn ahead, on another thread, for `display` to take if it still fits.
   var prepared: (Input, IOSurface?)?
+  /// Being drawn off the main thread: `display` leaves it for then.
+  var deferred = false
   /// The selection ring, only while selected: most cards never are, and a layer each is a layer
   /// more to commit and keep.
   private var ring: CALayer?
@@ -96,6 +98,7 @@ final class CardLayer: CALayer {
   }
 
   func recycle() {
+    deferred = false
     ring?.removeFromSuperlayer()
     ring = nil
     look = nil
@@ -129,6 +132,7 @@ final class CardLayer: CALayer {
   /// Shows a surface of its own, which Core Animation shows without a copy, instead of a backing
   /// store that holds more than one buffer per layer.
   override func display() {
+    if deferred { return }
     let i = input
     if let p = prepared, p.0 == i {
       contents = p.1

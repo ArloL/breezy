@@ -180,7 +180,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       cardLayers[id] = nil
       if pool.count < 64 { pool.append(l) }
     }
-    prerender(cardLayers.values.filter { $0.needsDisplay() })
+    // cards in the margin around the screen can wait a frame for their bitmaps; visible ones cannot
+    let pending = cardLayers.values.filter { $0.needsDisplay() || ($0.deferred && $0.frame.intersects(v)) }
+    prerender(pending.filter { $0.frame.intersects(v) })
+    renderLater(pending.filter { !$0.frame.intersects(v) })
     CATransaction.commit()
     settling?.cancel()
     if lagging {
@@ -193,18 +196,52 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// Draws the bitmaps of several cards at once on all cores, as when a zoom step crosses to a new
   /// scale; the layers show them when Core Animation asks them to display.
   private func prerender(_ layers: [CardLayer]) {
+    for l in layers where l.deferred {
+      l.deferred = false
+      l.setNeedsDisplay()
+    }
     guard layers.count >= 4 else { return }
     let inputs = layers.map(\.input)
-    var surfaces = [IOSurface?](repeating: nil, count: inputs.count)
-    surfaces.withUnsafeMutableBufferPointer { out in
-      // worker threads drain no autorelease pool of their own; text drawing fills one
-      DispatchQueue.concurrentPerform(iterations: inputs.count) { k in autoreleasepool { out[k] = inputs[k].flatMap(CardLayer.render) } }
-    }
+    let surfaces = Self.render(inputs)
     for (k, l) in layers.enumerated() {
       guard let i = inputs[k] else { continue }
       l.prepared = (i, surfaces[k])
       CardLayer.drawCount += 1
     }
+  }
+
+  /// Draws off the main thread; the layers show their bitmaps on a later frame, if they still fit.
+  private func renderLater(_ layers: [CardLayer]) {
+    let layers = layers.filter { !$0.deferred }
+    guard !layers.isEmpty else { return }
+    let inputs = layers.map(\.input)
+    for l in layers { l.deferred = true }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let surfaces = Self.render(inputs)
+      DispatchQueue.main.async { [weak self] in
+        for (k, l) in layers.enumerated() where l.deferred {
+          l.deferred = false
+          guard let i = inputs[k], l.input == i else {
+            // changed while drawing: the next layout pass draws it again
+            l.setNeedsDisplay()
+            self?.needsLayout = true
+            continue
+          }
+          l.prepared = (i, surfaces[k])
+          l.setNeedsDisplay()
+          CardLayer.drawCount += 1
+        }
+      }
+    }
+  }
+
+  private static func render(_ inputs: [CardLayer.Input?]) -> [IOSurface?] {
+    var surfaces = [IOSurface?](repeating: nil, count: inputs.count)
+    surfaces.withUnsafeMutableBufferPointer { out in
+      // worker threads drain no autorelease pool of their own; text drawing fills one
+      DispatchQueue.concurrentPerform(iterations: inputs.count) { k in autoreleasepool { out[k] = inputs[k].flatMap(CardLayer.render) } }
+    }
+    return surfaces
   }
 
   /// Gives back every card layer and its bitmap. The window server may hold on to bitmaps it last
