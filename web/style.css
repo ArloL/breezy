@@ -70,7 +70,7 @@ body {
 .lane {
   position: absolute; left: 0; top: 0; box-sizing: border-box;
   background: var(--lane); border: 1px solid var(--hairline); border-radius: 6px;
-  transition: transform 0.2s var(--ease), width 0.2s var(--ease), height 0.2s var(--ease);
+  transition: width 0.2s var(--ease), height 0.2s var(--ease);
 }
 .lane.selected { border: 2px solid var(--accent); }
 .lane.held { transition: none; }
@@ -89,16 +89,17 @@ body {
 .card {
   position: absolute; left: 0; top: 0;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.16));
-  transition: transform 0.2s var(--ease), width 0.2s var(--ease), height 0.2s var(--ease);
+  transition: width 0.2s var(--ease), height 0.2s var(--ease), filter 0.2s var(--ease);
 }
-.card.held { transition: none; }
+.card.held { transition: filter 0.2s var(--ease); }
 .card.turned, .card.lifted { filter: drop-shadow(0 5px 9px rgb(0 0 0 / 0.24)); }
+.card.lifted { filter: drop-shadow(0 10px 18px rgb(0 0 0 / 0.26)); }
 .card.selected::after, .card.found::after {
   content: ""; position: absolute; inset: -4px; border: 2px solid var(--accent); border-radius: 4px; pointer-events: none;
 }
 .card.found::after { border-width: 3px; }
-.sheet { position: absolute; inset: 0; background: var(--c1); transition: scale 0.15s var(--ease); }
-.card.lifted .sheet { scale: 1.03; }
+.card.flipping::after { display: none; }
+.sheet { position: absolute; inset: 0; background: var(--c1); }
 .c1 { background: var(--c1); }
 .c2 { background: var(--c2); }
 .c3 { background: var(--c3); }
