@@ -101,6 +101,28 @@ jobs:
         path: artifacts
     - name: Make sure build did not change anything
       run: git diff --exit-code
+  web:
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Test the touch prototype
+      run: node --test web/test/*.test.js
+    - name: Leave the tests out of the site
+      run: |
+        mkdir _site
+        cp -R web/. _site/
+        rm -r _site/test _site/package.json
+    - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+    - name: Make sure build did not change anything
+      run: git diff --exit-code
   release:
     needs:
     - version
@@ -115,10 +137,12 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    - name: Download all workflow run artifacts
+    # the release's own artifacts only, not the web job's site
+    - name: Download the release artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         path: ./target
+        pattern: ${{ env.ARTIFACT }}-*
         merge-multiple: true
     - name: Attest the release assets
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -134,10 +158,31 @@ jobs:
           ./target/*
     - name: Make sure build did not change anything
       run: git diff --exit-code
+  # the touch prototype on GitHub Pages, whose environment takes deployments from main only
+  pages:
+    needs:
+    - web
+    - release
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-slim
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # one deployment at a time, and never cut short
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+    - id: deployment
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
   required-status-check:
     name: main.required-status-check
     needs:
     - macos
+    - web
     # GitHub Actions skips this job when any of the dependents fail. And skips
     # are considered success in their weird logic. So we always run it and fail
     # ourselves if necessary
