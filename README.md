@@ -5,7 +5,7 @@ A whiteboard for work thoughts: sticky-note cards and lanes on an infinite canva
 ## Build
 
 ```bash
-brew install xcodegen
+mise install
 xcodegen generate
 xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Release -derivedDataPath build build
 open build/Build/Products/Release/Breezy.app
