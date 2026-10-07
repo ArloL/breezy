@@ -24,9 +24,10 @@ extension CanvasView {
     beginEdit(id, name: "New Card")
   }
 
+  /// Where the editor's text goes: where the card's bitmap draws it.
   func editorFrame(_ c: Card, back: Bool) -> NSRect {
     // a text view sets its lines 1 pt lower than the card's string drawing; text must not jump
-    let r = doc(drawnRect(c)).offsetBy(dx: 0, dy: -1)
+    let r = pixelAligned(doc(drawnRect(c))).offsetBy(dx: 0, dy: -1)
     guard back else { return r.insetBy(dx: Typo.padX, dy: Typo.padY) }
     let pad = Typo.backPad
     return NSRect(x: r.minX + pad, y: r.minY + pad + Typo.line, width: r.width - 2 * pad, height: r.height - 2 * pad - Typo.line)
@@ -44,8 +45,6 @@ extension CanvasView {
     tv.textContainerInset = .zero
     tv.textContainer?.lineFragmentPadding = 0
     tv.isVerticallyResizable = false
-    // after the options above: while resizable, a text view shrinks to fit its empty text
-    tv.frame = editorFrame(c, back: back)
     tv.allowsUndo = true
     tv.insertionPointColor = Theme.accent
     tv.string = back ? (c.notes ?? "") : c.text
@@ -64,6 +63,8 @@ extension CanvasView {
     }
     tv.onTab = { [weak self] in self?.switchSide() }
     addSubview(tv, positioned: .below, relativeTo: marquee)
+    // after the options above: while resizable, a text view shrinks to fit its empty text
+    tv.place(editorFrame(c, back: back))
     editing = CardEditing(id: id, back: back, view: tv, name: name)
     layoutCards()
     window?.makeFirstResponder(tv)
@@ -93,7 +94,7 @@ extension CanvasView {
         $0.gravity(height)
       }
     }
-    if let c = board.card(e.id) { e.view.frame = editorFrame(c, back: e.back) }
+    if let c = board.card(e.id) { e.view.place(editorFrame(c, back: e.back)) }
   }
 
   func textDidEndEditing(_ notification: Notification) {

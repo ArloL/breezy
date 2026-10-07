@@ -36,8 +36,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var drag: Drag?
   /// The card under the pointer, for Space.
   var hovered: String?
-  /// Brings cards off screen to the current scale once a zoom has settled.
+  /// Brings cards to the exact scale once a zoom has settled.
   var settling: DispatchWorkItem?
+  /// The zoom of the last layout pass; when it changes, a zoom is under way.
+  var laidOutZoom: CGFloat?
   /// The elements last handed out, kept alive while assistive apps query them.
   var accessibilityElements: [NSAccessibilityElement] = []
 
@@ -71,6 +73,16 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   }
 
   func doc(_ r: Rect) -> NSRect { NSRect(x: r.x + Self.origin, y: r.y + Self.origin, width: r.w, height: r.h) }
+
+  /// Moves a point to the nearest whole pixel on screen; one conversion for many points.
+  func pixelGrid() -> (NSPoint) -> NSPoint {
+    let o = convertToBacking(NSPoint.zero), u = convertToBacking(NSPoint(x: 1, y: 1))
+    let kx = u.x - o.x, ky = u.y - o.y
+    return { p in NSPoint(x: ((o.x + p.x * kx).rounded() - o.x) / kx, y: ((o.y + p.y * ky).rounded() - o.y) / ky) }
+  }
+
+  /// `r` moved to the nearest whole pixel on screen.
+  func pixelAligned(_ r: NSRect) -> NSRect { NSRect(origin: pixelGrid()(r.origin), size: r.size) }
 
   var visibleWorldCentre: NSPoint { NSPoint(x: visibleRect.midX - Self.origin, y: visibleRect.midY - Self.origin) }
 
@@ -121,7 +133,6 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     } else {
       heights = Dictionary(uniqueKeysWithValues: board.cards.map { ($0.id, measure($0)) })
     }
-    if let e = editing, let c = board.card(e.id) { e.view.frame = editorFrame(c, back: e.back) }
     layoutCards()
   }
 
@@ -139,14 +150,22 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   /// Gives a layer to each card near the viewport and takes it back from the rest, so the cost of
   /// scrolling and the memory follow what is on screen, not the size of the board. Moves animate
-  /// with one easing curve, except for cards just shown or held by the pointer. When the scale
-  /// changes, cards off screen keep their bitmaps until the zoom has settled for a moment, so a zoom
-  /// step draws only what it shows; `settle` brings them all to the current scale.
+  /// with one easing curve, except for cards just shown or held by the pointer. While the zoom
+  /// changes, bitmaps are drawn in steps of a quarter, so a pinch does not redraw on every frame,
+  /// and cards off screen keep theirs, so a zoom step draws only what it shows. Once the zoom has
+  /// settled for a moment, `settle` draws them all at the exact scale, one bitmap pixel per screen
+  /// pixel, as the editor draws its text.
   func layoutCards(settle: Bool = false) {
     // before it is in its scroll view the canvas counts as all visible; out of sight it keeps none
     guard enclosingScrollView != nil, let window, window.occlusionState.contains(.visible) else { return }
-    // sharp at the current zoom, in steps of a quarter so a pinch does not redraw on every frame
-    let scale = window.backingScaleFactor * max(0.25, (zoom * 4).rounded(.up) / 4)
+    let backing = window.backingScaleFactor
+    func step(_ scale: CGFloat) -> CGFloat { backing * max(0.25, (scale / backing * 4).rounded(.up) / 4) }
+    let exact = backing * zoom
+    let zooming = !settle && laidOutZoom.map { $0 != zoom } ?? false
+    laidOutZoom = zoom
+    let scale = zooming ? step(exact) : exact
+    if let e = editing, let c = board.card(e.id) { e.view.place(editorFrame(c, back: e.back)) }
+    let grid = pixelGrid()
     let v = visibleRect
     let near = v.insetBy(dx: -v.width / 4, dy: -v.height / 4)
     let dark = effectiveAppearance.isDark
@@ -163,18 +182,24 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       let isNew = cardLayers[c.id] == nil
       let l = cardLayers[c.id] ?? takeLayer(c.id)
       l.zPosition = CGFloat(i) + (raised.contains(c.id) ? 1e6 : 0) + (c.id == turned ? 2e6 : 0)
-      if isNew || raised.contains(c.id) {
+      // cards off screen wait for the zoom to settle; on screen, a bitmap a step covers will do
+      let keep = !isNew && !settle && (!r.intersects(v) || zooming && step(l.contentsScale) == scale)
+      let s = keep ? l.contentsScale : scale
+      if s != exact { lagging = true }
+      let f = NSRect(origin: grid(r.origin), size: NSSize(width: (r.width * s).rounded(.up) / s, height: (r.height * s).rounded(.up) / s))
+      // a new pixel grid moves the layer a fraction of a pixel, the card not at all
+      let moved = l.rect != r
+      l.rect = r
+      if isNew || raised.contains(c.id) || !moved {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        l.frame = r
+        l.frame = f
         CATransaction.commit()
       } else {
-        l.frame = r
+        l.frame = f
       }
       let look = CardLayer.Look(card: c, back: c.id == turned, editing: c.id == editingID, dark: dark)
-      let s = isNew || settle || r.intersects(v) ? scale : l.contentsScale
-      if s != scale { lagging = true }
-      l.configure(look, selected: selection.contains(c.id), scale: s, appearance: effectiveAppearance)
+      l.configure(look, size: r.size, selected: selection.contains(c.id), scale: s, appearance: effectiveAppearance)
     }
     for (id, l) in cardLayers where !live.contains(id) {
       l.recycle()
