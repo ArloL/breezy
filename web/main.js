@@ -18,6 +18,10 @@ document.getElementById("board").addEventListener("pointerdown", (e) => {
 document.getElementById("board").addEventListener("mousedown", (e) => {
   if (!e.target.closest('[contenteditable="plaintext-only"]')) e.preventDefault();
 });
+// Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
+document.getElementById("board").addEventListener("touchstart", (e) => {
+  if (!e.target.closest('[contenteditable="plaintext-only"]')) e.preventDefault();
+}, { passive: false });
 addEventListener("pointermove", (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
