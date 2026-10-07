@@ -39,12 +39,13 @@ extension CanvasView {
     let back = turned == id
     // TextKit 1: lighter per keystroke than TextKit 2, and it breaks lines as TextMetrics measures
     let tv = EditorTextView(usingTextLayoutManager: false)
-    tv.frame = editorFrame(c, back: back)
     tv.isRichText = false
     tv.drawsBackground = false
     tv.textContainerInset = .zero
     tv.textContainer?.lineFragmentPadding = 0
     tv.isVerticallyResizable = false
+    // after the options above: while resizable, a text view shrinks to fit its empty text
+    tv.frame = editorFrame(c, back: back)
     tv.allowsUndo = true
     tv.insertionPointColor = Theme.accent
     tv.string = back ? (c.notes ?? "") : c.text

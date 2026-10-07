@@ -29,6 +29,7 @@ enum SelfTest {
     case "find-back": findBack(d)
     case "card-heights": cardHeights(d)
     case "zoom-sharp": zoomSharp(d)
+    case "caret-click": caretClick(d)
     default: finish(name, "unknown check")
     }
   }
@@ -251,6 +252,29 @@ extension SelfTest {
         finish(name, nil)
       }
     }
+  }
+}
+
+extension SelfTest {
+  /// A click on the last line of either side of an edited card lands in the editor.
+  fileprivate static func caretClick(_ d: Driver) {
+    let name = "caret-click"
+    for back in [false, true] {
+      d.canvas.turn(back ? "a" : nil)
+      d.canvas.beginEdit("a")
+      guard let e = d.canvas.editing else { finish(name, "no editor") }
+      let f = e.view.frame
+      let card = d.canvas.drawnRect(d.board.card("a")!)
+      let p = NSPoint(x: card.x + card.w / 2, y: card.y + card.h - (back ? Typo.backPad : Typo.padY) - Typo.line / 2)
+      let side = back ? "back" : "front"
+      if d.window.contentView?.hitTest(d.window.contentView!.superview!.convert(d.point(p), from: nil)) !== e.view {
+        finish(name, "the last line of the \(side) is outside its \(f.height) pt editor")
+      }
+      d.click(p)
+      if d.canvas.editing == nil { finish(name, "a click on the \(side) ended editing") }
+      d.canvas.endEditing()
+    }
+    finish(name, nil)
   }
 }
 
