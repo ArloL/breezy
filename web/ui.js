@@ -51,6 +51,10 @@ export class UI {
       this.find(field.value);
     });
     field.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        return this.closeFind();
+      }
       if (e.key !== "Enter") return;
       e.preventDefault();
       this.step(1);
@@ -159,13 +163,24 @@ export class UI {
     this.$('[data-act="version"]').textContent = "Version";
   }
 
-  openFind() {
+  /** Opens the find bar, with `text` to find if given. */
+  openFind(text) {
     this.closeMenu();
     swap(this.$("#find"), true, { y: -24, opacity: 0, scale: 0.96 });
     const field = this.$("#find input");
+    if (text !== undefined) {
+      field.value = text;
+      this.$("#find .clear").hidden = !text;
+    }
     field.focus();
     field.select();
     this.find(field.value);
+  }
+
+  /** ⌘G: the next match, opening the bar on the last search when it is closed. */
+  findStep(d) {
+    if (this.$("#find").hidden) return this.openFind();
+    this.step(d);
   }
 
   closeFind() {
