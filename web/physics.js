@@ -1,5 +1,8 @@
-/** UIScrollView's normal deceleration: velocity keeps this fraction each millisecond. */
-export const DECEL = 0.998;
+/**
+ * A coast keeps this fraction of its velocity each millisecond. Freeform's canvas, measured on an iPhone, coasts
+ * about 65 ms × the release velocity, much shorter than a UIScrollView list's 0.998.
+ */
+export const DECEL = 0.985;
 const K = Math.log(DECEL);
 
 /** Edge auto-scroll, as measured in Freeform: a narrow zone, starting slowly and speeding up while held. */

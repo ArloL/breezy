@@ -10,6 +10,7 @@ The reference is iOS 27 on an iPhone 13 mini: UIKit's standard behaviour, and Fr
 |---|---|
 | Edge auto-scroll while dragging | None 70, 40 or 30 pt from the edge; scrolls 20 pt from it. Starts slowly and speeds up the longer the finger stays: about 40 to 360 pt/s within the first half second. |
 | Pressing a glass toolbar button | The whole capsule grows (about 14 % wider) and its glass lightens; the pressed icon dims. About 80 pt away the icon un-dims, but the capsule stays grown until the finger lifts. Lifting outside does nothing; the capsule springs back. |
+| Coasting after a flick | About 65 ms × the release velocity (19, 44 and 61–67 pt for 0.4, 0.67 and 1 pt/ms), a deceleration of about 0.985 per ms: much shorter than a UIScrollView list's 0.998. |
 | Pull-down menu (…) | Opens on touch-down, morphing out of the button as a blurred blob. Sliding over items highlights them with a glass pill; lifting on one picks it. Resting on an item with a submenu opens the submenu in place. A tap outside closes the menu and does nothing else. |
 
 Speeds from the dot grid were unreliable past about 12 pt per frame, because the dots repeat every 25 pt; the figures above are the trustworthy part.
@@ -17,7 +18,7 @@ Speeds from the dot grid were unreliable past about 12 pt per frame, because the
 ## Design
 
 ### 1. Camera physics
-- A pan coasts with UIScrollView's deceleration, 0.998 per millisecond, from the finger's velocity. A touch during a coast stops it and is not a tap.
+- A pan coasts from the finger's velocity, decelerating as Freeform's canvas does, 0.985 per millisecond. A touch during a coast stops it and is not a tap.
 - Past 25 % or 200 %, pinch and one-finger zoom stretch with UIKit's rubber band, `(1 − 1 / (x·0.55 / d + 1))·d`. On release a spring returns to the limit, carrying the release speed. Crossing a limit gives a light haptic.
 - After a pinch, the point between the fingers coasts like a pan.
 - Moves the app makes (the zoom readout, revealing a search match, zooming to edit, keeping the editor above the keyboard) are critically damped springs (response about 0.4 s) instead of a fixed CSS curve. A touch catches them where they are.
