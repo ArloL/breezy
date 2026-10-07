@@ -36,6 +36,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var drag: Drag?
   /// The card under the pointer, for Space.
   var hovered: String?
+  /// Brings cards off screen to the current scale once a zoom has settled.
+  var settling: DispatchWorkItem?
   /// The elements last handed out, kept alive while assistive apps query them.
   var accessibilityElements: [NSAccessibilityElement] = []
 
@@ -129,15 +131,17 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     return v
   }
 
-  /// Gives a layer to each card near the viewport and takes it back from the rest, so the cost of
-  /// scrolling and the memory follow what is on screen, not the size of the board. Moves animate
-  /// with one easing curve, except for cards just shown or held by the pointer.
   override func layout() {
     super.layout()
     layoutCards()
   }
 
-  func layoutCards() {
+  /// Gives a layer to each card near the viewport and takes it back from the rest, so the cost of
+  /// scrolling and the memory follow what is on screen, not the size of the board. Moves animate
+  /// with one easing curve, except for cards just shown or held by the pointer. When the scale
+  /// changes, cards off screen keep their bitmaps until the zoom has settled for a moment, so a zoom
+  /// step draws only what it shows; `settle` brings them all to the current scale.
+  func layoutCards(settle: Bool = false) {
     // before it is in its scroll view the canvas counts as all visible; out of sight it keeps none
     guard enclosingScrollView != nil, let window, window.occlusionState.contains(.visible) else { return }
     // sharp at the current zoom, in steps of a quarter so a pinch does not redraw on every frame
@@ -150,6 +154,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1))
     CATransaction.setDisableActions(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     var live = Set<String>()
+    var lagging = false
     for (i, c) in board.cards.enumerated() {
       let r = doc(drawnRect(c))
       guard r.intersects(near) else { continue }
@@ -166,7 +171,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
         l.frame = r
       }
       let look = CardLayer.Look(card: c, back: c.id == turned, editing: c.id == editingID, dark: dark)
-      l.configure(look, selected: selection.contains(c.id), scale: scale, appearance: effectiveAppearance)
+      let s = isNew || settle || r.intersects(v) ? scale : l.contentsScale
+      if s != scale { lagging = true }
+      l.configure(look, selected: selection.contains(c.id), scale: s, appearance: effectiveAppearance)
     }
     for (id, l) in cardLayers where !live.contains(id) {
       l.recycle()
@@ -175,6 +182,12 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     }
     prerender(cardLayers.values.filter { $0.needsDisplay() })
     CATransaction.commit()
+    settling?.cancel()
+    if lagging {
+      let work = DispatchWorkItem { [weak self] in self?.layoutCards(settle: true) }
+      settling = work
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
   }
 
   /// Draws the bitmaps of several cards at once on all cores, as when a zoom step crosses to a new
