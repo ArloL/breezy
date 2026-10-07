@@ -1,14 +1,41 @@
-import * as R from "./rules.js";
-import { Model } from "./model.js";
-import { View } from "./view.js";
+import { App } from "./app.js";
+import { Gestures, HOLD_MS } from "./gestures.js";
 import { sampleBoard, stressBoard } from "./sample.js";
 
 const params = new URLSearchParams(location.search);
-const state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), marquee: null, found: null };
-const model = new Model(params.has("stress") ? stressBoard() : sampleBoard());
-const view = new View(document.getElementById("board"), model, state);
-R.gravity(model.board, view.heightOf);
-view.setCamera({ x: 16, y: document.getElementById("top").getBoundingClientRect().bottom + 16, zoom: 0.75 });
-if (params.get("demo") === "turn") state.turned = "c-offsite";
-if (params.get("demo") === "select") state.selection = new Set(["c-offsite"]);
-view.render();
+const app = new App(params.has("stress") ? stressBoard() : sampleBoard());
+app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
+app.view.render();
+
+const gestures = new Gestures(app.input);
+document.getElementById("board").addEventListener("pointerdown", (e) => {
+  if (e.target.closest('[contenteditable="plaintext-only"]')) return;
+  app.input.touchStart();
+  gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+  setTimeout(() => gestures.tick(performance.now()), HOLD_MS + 10);
+});
+addEventListener("pointermove", (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
+addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
+addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
+for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (e) => e.preventDefault());
+
+// States for screenshots, since the Simulator cannot be driven by touch from the command line.
+const demo = params.get("demo");
+const id = "c-offsite";
+if (demo === "select") app.select([id]);
+if (demo === "turn") {
+  app.select([id]);
+  app.turn(id);
+}
+if (demo === "edit") app.beginEdit(id);
+if (demo === "lift") {
+  app.state.lifted = new Set([id]);
+  app.select([id]);
+}
+if (demo === "find") {
+  app.ui.openFind();
+  document.querySelector("#find input").value = "plan";
+  app.ui.find("plan");
+}
+if (demo === "settings") app.ui.openSettings();
+if (demo === "add") app.ui.act("add");
