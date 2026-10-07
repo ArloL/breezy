@@ -78,3 +78,19 @@ test("onChange fires for changes, gesture steps, undo and redo", () => {
   m.redo();
   assert.equal(n, 5);
 });
+
+test("perform during a gesture records nothing of its own; the gesture's step covers it", () => {
+  const m = fresh();
+  m.begin();
+  m.update((b) => (b.cards[0].x = 24));
+  let n = 0;
+  m.onChange = () => n++;
+  m.perform("Colour", (b) => (b.cards[0].color = 2));
+  assert.equal(n, 1);
+  assert.equal(m.undos.length, 0);
+  m.end("Move");
+  assert.equal(m.undos.length, 1);
+  m.undo();
+  assert.equal(x(m), 0);
+  assert.equal(m.board.cards[0].color, 1);
+});

@@ -28,7 +28,9 @@ export class Model {
     return this.redos.length > 0 && !this.inGesture;
   }
 
+  /** One change, one step; during a gesture it joins the gesture's step instead. */
   perform(name, change) {
+    if (this.inGesture) return this.update(change);
     const before = structuredClone(this.board);
     change(this.board);
     if (same(before, this.board)) return;

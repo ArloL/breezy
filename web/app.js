@@ -229,8 +229,13 @@ export class App {
     if (c) this.select(R.pile(this.model.board, c.id, this.heightOf));
   }
 
+  /** Ends any edit first; when that recorded nothing, the undo is spent on the edit, not on an earlier step. */
   undo() {
+    const s = this.state;
+    const top = this.model.undos.at(-1);
+    const editing = s.editing || s.renaming;
     this.endEditing();
+    if (editing && this.model.undos.at(-1) === top) return;
     this.model.undo();
   }
 
@@ -245,7 +250,7 @@ export class App {
     const b = this.model.board;
     s.found = m.id;
     const c = R.card(b, m.id);
-    if (c) this.turn(m.side === "back" ? m.id : s.turned === m.id ? null : s.turned);
+    this.turn(m.side === "back" ? m.id : null);
     const l = !c && R.lane(b, m.id);
     if (c || l) this.view.centreOn(c ? this.view.rectOf(c) : R.laneRect(l));
     this.view.invalidate();
