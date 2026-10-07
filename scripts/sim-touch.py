@@ -5,11 +5,16 @@
 # ///
 """Touches the booted simulator's screen, in points, as one idb event stream so the delays hold.
 
-  scripts/sim-touch.py STEP...    down X Y | move X Y SECONDS | up | wait SECONDS
+  scripts/sim-touch.py STEP...    down X Y | move X Y SECONDS | up | wait SECONDS | edge EDGE
 
 Tap, then hold and drag (the web prototype's one-finger zoom):
 
   scripts/sim-touch.py down 120 352 wait .05 up wait .1 down 120 352 wait .5 move 120 432 .6 wait 1 up
+
+`edge top|left|bottom|right` tags the next touch, down to its lift, as starting at that screen edge,
+which is what makes iOS read it as a system gesture. Swipe home:
+
+  scripts/sim-touch.py edge bottom down 201 873 move 201 437 .3 up
 
 Needs `brew install facebook/fb/idb-companion`.
 """
@@ -26,27 +31,35 @@ from idb.grpc.management import ClientManager
 STEP_S = 0.02
 
 
-def touch(x, y, direction):
-    return HIDPress(action=HIDTouch(point=Point(x=x, y=y)), direction=direction)
+def touch(x, y, direction, edge):
+    # fb-idb only has edges from facebook/idb's edge-touches change on, so ordinary touches leave it out.
+    extra = {"edge": edge} if edge else {}
+    return HIDPress(action=HIDTouch(point=Point(x=x, y=y), **extra), direction=direction)
 
 
 def events(args):
     x = y = 0.0
+    edge = None
     while args:
         op = args.pop(0)
         if op == "down":
             x, y = float(args.pop(0)), float(args.pop(0))
-            yield touch(x, y, HIDDirection.DOWN)
+            yield touch(x, y, HIDDirection.DOWN, edge)
         elif op == "move":
             tx, ty, s = float(args.pop(0)), float(args.pop(0)), float(args.pop(0))
             n = max(1, round(s / STEP_S))
             for i in range(1, n + 1):
                 # Another down while the finger is down moves it.
-                yield touch(x + (tx - x) * i / n, y + (ty - y) * i / n, HIDDirection.DOWN)
+                yield touch(x + (tx - x) * i / n, y + (ty - y) * i / n, HIDDirection.DOWN, edge)
                 yield HIDDelay(duration=STEP_S)
             x, y = tx, ty
         elif op == "up":
-            yield touch(x, y, HIDDirection.UP)
+            yield touch(x, y, HIDDirection.UP, edge)
+            edge = None
+        elif op == "edge":
+            from idb.common.types import HIDEdge
+
+            edge = HIDEdge[args.pop(0).upper()]
         elif op == "wait":
             yield HIDDelay(duration=float(args.pop(0)))
         else:
