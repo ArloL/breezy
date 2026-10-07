@@ -1,12 +1,9 @@
 import * as R from "./rules.js";
 import { hitTest, dragAction } from "./policy.js";
-import { clampZoom } from "./view.js";
+import { MIN_ZOOM, MAX_ZOOM } from "./view.js";
 
 const EDGE = 48;
 const EDGE_SPEED = 12;
-// a flick coasts about 0.6 s and stops without a crawl
-const FRICTION = 0.92;
-const STOP = 0.05;
 // a one-finger zoom doubles or halves for every this many points the finger moves
 const ZOOM_DRAG = 150;
 
@@ -19,7 +16,6 @@ export class Input {
     this.drag = null;
     this.pinchBase = null;
     this.holdHit = null;
-    this.coast = 0;
     this.scroll = 0;
     this.stoppedCoast = false;
   }
@@ -29,11 +25,10 @@ export class Input {
     return hitTest(model.board, view.toWorld(p), { rectOf: (c) => view.rectOf(c), zoom: view.cam.zoom, turned: state.turned });
   }
 
-  /** A touch that stops a coast does only that: the tap that follows from it is ignored. */
+  /** A touch that stops the camera moving does only that: the tap that follows from it is ignored. */
   touchStart() {
-    this.stoppedCoast = this.coast !== 0;
+    this.stoppedCoast = this.app.view.camera.moving;
     this.stopCoast();
-    this.app.view.stopGlide();
     this.app.ui.closeMenu();
   }
 
@@ -205,21 +200,24 @@ export class Input {
 
   pinchStart(c) {
     this.stopCoast();
-    this.pinchBase = { cam: { ...this.app.view.cam }, c };
+    this.pinchBase = { cam: { ...this.app.view.cam }, c, last: c };
   }
 
-  /** Zooms and pans together: the world point first under the fingers stays under them. */
+  /** Zooms and pans together: the world point first under the fingers stays under them; past a limit, it stretches. */
   pinch(c, scale) {
     const { cam, c: c0 } = this.pinchBase;
-    const zoom = clampZoom(cam.zoom * scale);
+    const zoom = this.app.view.camera.stretchZoom(cam.zoom * scale);
     const wx = (c0.x - cam.x) / cam.zoom;
     const wy = (c0.y - cam.y) / cam.zoom;
+    this.pinchBase.last = c;
     this.app.view.setCamera({ zoom, x: c.x - wx * zoom, y: c.y - wy * zoom });
   }
 
+  /** A zoom past a limit springs back around the fingers; otherwise the pan coasts on. */
   pinchEnd(v) {
+    const c = this.pinchBase?.last;
     this.pinchBase = null;
-    this.coastFrom(v);
+    if (c) this.app.view.camera.settle(c, v);
   }
 
   pinchCancel() {
@@ -238,7 +236,9 @@ export class Input {
   }
 
   zoomDragEnd() {
+    const c = this.pinchBase?.c;
     this.pinchBase = null;
+    if (c) this.app.view.camera.settle(c);
   }
 
   zoomDragCancel() {
@@ -263,25 +263,10 @@ export class Input {
   }
 
   coastFrom(v) {
-    let vx = v.x;
-    let vy = v.y;
-    let t0 = performance.now();
-    const step = (t) => {
-      const dt = Math.min(t - t0, 32);
-      t0 = t;
-      if (Math.hypot(vx, vy) < STOP) return (this.coast = 0);
-      const c = this.app.view.cam;
-      this.app.view.setCamera({ ...c, x: c.x + vx * dt, y: c.y + vy * dt });
-      const f = Math.pow(FRICTION, dt / 16);
-      vx *= f;
-      vy *= f;
-      this.coast = requestAnimationFrame(step);
-    };
-    this.coast = requestAnimationFrame(step);
+    this.app.view.camera.coast(v);
   }
 
   stopCoast() {
-    cancelAnimationFrame(this.coast);
-    this.coast = 0;
+    this.app.view.camera.stop();
   }
 }
