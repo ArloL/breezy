@@ -1,7 +1,7 @@
 import AppKit
 
-/// The menu bar, built in code. NSDocumentController fills the Open Recent menu, which it finds
-/// by its Clear Menu item.
+/// The menu bar, built in code. There is no Open Recent menu here: AppKit no longer recognises one
+/// built in code and inserts its own after Open…, so a menu of ours would show as a second one.
 enum MainMenu {
   static func make() -> NSMenu {
     let main = NSMenu()
@@ -17,7 +17,6 @@ enum MainMenu {
     main.addItem(submenu("File", [
       item("New", #selector(NSDocumentController.newDocument(_:)), "n"),
       item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"),
-      submenu("Open Recent", [item("Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:)))]),
       .separator(),
       item("Close", #selector(NSWindow.performClose(_:)), "w"),
       item("Save…", #selector(NSDocument.save(_:)), "s"),
