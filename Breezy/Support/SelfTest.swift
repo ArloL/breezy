@@ -26,6 +26,7 @@ enum SelfTest {
     case "turn-and-tab": turnAndTab(d)
     case "zoom-and-state": zoomAndState(d)
     case "find-back": findBack(d)
+    case "card-heights": cardHeights(d)
     default: finish(name, "unknown check")
     }
   }
@@ -34,6 +35,19 @@ enum SelfTest {
     print(failure.map { "FAIL \(name): \($0)" } ?? "PASS \(name)")
     fflush(stdout)
     exit(failure == nil ? 0 : 1)
+  }
+
+  /// Cards are as tall as their lines: a title, three lines, a title that wraps, a long back.
+  private static func cardHeights(_ d: Driver) {
+    let name = "card-heights"
+    let line = Metrics.grid
+    let want = ["one": 2 * line, "three": 4 * line, "wraps": 3 * line]
+    for (id, h) in want where d.canvas.height(id) != h { finish(name, "\(id) is \(d.canvas.height(id)) high, want \(h)") }
+    guard let notes = d.board.card("notes") else { finish(name, "fixture missing") }
+    let back = Double(TextMetrics.backHeight(notes))
+    // a heading line and 14 lines of notes, with padding
+    if back != 17 * line { finish(name, "the back is \(back) high, want \(17 * line)") }
+    finish(name, nil)
   }
 
   /// A card dragged into a lane floats up to the top of the lane.

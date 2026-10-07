@@ -1,7 +1,7 @@
 #!/bin/zsh
-# Runs the in-app self-tests (see Breezy/Support/SelfTest.swift) on copies of scripts/selftest/*.breezy.
-# Needs a Debug build. Exits non-zero if any check fails.
-app=build/Build/Products/Debug/Breezy.app/Contents/MacOS/Breezy
+# Runs the in-app self-tests (see Breezy/Support/SelfTest.swift) on copies of scripts/selftest/*.breezy:
+# scripts/selftest.sh [CONFIGURATION], Debug by default. Exits non-zero if any check fails.
+app=build/Build/Products/${1:-Debug}/Breezy.app/Contents/MacOS/Breezy
 failed=0
 for fixture in ${0:a:h}/selftest/*.breezy; do
   dir=$(mktemp -d)

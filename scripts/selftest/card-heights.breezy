@@ -1,0 +1,6 @@
+{"format": 1, "lanes": [],
+ "cards": [{"id": "one", "x": 0, "y": 0, "w": 240, "text": "One line", "color": 1},
+           {"id": "three", "x": 288, "y": 0, "w": 240, "text": "Title\nsecond\nthird", "color": 2},
+           {"id": "wraps", "x": 576, "y": 0, "w": 240, "text": "A title long enough to wrap onto a second line", "color": 3},
+           {"id": "notes", "x": 864, "y": 0, "w": 240, "text": "Notes", "color": 4,
+            "notes": "Line\nLine\nLine\nLine\nLine\nLine\nLine\nLine\nLine\nLine\nLine\nLine\nLine\nLine"}]}
