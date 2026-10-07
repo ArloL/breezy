@@ -67,28 +67,42 @@ export class App {
     this.ui.update();
   }
 
-  newCard(w) {
+  /** A card at world point `w`: centred on it, or with its top-left there, as a double-click on the Mac puts it. */
+  newCard(w, anchor = "centre") {
     this.endEditing();
     this.turn(null);
     this.model.begin();
     let id;
     this.model.update((b) => {
-      id = R.addCard(b, w.x - R.CARD_W / 2, w.y - R.GRID);
+      id = anchor === "corner" ? R.addCard(b, w.x, w.y) : R.addCard(b, w.x - R.CARD_W / 2, w.y - R.GRID);
       R.gravity(b, this.heightOf);
     });
     this.select([id]);
     this.beginEdit(id, "New Card");
   }
 
-  newLane() {
+  /** A lane centred on world point `p`, by default the middle of the view. */
+  newLane(p = this.view.toWorld(this.view.centre())) {
     this.endEditing();
-    const p = this.view.toWorld(this.view.centre());
     let id;
     this.model.perform("New Lane", (b) => {
       id = R.addLane(b, p.x - R.LANE_W / 2, p.y - R.LANE_H / 2);
       R.gravity(b, this.heightOf);
     });
     this.select([id]);
+  }
+
+  selectAll() {
+    this.select(this.model.board.cards.map((c) => c.id));
+  }
+
+  /** Zooms about the middle of the view, animated, as the Mac's zoom commands do. */
+  zoomTo(z) {
+    this.view.zoomAround(this.view.centre(), z, true);
+  }
+
+  zoomBy(f) {
+    this.zoomTo(this.view.cam.zoom * f);
   }
 
   /** Edits the side of card `id` facing up; focus stays synchronous so iOS shows the keyboard. */
