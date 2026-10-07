@@ -151,10 +151,62 @@ test("a tap, a quick drag, then a tap nearby within 300 ms are two taps, not a d
   const { g, names } = setup();
   g.down(1, 10, 10, 0);
   g.up(1, 10, 10, 50);
-  g.down(2, 12, 10, 100);
-  g.move(2, 60, 10, 130);
-  g.up(2, 60, 10, 160);
+  // beyond double-tap reach of the first tap, so a drag rather than a one-finger zoom
+  g.down(2, 60, 10, 100);
+  g.move(2, 110, 10, 130);
+  g.up(2, 110, 10, 160);
   g.down(3, 14, 10, 200);
   g.up(3, 14, 10, 250);
   assert.deepEqual(names(), ["tap", "dragStart", "dragEnd", "tap"]);
+});
+
+test("a tap then a second touch that moves zooms, by how far it moved down, instead of dragging", () => {
+  const { g, log } = setup();
+  g.down(1, 10, 10, 0);
+  g.up(1, 10, 10, 50);
+  g.down(2, 12, 10, 200);
+  g.move(2, 12, 20, 220);
+  g.move(2, 12, -30, 240);
+  g.up(2, 12, -30, 260);
+  assert.deepEqual(log, [["tap", P(10, 10)], ["zoomDragStart", P(12, 10)], ["zoomDrag", 10], ["zoomDrag", -40], ["zoomDragEnd"]]);
+});
+
+test("a second touch held still is not a hold, and zooms when it then moves", () => {
+  const { g, names } = setup();
+  g.down(1, 10, 10, 0);
+  g.up(1, 10, 10, 50);
+  g.down(2, 10, 10, 200);
+  g.tick(600);
+  g.move(2, 10, 30, 650);
+  g.up(2, 10, 30, 700);
+  assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragEnd"]);
+});
+
+test("a second touch held still and lifted is neither a hold nor a double tap", () => {
+  const { g, names } = setup();
+  g.down(1, 10, 10, 0);
+  g.up(1, 10, 10, 50);
+  g.down(2, 10, 10, 200);
+  g.up(2, 10, 10, 200 + HOLD_MS);
+  assert.deepEqual(names(), ["tap"]);
+});
+
+test("a second finger ends a one-finger zoom and starts a pinch", () => {
+  const { g, names } = setup();
+  g.down(1, 10, 10, 0);
+  g.up(1, 10, 10, 50);
+  g.down(2, 10, 10, 200);
+  g.move(2, 10, 30, 220);
+  g.down(3, 100, 100, 240);
+  assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragEnd", "pinchStart"]);
+});
+
+test("a cancelled one-finger zoom ends", () => {
+  const { g, names } = setup();
+  g.down(1, 10, 10, 0);
+  g.up(1, 10, 10, 50);
+  g.down(2, 10, 10, 200);
+  g.move(2, 10, 30, 220);
+  g.cancel(2);
+  assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragEnd"]);
 });

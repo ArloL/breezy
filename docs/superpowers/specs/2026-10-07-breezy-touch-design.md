@@ -21,6 +21,7 @@ A switch in the settings menu (⋯) chooses who owns a one-finger drag; the choi
 
 In both modes:
 - Two fingers pan and pinch-zoom together, anywhere, 25 % to 200 %. Tapping the zoom readout returns to 100 %.
+- Tap, then touch again and drag to zoom with one finger, as in Maps: down zooms in, up zooms out, about twice per 150 pt, around where the finger touched.
 - Tap a card selects it; tap empty space clears the selection. Selection shows at once; a double tap does not wait for it.
 - Double-tap empty space creates a card; double-tap a card edits it; double-tap a lane header renames it.
 - The lane's resize corner drags at once in both modes; its touch area is 44 pt.
