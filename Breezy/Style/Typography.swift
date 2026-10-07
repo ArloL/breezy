@@ -21,9 +21,9 @@ enum Typo {
     return [.font: font, .foregroundColor: color, .paragraphStyle: p, .baselineOffset: offset]
   }
 
-  static var bodyAttrs: [NSAttributedString.Key: Any] { attrs(body, Theme.ink2) }
-  static var notesAttrs: [NSAttributedString.Key: Any] { attrs(body, Theme.ink) }
-  static var titleAttrs: [NSAttributedString.Key: Any] { attrs(title, Theme.ink) }
+  static let bodyAttrs = attrs(body, Theme.ink2)
+  static let notesAttrs = attrs(body, Theme.ink)
+  static let titleAttrs = attrs(title, Theme.ink)
 
   /// First line is the title, the rest is the body.
   static func styleFront(_ s: NSMutableAttributedString) {
@@ -31,6 +31,25 @@ enum Typo {
     s.setAttributes(bodyAttrs, range: NSRange(location: 0, length: ns.length))
     let end = ns.range(of: "\n").location
     s.setAttributes(titleAttrs, range: NSRange(location: 0, length: end == NSNotFound ? ns.length : end))
+  }
+
+  /// Whether `s` is styled as `styleFront` would style it; typing usually keeps it so.
+  static func isStyledFront(_ s: NSAttributedString) -> Bool {
+    let ns = s.string as NSString
+    let end = ns.range(of: "\n").location
+    let t = end == NSNotFound ? ns.length : end
+    return uses(title, s, NSRange(location: 0, length: t)) && uses(body, s, NSRange(location: t, length: ns.length - t))
+  }
+
+  private static func uses(_ font: NSFont, _ s: NSAttributedString, _ range: NSRange) -> Bool {
+    var ok = true
+    s.enumerateAttribute(.font, in: range) { v, _, stop in
+      if v as? NSFont != font {
+        ok = false
+        stop.pointee = true
+      }
+    }
+    return ok
   }
 
   static func front(_ text: String) -> NSAttributedString {
@@ -88,8 +107,22 @@ enum TextMetrics {
     return (storage, manager, container)
   }
 
+  /// One text system for all measuring, rather than a new one per card.
+  private static let measurer: (NSTextStorage, NSLayoutManager, NSTextContainer) = {
+    let container = NSTextContainer()
+    container.lineFragmentPadding = 0
+    let manager = NSLayoutManager()
+    manager.addTextContainer(container)
+    let storage = NSTextStorage()
+    storage.addLayoutManager(manager)
+    return (storage, manager, container)
+  }()
+
   private static func lines(_ s: NSAttributedString, width: CGFloat) -> CGFloat {
-    let (_, manager, container) = layout(s, width: width)
+    let (storage, manager, container) = measurer
+    container.size = NSSize(width: width, height: .greatestFiniteMagnitude)
+    storage.setAttributedString(s)
+    manager.ensureLayout(for: container)
     return max(1, (manager.usedRect(for: container).height / Typo.line).rounded(.up))
   }
 

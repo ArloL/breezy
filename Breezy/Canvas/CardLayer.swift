@@ -13,10 +13,12 @@ final class CardLayer: CALayer {
     var dark: Bool
 
     init(card: Card, back: Bool, editing: Bool, dark: Bool) {
-      // where the card sits does not change how it looks
+      // where the card sits does not change how it looks, nor the text its editor shows
       var c = card
       c.x = 0
       c.y = 0
+      if editing && back { c.notes = nil }
+      if editing && !back { c.text = "" }
       self.card = c
       self.back = back
       self.editing = editing

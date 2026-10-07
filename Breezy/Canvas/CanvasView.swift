@@ -47,7 +47,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     marquee.isHidden = true
     addSubview(marquee)
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
-    model.onChange = { [weak self] _ in self?.boardChanged() }
+    model.onChange = { [weak self] before in self?.boardChanged(from: before) }
     sync()
   }
 
@@ -89,15 +89,17 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   // MARK: rendering
 
-  private func boardChanged() {
+  private func boardChanged(from before: Board) {
     if let t = turned, board.card(t) == nil { turned = nil }
     let live = Set(board.cards.map(\.id) + board.lanes.map(\.id))
     if !selection.isSubset(of: live) { selection = selection.intersection(live) }
-    sync()
+    sync(from: before)
     onBoardChange?()
   }
 
-  func sync() {
+  /// Brings lanes, card heights and card layers in line with the board; heights are measured
+  /// again only for cards whose text or width differ from `before`.
+  func sync(from before: Board? = nil) {
     var live = Set<String>()
     for l in board.lanes {
       live.insert(l.id)
@@ -109,7 +111,12 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       v.removeFromSuperview()
       laneViews[id] = nil
     }
-    heights = Dictionary(uniqueKeysWithValues: board.cards.map { ($0.id, Double(TextMetrics.frontHeight($0.text, width: CGFloat($0.w)))) })
+    func measure(_ c: Card) -> Double { Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w))) }
+    if let prev = before?.cards, prev.count == board.cards.count, zip(prev, board.cards).allSatisfy({ $0.id == $1.id }) {
+      for (p, c) in zip(prev, board.cards) where p.text != c.text || p.w != c.w { heights[c.id] = measure(c) }
+    } else {
+      heights = Dictionary(uniqueKeysWithValues: board.cards.map { ($0.id, measure($0)) })
+    }
     if let e = editing, let c = board.card(e.id) { e.view.frame = editorFrame(c, back: e.back) }
     layoutCards()
   }

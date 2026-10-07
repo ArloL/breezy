@@ -36,7 +36,9 @@ extension CanvasView {
     guard let c = board.card(id) else { return }
     model.begin()
     let back = turned == id
-    let tv = EditorTextView(frame: editorFrame(c, back: back))
+    // TextKit 1: lighter per keystroke than TextKit 2, and it breaks lines as TextMetrics measures
+    let tv = EditorTextView(usingTextLayoutManager: false)
+    tv.frame = editorFrame(c, back: back)
     tv.isRichText = false
     tv.drawsBackground = false
     tv.textContainerInset = .zero
@@ -50,7 +52,7 @@ extension CanvasView {
       tv.typingAttributes = Typo.notesAttrs
     } else {
       Typo.styleFront(tv.textStorage!)
-      tv.typingAttributes = Typo.bodyAttrs
+      tv.typingAttributes = c.text.contains("\n") ? Typo.bodyAttrs : Typo.titleAttrs
     }
     tv.delegate = self
     tv.onFinish = { [weak self] in
@@ -75,14 +77,19 @@ extension CanvasView {
     if e.back {
       model.update { $0.setNotes(e.id, text) }
     } else {
-      if !e.view.hasMarkedText() {
+      // restyling invalidates the editor's layout, so only after a line break moved
+      if !e.view.hasMarkedText(), !Typo.isStyledFront(e.view.textStorage!) {
         let sel = e.view.selectedRanges
         Typo.styleFront(e.view.textStorage!)
         e.view.selectedRanges = sel
-        e.view.typingAttributes = Typo.bodyAttrs
+        let titleEnd = (text as NSString).range(of: "\n").location
+        e.view.typingAttributes = e.view.selectedRange().location <= titleEnd ? Typo.titleAttrs : Typo.bodyAttrs
       }
-      model.update { $0.setText(e.id, text) }
-      model.update { $0.gravity(height) }
+      if let c = board.card(e.id) { heights[e.id] = Double(TextMetrics.frontHeight(text, width: CGFloat(c.w))) }
+      model.update {
+        $0.setText(e.id, text)
+        $0.gravity(height)
+      }
     }
     if let c = board.card(e.id) { e.view.frame = editorFrame(c, back: e.back) }
   }
