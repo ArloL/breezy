@@ -9,6 +9,7 @@
   --lane: rgb(255 255 255 / 0.45);
   --bar: rgb(241 239 234 / 0.85);
   --glass: rgb(255 255 255 / 0.72);
+  --glass-pressed: rgb(255 255 255 / 0.92);
   --sheet: rgb(252 251 248 / 0.96);
   --glass-edge: rgb(43 42 39 / 0.08);
   --glass-shine: rgb(255 255 255 / 0.9);
@@ -35,6 +36,7 @@
     --lane: rgb(255 255 255 / 0.04);
     --bar: rgb(31 30 28 / 0.85);
     --glass: rgb(52 50 47 / 0.72);
+    --glass-pressed: rgb(84 81 76 / 0.85);
     --sheet: rgb(46 44 41 / 0.97);
     --glass-edge: rgb(255 255 255 / 0.08);
     --glass-shine: rgb(255 255 255 / 0.08);
@@ -145,11 +147,14 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
   border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 var(--glass-shine), var(--lift);
 }
 .pill button, #find button, .selection button, .menu button {
-  color: var(--ink); border-radius: 999px; transition: background-color 0.15s, scale 0.15s var(--ease);
+  color: var(--ink); border-radius: 999px; transition: background-color 0.15s, opacity 0.15s;
 }
 .pill button:disabled { color: var(--ink3); }
-.pill button:active:not(:disabled), #find button:active, .selection button:active, .menu button:active { background-color: var(--press); }
-.pill button:active:not(:disabled), .selection > button:active, .colours > button:active { scale: 0.92; }
+/* As Liquid Glass: the capsule grows and brightens while pressed, and the pressed icon dims. */
+.pill, .selection, #find, .plus { transition: background-color 0.2s var(--ease); }
+.pill.pressed, .selection.pressed, #find.pressed { background: var(--glass-pressed); }
+.pill button.hot, .selection button.hot, #find button.hot, .plus.hot > svg { opacity: 0.45; }
+.menu button.hot { background-color: var(--press); }
 
 #top {
   position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center;
@@ -181,16 +186,14 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
   -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
   border: 1px solid rgb(255 255 255 / 0.14);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent), 0 1px 3px rgb(0 0 0 / 0.16);
-  transition: scale 0.15s var(--ease);
+  transition: background-color 0.2s var(--ease);
 }
+.plus.pressed { background: color-mix(in srgb, var(--accent) 80%, white); }
 .plus svg { width: 24px; height: 24px; stroke-width: 2.2; }
-.plus:active { scale: 0.92; }
 .menu {
   position: absolute; bottom: 72px; left: 50%; translate: -50% 0; display: flex; flex-direction: column;
   min-width: 180px; padding: 6px; border-radius: 22px; transform-origin: 50% 100%;
-  transition: opacity 0.18s var(--ease), scale 0.18s var(--ease);
 }
-@starting-style { .menu { opacity: 0; scale: 0.94; } }
 /* Opaque: a menu inside a blurred bar cannot blur the board. */
 .menu { background: var(--sheet); }
 .menu button { display: flex; align-items: center; text-align: left; padding: 0 14px; border-radius: 16px; height: 48px; }
@@ -219,5 +222,5 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 .measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .lane, .sheet, button, .menu { transition: none !important; }
+  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus { transition: none !important; }
 }
