@@ -146,3 +146,15 @@ test("a cancelled drag ends where it was", () => {
   g.cancel(1);
   assert.deepEqual(log.at(-1), ["dragEnd", P(20, 0), P(0, 0)]);
 });
+
+test("a tap, a quick drag, then a tap nearby within 300 ms are two taps, not a double tap", () => {
+  const { g, names } = setup();
+  g.down(1, 10, 10, 0);
+  g.up(1, 10, 10, 50);
+  g.down(2, 12, 10, 100);
+  g.move(2, 60, 10, 130);
+  g.up(2, 60, 10, 160);
+  g.down(3, 14, 10, 200);
+  g.up(3, 14, 10, 250);
+  assert.deepEqual(names(), ["tap", "dragStart", "dragEnd", "tap"]);
+});
