@@ -37,18 +37,25 @@ def session():
 def touch(steps):
     """W3C pointer actions: durations are milliseconds, coordinates points from the top left."""
     actions = []
+    x = y = 0.0
+    down = False
     while steps:
         op = steps.pop(0)
         if op == "down":
             x, y = float(steps.pop(0)), float(steps.pop(0))
             actions += [{"type": "pointerMove", "duration": 0, "x": x, "y": y}, {"type": "pointerDown", "button": 0}]
+            down = True
         elif op == "move":
             x, y, ms = float(steps.pop(0)), float(steps.pop(0)), int(steps.pop(0))
             actions.append({"type": "pointerMove", "duration": ms, "x": x, "y": y})
         elif op == "wait":
-            actions.append({"type": "pause", "duration": int(steps.pop(0))})
+            ms = int(steps.pop(0))
+            # WDA turns a pause before a move into part of that move, so a finger that should hold still drifts;
+            # a move to where it already is keeps it there.
+            actions.append({"type": "pointerMove", "duration": ms, "x": x, "y": y} if down else {"type": "pause", "duration": ms})
         elif op == "up":
             actions.append({"type": "pointerUp", "button": 0})
+            down = False
         else:
             sys.exit(f"unknown step {op!r}")
     call("POST", f"/session/{session()}/actions",
