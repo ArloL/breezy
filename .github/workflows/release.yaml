@@ -1,0 +1,49 @@
+name: Release
+
+# Publishes the touch prototype in web/ to GitHub Pages. The github-pages environment takes
+# deployments from main only.
+on:
+  push:
+    branches:
+    - main
+  workflow_dispatch:
+permissions: {}
+
+# one deployment at a time, and never cut short
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Test
+      run: node --test web/test/*.test.js
+    - name: Leave the tests out of the site
+      run: |
+        mkdir _site
+        cp -R web/. _site/
+        rm -r _site/test _site/package.json
+    - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+  deploy:
+    needs: build
+    runs-on: ubuntu-slim
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - id: deployment
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
