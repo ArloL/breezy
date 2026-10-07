@@ -208,7 +208,23 @@ final class ReadoutButton: NSButton {
 }
 
 private final class ReadoutLabel: NSView {
-  var text = "100 %" { didSet { if text != oldValue { needsDisplay = true } } }
+  /// Redrawn at most 30 times a second during a zoom, and once more when it stops; faster digits
+  /// cannot be read anyway, and each redraw lays out the text.
+  var text = "100 %" {
+    didSet {
+      guard text != oldValue else { return }
+      let wait = 1.0 / 30 - (CACurrentMediaTime() - drawn)
+      if wait <= 0 { return needsDisplay = true }
+      guard !pending else { return }
+      pending = true
+      DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+        self?.pending = false
+        self?.needsDisplay = true
+      }
+    }
+  }
+  private var drawn = 0.0
+  private var pending = false
   var font: NSFont?
   private var observers: [NSObjectProtocol] = []
 
@@ -227,6 +243,7 @@ private final class ReadoutLabel: NSView {
   }
 
   override func draw(_ dirtyRect: NSRect) {
+    drawn = CACurrentMediaTime()
     let color = window?.isKeyWindow == true ? Self.active : Self.inactive
     let s = NSAttributedString(string: text, attributes: [.font: font ?? .systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: color])
     let size = s.size()
