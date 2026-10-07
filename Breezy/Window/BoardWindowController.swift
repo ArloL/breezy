@@ -53,6 +53,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(occlusionChanged), name: NSWindow.didChangeOcclusionStateNotification, object: window)
     scrollView.findBarPosition = .aboveContent
     finder.client = finderClient
     finder.findBarContainer = scrollView
@@ -74,6 +76,18 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.contentView.scroll(to: origin)
     scrollView.reflectScrolledClipView(scrollView.contentView)
     viewMoved()
+  }
+
+  /// Out of sight, the board keeps no card bitmaps: the app is meant to stay open in the
+  /// background. They are drawn again when the window shows.
+  @objc func occlusionChanged() {
+    guard let window else { return }
+    if window.occlusionState.contains(.visible) {
+      canvas.needsLayout = true
+    } else {
+      canvas.releaseCards()
+      malloc_zone_pressure_relief(nil, 0)
+    }
   }
 
   @objc func viewMoved() {

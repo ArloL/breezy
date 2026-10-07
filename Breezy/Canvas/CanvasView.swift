@@ -1,5 +1,6 @@
 import AppKit
 import BreezyKit
+import IOSurface
 
 /// The scroll view's document view: draws the board held by `model` and turns pointer and key
 /// input into changes on it. World coordinates, as stored in the board, are offset by `origin`.
@@ -137,10 +138,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   }
 
   func layoutCards() {
-    // before it is in its scroll view the canvas counts as all visible
-    guard enclosingScrollView != nil, window != nil else { return }
+    // before it is in its scroll view the canvas counts as all visible; out of sight it keeps none
+    guard enclosingScrollView != nil, let window, window.occlusionState.contains(.visible) else { return }
     // sharp at the current zoom, in steps of a quarter so a pinch does not redraw on every frame
-    let scale = (window?.backingScaleFactor ?? 2) * max(0.25, (zoom * 4).rounded(.up) / 4)
+    let scale = window.backingScaleFactor * max(0.25, (zoom * 4).rounded(.up) / 4)
     let v = visibleRect
     let near = v.insetBy(dx: -v.width / 4, dy: -v.height / 4)
     let dark = effectiveAppearance.isDark
@@ -173,6 +174,17 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       if pool.count < 64 { pool.append(l) }
     }
     CATransaction.commit()
+  }
+
+  /// Gives back every card layer and its bitmap. The window server may hold on to bitmaps it last
+  /// showed; marked volatile, they stop counting against the app and the system can take them.
+  func releaseCards() {
+    for l in cardLayers.values {
+      (l.contents as! IOSurface?)?.setPurgeable(.purgeableVolatile, oldState: nil)
+      l.recycle()
+    }
+    cardLayers = [:]
+    pool = []
   }
 
   private func takeLayer(_ id: String) -> CardLayer {
