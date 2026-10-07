@@ -123,11 +123,6 @@ export function cardsInLane(b, id, heightOf) {
 
 export const cardsInRect = (b, r, heightOf) => b.cards.filter((c) => intersects(r, cardRect(c, heightOf(c.id))));
 
-export function laneOf(b, id, heightOf) {
-  const c = card(b, id);
-  return c && b.lanes.find((l) => containsCentre(l, cardRect(c, heightOf(id))));
-}
-
 /** Where everything but cards `excluding` stands, for a drag's room. */
 export function layout(b, excluding) {
   return {
@@ -176,21 +171,6 @@ export function settle(b, heightOf, { held = new Set(), base = null, land = fals
       l.h = Math.max(l.h, lineBelow(r) - l.y);
     }
   }
-}
-
-/** Card `id` and the cards below it in its lane's column. */
-export function pile(b, id, heightOf) {
-  const c = card(b, id);
-  if (!c) return [];
-  const cr = cardRect(c, heightOf(id));
-  const l = b.lanes.find((x) => containsCentre(x, cr));
-  if (!l) return [id];
-  return b.cards
-    .filter((x) => {
-      const xr = cardRect(x, heightOf(x.id));
-      return x.id === id || (x.y > c.y && sharesColumn(cr, xr) && containsCentre(l, xr));
-    })
-    .map((x) => x.id);
 }
 
 /** Lane titles, card fronts and card backs containing `query`, in reading order. */

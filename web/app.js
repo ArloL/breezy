@@ -214,12 +214,6 @@ export class App {
     this.select([]);
   }
 
-  /** Pile: the selected lane card and those below it, so the next drag moves them as a block. */
-  takePile() {
-    const [c] = this.selectedCards();
-    if (c) this.select(R.pile(this.model.board, c.id, this.heightOf));
-  }
-
   /** Ends any edit first; when that recorded nothing, the undo is spent on the edit, not on an earlier step. */
   undo() {
     const s = this.state;

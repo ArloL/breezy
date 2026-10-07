@@ -8,8 +8,12 @@
   --accent: #e8620a;
   --lane: rgb(255 255 255 / 0.45);
   --bar: rgb(241 239 234 / 0.85);
-  --fill: rgb(43 42 39 / 0.07);
-  --fill-pressed: rgb(43 42 39 / 0.16);
+  --glass: rgb(255 255 255 / 0.72);
+  --sheet: rgb(252 251 248 / 0.96);
+  --glass-edge: rgb(43 42 39 / 0.08);
+  --glass-shine: rgb(255 255 255 / 0.9);
+  --lift: 0 8px 24px rgb(43 42 39 / 0.12), 0 1px 3px rgb(43 42 39 / 0.08);
+  --press: rgb(43 42 39 / 0.08);
   --c1: #f8eca2;
   --c2: #f5d2ca;
   --c3: #cfe0ee;
@@ -30,8 +34,12 @@
     --accent: #ff8a3d;
     --lane: rgb(255 255 255 / 0.04);
     --bar: rgb(31 30 28 / 0.85);
-    --fill: rgb(233 230 223 / 0.1);
-    --fill-pressed: rgb(233 230 223 / 0.2);
+    --glass: rgb(52 50 47 / 0.72);
+    --sheet: rgb(46 44 41 / 0.97);
+    --glass-edge: rgb(255 255 255 / 0.08);
+    --glass-shine: rgb(255 255 255 / 0.08);
+    --lift: 0 8px 24px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.3);
+    --press: rgb(233 230 223 / 0.12);
     --c1: #4f4628;
     --c2: #553a35;
     --c3: #2f4152;
@@ -132,54 +140,76 @@ button:disabled { color: var(--ink3); }
 button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
 button .strong, button.strong { font-weight: 600; color: var(--accent); }
 
-#top, #find, #keys, .selection, .menu {
-  background: var(--bar); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+#keys { background: var(--bar); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+.pill, #find, .selection, .menu {
+  background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 var(--glass-shine), var(--lift);
 }
+.pill button, #find button, .selection button, .menu button {
+  color: var(--ink); border-radius: 999px; transition: background-color 0.15s, scale 0.15s var(--ease);
+}
+.pill button:disabled { color: var(--ink3); }
+.pill button:active:not(:disabled), #find button:active, .selection button:active, .menu button:active { background-color: var(--press); }
+.pill button:active:not(:disabled), .selection > button:active, .colours > button:active { scale: 0.92; }
+
 #top {
-  position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 2px;
-  padding: env(safe-area-inset-top) 8px 0; border-bottom: 1px solid var(--hairline);
+  position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center;
+  padding: calc(env(safe-area-inset-top) + 8px) 12px 0; pointer-events: none;
 }
-#top button {
-  border: 4px solid transparent; border-radius: 12px; padding: 0 6px;
-  background: var(--fill) padding-box; color: var(--ink);
-}
-#top button:active { background-color: var(--fill-pressed); }
-#top button:disabled { color: var(--ink3); }
-#top .zoom { margin: 0 auto; font-variant-numeric: tabular-nums; font-size: 15px; }
+#top > * { pointer-events: auto; }
+.pill { display: flex; padding: 2px; border-radius: 999px; }
+#top .zoom { padding: 0 14px; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
 #find {
-  position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 45px);
-  display: flex; align-items: center; gap: 2px; padding: 4px 8px; border-bottom: 1px solid var(--hairline);
+  position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 66px);
+  display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px;
 }
 #find input {
-  flex: 1; min-width: 0; height: 36px; padding: 0 10px; font: inherit; color: var(--ink);
-  background: var(--paper); border: 1px solid var(--hairline); border-radius: 10px;
+  flex: 1; min-width: 0; height: 40px; padding: 0 16px; font: inherit; color: var(--ink);
+  background: var(--press); border: 0; border-radius: 999px; outline: none;
   -webkit-user-select: text; user-select: text;
 }
 #find .count { color: var(--ink3); font-size: 15px; font-variant-numeric: tabular-nums; padding: 0 4px; }
 
 #bottom {
   position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); pointer-events: none;
+  padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); pointer-events: none;
 }
 #bottom > * { pointer-events: auto; }
 .add { position: relative; }
 .plus {
-  width: 56px; height: 56px; border-radius: 28px; font-size: 30px; font-weight: 300; line-height: 56px; padding: 0;
-  color: var(--paper); background: var(--ink); box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
+  width: 56px; height: 56px; border-radius: 28px; padding: 0;
+  color: #fff; background: color-mix(in srgb, var(--accent) 88%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent), 0 1px 3px rgb(0 0 0 / 0.16);
+  transition: scale 0.15s var(--ease);
 }
+.plus svg { width: 24px; height: 24px; stroke-width: 2.2; }
+.plus:active { scale: 0.92; }
 .menu {
-  position: absolute; bottom: 68px; left: 50%; translate: -50% 0; display: flex; flex-direction: column;
-  min-width: 160px; border: 1px solid var(--hairline); border-radius: 14px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.16); overflow: hidden;
+  position: absolute; bottom: 72px; left: 50%; translate: -50% 0; display: flex; flex-direction: column;
+  min-width: 180px; padding: 6px; border-radius: 22px; transform-origin: 50% 100%;
+  transition: opacity 0.18s var(--ease), scale 0.18s var(--ease);
 }
-.menu button { color: var(--ink); text-align: left; padding: 0 16px; border-radius: 0; height: 48px; }
-.menu.more { position: fixed; top: calc(env(safe-area-inset-top) + 50px); bottom: auto; left: auto; right: 8px; translate: none; }
+@starting-style { .menu { opacity: 0; scale: 0.94; } }
+/* Opaque: a menu inside a blurred bar cannot blur the board. */
+.menu { background: var(--sheet); }
+.menu button { display: flex; align-items: center; text-align: left; padding: 0 14px; border-radius: 16px; height: 48px; }
+.menu button.on::after {
+  content: ""; margin-left: auto; width: 14px; height: 8px; translate: 0 -2px; rotate: -45deg;
+  border: solid var(--accent); border-width: 0 0 2px 2px;
+}
+.menu.more { position: fixed; top: calc(env(safe-area-inset-top) + 66px); bottom: auto; left: auto; right: 12px; translate: none; transform-origin: 100% 0; }
 .menu.more button { font-variant-numeric: tabular-nums; }
-.selection { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--hairline); border-radius: 20px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.12); }
+.selection { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; }
 .selection > button, .colours > button { min-width: 56px; height: 56px; }
 .selection > button svg { width: 26px; height: 26px; }
 .colours { position: relative; }
-.colours .menu { bottom: 70px; }
-.colours i { display: inline-block; width: 26px; height: 26px; border-radius: 13px; border: 1px solid var(--hairline); vertical-align: middle; }
+.colours .menu { bottom: 74px; left: -5px; translate: none; transform-origin: 0 100%; }
+.colours i {
+  display: inline-block; width: 28px; height: 28px; border-radius: 14px; vertical-align: middle;
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 1px 2px rgb(0 0 0 / 0.12);
+}
 .colours .menu i { margin-right: 12px; }
 
 #keys {
@@ -190,5 +220,5 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 .measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .lane, .sheet, .world.glide, #board.glide { transition: none !important; }
+  .card, .lane, .sheet, .world.glide, #board.glide, button, .menu { transition: none !important; }
 }

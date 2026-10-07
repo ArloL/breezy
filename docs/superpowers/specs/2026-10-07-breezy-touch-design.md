@@ -32,7 +32,7 @@ Also:
 ### Bars
 Top, below the safe area: undo, redo, zoom readout, search, and a … menu whose Version entry shows the release the page was published from.
 
-Bottom, above the home indicator: a **+** button offering Card or Lane, placed at the screen centre. While cards are selected, it gives way to the selection bar: a colour button whose menu offers the five colours, Turn, Pile and Delete. Pile appears when one lane card is selected; it selects that card and the cards below it in its column, so the next drag moves them as a block, as ⌥-drag does on the Mac.
+Bottom, above the home indicator: a **+** button offering Card or Lane, placed at the screen centre. While cards are selected, it gives way to the selection bar: a colour button whose menu offers the five colours, Turn and Delete.
 
 ### Editing
 - Editing zooms the board to at least 100 % around the card and keeps it above the keyboard.
@@ -54,7 +54,7 @@ Plain JavaScript modules in `web/`, no build step, no dependencies.
 
 | File | Role |
 |---|---|
-| `rules.js` | A port of BreezyKit: snapping, lane membership, `settle` (stacking, making room, landing), pile, edits, search. Card heights come in as a function. |
+| `rules.js` | A port of BreezyKit: snapping, lane membership, `settle` (stacking, making room, landing), edits, search. Card heights come in as a function. |
 | `model.js` | The board with undo and redo, 100 steps, as board snapshots. `perform` for one change, `begin`/`update`/`end` for a drag or edit session. |
 | `gestures.js` | Turns pointer events into tap, double tap, hold, drag, two-finger pan-and-pinch. A state machine over (pointer id, x, y, time) with no DOM, so it can be tested. |
 | `input.js` | Maps gestures to model changes and view moves. |
