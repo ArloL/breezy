@@ -15,16 +15,17 @@ function caretToEnd(el) {
 
 /**
  * Firefox draws an empty last line with a <br> after the newline, and the caret before that <br> at the end of the
- * line above. A second newline, as Chrome uses, puts the caret on the empty line.
+ * line above. A second newline, as Chrome uses, draws the line; the caret goes at the start of its own text node, as
+ * at the end of a text node it is drawn at the end of the title's ::first-line.
  */
 function newlineForBreak(el) {
   const br = el.lastChild;
   if (br?.nodeName !== "BR") return;
   const sel = getSelection();
   const atEnd = sel.anchorNode === el && sel.anchorOffset >= el.childNodes.length - 1;
-  br.replaceWith("\n");
-  el.normalize();
-  if (atEnd) sel.collapse(el.lastChild, el.lastChild.length - 1);
+  const nl = document.createTextNode("\n");
+  br.replaceWith(nl);
+  if (atEnd) sel.collapse(nl, 0);
 }
 
 /** The board, what is selected, turned and being edited, and every action on them. */
