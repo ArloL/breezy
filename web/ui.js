@@ -115,15 +115,15 @@ export class UI {
     this.$("#keys").style.top = `${vv.offsetTop + vv.height - KEYS_H}px`;
   }
 
-  /** The part of the screen the board shows through, between the bars and above the keyboard. */
+  /** The part of the screen the board shows through: below the bars, above the keys bar or bottom bar. */
   area() {
     const vv = visualViewport;
     const above = this.$("#find").hidden ? this.$("#top") : this.$("#find");
-    const keyboard = vv.height < innerHeight - 100;
-    const bottom = keyboard
+    const typing = this.app.state.editing || this.app.state.renaming;
+    const bottom = typing
       ? vv.offsetTop + vv.height - (this.app.state.editing ? KEYS_H : 0)
       : this.$("#bottom").getBoundingClientRect().top;
-    return { top: above.getBoundingClientRect().bottom, bottom, left: 0, right: innerWidth };
+    return { top: Math.max(above.getBoundingClientRect().bottom, vv.offsetTop), bottom, left: 0, right: innerWidth };
   }
 
   closeMenu() {
