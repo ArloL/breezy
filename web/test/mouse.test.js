@@ -125,3 +125,24 @@ test("the hovered card is under the last pointer position", () => {
   m.leave();
   assert.equal(m.hoveredCard(), null);
 });
+
+test("a move with the button up ends a drag whose release never came", () => {
+  const app = fakeApp({ "10,10": { kind: "card", id: "a" } });
+  const m = new Mouse(app);
+  m.down(at(10, 10), 0);
+  m.move({ x: 30, y: 10, buttons: 1 });
+  m.move({ x: 40, y: 10, buttons: 0 });
+  assert.equal(names(app).at(-1), "end");
+  m.move({ x: 50, y: 10, buttons: 0 });
+  assert.equal(names(app).filter((n) => n === "move").length, 0);
+});
+
+test("a press ends a drag left open by a lost release", () => {
+  const app = fakeApp({ "10,10": { kind: "card", id: "a" }, "200,200": { kind: "card", id: "b" } });
+  const m = new Mouse(app);
+  m.down(at(10, 10), 0);
+  m.move({ x: 30, y: 10 });
+  m.down(at(200, 200), 1000);
+  assert.ok(names(app).indexOf("end") > names(app).indexOf("drag"));
+  assert.equal(app.input.drag, null);
+});

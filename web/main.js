@@ -35,7 +35,7 @@ board.addEventListener("mousedown", (e) => editor(e) || e.preventDefault());
 // Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
 board.addEventListener("touchstart", (e) => editor(e) || e.preventDefault(), { passive: false });
 addEventListener("pointermove", (e) => {
-  if (e.pointerType === "mouse") return mouse.move({ x: e.clientX, y: e.clientY });
+  if (e.pointerType === "mouse") return mouse.move({ x: e.clientX, y: e.clientY, buttons: e.buttons });
   gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp);
 });
 addEventListener("pointerup", (e) => {
