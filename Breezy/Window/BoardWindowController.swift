@@ -12,7 +12,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   let canvas: CanvasView
   let scrollView = BoardScrollView()
   let zoomItem = NSToolbarItem(itemIdentifier: .zoom)
-  private let zoomButton = NSButton(title: "100 %", target: nil, action: nil)
+  private let zoomButton = ReadoutButton(title: "", target: nil, action: nil)
   private let grid = GridView()
   private var restored = false
   private let finder = NSTextFinder()
@@ -78,7 +78,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
 
   @objc func viewMoved() {
     let label = "\(Int((scrollView.magnification * 100).rounded())) %"
-    if zoomButton.title != label { zoomButton.title = label }
+    zoomButton.readout = label
     grid.update(origin: scrollView.contentView.bounds.origin, zoom: scrollView.magnification)
     canvas.layoutCards()
     window?.invalidateRestorableState()
@@ -154,7 +154,6 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       zoomButton.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
       zoomButton.target = self
       zoomButton.action = #selector(actualSize(_:))
-      zoomButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 64).isActive = true
       zoomItem.view = zoomButton
       zoomItem.label = "Zoom"
       zoomItem.toolTip = "Actual size (⌘0 or ⇧0)"
@@ -162,5 +161,60 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     default:
       return nil
     }
+  }
+}
+
+/// The zoom readout. Its text is a subview of its own: a new title would lay out the toolbar on
+/// every zoom step, and redrawing the button would redraw its bezel.
+final class ReadoutButton: NSButton {
+  private let label = ReadoutLabel()
+  var readout: String {
+    get { label.text }
+    set { label.text = newValue }
+  }
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    label.autoresizingMask = [.width, .height]
+    addSubview(label)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var intrinsicContentSize: NSSize { NSSize(width: 64, height: super.intrinsicContentSize.height) }
+
+  override func layout() {
+    super.layout()
+    label.frame = bounds
+    label.font = font
+  }
+
+  override func accessibilityLabel() -> String? { readout }
+}
+
+private final class ReadoutLabel: NSView {
+  var text = "100 %" { didSet { if text != oldValue { needsDisplay = true } } }
+  var font: NSFont?
+  private var observers: [NSObjectProtocol] = []
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  /// A toolbar button's title colours, measured: no system colour matches them.
+  private static let active = NSColor(name: nil) { $0.isDark ? .white : .black }
+  private static let inactive = NSColor(name: nil) { $0.isDark ? .disabledControlTextColor : NSColor(white: 0, alpha: 0.31) }
+
+  /// Greyed out while the window is inactive, as toolbar controls are.
+  override func viewDidMoveToWindow() {
+    observers.forEach(NotificationCenter.default.removeObserver)
+    observers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map {
+      NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in self?.needsDisplay = true }
+    }
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let color = window?.isKeyWindow == true ? Self.active : Self.inactive
+    let s = NSAttributedString(string: text, attributes: [.font: font ?? .systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: color])
+    let size = s.size()
+    s.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
   }
 }
