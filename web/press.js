@@ -37,7 +37,7 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
  * Taps never take focus, so the editor keeps the keyboard. `down(e)` runs on touch-down; `act()` on a lift in reach.
  */
 export function track(el, { act, down = () => {} }) {
-  const glass = el.closest(".pill, .selection, #find, .plus");
+  const glass = el.closest(".pill, .selection, .plus");
   let tracker = null;
   el.addEventListener("pointerdown", (e) => {
     if (el.disabled || tracker) return;

@@ -167,11 +167,22 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
   position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 66px);
   display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px;
 }
+#find .field {
+  flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 12px;
+  background: var(--press); border-radius: 999px;
+}
+#find .field > svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--ink3); stroke-width: 2; stroke-linecap: round; }
 #find input {
-  flex: 1; min-width: 0; height: 40px; padding: 0 16px; font: inherit; color: var(--ink);
-  background: var(--press); border: 0; border-radius: 999px; outline: none;
+  flex: 1; min-width: 0; height: 40px; padding: 0; font: inherit; color: var(--ink);
+  background: none; border: 0; outline: none; -webkit-appearance: none; appearance: none;
   -webkit-user-select: text; user-select: text;
 }
+#find input::-webkit-search-cancel-button { display: none; }
+#find .clear { min-width: 24px; height: 32px; padding: 0; color: var(--ink3); }
+#find > button[data-act="prev"], #find > button[data-act="next"] { min-width: 36px; padding: 0; }
+#find > button[data-act="close-find"] { padding: 0 8px; }
+#find .clear svg { width: 20px; height: 20px; fill: var(--ink3); stroke: var(--paper); stroke-width: 2; }
+#keys { transition: top 0.25s cubic-bezier(0.25, 0.1, 0.25, 1); }
 #find .count { color: var(--ink3); font-size: 15px; font-variant-numeric: tabular-nums; padding: 0 4px; }
 
 #bottom {
@@ -222,5 +233,5 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 .measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus { transition: none !important; }
+  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus, #keys { transition: none !important; }
 }
