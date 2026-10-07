@@ -77,7 +77,7 @@ On the stress board, zoom went from 13.8 / 25.6 / 40.8 to 3.2 / 4.4 / 8.7 ms and
 
 - **Toolbar — decided, standard kept.** It costs ~3 MB idle and ~2.3 ms per resize step. `.unifiedCompact` saves 1.7 ms per resize step, but the difference cannot be felt and the labelled buttons are clearer; controls drawn on the canvas instead of a toolbar would save both.
 - **TextKit 1 in the editor — decided, kept.** It saves 1.4 ms per key over TextKit 2; Writing Tools then opens in a panel instead of inline, which does not matter here: Writing Tools are not used, and typing feels the same either way.
-- **Window restoration.** It brings the ~25 MB snapshot transient.
+- **Window restoration — decided, kept.** It brings the ~25 MB snapshot transient, but boards reopen after a restart where they were.
 
 ## Ideas not yet tried
 
