@@ -14,6 +14,10 @@ document.getElementById("board").addEventListener("pointerdown", (e) => {
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
   setTimeout(() => gestures.tick(performance.now()), HOLD_MS + 10);
 });
+// A touch's compatibility mousedown comes after pointerup and would take focus from an editor that tap just opened.
+document.getElementById("board").addEventListener("mousedown", (e) => {
+  if (!e.target.closest('[contenteditable="plaintext-only"]')) e.preventDefault();
+});
 addEventListener("pointermove", (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
