@@ -1,5 +1,7 @@
 import AppKit
 import BreezyKit
+import CoreVideo
+import IOSurface
 
 /// A card on the canvas. The sheet, its folded corner and the text are drawn at `contentsScale`,
 /// which the canvas sets from the zoom; shadow and selection ring are layer properties.
@@ -92,6 +94,32 @@ final class CardLayer: CALayer {
     ring.frame = bounds.insetBy(dx: -4, dy: -4)
     shadowPath = outline(yDown: contentsAreFlipped())
   }
+
+  /// Draws into a surface of its own, which Core Animation shows without a copy, instead of a
+  /// backing store that holds more than one buffer per layer.
+  override func display() {
+    let s = contentsScale
+    let w = Int((bounds.width * s).rounded(.up)), h = Int((bounds.height * s).rounded(.up))
+    guard look != nil, w > 0, h > 0,
+      let surface = IOSurface(properties: [.width: w, .height: h, .bytesPerElement: 4, .pixelFormat: kCVPixelFormatType_32BGRA])
+    else { return contents = nil }
+    IOSurfaceSetValue(surface, kIOSurfaceColorSpace, Self.colorSpace.copyPropertyList()!)
+    surface.lock(options: [], seed: nil)
+    defer { surface.unlock(options: [], seed: nil) }
+    guard let ctx = CGContext(data: surface.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: surface.bytesPerRow, space: Self.colorSpace,
+                              bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+    else { return contents = nil }
+    ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+    ctx.scaleBy(x: s, y: s)
+    if contentsAreFlipped() {
+      ctx.translateBy(x: 0, y: bounds.height)
+      ctx.scaleBy(x: 1, y: -1)
+    }
+    draw(in: ctx)
+    contents = surface
+  }
+
+  private static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
   override func draw(in ctx: CGContext) {
     guard let look, let appearance else { return }
