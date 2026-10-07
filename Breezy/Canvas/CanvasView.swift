@@ -184,7 +184,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     let inputs = layers.map(\.input)
     var surfaces = [IOSurface?](repeating: nil, count: inputs.count)
     surfaces.withUnsafeMutableBufferPointer { out in
-      DispatchQueue.concurrentPerform(iterations: inputs.count) { k in out[k] = inputs[k].flatMap(CardLayer.render) }
+      // worker threads drain no autorelease pool of their own; text drawing fills one
+      DispatchQueue.concurrentPerform(iterations: inputs.count) { k in autoreleasepool { out[k] = inputs[k].flatMap(CardLayer.render) } }
     }
     for (k, l) in layers.enumerated() {
       guard let i = inputs[k] else { continue }
