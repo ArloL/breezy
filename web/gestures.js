@@ -50,6 +50,7 @@ export class Gestures {
     const o = this.one;
     if (o?.state === "pending" && t - o.t >= HOLD_MS) {
       o.state = "held";
+      this.lastTap = null;
       this.h.hold(o.start);
     }
   }
@@ -75,6 +76,7 @@ export class Gestures {
     this.tick(t);
     const held = o.state === "held";
     o.state = "drag";
+    this.lastTap = null;
     this.h.dragStart(o.start, p, held);
   }
 

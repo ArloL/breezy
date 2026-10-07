@@ -17,6 +17,7 @@ export class Input {
     this.holdHit = null;
     this.coast = 0;
     this.scroll = 0;
+    this.stoppedCoast = false;
   }
 
   hit(p) {
@@ -24,13 +25,16 @@ export class Input {
     return hitTest(model.board, view.toWorld(p), { rectOf: (c) => view.rectOf(c), zoom: view.cam.zoom, turned: state.turned });
   }
 
+  /** A touch that stops a coast does only that: the tap that follows from it is ignored. */
   touchStart() {
+    this.stoppedCoast = this.coast !== 0;
     this.stopCoast();
     this.app.view.stopGlide();
     this.app.ui.closeMenu();
   }
 
   tap(p) {
+    if (this.stoppedCoast) return;
     const app = this.app;
     const s = app.state;
     const h = this.hit(p);
@@ -55,7 +59,10 @@ export class Input {
   hold(p) {
     this.holdHit = this.hit(p);
     if (!isCard(this.holdHit)) return;
-    this.app.state.lifted = new Set([this.holdHit.id]);
+    const s = this.app.state;
+    this.app.endEditing();
+    if (s.turned && this.holdHit.id !== s.turned) this.app.turn(null);
+    s.lifted = new Set([this.holdHit.id]);
     this.app.view.invalidate();
   }
 
