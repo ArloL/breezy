@@ -18,6 +18,8 @@ targets:
       path: Breezy/Info.plist
       properties:
         CFBundleDisplayName: Breezy
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIconFile: Breezy
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
