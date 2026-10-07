@@ -122,12 +122,13 @@ export class Gestures {
     this.h.tap(o.start);
   }
 
+  /** The system took the touch, as when swiping home: what it was doing is undone. */
   cancel(id) {
     if (!this.points.has(id)) return;
     this.points.delete(id);
     if (this.two) {
       if (this.points.size < 2) {
-        this.h.pinchEnd({ ...ZERO });
+        this.h.pinchCancel();
         this.two = null;
       }
       return;
@@ -135,8 +136,12 @@ export class Gestures {
     const o = this.one;
     if (o?.id !== id) return;
     this.one = null;
-    if (o.state === "drag") this.h.dragEnd(o.last, { ...ZERO });
+    if (o.state === "drag") this.h.dragCancel();
     else if (o.state === "held") this.h.holdCancel();
-    else if (o.state === "zoom") this.h.zoomDragEnd();
+    else if (o.state === "zoom") this.h.zoomDragCancel();
+  }
+
+  cancelAll() {
+    for (const id of [...this.points.keys()]) this.cancel(id);
   }
 }

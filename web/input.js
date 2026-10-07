@@ -96,7 +96,7 @@ export class Input {
       app.endEditing();
       if (s.turned && h.id !== s.turned) app.turn(null);
     }
-    const d = { action, id: h.id, p0, w0: app.view.toWorld(p0), cam0: { ...app.view.cam }, last: p };
+    const d = { action, id: h.id, p0, w0: app.view.toWorld(p0), cam0: { ...app.view.cam }, sel0: [...s.selection], last: p };
     this.drag = d;
     if (action === "move") {
       if (!s.selection.has(h.id)) app.select([h.id]);
@@ -184,6 +184,25 @@ export class Input {
     app.view.invalidate();
   }
 
+  /** Puts the camera, the board and the selection back as they were when the drag began. */
+  dragCancel() {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    cancelAnimationFrame(this.scroll);
+    const app = this.app;
+    const s = app.state;
+    s.held = new Set();
+    s.lifted = new Set();
+    s.float = null;
+    s.marquee = null;
+    // a pan may happen during an edit session, which must survive it
+    if (d.action !== "pan" && d.action !== "marquee") app.model.cancel();
+    if (d.action !== "pan") app.select(d.sel0);
+    app.view.setCamera(d.cam0);
+    app.view.invalidate();
+  }
+
   pinchStart(c) {
     this.stopCoast();
     this.pinchBase = { cam: { ...this.app.view.cam }, c };
@@ -203,6 +222,11 @@ export class Input {
     this.coastFrom(v);
   }
 
+  pinchCancel() {
+    this.app.view.setCamera(this.pinchBase.cam);
+    this.pinchBase = null;
+  }
+
   zoomDragStart(p) {
     this.stopCoast();
     this.pinchBase = { cam: { ...this.app.view.cam }, c: p };
@@ -215,6 +239,10 @@ export class Input {
 
   zoomDragEnd() {
     this.pinchBase = null;
+  }
+
+  zoomDragCancel() {
+    this.pinchCancel();
   }
 
   /** Near the edge of the visible area a drag scrolls the board, faster the closer it gets. */

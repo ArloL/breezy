@@ -56,6 +56,14 @@ export class Model {
     this.onChange();
   }
 
+  /** Ends the gesture, putting the board back as it began. */
+  cancel() {
+    if (!this.start) return;
+    this.board = this.start;
+    this.start = null;
+    this.onChange();
+  }
+
   undo() {
     this.swap(this.undos, this.redos);
   }
