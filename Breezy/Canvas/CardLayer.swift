@@ -42,17 +42,15 @@ final class CardLayer: CALayer {
   private var appearance: NSAppearance?
   /// A bitmap drawn ahead, on another thread, for `display` to take if it still fits.
   var prepared: (Input, IOSurface?)?
-  private let ring = CALayer()
+  /// The selection ring, only while selected: most cards never are, and a layer each is a layer
+  /// more to commit and keep.
+  private var ring: CALayer?
 
   override init() {
     super.init()
     masksToBounds = false
     needsDisplayOnBoundsChange = true
     shadowColor = NSColor.black.cgColor
-    ring.borderWidth = 2
-    ring.cornerRadius = 4
-    ring.isHidden = true
-    addSublayer(ring)
   }
 
   override init(layer: Any) { super.init(layer: layer) }
@@ -64,9 +62,9 @@ final class CardLayer: CALayer {
   }
 
   func configure(_ look: Look, selected: Bool, scale: CGFloat, appearance: NSAppearance) {
-    ring.isHidden = !selected
+    setRing(selected, appearance)
     guard look != self.look || scale != contentsScale else { return }
-    if look.dark != self.look?.dark { ring.borderColor = Theme.cg(Theme.accent, in: appearance) }
+    if look.dark != self.look?.dark { ring?.borderColor = Theme.cg(Theme.accent, in: appearance) }
     if look.back != self.look?.back {
       shadowOpacity = look.back ? 0.24 : 0.16
       shadowRadius = look.back ? 9 : 2
@@ -81,7 +79,25 @@ final class CardLayer: CALayer {
     setNeedsDisplay()
   }
 
+  private func setRing(_ on: Bool, _ appearance: NSAppearance) {
+    guard on else {
+      ring?.removeFromSuperlayer()
+      ring = nil
+      return
+    }
+    guard ring == nil else { return }
+    let r = CALayer()
+    r.borderWidth = 2
+    r.cornerRadius = 4
+    r.borderColor = Theme.cg(Theme.accent, in: appearance)
+    r.frame = bounds.insetBy(dx: -4, dy: -4)
+    addSublayer(r)
+    ring = r
+  }
+
   func recycle() {
+    ring?.removeFromSuperlayer()
+    ring = nil
     look = nil
     prepared = nil
     contents = nil
@@ -106,7 +122,7 @@ final class CardLayer: CALayer {
 
   override func layoutSublayers() {
     super.layoutSublayers()
-    ring.frame = bounds.insetBy(dx: -4, dy: -4)
+    ring?.frame = bounds.insetBy(dx: -4, dy: -4)
     shadowPath = Self.outline(bounds.size, ear: input?.ear ?? 0, yDown: contentsAreFlipped())
   }
 
