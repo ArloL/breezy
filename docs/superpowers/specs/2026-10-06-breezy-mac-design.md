@@ -53,10 +53,10 @@ Sync, export, gravity switched off per lane, an iOS app, arrows between cards, i
 - **Search.** Finds matches in card fronts, card backs and lane titles, reported as (item, side, range).
 
 ### App
-- `BoardDocument` — an `NSDocument` subclass. It owns the current `Board`, applies every change through BreezyKit, registers undo (`levelsOfUndo = 100`) and autosaves in place.
+- `BoardDocument` — an `NSDocument` subclass. It owns the current `Board`, applies every change through BreezyKit, registers undo (`levelsOfUndo = 100`) and autosaves in place, off the main thread.
 - `BoardWindowController` — the window, the toolbar (New Lane, zoom readout) and the find bar, an `NSTextFinder` whose client is backed by BreezyKit's search.
 - `CanvasView` — the scroll view's document view. It turns pointer, trackpad and key input into document changes and holds no board state of its own.
-- Rendering, from the spike: a card is a `CALayer` whose text is a bitmap drawn at the zoom's scale, and only cards near the viewport have one; lanes draw fill and border as layer properties; the dot grid is one screen-sized pattern layer behind the scroll view. Also the inline card editor (`NSTextView`) and the flip animation.
+- Rendering: a card is a `CALayer` showing an `IOSurface` of its own, drawn at the zoom's scale from a snapshot of what it depends on, so that several cards can be drawn at once on all cores; only cards near the viewport have one, and none while the window is out of sight. Scrolling and zooming lay out the cards once per frame. Lanes draw fill and border as layer properties; the dot grid repeats one dot with replicator layers behind the scroll view. Also the inline card editor (a TextKit 1 `NSTextView`) and the flip animation.
 - `Theme` — colour tokens with light and dark values, re-applied to layers when the effective appearance changes.
 - `TextMetrics` — measures card heights, cached by text and width, for the rules.
 
