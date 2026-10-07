@@ -1,9 +1,8 @@
 import * as R from "./rules.js";
 import { hitTest, dragAction } from "./policy.js";
 import { MIN_ZOOM, MAX_ZOOM } from "./view.js";
+import { EDGE_ZONE, edgeSpeed } from "./physics.js";
 
-const EDGE = 48;
-const EDGE_SPEED = 12;
 // a one-finger zoom doubles or halves for every this many points the finger moves
 const ZOOM_DRAG = 150;
 
@@ -92,6 +91,7 @@ export class Input {
       if (s.turned && h.id !== s.turned) app.turn(null);
     }
     const d = { action, id: h.id, p0, w0: app.view.toWorld(p0), cam0: { ...app.view.cam }, sel0: [...s.selection], last: p };
+    this.edgeSince = 0;
     this.drag = d;
     if (action === "move") {
       if (!s.selection.has(h.id)) app.select([h.id]);
@@ -245,19 +245,26 @@ export class Input {
     this.pinchCancel();
   }
 
-  /** Near the edge of the visible area a drag scrolls the board, faster the closer it gets. */
+  /** At the very edge of the visible area a drag scrolls the board, slowly at first and faster the longer it stays, as in Freeform. */
   edgeScroll(p) {
     cancelAnimationFrame(this.scroll);
     const a = this.app.ui.area();
-    const speed = (v, lo, hi) =>
-      v < lo + EDGE ? Math.min(1, (lo + EDGE - v) / EDGE) : v > hi - EDGE ? -Math.min(1, (v - hi + EDGE) / EDGE) : 0;
-    const sx = speed(p.x, a.left, a.right) * EDGE_SPEED;
-    const sy = speed(p.y, a.top, a.bottom) * EDGE_SPEED;
-    if (!sx && !sy) return;
-    this.scroll = requestAnimationFrame(() => {
+    const dir = (v, lo, hi) => (v - lo <= EDGE_ZONE ? 1 : hi - v <= EDGE_ZONE ? -1 : 0);
+    const dx = dir(p.x, a.left, a.right);
+    const dy = dir(p.y, a.top, a.bottom);
+    if (!dx && !dy) {
+      this.edgeSince = 0;
+      return;
+    }
+    const now = performance.now();
+    if (!this.edgeSince) this.edgeSince = this.edgeLast = now;
+    this.scroll = requestAnimationFrame((t) => {
       if (!this.drag) return;
+      const dt = Math.min(64, Math.max(0, t - this.edgeLast));
+      this.edgeLast = t;
+      const d = edgeSpeed(0, t - this.edgeSince) * dt;
       const c = this.app.view.cam;
-      this.app.view.setCamera({ ...c, x: c.x + sx, y: c.y + sy });
+      this.app.view.setCamera({ ...c, x: c.x + dx * d, y: c.y + dy * d });
       this.dragMove(this.drag.last);
     });
   }
