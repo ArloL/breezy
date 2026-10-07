@@ -4,7 +4,9 @@ import { clampZoom } from "./view.js";
 
 const EDGE = 48;
 const EDGE_SPEED = 12;
-const FRICTION = 0.95;
+// a flick coasts about 0.6 s and stops without a crawl
+const FRICTION = 0.92;
+const STOP = 0.05;
 
 const isCard = (h) => h?.kind === "card" || h?.kind === "fold";
 
@@ -207,7 +209,7 @@ export class Input {
     const step = (t) => {
       const dt = Math.min(t - t0, 32);
       t0 = t;
-      if (Math.hypot(vx, vy) < 0.02) return (this.coast = 0);
+      if (Math.hypot(vx, vy) < STOP) return (this.coast = 0);
       const c = this.app.view.cam;
       this.app.view.setCamera({ ...c, x: c.x + vx * dt, y: c.y + vy * dt });
       const f = Math.pow(FRICTION, dt / 16);
