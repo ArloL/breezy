@@ -1,10 +1,15 @@
 import * as R from "./rules.js";
 import { Camera, clampZoom } from "./camera.js";
+import { animate, motionValue } from "./motion.js";
 
 export { MIN_ZOOM, MAX_ZOOM, clampZoom } from "./camera.js";
 
 const SHEET = '<div class="sheet"><div class="front"></div><div class="back"><div class="heading"></div><div class="notes"></div></div><div class="ear"></div></div>';
 const PLACEHOLDER = "Double-tap to write on the back";
+// Layout moves settle like UIKit's default spring; a lift pops slightly, as a drag lift on iOS does.
+const SETTLE = { type: "spring", visualDuration: 0.35, bounce: 0 };
+const LIFT = { type: "spring", visualDuration: 0.25, bounce: 0.35 };
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Draws the board as DOM in a world layer moved by the camera; measures card heights with the same CSS. */
 export class View {
@@ -23,6 +28,7 @@ export class View {
     this.els = new Map();
     this.sizes = new Map();
     this.frame = 0;
+    this.ready = false;
     this.area = () => ({ top: 0, bottom: innerHeight, left: 0, right: innerWidth });
     this.onCamera = () => {};
     this.heightOf = (id) => {
@@ -159,12 +165,53 @@ export class View {
     });
     for (const [id, e] of this.els) {
       if (live.has(id)) continue;
-      e.el.remove();
       this.els.delete(id);
+      this.vanish(e);
     }
     const m = this.state.marquee;
     this.marqueeEl.hidden = !m;
     if (m) Object.assign(this.marqueeEl.style, { transform: `translate(${m.x}px, ${m.y}px)`, width: `${m.w}px`, height: `${m.h}px` });
+    this.ready = true;
+  }
+
+  /**
+   * Moves element `e` to (x, y): what a finger holds follows it at once, everything else springs there, carrying
+   * the speed it had, so a dropped card leaves the finger as it was moving. Things that appear after the first
+   * render grow in.
+   */
+  place(e, x, y, held, scale = 1) {
+    const still = reduced();
+    if (!e.mx) {
+      const grow = this.ready && !still;
+      e.mx = motionValue(x);
+      e.my = motionValue(y);
+      e.ms = motionValue(grow ? 0.9 : scale);
+      const draw = () => (e.el.style.transform = `translate(${e.mx.get()}px, ${e.my.get()}px) scale(${e.ms.get()})`);
+      for (const v of [e.mx, e.my, e.ms]) v.on("change", draw);
+      draw();
+      e.to = { x, y, scale: e.ms.get() };
+      if (grow) animate(e.el, { opacity: [0, 1] }, { duration: 0.2 });
+    }
+    for (const [k, v, to] of [["x", e.mx, x], ["y", e.my, y]]) {
+      if (held || still) {
+        v.stop();
+        v.set(to);
+      } else if (e.to[k] !== to) animate(v, to, SETTLE);
+      e.to[k] = to;
+    }
+    if (e.to.scale !== scale) {
+      if (still) e.ms.jump(scale);
+      else animate(e.ms, scale, LIFT);
+      e.to.scale = scale;
+    }
+  }
+
+  /** A deleted card or lane shrinks and fades while the others close up. */
+  vanish(e) {
+    if (!this.ready || reduced() || !e.ms) return e.el.remove();
+    e.el.style.pointerEvents = "none";
+    animate(e.el, { opacity: 0 }, { duration: 0.2 });
+    animate(e.ms, 0.9, SETTLE).then(() => e.el.remove());
   }
 
   element(id, parent, html) {
@@ -193,7 +240,7 @@ export class View {
     e.key = key;
     const el = e.el;
     el.className = flags;
-    el.style.transform = `translate(${c.x + f.x}px, ${c.y + f.y}px)`;
+    this.place(e, c.x + f.x, c.y + f.y, s.held.has(c.id), s.lifted.has(c.id) ? 1.05 : 1);
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
     el.style.zIndex = turned || s.lifted.has(c.id) ? 1000000 : i;
@@ -221,7 +268,7 @@ export class View {
     e.key = key;
     const el = e.el;
     el.className = flags;
-    el.style.transform = `translate(${l.x + f.x}px, ${l.y + f.y}px)`;
+    this.place(e, l.x + f.x, l.y + f.y, s.held.has(l.id));
     el.style.width = `${l.w + f.w}px`;
     el.style.height = `${l.h + f.h}px`;
     if (!renaming) el.querySelector(".title").textContent = l.title;
@@ -235,30 +282,40 @@ export class View {
     return this.els.get(id)?.el.querySelector(".title");
   }
 
-  /** Runs `change` at once and renders; copies of the old faces swing away while the new ones swing in. */
+  /** Runs `change` at once and renders; the card flips over in one springy turn, showing the new face past halfway. */
   animateTurn(ids, change) {
-    const animate = !matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const ghosts = animate
-      ? ids.map((id) => this.els.get(id)?.el).filter(Boolean).map((el) => {
-          const g = el.cloneNode(true);
-          g.classList.add("ghost");
-          g.style.zIndex = 1000001;
-          this.cardsEl.append(g);
-          return g;
-        })
-      : [];
+    if (reduced()) {
+      change();
+      return this.render();
+    }
+    const ghosts = ids.map((id) => this.els.get(id)?.el).filter(Boolean).map((el) => {
+      const g = el.cloneNode(true);
+      g.classList.add("ghost");
+      g.style.zIndex = 1000001;
+      this.cardsEl.append(g);
+      return g;
+    });
     change();
     this.render();
-    if (!animate) return;
+    const fresh = ids.map((id) => this.els.get(id)?.el.firstChild).filter(Boolean);
     const p = "perspective(1000px) ";
-    for (const g of ghosts) {
-      g.firstChild
-        .animate([{ transform: `${p}rotateY(0deg)` }, { transform: `${p}rotateY(90deg)` }], { duration: 130, easing: "ease-in", fill: "forwards" })
-        .finished.then(() => g.remove());
-    }
-    for (const id of ids) {
-      this.els.get(id)?.el.firstChild.animate([{ transform: `${p}rotateY(-90deg)` }, { transform: `${p}rotateY(0deg)` }],
-        { duration: 130, delay: 130, easing: "ease-out", fill: "backwards" });
-    }
+    const turn = (a) => {
+      for (const g of ghosts) {
+        g.style.visibility = a < 90 ? "" : "hidden";
+        g.firstChild.style.transform = `${p}rotateY(${a}deg)`;
+      }
+      for (const s of fresh) {
+        s.style.visibility = a < 90 ? "hidden" : "";
+        s.style.transform = `${p}rotateY(${a - 180}deg)`;
+      }
+    };
+    const cards = [...ghosts, ...fresh.map((s) => s.parentElement)];
+    for (const el of cards) el.classList.add("flipping");
+    turn(0);
+    animate(0, 180, { type: "spring", visualDuration: 0.45, bounce: 0.2, onUpdate: turn }).then(() => {
+      for (const g of ghosts) g.remove();
+      for (const s of fresh) s.style.transform = s.style.visibility = "";
+      for (const el of cards) el.classList.remove("flipping");
+    });
   }
 }
