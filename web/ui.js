@@ -1,19 +1,9 @@
 import * as R from "./rules.js";
+import { track } from "./press.js";
+import { Menus } from "./menu.js";
 
 const KEYS_H = 44;
-
-/** Acts on `touchend` and cancels it, so the tap takes no focus from the editor. */
-function press(el, fn) {
-  // Lets iOS apply :active; on the button only, so the board's touches stay as they were.
-  el.addEventListener("touchstart", () => {}, { passive: true });
-  el.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    if (!el.disabled) fn();
-  });
-  el.addEventListener("click", () => {
-    if (!el.disabled) fn();
-  });
-}
+const MENUS = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
 
 /** The bars around the board: top, find, add and selection, and keyboard. */
 export class UI {
@@ -22,7 +12,12 @@ export class UI {
     this.matches = [];
     this.index = -1;
     this.$ = (sel) => document.querySelector(sel);
-    for (const b of document.querySelectorAll("[data-act]")) press(b, () => this.act(b.dataset.act, b));
+    this.menus = new Menus({ pick: (b) => this.act(b.dataset.act, b) });
+    for (const b of document.querySelectorAll("[data-act]")) {
+      const menu = MENUS[b.dataset.act];
+      if (menu) this.menus.attach(b, this.$(menu));
+      track(b, { act: () => menu || this.act(b.dataset.act, b) });
+    }
     const field = this.$("#find input");
     field.addEventListener("input", () => this.find(field.value));
     field.addEventListener("keydown", (e) => {
@@ -45,12 +40,9 @@ export class UI {
       case "redo": return app.redo();
       case "zoom": return app.view.zoomAround(app.view.centre(), 1, true);
       case "search": return this.openFind();
-      case "add": return this.toggleMenu(".add .menu");
-      case "more": return this.toggleMenu(".menu.more");
       case "version": b.textContent = b.dataset.version; return;
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
-      case "colours": return this.toggleMenu(".colours .menu");
       case "colour": this.closeMenu(); return app.colour(Number(b.dataset.colour));
       case "turn": {
         const [c] = app.selectedCards();
@@ -80,7 +72,7 @@ export class UI {
     this.$(".colours").hidden = !cards.length;
     if (cards.length) this.$(".colours .swatch i").className = `c${cards[0].color}`;
     for (const b of document.querySelectorAll(".colours .menu button")) b.classList.toggle("on", Number(b.dataset.colour) === cards[0]?.color);
-    if (!selecting) this.$(".colours .menu").hidden = true;
+    if (!selecting && this.menus.menu === this.$(".colours .menu")) this.menus.close(true);
     const one = cards.length === 1 && !lanes.length ? cards[0] : null;
     this.$('[data-act="turn"]').hidden = !one;
     this.$("#keys").hidden = !s.editing;
@@ -108,14 +100,8 @@ export class UI {
     return { top: Math.max(above.getBoundingClientRect().bottom, vv.offsetTop), bottom, left: 0, right: innerWidth };
   }
 
-  toggleMenu(sel) {
-    const open = this.$(sel).hidden;
-    this.closeMenu();
-    this.$(sel).hidden = !open;
-  }
-
   closeMenu() {
-    for (const m of document.querySelectorAll(".menu")) m.hidden = true;
+    this.menus.close();
     this.$('[data-act="version"]').textContent = "Version";
   }
 
