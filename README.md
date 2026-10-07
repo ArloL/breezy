@@ -11,7 +11,7 @@ xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Release -deri
 open build/Build/Products/Release/Breezy.app
 ```
 
-Boards save themselves; File → Revert To → Browse All Versions shows earlier states.
+Boards save themselves and reopen where they were left after a relaunch; File → Revert To → Browse All Versions shows earlier states.
 
 ## Use
 
