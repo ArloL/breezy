@@ -2,9 +2,34 @@ import * as R from "./rules.js";
 import { track } from "./press.js";
 import { Menus } from "./menu.js";
 import { haptic } from "./haptics.js";
+import { animate } from "./motion.js";
 
 const KEYS_H = 44;
 const MENUS = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
+const BAR = { type: "spring", visualDuration: 0.35, bounce: 0.15 };
+const REST = { x: 0, y: 0, scale: 1, opacity: 1, filter: "blur(0px)" };
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Shows or hides `el` the way iOS bars come and go: springing in from `from`, and out again before hiding. */
+function swap(el, show, from) {
+  if (show === !el.hidden && !el.dataset.leaving) return;
+  if (reduced()) {
+    el.hidden = !show;
+    return;
+  }
+  if (show) {
+    delete el.dataset.leaving;
+    el.hidden = false;
+    animate(el, Object.fromEntries(Object.entries(from).map(([k, v]) => [k, [v, REST[k]]])), BAR);
+  } else {
+    el.dataset.leaving = "1";
+    animate(el, from, { ...BAR, visualDuration: 0.25, bounce: 0 }).then(() => {
+      if (!el.dataset.leaving) return;
+      delete el.dataset.leaving;
+      el.hidden = true;
+    });
+  }
+}
 
 /** The bars around the board: top, find, add and selection, and keyboard. */
 export class UI {
@@ -20,7 +45,10 @@ export class UI {
       track(b, { act: () => menu || this.act(b.dataset.act, b) });
     }
     const field = this.$("#find input");
-    field.addEventListener("input", () => this.find(field.value));
+    field.addEventListener("input", () => {
+      this.$("#find .clear").hidden = !field.value;
+      this.find(field.value);
+    });
     field.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
@@ -29,6 +57,8 @@ export class UI {
     visualViewport.addEventListener("resize", () => {
       this.place();
       this.app.revealEditing();
+      // the keyboard coming or going moves the middle of what is visible
+      if (!this.$("#find").hidden && this.matches[this.index]) this.app.reveal(this.matches[this.index]);
     });
     visualViewport.addEventListener("scroll", () => this.place());
     this.update();
@@ -55,6 +85,13 @@ export class UI {
       case "prev": return this.step(-1);
       case "next": return this.step(1);
       case "close-find": return this.closeFind();
+      case "clear-find": {
+        const field = this.$("#find input");
+        field.value = "";
+        b.hidden = true;
+        field.focus();
+        return this.find("");
+      }
     }
   }
 
@@ -66,10 +103,17 @@ export class UI {
     const typing = !!(s.editing || s.renaming);
     this.$('[data-act="undo"]').disabled = !(app.model.canUndo || app.model.inGesture);
     this.$('[data-act="redo"]').disabled = !app.model.canRedo;
-    this.$("#bottom").hidden = typing;
+    swap(this.$("#bottom"), !typing, { y: 120, opacity: 0 });
     const selecting = cards.length + lanes.length > 0;
-    this.$("#bottom .selection").hidden = !selecting;
-    this.$("#bottom .add").hidden = selecting;
+    // The + and the selection bar morph into one another, as iOS 26's glass does.
+    const morph = { scale: 0.6, opacity: 0, filter: "blur(6px)" };
+    if (selecting) {
+      this.$("#bottom .add").hidden = true;
+      swap(this.$("#bottom .selection"), true, morph);
+    } else {
+      this.$("#bottom .selection").hidden = true;
+      swap(this.$("#bottom .add"), true, morph);
+    }
     this.$(".colours").hidden = !cards.length;
     if (cards.length) this.$(".colours .swatch i").className = `c${cards[0].color}`;
     for (const b of document.querySelectorAll(".colours .menu button")) b.classList.toggle("on", Number(b.dataset.colour) === cards[0]?.color);
@@ -108,7 +152,7 @@ export class UI {
 
   openFind() {
     this.closeMenu();
-    this.$("#find").hidden = false;
+    swap(this.$("#find"), true, { y: -24, opacity: 0, scale: 0.96 });
     const field = this.$("#find input");
     field.focus();
     field.select();
@@ -116,7 +160,7 @@ export class UI {
   }
 
   closeFind() {
-    this.$("#find").hidden = true;
+    swap(this.$("#find"), false, { y: -24, opacity: 0, scale: 0.96 });
     this.$("#find input").blur();
     this.matches = [];
     this.app.state.found = null;

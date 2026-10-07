@@ -8,9 +8,13 @@
   scripts/wda.py pinch CX CY R0 R1 MS HOLD two fingers R0 → R1 points from (CX, CY), horizontally, then held HOLD ms
   scripts/wda.py type TEXT                 types into the focused field; \n is Return
   scripts/wda.py source                    the accessibility tree, to find what to tap
+  scripts/wda.py relaunch "Breezy Dev"     quits home-screen web apps and opens the icon with that label afresh
 
 WDA_URL overrides http://192.168.178.46:8100, the address WebDriverAgent prints when it starts.
 The session is remembered in /tmp/wda-session between calls.
+
+Every touch first checks the app in front and refuses while a call is on screen, since it is a real phone.
+WDA_EXPECT=BUNDLE_ID also refuses when another app is in front (a home-screen web app is com.apple.webapp).
 """
 import base64
 import json
@@ -34,8 +38,21 @@ def session():
         return f.read().strip()
 
 
+CALLS = {"com.apple.InCallService", "com.apple.mobilephone", "com.apple.facetime", "com.apple.TelephonyUtilities"}
+
+
+def guard():
+    front = call("GET", "/wda/activeAppInfo")["bundleId"]
+    if front in CALLS:
+        sys.exit(f"refusing to touch: a call is on screen ({front})")
+    expect = os.environ.get("WDA_EXPECT")
+    if expect and front != expect:
+        sys.exit(f"refusing to touch: {front} is in front, not {expect}")
+
+
 def touch(steps):
     """W3C pointer actions: durations are milliseconds, coordinates points from the top left."""
+    guard()
     actions = []
     x = y = 0.0
     down = False
@@ -63,6 +80,7 @@ def touch(steps):
 
 
 def pinch(cx, cy, r0, r1, ms, hold):
+    guard()
     def finger(name, sign):
         return {"type": "pointer", "id": name, "parameters": {"pointerType": "touch"}, "actions": [
             {"type": "pointerMove", "duration": 0, "x": cx + sign * r0, "y": cy},
@@ -92,6 +110,11 @@ def main():
         pinch(*map(float, args[:4]), int(args[4]), int(args[5]))
     elif cmd == "type":
         call("POST", f"/session/{session()}/wda/keys", {"value": list(args[0].replace("\\n", "\n"))})
+    elif cmd == "relaunch":
+        call("POST", f"/session/{session()}/wda/apps/terminate", {"bundleId": "com.apple.webapp"})
+        call("POST", "/wda/homescreen")
+        icon = call("POST", f"/session/{session()}/element", {"using": "accessibility id", "value": args[0]})
+        call("POST", f"/session/{session()}/element/{icon['ELEMENT']}/click", {})
     elif cmd == "source":
         print(call("GET", f"/session/{session()}/source?format=description"))
     else:
