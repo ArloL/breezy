@@ -12,7 +12,7 @@ const ZOOM_DRAG = 150;
 
 const isCard = (h) => h?.kind === "card" || h?.kind === "fold";
 
-/** Turns gestures into camera moves and board changes, by pan mode. */
+/** Turns gestures into camera moves and board changes. */
 export class Input {
   constructor(app) {
     this.app = app;
@@ -91,7 +91,7 @@ export class Input {
     const b = app.model.board;
     const h = held && this.holdHit ? this.holdHit : this.hit(p0);
     this.holdHit = null;
-    const action = dragAction(app.mode, h, s.selection, held);
+    const action = dragAction(h, s.selection, held);
     if (action !== "pan") {
       app.endEditing();
       if (s.turned && h.id !== s.turned) app.turn(null);

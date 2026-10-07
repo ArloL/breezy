@@ -23,18 +23,17 @@ export function hitTest(b, p, { rectOf, zoom, turned }) {
   return { kind: "empty" };
 }
 
-/** What a one-finger drag does, by pan mode: see the spec's table. */
-export function dragAction(mode, hit, selection, held) {
-  const free = mode === "two" || held;
+/** What a one-finger drag does: see the spec's table. */
+export function dragAction(hit, selection, held) {
   switch (hit.kind) {
     case "corner":
-      return free ? "resize" : "pan";
+      return held ? "resize" : "pan";
     case "card":
     case "fold":
-      return free || selection.has(hit.id) ? "move" : "pan";
+      return held || selection.has(hit.id) ? "move" : "pan";
     case "header":
-      return free ? "lane" : "pan";
+      return held ? "lane" : "pan";
     default:
-      return free ? "marquee" : "pan";
+      return held ? "marquee" : "pan";
   }
 }

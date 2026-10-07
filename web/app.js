@@ -33,10 +33,6 @@ export class App {
     };
   }
 
-  get mode() {
-    return this.ui.mode;
-  }
-
   get heightOf() {
     return this.view.heightOf;
   }

@@ -1,21 +1,6 @@
 import * as R from "./rules.js";
 
-const MODE_KEY = "breezy.panMode";
 const KEYS_H = 44;
-
-function loadMode() {
-  try {
-    return localStorage.getItem(MODE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function saveMode(mode) {
-  try {
-    localStorage.setItem(MODE_KEY, mode);
-  } catch {}
-}
 
 /** Acts on `touchend` and cancels it, so the tap takes no focus from the editor. */
 function press(el, fn) {
@@ -28,11 +13,10 @@ function press(el, fn) {
   });
 }
 
-/** The bars around the board: top, find, add and selection, keyboard and settings. */
+/** The bars around the board: top, find, add and selection, and keyboard. */
 export class UI {
   constructor(app) {
     this.app = app;
-    this.mode = loadMode() === "two" ? "two" : "one";
     this.matches = [];
     this.index = -1;
     this.$ = (sel) => document.querySelector(sel);
@@ -59,7 +43,6 @@ export class UI {
       case "redo": return app.redo();
       case "zoom": return app.view.zoomAround(app.view.centre(), 1, true);
       case "search": return this.openFind();
-      case "settings": return this.openSettings();
       case "add": this.$(".menu").hidden = !this.$(".menu").hidden; return;
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
@@ -75,11 +58,6 @@ export class UI {
       case "prev": return this.step(-1);
       case "next": return this.step(1);
       case "close-find": return this.closeFind();
-      case "mode":
-        this.mode = b.dataset.mode;
-        saveMode(this.mode);
-        return this.update();
-      case "close-settings": this.$("#settings").hidden = true; return;
     }
   }
 
@@ -100,7 +78,6 @@ export class UI {
     this.$('[data-act="turn"]').hidden = !one;
     this.$('[data-act="pile"]').hidden = !(one && R.laneOf(app.model.board, one.id, app.heightOf));
     this.$("#keys").hidden = !s.editing;
-    for (const m of document.querySelectorAll('[data-act="mode"]')) m.setAttribute("aria-pressed", String(m.dataset.mode === this.mode));
     this.place();
     this.updateZoom();
   }
@@ -127,11 +104,6 @@ export class UI {
 
   closeMenu() {
     this.$(".menu").hidden = true;
-  }
-
-  openSettings() {
-    this.$("#settings").hidden = false;
-    this.update();
   }
 
   openFind() {
