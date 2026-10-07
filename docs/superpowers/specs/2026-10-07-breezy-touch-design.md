@@ -17,6 +17,7 @@ A switch in the settings menu (⋯) chooses who owns a one-finger drag; the choi
 | Hold a card (300 ms) | it lifts; drag moves it, lifting without moving toggles it in the selection | lifting without moving toggles it in the selection |
 | Hold empty space, then drag | selection box | selection box |
 | Drag a lane header | pans; hold first to move the lane | moves the lane |
+| Drag a lane's corner | pans; hold first to resize the lane | resizes the lane |
 
 In both modes:
 - Two fingers pan and pinch-zoom together, anywhere, 25 % to 200 %. Tapping the zoom readout returns to 100 %.
