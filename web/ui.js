@@ -48,7 +48,8 @@ export class UI {
       case "version": b.textContent = b.dataset.version; return;
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
-      case "colour": return app.colour(Number(b.dataset.colour));
+      case "colours": return this.toggleMenu(".colours .menu");
+      case "colour": this.closeMenu(); return app.colour(Number(b.dataset.colour));
       case "turn": {
         const [c] = app.selectedCards();
         return c && app.turn(app.state.turned === c.id ? null : c.id);
@@ -75,7 +76,9 @@ export class UI {
     const selecting = cards.length + lanes.length > 0;
     this.$("#bottom .selection").hidden = !selecting;
     this.$("#bottom .add").hidden = selecting;
-    for (const sw of document.querySelectorAll(".swatch")) sw.hidden = !cards.length;
+    this.$(".colours").hidden = !cards.length;
+    if (cards.length) this.$(".colours .swatch i").className = `c${cards[0].color}`;
+    if (!selecting) this.$(".colours .menu").hidden = true;
     const one = cards.length === 1 && !lanes.length ? cards[0] : null;
     this.$('[data-act="turn"]').hidden = !one;
     this.$('[data-act="pile"]').hidden = !(one && R.laneOf(app.model.board, one.id, app.heightOf));

@@ -43,11 +43,16 @@
     <button data-act="add" class="plus" aria-label="Add">+</button>
   </div>
   <div class="selection" hidden>
-    <button data-act="colour" data-colour="1" class="swatch" aria-label="Yellow"><i class="c1"></i></button>
-    <button data-act="colour" data-colour="2" class="swatch" aria-label="Pink"><i class="c2"></i></button>
-    <button data-act="colour" data-colour="3" class="swatch" aria-label="Blue"><i class="c3"></i></button>
-    <button data-act="colour" data-colour="4" class="swatch" aria-label="Green"><i class="c4"></i></button>
-    <button data-act="colour" data-colour="5" class="swatch" aria-label="Grey"><i class="c5"></i></button>
+    <div class="colours">
+      <div class="menu" hidden>
+        <button data-act="colour" data-colour="1"><i class="c1"></i>Yellow</button>
+        <button data-act="colour" data-colour="2"><i class="c2"></i>Pink</button>
+        <button data-act="colour" data-colour="3"><i class="c3"></i>Blue</button>
+        <button data-act="colour" data-colour="4"><i class="c4"></i>Green</button>
+        <button data-act="colour" data-colour="5"><i class="c5"></i>Grey</button>
+      </div>
+      <button data-act="colours" class="swatch" aria-label="Colour"><i class="c1"></i></button>
+    </div>
     <button data-act="turn" aria-label="Turn over"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/></svg></button>
     <button data-act="pile" aria-label="Select the cards below"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="5" rx="1"/><rect x="5" y="10" width="14" height="5" rx="1"/><rect x="5" y="17" width="14" height="4" rx="1"/></svg></button>
     <button data-act="delete" aria-label="Delete"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>

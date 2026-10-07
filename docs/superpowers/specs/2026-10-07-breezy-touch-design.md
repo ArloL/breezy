@@ -32,7 +32,7 @@ Also:
 ### Bars
 Top, below the safe area: undo, redo, zoom readout, search, and a … menu whose Version entry shows the release the page was published from.
 
-Bottom, above the home indicator: a **+** button offering Card or Lane, placed at the screen centre. While cards are selected, it gives way to the selection bar: five colour swatches, Turn, Pile and Delete. Pile appears when one lane card is selected; it selects that card and the cards below it in its column, so the next drag moves them as a block, as ⌥-drag does on the Mac.
+Bottom, above the home indicator: a **+** button offering Card or Lane, placed at the screen centre. While cards are selected, it gives way to the selection bar: a colour button whose menu offers the five colours, Turn, Pile and Delete. Pile appears when one lane card is selected; it selects that card and the cards below it in its column, so the next drag moves them as a block, as ⌥-drag does on the Mac.
 
 ### Editing
 - Editing zooms the board to at least 100 % around the card and keeps it above the keyboard.
