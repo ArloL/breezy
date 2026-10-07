@@ -27,7 +27,7 @@ addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clien
 addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
 for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (e) => e.preventDefault());
 
-// States for screenshots, since the Simulator cannot be driven by touch from the command line.
+// States for screenshots.
 const demo = params.get("demo");
 const id = "c-offsite";
 if (demo === "select") app.select([id]);

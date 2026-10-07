@@ -48,3 +48,5 @@ npx --yes live-server@1.2.2 web --port=58565 --no-browser
 ```
 
 It reloads the page on every save. On the iPhone, on the same Wi-Fi, open `http://<the Mac's address>:58565` in Safari and Add to Home Screen. `node --test web/test/*.test.js` runs its tests; `swift scripts/make-web-icons.swift web` redraws its icons.
+
+In the iOS simulator, which Xcode 27 shows in DeviceHub rather than a Simulator app, open it with `xcrun simctl openurl booted http://localhost:58565/`. `scripts/sim-touch.py` replays touches as one timed stream; gestures that start with a double tap need it, because the window is 300 ms and `idb ui tap` or AXe take at least 0.7 s per touch. A screenshot rarely lands mid-gesture, so record with `xcrun simctl io booted recordVideo` to catch something brief like iOS's magnifier.
