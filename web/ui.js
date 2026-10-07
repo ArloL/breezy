@@ -43,7 +43,9 @@ export class UI {
       case "redo": return app.redo();
       case "zoom": return app.view.zoomAround(app.view.centre(), 1, true);
       case "search": return this.openFind();
-      case "add": this.$(".menu").hidden = !this.$(".menu").hidden; return;
+      case "add": return this.toggleMenu(".add .menu");
+      case "more": return this.toggleMenu(".menu.more");
+      case "version": b.textContent = b.dataset.version; return;
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
       case "colour": return app.colour(Number(b.dataset.colour));
@@ -102,8 +104,15 @@ export class UI {
     return { top: Math.max(above.getBoundingClientRect().bottom, vv.offsetTop), bottom, left: 0, right: innerWidth };
   }
 
+  toggleMenu(sel) {
+    const open = this.$(sel).hidden;
+    this.closeMenu();
+    this.$(sel).hidden = !open;
+  }
+
   closeMenu() {
-    this.$(".menu").hidden = true;
+    for (const m of document.querySelectorAll(".menu")) m.hidden = true;
+    this.$('[data-act="version"]').textContent = "Version";
   }
 
   openFind() {
