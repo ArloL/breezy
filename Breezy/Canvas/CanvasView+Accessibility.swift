@@ -9,10 +9,11 @@ extension CanvasView {
   override func accessibilityLabel() -> String? { "Board" }
 
   override func accessibilityChildren() -> [Any]? {
-    board.lanes.map { element("lane", label: $0.title, value: nil, frame: doc($0.rect)) }
+    accessibilityElements = board.lanes.map { element("lane", label: $0.title, value: nil, frame: doc($0.rect)) }
       + board.cards.map { c in
         element("card", label: String(c.text.prefix { $0 != "\n" }), value: c.id == turned ? "back" : "front", frame: doc(drawnRect(c)))
       }
+    return accessibilityElements
   }
 
   private func element(_ id: String, label: String, value: String?, frame: NSRect) -> NSAccessibilityElement {
@@ -22,7 +23,8 @@ extension CanvasView {
     e.setAccessibilityIdentifier(id)
     e.setAccessibilityLabel(label)
     e.setAccessibilityValue(value)
-    e.setAccessibilityFrameInParentSpace(frame)
+    // parent-space frames ignore that the canvas is flipped
+    e.setAccessibilityFrame(NSAccessibility.screenRect(fromView: self, rect: frame))
     return e
   }
 }

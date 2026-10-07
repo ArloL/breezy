@@ -35,6 +35,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var drag: Drag?
   /// The card under the pointer, for Space.
   var hovered: String?
+  /// The elements last handed out, kept alive while assistive apps query them.
+  var accessibilityElements: [NSAccessibilityElement] = []
 
   init(model: BoardModel) {
     self.model = model

@@ -34,7 +34,7 @@ final class BreezyUITests: XCTestCase {
     XCTAssertTrue(card.waitForExistence(timeout: 2))
     let scale = lane.frame.width / 480
     card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-      .press(forDuration: 0.2, thenDragTo: lane.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
+      .click(forDuration: 0.2, thenDragTo: lane.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
     XCTAssertEqual(card.frame.minY, lane.frame.minY + 72 * scale, accuracy: 2)
     XCTAssertTrue(lane.frame.contains(CGPoint(x: card.frame.midX, y: card.frame.midY)))
   }
