@@ -23,6 +23,8 @@ export class Mouse {
     const double = !!this.last && t - this.last.t <= DOUBLE_MS && Math.hypot(x - this.last.x, y - this.last.y) <= DOUBLE_SLOP;
     this.last = double ? null : { ...p, t };
     this.pointer = p;
+    // a release lost to the system leaves its drag open
+    if (this.press?.dragging) app.input.dragEnd(p, { x: 0, y: 0 });
     this.press = null;
     app.input.stopCoast();
     app.ui.closeMenu();
@@ -39,11 +41,13 @@ export class Mouse {
     this.press = a.drag && { p0: p, h, action: a.drag, collapse: a.collapse, dragging: false };
   }
 
-  move({ x, y }) {
+  /** `buttons` as the event has them: a press whose button is up lost its release, as to a right-click or a window switch. */
+  move({ x, y, buttons }) {
     const p = { x, y };
     this.pointer = p;
     const d = this.press;
     if (!d) return;
+    if (buttons !== undefined && !(buttons & 1)) return this.up(p);
     if (d.dragging) return this.app.input.dragMove(p);
     const slop = d.action === "marquee" ? 0 : SLOP;
     if (Math.hypot(x - d.p0.x, y - d.p0.y) <= slop) return;
