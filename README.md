@@ -1,35 +1,40 @@
 # Breezy
 
-A whiteboard for work thoughts: sticky-note cards and lanes on an infinite canvas, kept in one self-contained HTML file.
+A whiteboard for work thoughts: sticky-note cards and lanes on an infinite canvas. A native Mac app; each board is a `.breezy` file.
 
-## Run
+## Build
 
 ```bash
-python3 breezy.py ~/Documents/board.html   # created if missing; --port to change 64570
+brew install xcodegen
+xcodegen generate
+xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Release -derivedDataPath build build
+open build/Build/Products/Release/Breezy.app
 ```
 
-Open http://localhost:64570/. Changes are written into the board file half a second after you make them. Earlier versions go to `backups/` beside it: at most one per 10 minutes, newest 50 kept. Opened straight from disk, the file shows the board read-only.
+Boards save themselves; File → Revert To → Browse All Versions shows earlier states.
 
 ## Use
 
 | Do | How |
 |---|---|
+| Pan / zoom | scroll / pinch or ⌘-scroll; ⌘0, ⇧0 or the zoom readout return to 100 % |
+| Select | click; ⇧-click to add; drag on empty space for a box |
 | New card | double-click empty space |
-| Edit card | double-click it; Esc or ⌘↩ to finish; first line is the title |
-| Card back | Space over a card (or with one selected), or its folded corner, turns it over to show its notes; double-click to edit, Tab while editing turns it again |
-| Select | click; ⇧-click to add; drag on empty space for a box, ⇧-drag to add to the selection |
-| Move | drag |
+| Edit card | double-click it; Esc or ⌘↩ to finish; the first line is the title |
+| Card back | Space over a card or its folded corner turns it over; Tab while editing turns it too |
 | Stack | cards in a lane float up their column and make room where you drag one in; ⌥-drag takes a card with those below it |
 | Colour | `1`–`5` |
 | Delete | ⌫ |
-| New lane | `L` at the cursor, or **New Lane** |
+| New lane | `L` at the pointer, or New Lane in the toolbar |
 | Lane | drag the header to move it with its cards, the corner to resize, double-click the header to rename |
-| Pan / zoom | scroll / pinch or ⌘-scroll; ⇧0 or the zoom readout returns to 100 % |
+| Find | ⌘F searches fronts, backs and lane titles |
 | Undo / redo | ⌘Z / ⇧⌘Z |
 
 ## Develop
 
 ```bash
-node --test
-python3 -m unittest discover --start-directory tests
+swift test --package-path BreezyKit
+xcodebuild -project Breezy.xcodeproj -scheme Breezy -derivedDataPath build test
+scripts/selftest.sh                    # after a Debug build; for when XCUITest cannot activate the app
+scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scripts/bench-summary.py
 ```

@@ -1,8 +1,6 @@
 # Breezy for Mac — design
 
-A native Mac app for the Breezy whiteboard: sticky-note cards and lanes on an infinite canvas. It replaces the web version (`app/`, `breezy.py`), which is deleted once your board is converted. Single user, macOS only, no sync; the data model leaves room for encrypted per-card sync later.
-
-The app grows out of the native spike on the `spike/native` branch, whose rendering and trackpad handling it keeps.
+A native Mac app for the Breezy whiteboard: sticky-note cards and lanes on an infinite canvas. Single user, macOS only, no sync; the data model leaves room for encrypted per-card sync later.
 
 ## Interaction
 
@@ -50,7 +48,7 @@ Sync, export, gravity switched off per lane, an iOS app, arrows between cards, i
 
 ### BreezyKit
 - **Model.** `Board`, `Card` and `Lane` are value types with stable string ids. A `Board` value is a complete state, so undo keeps previous values.
-- **Rules.** Snapping, lane membership, stacking, making room during a drag, landing a drop and taking a pile — the logic of the web version's `model.js`. Card heights come in as a function, so the rules need no fonts.
+- **Rules.** Snapping, lane membership, stacking, making room during a drag, landing a drop and taking a pile. Card heights come in as a function, so the rules need no fonts.
 - **Format.** Reads and writes `.breezy` files (see below).
 - **Search.** Finds matches in card fronts, card backs and lane titles, reported as (item, side, range).
 
@@ -63,7 +61,7 @@ Sync, export, gravity switched off per lane, an iOS app, arrows between cards, i
 - `TextMetrics` — measures card heights, cached by text and width, for the rules.
 
 ### Data flow
-Input on the canvas becomes a request to the document, such as "move these cards by Δ". The document keeps the current `Board` for undo, applies the BreezyKit rule and notifies the canvas, which diffs old and new boards by id and updates only the affected layers. A drag mutates the board on every pointer move but registers one undo step when it ends; an edit session does the same. Autosave writes the file when macOS decides.
+Input on the canvas becomes a request to the document, such as "move these cards by Δ". The document keeps the current `Board` for undo, applies the BreezyKit rule and notifies the canvas, which diffs old and new boards by id and updates only the affected layers. A drag mutates the board on every pointer move but registers one undo step when it ends; an edit session does the same. Until then the change counts as unsaved, so autosave and closing keep it; a card being edited is saved as it would stand once finished. Autosave writes the file when macOS decides.
 
 ## File format
 
@@ -90,9 +88,6 @@ Autosave in place, Versions (File → Revert To → Browse All Versions), Recent
 - On load, duplicate ids are replaced and colours outside 1–5 are clamped.
 - `NSDocument` writes atomically; a failed save shows the standard save error sheet.
 
-### Converting the current board
-A throwaway script converts `~/Documents/board.html` to `~/Documents/board.breezy` once, keeping ids, positions, sizes, text, notes and colours. It is not part of the app.
-
 ## Performance
 
 Budgets, measured with the spike's scripted benchmark (zoom sweep, trackpad pan, card drag) on a release build and reported as 95 % confidence intervals over five runs:
@@ -105,9 +100,9 @@ Budgets, measured with the spike's scripted benchmark (zoom sweep, trackpad pan,
 Idle CPU is zero. No pan, zoom or drag step redraws a card whose content did not change. The benchmark stays in the app behind a launch argument.
 
 ## Testing
-- BreezyKit unit tests: the 27 cases of the web version's model tests, ported; format round trip, newer-format refusal, malformed files and id repair; search.
-- The conversion script, checked against a copy of the current board.
+- BreezyKit unit tests: edits, stacking, undo and pending changes; format round trip, newer-format refusal, malformed files, id repair and recentring; search.
+- Self-tests in the app (`scripts/selftest.sh`): the XCUITest scenarios and a few more, driven by synthetic events, for runs where XCUITest cannot activate the app, such as a locked screen.
 - XCUITests on the app: create a card, type, undo; drag a card into a lane and check where it lands; find text on a card's back.
 - Window captures of the board, a turned card and dark mode, looked at before a feature counts as done.
 
-Done means: every behaviour above works, the tests pass, the performance budgets hold, and the converted board opens.
+Done means: every behaviour above works, the tests pass and the performance budgets hold.
