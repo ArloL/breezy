@@ -41,7 +41,7 @@ scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scr
 
 ## Touch prototype
 
-`web/` is a touch version for trying Breezy's interaction on a phone. It keeps nothing: reloading starts from the sample board, `?stress` loads 500 cards. Every push to `main` publishes it at https://arlol.github.io/breezy/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app.
+`web/` is a touch version for trying Breezy's interaction on a phone. It keeps nothing: reloading starts from the sample board, `?stress` loads 500 cards. Every push to `main` publishes it at https://arlol.github.io/breezy/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. Once installed it launches from a local copy of one version, without the network; `web/sw.js` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
 
 ```bash
 npx --yes live-server@1.2.2 web --port=58565 --no-browser
