@@ -2,6 +2,7 @@ import * as R from "./rules.js";
 import { hitTest, dragAction } from "./policy.js";
 import { MIN_ZOOM, MAX_ZOOM } from "./view.js";
 import { EDGE_ZONE, edgeSpeed } from "./physics.js";
+import { haptic } from "./haptics.js";
 
 // a one-finger zoom doubles or halves for every this many points the finger moves
 const ZOOM_DRAG = 150;
@@ -61,6 +62,7 @@ export class Input {
     this.app.endEditing();
     if (s.turned && this.holdHit.id !== s.turned) this.app.turn(null);
     s.lifted = new Set([this.holdHit.id]);
+    haptic();
     this.app.view.invalidate();
   }
 
@@ -172,6 +174,7 @@ export class Input {
     if (d.action === "move") {
       app.model.update((b) => R.land(b, new Set(d.origins.map((o) => o.id)), d.room));
       app.model.end("Move");
+      haptic();
     }
     if (d.action === "lane") app.model.end("Move Lane");
     if (d.action === "resize") app.model.end("Resize Lane");
@@ -206,7 +209,11 @@ export class Input {
   /** Zooms and pans together: the world point first under the fingers stays under them; past a limit, it stretches. */
   pinch(c, scale) {
     const { cam, c: c0 } = this.pinchBase;
-    const zoom = this.app.view.camera.stretchZoom(cam.zoom * scale);
+    const raw = cam.zoom * scale;
+    const zoom = this.app.view.camera.stretchZoom(raw);
+    const past = raw > MAX_ZOOM || raw < MIN_ZOOM;
+    if (past && !this.pinchBase.past) haptic();
+    this.pinchBase.past = past;
     const wx = (c0.x - cam.x) / cam.zoom;
     const wy = (c0.y - cam.y) / cam.zoom;
     this.pinchBase.last = c;
