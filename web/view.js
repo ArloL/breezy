@@ -1,8 +1,7 @@
 import * as R from "./rules.js";
+import { Camera, clampZoom } from "./camera.js";
 
-export const MIN_ZOOM = 0.25;
-export const MAX_ZOOM = 2;
-export const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+export { MIN_ZOOM, MAX_ZOOM, clampZoom } from "./camera.js";
 
 const SHEET = '<div class="sheet"><div class="front"></div><div class="back"><div class="heading"></div><div class="notes"></div></div><div class="ear"></div></div>';
 const PLACEHOLDER = "Double-tap to write on the back";
@@ -20,7 +19,7 @@ export class View {
     const m = document.querySelector(".measure");
     m.innerHTML = `<div class="card">${SHEET}</div><div class="card turned">${SHEET}</div>`;
     [this.mFront, this.mBack] = m.children;
-    this.cam = { x: 0, y: 0, zoom: 1 };
+    this.camera = new Camera((c) => this.apply(c));
     this.els = new Map();
     this.sizes = new Map();
     this.frame = 0;
@@ -87,22 +86,23 @@ export class View {
     return { x: p.x * zoom + x, y: p.y * zoom + y };
   }
 
-  setCamera(cam, animate = false) {
-    const zoom = clampZoom(cam.zoom);
-    this.cam = { x: cam.x, y: cam.y, zoom };
-    this.world.classList.toggle("glide", animate);
-    this.root.classList.toggle("glide", animate);
-    this.world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${zoom})`;
-    const t = R.GRID * zoom;
-    this.root.style.backgroundSize = `${t}px ${t}px`;
-    this.root.style.backgroundPosition = `${cam.x}px ${cam.y}px`;
-    this.root.classList.toggle("no-dots", zoom < 0.4);
-    this.onCamera();
+  get cam() {
+    return this.camera.cam;
   }
 
-  stopGlide() {
-    this.world.classList.remove("glide");
-    this.root.classList.remove("glide");
+  /** Moves the camera at once, or with a spring that a touch can catch. Gestures pass zooms past the limits on purpose. */
+  setCamera(cam, animate = false) {
+    if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) this.camera.springTo({ ...cam, zoom: clampZoom(cam.zoom) });
+    else this.camera.set(animate ? { ...cam, zoom: clampZoom(cam.zoom) } : cam);
+  }
+
+  apply({ x, y, zoom }) {
+    this.world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+    const t = R.GRID * zoom;
+    this.root.style.backgroundSize = `${t}px ${t}px`;
+    this.root.style.backgroundPosition = `${x}px ${y}px`;
+    this.root.classList.toggle("no-dots", zoom < 0.4);
+    this.onCamera();
   }
 
   /** Zooms keeping the world point under screen point `c` in place. */

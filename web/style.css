@@ -65,9 +65,7 @@ body {
   background-image: radial-gradient(circle, var(--dot) 0.9px, transparent 1.1px);
 }
 #board.no-dots { background-image: none; }
-#board.glide { transition: background-position 0.25s var(--ease), background-size 0.25s var(--ease); }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.world.glide { transition: transform 0.25s var(--ease); }
 
 .lane {
   position: absolute; left: 0; top: 0; box-sizing: border-box;
@@ -220,5 +218,5 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 .measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .lane, .sheet, .world.glide, #board.glide, button, .menu { transition: none !important; }
+  .card, .lane, .sheet, button, .menu { transition: none !important; }
 }

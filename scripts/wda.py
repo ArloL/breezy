@@ -5,6 +5,8 @@
   scripts/wda.py shot OUT.png              screenshot
   scripts/wda.py tap X Y
   scripts/wda.py touch STEP...             one finger: down X Y | move X Y MS | wait MS | up
+  scripts/wda.py pinch CX CY R0 R1 MS HOLD two fingers R0 → R1 points from (CX, CY), horizontally, then held HOLD ms
+  scripts/wda.py type TEXT                 types into the focused field; \n is Return
   scripts/wda.py source                    the accessibility tree, to find what to tap
 
 WDA_URL overrides http://192.168.178.46:8100, the address WebDriverAgent prints when it starts.
@@ -53,6 +55,19 @@ def touch(steps):
          {"actions": [{"type": "pointer", "id": "finger", "parameters": {"pointerType": "touch"}, "actions": actions}]})
 
 
+def pinch(cx, cy, r0, r1, ms, hold):
+    def finger(name, sign):
+        return {"type": "pointer", "id": name, "parameters": {"pointerType": "touch"}, "actions": [
+            {"type": "pointerMove", "duration": 0, "x": cx + sign * r0, "y": cy},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pause", "duration": 100},
+            {"type": "pointerMove", "duration": ms, "x": cx + sign * r1, "y": cy},
+            {"type": "pause", "duration": hold},
+            {"type": "pointerUp", "button": 0},
+        ]}
+    call("POST", f"/session/{session()}/actions", {"actions": [finger("a", -1), finger("b", 1)]})
+
+
 def main():
     cmd, args = sys.argv[1], sys.argv[2:]
     if cmd == "launch":
@@ -66,6 +81,10 @@ def main():
         touch(["down", args[0], args[1], "wait", "50", "up"])
     elif cmd == "touch":
         touch(args)
+    elif cmd == "pinch":
+        pinch(*map(float, args[:4]), int(args[4]), int(args[5]))
+    elif cmd == "type":
+        call("POST", f"/session/{session()}/wda/keys", {"value": list(args[0].replace("\\n", "\n"))})
     elif cmd == "source":
         print(call("GET", f"/session/{session()}/source?format=description"))
     else:
