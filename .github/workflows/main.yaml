@@ -102,6 +102,7 @@ jobs:
     - name: Make sure build did not change anything
       run: git diff --exit-code
   web:
+    needs: version
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -120,6 +121,14 @@ jobs:
         mkdir _site
         cp -R web/. _site/
         rm -r _site/test _site/package.json
+    # Off main there is no tag, so the page's own placeholder version stays.
+    - name: Stamp the version
+      if: ${{ needs.version.outputs.new_version != '' }}
+      env:
+        NEW_VERSION: ${{ needs.version.outputs.new_version }}
+      run: |
+        sed -i "s/data-version=\"dev\"/data-version=\"${NEW_VERSION}\"/" _site/index.html
+        grep --fixed-strings --quiet "data-version=\"${NEW_VERSION}\"" _site/index.html
     - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
     - name: Make sure build did not change anything
       run: git diff --exit-code
