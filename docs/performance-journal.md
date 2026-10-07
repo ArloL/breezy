@@ -14,6 +14,7 @@ Hypotheses, experiments and results from tuning Breezy for feel and memory. Newe
   - XCUITest cannot start with the display asleep ("Timed out while enabling automation mode"); `scripts/selftest.sh` covers the same scenarios.
   - Runs longer than ~30 s may catch AppKit's window snapshot (see below) in the peak.
   - Trackpad scroll events are applied later, on the display link; a pan step must move the clip view itself to be measured.
+  - Steps run 50 ms apart. With 8 ms between them, as a pinch or pan delivers frames, every step is cheaper (zoom median 2.2 → 1.2 ms on your board), presumably because the CPU stays clocked up. Absolute numbers are pessimistic; a change whose effect depends on frame rate, such as a redraw limit, must be measured at 8 ms.
 
 ## Experiments
 
@@ -44,6 +45,22 @@ Hypotheses, experiments and results from tuning Breezy for feel and memory. Newe
 | 23 | Warming the text system off-screen after launch shortens the first edit | Lay out and draw a text view at 0.5 s | First edit 16.9 → 13.6 ms but first key 9.3 → 10.6 ms: within noise | no |
 | 24 | Where the stress board's remaining slow steps are | Log steps over 6 ms by part | Only the first zoom step (441 layers handed back) and cold clicks; every zoom step after the first is under 6 ms | — |
 | 25 | Live resize is costly | New `resize` bench phase; toolbar styles; no toolbar | 7.5 ms per step on your board; `.unifiedCompact` 6.0, no toolbar 5.4: the toolbar lays out its items through SwiftUI, the rest is AppKit's window frame | not acted on (design) |
+| 26 | Typesetting the zoom readout each step is the largest share of a zoom step the app controls | Redraw at most 30 times a second, with a trailing redraw | Invisible at the bench's 50 ms spacing; with steps 8 ms apart, median 1.54 → 1.21 ms, p95 2.39 → 2.09 ms | yes |
+| 27 | Scrollers and their "more content" indicators cost per step | Hide both scrollers | Zoom 1.18 → 1.12 ms, pan unchanged: not worth a design change | no |
+
+## Where it stands (2026-10-07)
+
+`main` before this work (`fafd3a8`, with today's benchmark) against the branch, five interleaved runs, 95 % CIs:
+
+| Your board | before | after |
+|---|---|---|
+| Zoom step, median / p95 / worst | 7.6 ± 0.6 / 10.4 ± 0.5 / 12.0 ± 0.5 ms | 2.2 ± 0.1 / 3.2 ± 0.1 / 3.8 ± 0.3 ms |
+| Key while typing, median / p95 | 4.7 ± 0.1 / 6.1 ± 0.2 ms | 2.7 ± 0.1 / 4.2 ± 0.4 ms |
+| Pan step, median | 1.0 ± 0.1 ms | 1.0 ± 0.1 ms |
+| Resize step, median | 7.8 ± 0.2 ms | 8.0 ± 0.3 ms |
+| Peak / idle / hidden | 41.8 / 27.9 / 30.9 MB | 37.6 / 27.8 / 29.6 MB |
+
+On the stress board, zoom went from 13.8 / 25.6 / 40.8 to 3.2 / 4.4 / 8.7 ms and pan p95 from 3.8 to 2.4 ms. Its memory is not comparable: before, every card measured one line high (see below).
 
 ## Findings that were not ours to fix
 
