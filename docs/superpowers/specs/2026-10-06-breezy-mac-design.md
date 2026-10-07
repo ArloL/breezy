@@ -90,7 +90,7 @@ Autosave in place, Versions (File → Revert To → Browse All Versions), Recent
 
 ## Performance
 
-Budgets, measured with the spike's scripted benchmark (zoom sweep, trackpad pan, card drag) on a release build and reported as 95 % confidence intervals over five runs:
+Budgets, measured with the scripted benchmark (a pinch-like zoom, a fast pan, a drag through a lane, typing into new cards, the app hidden) on a release build and reported as 95 % confidence intervals over five runs. It also records the main-thread time of each step, which is what makes the app feel fast:
 
 | Board | Idle | Peak |
 |---|---|---|
