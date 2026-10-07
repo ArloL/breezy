@@ -158,3 +158,14 @@ test("search finds fronts, backs and lane titles in reading order, ignoring case
   ]);
   assert.deepEqual(R.search(b, "  "), []);
 });
+
+test("a pile is the card and the cards below it in its lane's column", () => {
+  const b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216), card("side", 264, 144)], [lane("l", 0, 0, 480, 720)]);
+  assert.deepEqual(R.pile(b, "b", h48), ["b", "c"]);
+  assert.deepEqual(R.pile(b, "a", h48), ["a", "b", "c"]);
+});
+
+test("outside a lane a card piles alone", () => {
+  const b = board([card("a", 1000, 0), card("b", 1000, 72)]);
+  assert.deepEqual(R.pile(b, "a", h48), ["a"]);
+});

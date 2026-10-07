@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hitTest, dragAction } from "../policy.js";
+import { hitTest, dragAction, pressAction } from "../policy.js";
 
 const rectOf = (c) => ({ x: c.x, y: c.y, w: c.w, h: 48 });
 const card = (id, x, y, notes) => ({ id, x, y, w: 240, text: "t", color: 1, ...(notes ? { notes } : {}) });
@@ -55,4 +55,46 @@ test("one finger pans unless the drag starts on a selected card or after a hold"
     [{ kind: "corner", id: "l" }, true, "resize"],
   ];
   for (const [hit, held, want] of cases) assert.equal(dragAction(hit, sel, held), want, JSON.stringify([hit, held]));
+});
+
+const mouseAt = (b, x, y, zoom = 1, turned = null) => hitTest(b, { x, y }, { rectOf, zoom, turned, touch: false });
+
+test("a pointer's fold is the card's own corner, without a touch area", () => {
+  const b = { cards: [card("a", 0, 0, "n")], lanes: [] };
+  assert.deepEqual(mouseAt(b, 236, 44), { kind: "fold", id: "a" });
+  assert.deepEqual(mouseAt(b, 250, 50), { kind: "empty" });
+  assert.deepEqual(mouseAt(b, 220, 30), { kind: "card", id: "a" });
+});
+
+test("a pointer's lane corner is 20 pt and its header 48 pt at any zoom", () => {
+  const b = { cards: [], lanes: [lane] };
+  assert.deepEqual(mouseAt(b, 470, 710), { kind: "corner", id: "l" });
+  assert.deepEqual(mouseAt(b, 455, 700), { kind: "empty" });
+  assert.deepEqual(mouseAt(b, 100, 40, 0.25), { kind: "header", id: "l" });
+  assert.deepEqual(mouseAt(b, 100, 60, 0.25), { kind: "empty" });
+});
+
+const press = (kind, mods = {}, sel = []) => pressAction({ kind, id: "a" }, { shift: false, alt: false, ...mods }, new Set(sel));
+
+test("a press on a card selects it alone and drags; in a selection it keeps the selection", () => {
+  assert.deepEqual(press("card"), { select: "only", drag: "move", collapse: true });
+  assert.deepEqual(press("card", {}, ["a", "b"]), { select: "keep", drag: "move", collapse: true });
+  assert.deepEqual(press("card", { shift: true }), { select: "toggle", drag: null });
+  assert.deepEqual(press("card", { alt: true }), { select: "pile", drag: "move", collapse: true });
+});
+
+test("a press on a fold turns the card, with or without shift", () => {
+  assert.deepEqual(press("fold"), { select: "only", drag: null, turn: true });
+  assert.deepEqual(press("fold", { shift: true }), { select: "only", drag: null, turn: true });
+});
+
+test("lane presses select the lane; shift on the header toggles it", () => {
+  assert.deepEqual(press("corner"), { select: "only", drag: "resize" });
+  assert.deepEqual(press("header"), { select: "only", drag: "lane" });
+  assert.deepEqual(press("header", { shift: true }), { select: "toggle", drag: null });
+});
+
+test("a press on empty space clears the selection, or with shift keeps it, and boxes", () => {
+  assert.deepEqual(press("empty"), { select: "none", drag: "marquee" });
+  assert.deepEqual(press("empty", { shift: true }), { select: "keep", drag: "marquee" });
 });
