@@ -38,3 +38,13 @@ xcodebuild -project Breezy.xcodeproj -scheme Breezy -derivedDataPath build test
 scripts/selftest.sh                    # after a Debug build; for when XCUITest cannot activate the app
 scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scripts/bench-summary.py
 ```
+
+## Touch prototype
+
+`web/` is a touch version for trying Breezy's interaction on an iPhone. It keeps nothing: reloading starts from the sample board, `?stress` loads 500 cards.
+
+```bash
+python3 -m http.server --directory web 8000
+```
+
+On the iPhone, on the same Wi-Fi, open `http://<the Mac's address>:8000` in Safari and Add to Home Screen. ⋯ switches between one-finger and two-finger panning. `node --test web/test/*.test.js` runs its tests; `swift scripts/make-web-icons.swift web` redraws its icons.
