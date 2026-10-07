@@ -304,8 +304,9 @@ export class View {
         g.style.visibility = a < 90 ? "" : "hidden";
         g.firstChild.style.transform = `${p}rotateY(${a}deg)`;
       }
+      // opacity, not visibility: a hidden editor loses the keyboard focus that Tab just gave it
       for (const s of fresh) {
-        s.style.visibility = a < 90 ? "hidden" : "";
+        s.style.opacity = a < 90 ? "0" : "";
         s.style.transform = `${p}rotateY(${a - 180}deg)`;
       }
     };
@@ -314,7 +315,7 @@ export class View {
     turn(0);
     animate(0, 180, { type: "spring", visualDuration: 0.45, bounce: 0.2, onUpdate: turn }).then(() => {
       for (const g of ghosts) g.remove();
-      for (const s of fresh) s.style.transform = s.style.visibility = "";
+      for (const s of fresh) s.style.transform = s.style.opacity = "";
       for (const el of cards) el.classList.remove("flipping");
     });
   }

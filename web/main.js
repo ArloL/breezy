@@ -2,6 +2,9 @@ import { App } from "./app.js";
 import { Gestures, HOLD_MS } from "./gestures.js";
 import { sampleBoard, stressBoard } from "./sample.js";
 import { startUpdates } from "./update.js";
+import { Mouse } from "./mouse.js";
+import { wheelAction } from "./wheel.js";
+import { command, perform } from "./keys.js";
 
 const params = new URLSearchParams(location.search);
 const app = new App(params.has("stress") ? stressBoard() : sampleBoard());
@@ -9,24 +12,59 @@ app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
 
+const board = document.getElementById("board");
 const gestures = new Gestures(app.input);
-document.getElementById("board").addEventListener("pointerdown", (e) => {
-  if (e.target.closest('[contenteditable="plaintext-only"]')) return;
+const mouse = new Mouse(app);
+const editor = (e) => e.target.closest?.('[contenteditable="plaintext-only"]');
+board.addEventListener("pointerdown", (e) => {
+  if (editor(e)) return;
+  app.touching = e.pointerType !== "mouse";
+  if (e.pointerType === "mouse") {
+    if (e.button !== 0) return;
+    // a click on the board takes the keyboard from the find field, as clicking the canvas does on the Mac
+    if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+    board.setPointerCapture(e.pointerId);
+    return mouse.down({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey }, e.timeStamp);
+  }
   app.input.touchStart();
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
   setTimeout(() => gestures.tick(performance.now()), HOLD_MS + 10);
 });
 // A touch's compatibility mousedown comes after pointerup and would take focus from an editor that tap just opened.
-document.getElementById("board").addEventListener("mousedown", (e) => {
-  if (!e.target.closest('[contenteditable="plaintext-only"]')) e.preventDefault();
-});
+board.addEventListener("mousedown", (e) => editor(e) || e.preventDefault());
 // Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
-document.getElementById("board").addEventListener("touchstart", (e) => {
-  if (!e.target.closest('[contenteditable="plaintext-only"]')) e.preventDefault();
+board.addEventListener("touchstart", (e) => editor(e) || e.preventDefault(), { passive: false });
+addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") return mouse.move({ x: e.clientX, y: e.clientY });
+  gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+});
+addEventListener("pointerup", (e) => {
+  if (e.pointerType === "mouse") return e.button === 0 && mouse.up({ x: e.clientX, y: e.clientY });
+  gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+});
+addEventListener("pointercancel", (e) => (e.pointerType === "mouse" ? mouse.cancel() : gestures.cancel(e.pointerId)));
+addEventListener("pointerout", (e) => e.pointerType === "mouse" && !e.relatedTarget && mouse.leave());
+board.addEventListener("contextmenu", (e) => editor(e) || e.preventDefault());
+
+addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const a = wheelAction(e);
+  const view = app.view;
+  if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
+  else view.setCamera({ ...view.cam, x: view.cam.x + a.pan.x, y: view.cam.y + a.pan.y });
+  // what a held drag is over has moved
+  if (app.input.drag) app.input.dragMove(app.input.drag.last);
 }, { passive: false });
-addEventListener("pointermove", (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
-addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
-addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
+
+const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+addEventListener("keydown", (e) => {
+  const s = app.state;
+  const typing = s.editing ? "card" : s.renaming ? "lane" : e.target.closest?.("input, textarea") ? "field" : null;
+  const cmd = command(e, { mac, typing });
+  if (!cmd) return;
+  e.preventDefault();
+  perform(app, cmd, mouse);
+});
 // iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
 for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (e) => e.preventDefault());
