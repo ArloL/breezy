@@ -51,7 +51,8 @@ test("one finger pans unless the drag starts on a selected card or after a hold"
     [{ kind: "fold", id: "a" }, false, "move"],
     [{ kind: "header", id: "l" }, false, "pan"],
     [{ kind: "header", id: "l" }, true, "lane"],
-    [{ kind: "corner", id: "l" }, false, "resize"],
+    [{ kind: "corner", id: "l" }, false, "pan"],
+    [{ kind: "corner", id: "l" }, true, "resize"],
   ];
   for (const [hit, held, want] of cases) assert.equal(dragAction("one", hit, sel, held), want, JSON.stringify([hit, held]));
 });

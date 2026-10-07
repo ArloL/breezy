@@ -28,7 +28,7 @@ export function dragAction(mode, hit, selection, held) {
   const free = mode === "two" || held;
   switch (hit.kind) {
     case "corner":
-      return "resize";
+      return free ? "resize" : "pan";
     case "card":
     case "fold":
       return free || selection.has(hit.id) ? "move" : "pan";
