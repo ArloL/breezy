@@ -8,6 +8,8 @@
   --accent: #e8620a;
   --lane: rgb(255 255 255 / 0.45);
   --bar: rgb(241 239 234 / 0.85);
+  --fill: rgb(43 42 39 / 0.07);
+  --fill-pressed: rgb(43 42 39 / 0.16);
   --c1: #f8eca2;
   --c2: #f5d2ca;
   --c3: #cfe0ee;
@@ -28,6 +30,8 @@
     --accent: #ff8a3d;
     --lane: rgb(255 255 255 / 0.04);
     --bar: rgb(31 30 28 / 0.85);
+    --fill: rgb(233 230 223 / 0.1);
+    --fill-pressed: rgb(233 230 223 / 0.2);
     --c1: #4f4628;
     --c2: #553a35;
     --c3: #2f4152;
@@ -135,6 +139,12 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
   position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 2px;
   padding: env(safe-area-inset-top) 8px 0; border-bottom: 1px solid var(--hairline);
 }
+#top button {
+  border: 4px solid transparent; border-radius: 12px; padding: 0 6px;
+  background: var(--fill) padding-box; color: var(--ink);
+}
+#top button:active { background-color: var(--fill-pressed); }
+#top button:disabled { color: var(--ink3); }
 #top .zoom { margin: 0 auto; font-variant-numeric: tabular-nums; font-size: 15px; }
 #find {
   position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 45px);
