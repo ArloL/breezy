@@ -1,6 +1,7 @@
 import * as R from "./rules.js";
 import { track } from "./press.js";
 import { Menus } from "./menu.js";
+import { haptic } from "./haptics.js";
 
 const KEYS_H = 44;
 const MENUS = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
@@ -12,7 +13,7 @@ export class UI {
     this.matches = [];
     this.index = -1;
     this.$ = (sel) => document.querySelector(sel);
-    this.menus = new Menus({ pick: (b) => this.act(b.dataset.act, b) });
+    this.menus = new Menus({ pick: (b) => (haptic(), this.act(b.dataset.act, b)), hover: haptic });
     for (const b of document.querySelectorAll("[data-act]")) {
       const menu = MENUS[b.dataset.act];
       if (menu) this.menus.attach(b, this.$(menu));
