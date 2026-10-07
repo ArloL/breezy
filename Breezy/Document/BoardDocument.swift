@@ -20,12 +20,18 @@ final class BoardDocument: NSDocument {
     addWindowController(BoardWindowController(model: model))
   }
 
-  /// Saves an edit in progress as it would stand once finished, without ending it.
+  /// Saves off the main thread: encoding and writing, and the wait on Spotlight that follows, would
+  /// otherwise hold up a drag or typing whenever macOS autosaves.
+  override func canAsynchronouslyWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType) -> Bool { true }
+
+  /// Saves an edit in progress as it would stand once finished, without ending it. The main thread
+  /// waits only until the board is copied.
   override func data(ofType typeName: String) throws -> Data {
     var board = model.board
     for case let wc as BoardWindowController in windowControllers {
       if let id = wc.canvas.editing?.id { board.finishEdit(id) }
     }
+    unblockUserInteraction()
     return try BoardFormat.encode(board)
   }
 
