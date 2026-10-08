@@ -1,3 +1,4 @@
+import Foundation
 @testable import BreezyKit
 
 func board(_ cards: [Card] = [], _ lanes: [Lane] = []) -> Board { Board(cards: cards, lanes: lanes) }
@@ -7,3 +8,9 @@ func lane(_ id: String, _ x: Double, _ y: Double, _ w: Double = 480, _ h: Double
 }
 let h48: HeightOf = { _ in 48 }
 func ys(_ b: Board, _ ids: String...) -> [Double] { ids.map { b.card($0)!.y } }
+
+/// A file from BreezyKit/Tests/Fixtures, which the web app's tests read too.
+func fixture(_ name: String) throws -> Data {
+  let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+  return try Data(contentsOf: tests.appendingPathComponent("Fixtures").appendingPathComponent(name))
+}

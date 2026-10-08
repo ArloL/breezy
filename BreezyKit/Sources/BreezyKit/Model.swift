@@ -73,6 +73,5 @@ public struct Board: Equatable, Sendable {
   func laneIndex(_ id: String) -> Int? { lanes.firstIndex { $0.id == id } }
 }
 
-public func newID(_ prefix: String) -> String {
-  prefix + String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + String(Int.random(in: 0..<60_466_176), radix: 36)
-}
+/// 16 random bytes: ids are made on every device and must not collide.
+public func newID() -> String { Base64URL.encode(randomBytes(16)) }

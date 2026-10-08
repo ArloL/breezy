@@ -53,11 +53,11 @@ public enum BoardFormat {
     var b = board
     var seen = Set<String>()
     for i in b.cards.indices {
-      while !seen.insert(b.cards[i].id).inserted { b.cards[i].id = newID("c") }
+      while !seen.insert(b.cards[i].id).inserted { b.cards[i].id = newID() }
       b.cards[i].color = min(max(b.cards[i].color, 1), 5)
     }
     for i in b.lanes.indices {
-      while !seen.insert(b.lanes[i].id).inserted { b.lanes[i].id = newID("l") }
+      while !seen.insert(b.lanes[i].id).inserted { b.lanes[i].id = newID() }
     }
     return b
   }
