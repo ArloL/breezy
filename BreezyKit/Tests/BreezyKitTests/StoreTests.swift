@@ -84,6 +84,17 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(s.state.records["c"]!.current.deleted)
 }
 
+@Test func aNewRecordOnADeletedBoardIsDropped() {
+  let s = Store()
+  let id = s.createBoard(title: "Plans")
+  s.deleteBoard(id)
+  var heard = 0
+  s.onChange = { _, _ in heard += 1 }
+  s.apply(Records.changes(from: Board(), to: board([card("c", 0, 0)]), board: id, orders: [:]))
+  #expect(s.state.records["c"] == nil)
+  #expect(heard == 0)
+}
+
 @Test func deletingABoardDeletesWhatIsOnIt() {
   let s = Store()
   let id = s.createBoard(title: "Plans", contents: board([card("c", 0, 0)], [lane("l", 0, 0)]))

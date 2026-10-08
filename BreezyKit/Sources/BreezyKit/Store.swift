@@ -80,7 +80,8 @@ public final class Store {
     apply(changes)
   }
 
-  /// Local edits. A deleted record stays deleted; partial fields for an unknown record are dropped.
+  /// Local edits. A deleted record stays deleted; partial fields for an unknown record, and new
+  /// records on a deleted board, are dropped.
   public func apply(_ changes: [String: Change]) {
     var boards = Set<String>()
     for (id, change) in changes {
@@ -97,7 +98,7 @@ public final class Store {
           state.records[id] = s
           boards.insert(s.current.board ?? id)
         } else {
-          guard f["kind"] != nil else { continue }
+          guard f["kind"] != nil, !(f["board"]?.string.flatMap { state.records[$0]?.current.deleted } ?? false) else { continue }
           state.records[id] = StoredRecord(base: nil, version: 0, current: Record(f))
           boards.insert(f["board"]?.string ?? id)
         }

@@ -37,10 +37,13 @@ final class FakeTransport: Transport {
   var online = true
   var failure: TransportError?
   var calls = 0
+  /// Runs before each pull, as another part of the app might while a request is out.
+  var beforePull: (() -> Void)?
 
   init(_ server: FakeServer) { self.server = server }
 
   func pull(since: Int) async throws -> Page {
+    beforePull?()
     try check()
     return server.pull(since: since)
   }

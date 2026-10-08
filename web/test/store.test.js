@@ -62,6 +62,17 @@ test("edits to a deleted record are dropped", () => {
   assert.deepEqual(s.board(id).cards, []);
 });
 
+test("a new record on a deleted board is dropped", () => {
+  const s = new Store();
+  const id = s.createBoard("Plans");
+  s.deleteBoard(id);
+  let heard = 0;
+  s.onChange = () => heard++;
+  s.apply({ c: { fields: { kind: "card", board: id, text: "t" } } });
+  assert.equal(s.state.records.c, undefined);
+  assert.equal(heard, 0);
+});
+
 test("deleting a board deletes what is on it", () => {
   const s = new Store();
   const id = s.createBoard("Plans", { cards: [card("c")], lanes: [] });
