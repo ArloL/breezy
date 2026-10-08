@@ -72,6 +72,8 @@ export class UI {
   act(name, b) {
     const app = this.app;
     switch (name) {
+      case "boards": return app.library?.showList();
+      case "new-board": return app.library?.newBoard();
       case "undo": return app.undo();
       case "redo": return app.redo();
       case "search": return this.openFind();

@@ -241,3 +241,30 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus, #keys { transition: none !important; }
 }
+body[data-screen="boards"] :is(#board, #top, #bottom, #zoom-level, #find, #keys) { display: none !important; }
+#boards {
+  position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 24px);
+}
+body[data-screen="board"] #boards { display: none; }
+.boards-top { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.boards-top h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; }
+.boards-list { list-style: none; margin: 16px 0 0; padding: 0; border-radius: 22px; overflow: hidden; background: var(--sheet); box-shadow: var(--lift); }
+.boards-list li { display: flex; align-items: center; border-top: 1px solid var(--hairline); }
+.boards-list li:first-child { border-top: 0; }
+.boards-list .open { flex: 1; min-width: 0; height: 52px; padding: 0 16px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.boards-list .edit { width: 52px; height: 52px; color: var(--ink3); }
+.boards-new { display: block; width: 100%; height: 52px; margin-top: 16px; border-radius: 999px; background: var(--glass); box-shadow: var(--lift); }
+#sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(0 0 0 / 0.2); }
+.sheet-card { box-sizing: border-box; width: min(100%, 320px); padding: 20px 16px 12px; border-radius: 26px; background: var(--sheet); box-shadow: var(--lift); text-align: center; }
+.sheet-title { margin: 0; font-weight: 600; }
+.sheet-message { margin: 4px 0 0; color: var(--ink2); font-size: 15px; line-height: 20px; white-space: pre-line; }
+.sheet-card input {
+  box-sizing: border-box; width: 100%; height: 40px; margin-top: 14px; padding: 0 12px; font: inherit; color: var(--ink);
+  background: var(--press); border: 0; border-radius: 12px; outline: none; -webkit-appearance: none; appearance: none;
+  -webkit-user-select: text; user-select: text;
+}
+.sheet-buttons { display: flex; gap: 8px; margin-top: 16px; }
+.sheet-buttons button { flex: 1; height: 44px; border-radius: 999px; background: var(--press); color: var(--ink); }
+.sheet-buttons .danger { color: #d93a2b; }
+@media (prefers-color-scheme: dark) { .sheet-buttons .danger { color: #ff6b5e; } }

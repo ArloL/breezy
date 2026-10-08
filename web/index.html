@@ -39,13 +39,14 @@
 <title>Breezy</title>
 <script type="module" src="main.js"></script>
 </head>
-<body>
+<body data-screen="board">
 <div id="board">
   <div class="world"><div class="lanes"></div><div class="cards"></div><div class="marquee" hidden></div></div>
 </div>
 
 <header id="top">
   <div class="pill">
+    <button data-act="boards" aria-label="Boards" hidden><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
     <button data-act="undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
     <button data-act="redo" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
   </div>
@@ -54,6 +55,28 @@
     <button data-act="more" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
   </div>
 </header>
+
+<section id="boards" hidden>
+  <header class="boards-top">
+    <h1>Boards</h1>
+    <div class="pill"><button data-act="more" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
+  </header>
+  <ul class="boards-list"></ul>
+  <button data-act="new-board" class="boards-new strong">New Board</button>
+</section>
+
+<div id="sheet" hidden>
+  <form class="sheet-card">
+    <p class="sheet-title"></p>
+    <p class="sheet-message"></p>
+    <input type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="sheet-buttons">
+      <button type="button" data-sheet="cancel">Cancel</button>
+      <button type="button" data-sheet="danger" class="danger"></button>
+      <button type="submit" data-sheet="ok" class="strong">OK</button>
+    </div>
+  </form>
+</div>
 
 <div id="zoom-level" hidden></div>
 

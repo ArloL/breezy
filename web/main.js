@@ -5,9 +5,12 @@ import { startUpdates } from "./update.js";
 import { Mouse } from "./mouse.js";
 import { wheelAction } from "./wheel.js";
 import { command, perform } from "./keys.js";
+import { Library } from "./library.js";
 
 const params = new URLSearchParams(location.search);
-const app = new App(params.has("stress") ? stressBoard() : sampleBoard());
+// ?stress and ?demo show boards that are not kept, as before
+const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : null;
+const app = new App(scratch ?? { cards: [], lanes: [] });
 app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
@@ -47,6 +50,7 @@ addEventListener("pointerout", (e) => e.pointerType === "mouse" && !e.relatedTar
 board.addEventListener("contextmenu", (e) => editor(e) || e.preventDefault());
 
 addEventListener("wheel", (e) => {
+  if (document.body.dataset.screen === "boards") return;
   e.preventDefault();
   // should Safari also send the pinch as ⌃-wheel, it would zoom twice
   if (pinch !== null && e.ctrlKey) return;
@@ -60,6 +64,7 @@ addEventListener("wheel", (e) => {
 
 const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 addEventListener("keydown", (e) => {
+  if (document.body.dataset.screen === "boards") return;
   const s = app.state;
   const typing = s.editing ? "card" : s.renaming ? "lane" : e.target.closest?.("input, textarea") ? "field" : null;
   const cmd = command(e, { mac, typing });
@@ -103,3 +108,5 @@ if (demo === "find") {
   app.ui.find("plan");
 }
 if (demo === "add") app.ui.act("add");
+
+if (!scratch) await Library.open(app);
