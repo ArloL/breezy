@@ -20,11 +20,11 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 export function boardFrom(records, id) {
   const cards = [], lanes = [];
   for (const [rid, r] of Object.entries(records)) {
-    if (r.deleted || r.board !== id) continue;
+    if (r.deleted === true || r.board !== id) continue;
     const [x, y] = pair(r.pos, [0, 0]);
     if (r.kind === "card") {
       const notes = text(r.notes);
-      const color = Math.min(5, Math.max(1, Math.trunc(Number(r.color)) || 1));
+      const color = typeof r.color === "number" && Number.isFinite(r.color) ? Math.trunc(Math.min(5, Math.max(1, r.color))) : 1;
       const w = Number.isFinite(r.w) ? r.w : CARD_W;
       cards.push({ order: text(r.order), card: { id: rid, x, y, w, text: text(r.text), color, ...(notes ? { notes } : {}) } });
     } else if (r.kind === "lane") {
