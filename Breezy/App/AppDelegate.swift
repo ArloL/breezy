@@ -97,7 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     if n > 0 {
       let sure = NSAlert()
       sure.messageText = "Replace the boards on this Mac?"
-      sure.informativeText = "Joining shows the space’s boards instead of the \(n == 1 ? "board" : "\(n) boards") here, which are deleted from this Mac."
+      let host = URL(string: invite.server)?.host ?? invite.server
+      sure.informativeText = "Joining the space on \(host) shows its boards instead of the \(n == 1 ? "board" : "\(n) boards") here, which are deleted from this Mac."
       sure.addButton(withTitle: "Join").hasDestructiveAction = true
       sure.addButton(withTitle: "Cancel")
       guard sure.runModal() == .alertFirstButtonReturn else { return }
@@ -113,6 +114,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     guard let link = Library.shared.store.state.invite?.link else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(link, forType: .string)
+    // clipboard managers leave out what is marked concealed
+    NSPasteboard.general.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
     tell("Invite link copied", "Paste it into Join Space on the other device. Anyone with the link can read and change every board in this space.")
   }
 }

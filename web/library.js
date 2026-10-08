@@ -153,22 +153,27 @@ export class Library {
     await this.engine.sync();
   }
 
+  /** Joins the space in `text`, a link opened or pasted, or asks for one; a link opened always asks first. */
   async join(text) {
-    if (text === undefined) {
+    const opened = text !== undefined;
+    if (!opened) {
       const r = await ask({ title: "Join Space", message: "Paste the invite link from another device.", value: "", placeholder: "Invite link", ok: "Join" });
       if (!r) return;
       text = r.value;
     }
     const invite = parseInvite(text);
     if (!invite) return ask({ title: "That isn’t an invite link", message: "Copy the whole link from Share Invite on the other device.", cancel: null });
+    const host = new URL(invite.server).hostname;
     const n = this.store.boards().length;
     if (n) {
       const sure = await ask({
         title: "Replace the boards here?",
-        message: `Joining shows the space’s boards instead of the ${n === 1 ? "board" : `${n} boards`} on this device, which are deleted from it.`,
+        message: `Joining the space on ${host} shows its boards instead of the ${n === 1 ? "board" : `${n} boards`} on this device, which are deleted from it.`,
         ok: null, danger: "Join",
       });
       if (!sure?.danger) return;
+    } else if (opened && !(await ask({ title: `Join the space on ${host}?`, ok: "Join" }))) {
+      return;
     }
     this.showList();
     this.store.join(invite);
