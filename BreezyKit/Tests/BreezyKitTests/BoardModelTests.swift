@@ -129,3 +129,78 @@ import Testing
   m.undoManager.undo()
   #expect(log == [true, false, true, false])
 }
+
+@Test func undoLeavesChangesFromAnotherDeviceAlone() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  m.perform("Colour") { $0.setColor(["a"], 3) }
+  var remote = m.board
+  remote.moveCards([Origin(id: "a", x: 0, y: 0)], dx: 48, dy: 0)
+  m.applyRemote(remote)
+  m.undoManager.undo()
+  #expect(m.board.card("a")!.color == 1)
+  #expect(m.board.card("a")!.x == 48)
+}
+
+@Test func undoKeepsAFieldTheOtherDeviceChangedSince() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  m.perform("Colour") { $0.setColor(["a"], 3) }
+  var remote = m.board
+  remote.setColor(["a"], 4)
+  m.applyRemote(remote)
+  m.undoManager.undo()
+  #expect(m.board.card("a")!.color == 4)
+}
+
+@Test func redoPutsBackOnlyWhatTheStepChanged() {
+  let m = BoardModel(board: board([card("a", 0, 0, "x")]))
+  m.perform("Colour") { $0.setColor(["a"], 3) }
+  m.undoManager.undo()
+  var remote = m.board
+  remote.setText("a", "y")
+  m.applyRemote(remote)
+  m.undoManager.redo()
+  #expect(m.board.card("a")!.color == 3 && m.board.card("a")!.text == "y")
+}
+
+@Test func undoingANewCardKeepsItWhenTheOtherDeviceTypedInIt() {
+  let m = BoardModel()
+  var id = ""
+  m.perform("New Card") { id = $0.addCard(x: 0, y: 0) }
+  var remote = m.board
+  remote.setText(id, "theirs")
+  m.applyRemote(remote)
+  m.undoManager.undo()
+  #expect(m.board.card(id)?.text == "theirs")
+}
+
+@Test func changesFromAnotherDeviceAddNoUndoStep() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  var remote = m.board
+  remote.setColor(["a"], 2)
+  var heard = 0
+  m.onEdit = { heard += 1 }
+  m.applyRemote(remote)
+  #expect(m.board == remote)
+  #expect(!m.undoManager.canUndo)
+  #expect(heard == 1)
+}
+
+@Test func changesFromAnotherDeviceWaitForAGesture() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  m.begin()
+  m.update { $0.setText("a", "typing") }
+  var remote = m.board
+  remote.setColor(["a"], 2)
+  m.applyRemote(remote)
+  #expect(m.board.card("a")!.color == 1)
+}
+
+@Test func theEndOfAGestureIsHeard() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  var ended = 0
+  m.onGestureEnd = { ended += 1 }
+  m.begin()
+  m.update { $0.setText("a", "typed") }
+  m.end("Edit Card")
+  #expect(ended == 1)
+}

@@ -2,7 +2,7 @@ import Foundation
 
 /// The board being edited, with undo. A change goes through `perform`, or through a gesture
 /// (`begin`, `update`…, `end`) such as a drag or an edit session; either registers one undo
-/// step, and only when the board changed.
+/// step, and only when the board changed. A step undoes field by field, so changes from another device made since stay.
 public final class BoardModel {
   public private(set) var board: Board
   public let undoManager: UndoManager
@@ -11,6 +11,10 @@ public final class BoardModel {
   /// Called with true when a gesture first changes the board, and with false when the gesture
   /// ends or is cancelled: until then the change has no undo step, yet must count as unsaved.
   public var onPending: ((Bool) -> Void)?
+  /// Called after every change too, undo, redo and `applyRemote` included: a second listener.
+  public var onEdit: (() -> Void)?
+  /// Called when a gesture ends or is cancelled.
+  public var onGestureEnd: (() -> Void)?
   private var gestureStart: Board?
   private var pending = false
 
@@ -27,7 +31,7 @@ public final class BoardModel {
     let before = board
     change(&board)
     guard board != before else { return }
-    onChange?(before)
+    notify(before)
     record(before, name)
   }
 
@@ -40,7 +44,7 @@ public final class BoardModel {
     let before = board
     change(&board)
     guard board != before else { return }
-    onChange?(before)
+    notify(before)
     if gestureStart != nil && !pending {
       pending = true
       onPending?(true)
@@ -59,31 +63,51 @@ public final class BoardModel {
     cancelGesture()
     undoManager.removeAllActions()
     self.board = board
-    if board != before { onChange?(before) }
+    if board != before { notify(before) }
+  }
+
+  private func notify(_ before: Board) {
+    onChange?(before)
+    onEdit?()
+  }
+
+  /// Puts in changes from another device, without an undo step; the steps already taken still undo
+  /// only what they changed. Does nothing during a gesture: the caller waits for it to end.
+  public func applyRemote(_ new: Board) {
+    guard !inGesture, new != board else { return }
+    let before = board
+    board = new
+    notify(before)
   }
 
   private func cancelGesture() {
+    let ended = gestureStart != nil
     gestureStart = nil
     if pending {
       pending = false
       onPending?(false)
     }
+    if ended { onGestureEnd?() }
   }
 
   private func record(_ before: Board, _ name: String) {
     guard board != before else { return }
+    let after = board
     undoManager.beginUndoGrouping()
-    undoManager.registerUndo(withTarget: self) { $0.restore(before, name) }
+    undoManager.registerUndo(withTarget: self) { $0.restore(from: after, to: before, name) }
     undoManager.setActionName(name)
     undoManager.endUndoGrouping()
   }
 
-  private func restore(_ state: Board, _ name: String) {
+  /// Takes the board from `from` to `to` field by field, leaving what changed since alone;
+  /// a gesture in progress is dropped.
+  private func restore(from: Board, to: Board, _ name: String) {
     let now = board
+    let settled = gestureStart ?? now
     cancelGesture()
-    undoManager.registerUndo(withTarget: self) { $0.restore(now, name) }
+    undoManager.registerUndo(withTarget: self) { $0.restore(from: to, to: from, name) }
     undoManager.setActionName(name)
-    board = state
-    onChange?(now)
+    board = Board.rebase(base: from, mine: to, theirs: settled)
+    notify(now)
   }
 }
