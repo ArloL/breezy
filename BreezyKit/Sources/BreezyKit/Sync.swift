@@ -138,6 +138,8 @@ public struct SyncStatus: Equatable, Sendable {
   private let now: () -> Date
   private var running = false, again = false, stopped = false, heldTried = false
   private var failures = 0, tooLong = 0
+  /// Ids whose newer server record cannot be decoded; their local edits wait instead of being resent.
+  private var blocked: Set<String> = []
   private var retryAt: Date?
   private var soon: Task<Void, Never>?
 
@@ -180,6 +182,7 @@ public struct SyncStatus: Equatable, Sendable {
     retryAt = nil
     stopped = false
     heldTried = false
+    blocked = []
   }
 
   private func cycle() async {
@@ -212,8 +215,18 @@ public struct SyncStatus: Equatable, Sendable {
         for a in result.accepted { if let r = sent[a.id] { store.accepted(a.id, version: a.version, record: r) } }
         if result.refused.isEmpty { continue }
         flushLocal?()
-        store.merge(result.refused.compactMap { decode($0, keys) })
-        refusals += 1
+        var mergeable = false
+        var items: [Incoming] = []
+        for r in result.refused {
+          if let i = decode(r, keys) {
+            items.append(i)
+            mergeable = true
+          } else {
+            blocked.insert(r.id)
+          }
+        }
+        store.merge(items)
+        if mergeable { refusals += 1 }
         if refusals == 3 { throw TransportError.unreachable }
       }
       failures = 0
@@ -255,7 +268,7 @@ public struct SyncStatus: Equatable, Sendable {
   private func outgoing(_ keys: SpaceKeys) -> ([Write], [String: Record]) {
     var writes: [Write] = [], sent: [String: Record] = [:], size = 0
     tooLong = 0
-    for p in store.pending {
+    for p in store.pending where !blocked.contains(p.id) {
       guard let id = Base64URL.decode(p.id), id.count == 16, let plain = try? Self.encoder.encode(p.record),
             let blob = try? keys.seal(plain, id: id) else { continue }
       guard blob.count <= Self.maxBlob else {
