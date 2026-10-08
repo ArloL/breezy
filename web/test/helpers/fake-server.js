@@ -1,0 +1,97 @@
+import { Store } from "../../sync/store.js";
+import { SyncEngine, PAGE_SIZE, TransportError } from "../../sync/engine.js";
+import { changes } from "../../sync/records.js";
+
+/** The server's rules, in memory. */
+export class FakeServer {
+  constructor() {
+    this.records = new Map();
+    this.version = 0;
+  }
+
+  pull(since) {
+    const records = [...this.records.values()].filter((r) => r.version > since).sort((a, b) => a.version - b.version).slice(0, PAGE_SIZE);
+    return { records, cursor: records.at(-1)?.version ?? since };
+  }
+
+  push(writes) {
+    const accepted = [], refused = [];
+    for (const w of writes) {
+      const stored = this.records.get(w.id);
+      if (stored && stored.version !== w.base) {
+        refused.push(stored);
+        continue;
+      }
+      this.records.set(w.id, { id: w.id, version: ++this.version, blob: w.blob });
+      accepted.push({ id: w.id, version: this.version });
+    }
+    return { accepted, refused };
+  }
+
+  put(id, blob) {
+    this.records.set(id, { id, version: ++this.version, blob });
+  }
+}
+
+export class FakeTransport {
+  constructor(server) {
+    this.server = server;
+    this.online = true;
+    this.failure = null;
+    this.calls = 0;
+  }
+
+  check() {
+    this.calls++;
+    if (this.failure) throw new TransportError(this.failure);
+    if (!this.online) throw new TransportError("offline");
+  }
+
+  async pull(since) {
+    this.check();
+    return structuredClone(this.server.pull(since));
+  }
+
+  async push(writes) {
+    this.check();
+    return structuredClone(this.server.push(writes));
+  }
+}
+
+export const SERVER = "https://example.com/breezy/sync.php";
+
+export function device(server, invite) {
+  const store = new Store();
+  const transport = new FakeTransport(server);
+  const engine = new SyncEngine(store, { transport: () => transport });
+  if (invite) store.join(invite);
+  const edit = (id, change) => {
+    const old = store.board(id);
+    const now = structuredClone(old);
+    change(now);
+    store.apply(changes(old, now, id, store.orders(id)));
+  };
+  return { store, transport, engine, edit };
+}
+
+/** Two devices in one space with a board holding one card, both synced. */
+export async function pair(newID) {
+  const server = new FakeServer();
+  const a = device(server);
+  const invite = a.store.startSyncing(SERVER);
+  const id = a.store.createBoard("Plans", { cards: [{ id: newID(), x: 0, y: 0, w: 240, text: "x", color: 1 }], lanes: [] });
+  await a.engine.sync();
+  const b = device(server, invite);
+  await b.engine.sync();
+  return { server, a, b, id };
+}
+
+export function mulberry(seed) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
