@@ -85,7 +85,7 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 - Limits: a blob at most 64 KB, a request at most 1 MB. Otherwise 413.
 - 401 for a wrong token, 400 for a malformed request.
 - HTTPS only. The web app is served from the same origin, https://breezy.k5d.de; CORS allows it and `http://localhost:58565`.
-- Every push to `main` uploads the web app and `sync.php` to https://breezy.k5d.de over FTPS; the database credentials go into `config.php` above the web root, written from the `production` environment's secrets. `schema.sql` is run once by hand.
+- Every push to `main` uploads the web app and `sync.php` to https://breezy.k5d.de over FTPS; the database credentials go into `config.php` next to `sync.php`, which `.htaccess` refuses to browsers, written from the `production` environment's secrets. `schema.sql` is run once by hand.
 
 ## Encryption
 
