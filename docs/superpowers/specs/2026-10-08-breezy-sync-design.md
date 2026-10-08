@@ -29,7 +29,7 @@ Each device keeps, per record:
 
 A record whose current differs from its base is pending. The store also holds the space id, the secret, the server URL and the cursor: the highest version pulled.
 
-A board on screen is a `Board` value, as now: `BoardModel` (Swift) and `web/model.js` keep editing it. After every change the new value is diffed against the previous one, and changed lanes and cards become new current values in the store.
+A board on screen is a `Board` value, as now: `BoardModel` (Swift) and `web/model.js` keep editing it. Shortly after a change, and before merged changes are applied, the board is diffed against the last value the store saw, and only the fields that changed are written into the current records, so a local change never overwrites a field the other device changed. Cards come from the store sorted by `order`, then id; lanes by id.
 
 ## Sync
 
@@ -38,7 +38,7 @@ A cycle runs when a board opens, when the app comes back to the foreground, ever
 1. **Pull** every record after the cursor, in pages of 500. Merge each into the store (below), then advance the cursor.
 2. **Push** pending records, each with its base version. Accepted records take the returned version and their current becomes their base. For each refused record, merge the returned record into the store and push again; after three refusals in one cycle, back off.
 
-Merged changes are applied to the open `Board` and spring into place like any other change, without adding undo steps. The stacking rules then run on each affected board; positions they change become ordinary local changes. The rules are deterministic, so every device settles on the same layout, and a device whose layout already matches pushes nothing.
+Merged changes are applied to the open `Board` and spring into place like any other change, without adding undo steps; while a drag or an edit is in progress they wait until it ends. The stacking rules then run on the board, but only for what this device shows: the Mac and the browser measure text differently, and pushing each other's layouts would go back and forth forever. Positions go to the server only from local edits.
 
 ### Merge
 
@@ -48,7 +48,7 @@ Three-way, field by field, with *base* (the old base), *local* (current) and *in
 |---|---|
 | a field changed on one side only | that side's value |
 | a field changed on both sides to the same value | that value |
-| `text` or `notes` changed on both sides, differently | incoming's card; local's text and notes, with its colour, become a new card just below it (stacking places it in a lane; outside one, it sits 24 pt right and down) |
+| `text` or `notes` changed on both sides, differently | incoming's card; local's card, with its text, notes and colour, becomes a new card 24 pt right of and below it |
 | any other field changed on both sides | incoming's value |
 | one side deleted the record | deleted; if the other side changed `text` or `notes`, its version becomes a new card as above |
 
@@ -103,7 +103,7 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 - `BoardDocument` stays an `NSDocument` without a file: one window per board, restored by board id. Autosave, Versions, Recent items and title-bar rename go.
 - A **Boards** window lists boards by title, with New, Rename and Delete; double-clicking opens one. It opens at launch when no board window is restored.
 - The app menu gains Start Syncing…, Join Space…, Share Invite and the sync status.
-- The `local.breezy.board` type, its icon and `BoardFormat` go.
+- The `local.breezy.board` type and its icon go. `BoardFormat` stays only for scripted checks: `-BreezyBoard <json>` loads a board into a store in a temporary folder.
 - BreezyKit gains `Records` (Board ↔ records, diffing), `Merge`, `OrderKey`, `Store`, `SyncClient` (URLSession, behind a protocol for tests) and `SpaceCrypto`.
 
 ## Web app
