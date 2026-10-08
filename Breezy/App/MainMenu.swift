@@ -1,7 +1,6 @@
 import AppKit
 
-/// The menu bar, built in code. There is no Open Recent menu here: AppKit no longer recognises one
-/// built in code and inserts its own after Open…, so a menu of ours would show as a second one.
+/// The menu bar, built in code.
 enum MainMenu {
   static func make() -> NSMenu {
     let main = NSMenu()
@@ -15,16 +14,9 @@ enum MainMenu {
       item("Quit Breezy", #selector(NSApplication.terminate(_:)), "q"),
     ]))
     main.addItem(submenu("File", [
-      item("New", #selector(NSDocumentController.newDocument(_:)), "n"),
-      item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"),
+      item("New Board", #selector(AppDelegate.newBoard(_:)), "n"),
       .separator(),
       item("Close", #selector(NSWindow.performClose(_:)), "w"),
-      item("Save…", #selector(NSDocument.save(_:)), "s"),
-      item("Duplicate", #selector(NSDocument.duplicate(_:)), "s", [.command, .shift]),
-      item("Rename…", #selector(NSDocument.rename(_:))),
-      item("Move To…", #selector(NSDocument.move(_:))),
-      item("Revert To Saved", #selector(NSDocument.revertToSaved(_:))),
-      item("Browse All Versions…", #selector(NSDocument.browseVersions(_:))),
     ]))
     main.addItem(submenu("Edit", [
       item("Undo", Selector(("undo:")), "z"),
@@ -54,6 +46,8 @@ enum MainMenu {
     let window = submenu("Window", [
       item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
       item("Zoom", #selector(NSWindow.performZoom(_:))),
+      .separator(),
+      item("Boards", #selector(AppDelegate.showBoards(_:)), "b", [.command, .shift]),
       .separator(),
       item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
     ])

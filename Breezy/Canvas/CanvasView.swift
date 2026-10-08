@@ -107,6 +107,17 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// The front's height: stacking uses it for turned cards too.
   func height(_ id: String) -> Double { heights[id] ?? 2 * Metrics.grid }
 
+  /// Stacks `b` as this canvas would, measuring only cards whose text or width changed.
+  func restack(_ b: inout Board) {
+    let shown = Dictionary(board.cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var h: [String: Double] = [:]
+    for c in b.cards {
+      let old = shown[c.id]
+      h[c.id] = old?.text == c.text && old?.w == c.w ? height(c.id) : Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w)))
+    }
+    b.gravity { h[$0] ?? 2 * Metrics.grid }
+  }
+
   func frontRect(_ c: Card) -> Rect { c.rect(height: height(c.id)) }
 
   /// Where card `c` is drawn: a turned card widens and grows to its back.

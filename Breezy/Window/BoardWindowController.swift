@@ -8,6 +8,7 @@ extension NSToolbarItem.Identifier {
 /// One board window: the toolbar, the scroll view with the canvas, the dot grid behind it and the
 /// zoom capsule above.
 final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
+  let boardID: String
   let canvas: CanvasView
   let scrollView = BoardScrollView()
   let zoomCapsule = ZoomCapsule()
@@ -17,7 +18,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   private let finder = NSTextFinder()
   private lazy var finderClient = BoardFinderClient(canvas: canvas)
 
-  init(model: BoardModel) {
+  init(model: BoardModel, boardID: String) {
+    self.boardID = boardID
     canvas = CanvasView(model: model)
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
@@ -138,6 +140,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     state.encode(Double(o.x), forKey: "originX")
     state.encode(Double(o.y), forKey: "originY")
     state.encode(Double(scrollView.magnification), forKey: "zoom")
+    state.encode(boardID as NSString, forKey: "board")
   }
 
   func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
