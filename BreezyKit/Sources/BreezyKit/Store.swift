@@ -57,6 +57,8 @@ public struct Incoming: Equatable, Sendable {
   public var id: String
   public var version: Int
   public var record: Record
+  /// As a restored backup has it; see `Pulled.stale`.
+  public var stale = false
 }
 
 /// The boards of one space as this device has them. Local edits come through `apply` and the
@@ -151,14 +153,14 @@ public final class Store {
   }
 
   /// Records from the server, merged three ways into those with local changes. While resyncing, a
-  /// record this device has keeps its own contents, to be pushed over the server's.
+  /// stale record this device has becomes its base, so that what the device has since is pushed.
   public func merge(_ items: [Incoming]) {
     guard !items.isEmpty else { return }
     var boards = Set<String>()
     for item in items {
       let old = state.records[item.id]
-      if let old, state.resync {
-        state.records[item.id] = StoredRecord(base: nil, version: item.version, current: old.current)
+      if let old, state.resync, item.stale {
+        state.records[item.id] = StoredRecord(base: item.record, version: item.version, current: old.current)
         continue
       }
       if let old, item.version <= old.version { continue }
@@ -194,6 +196,7 @@ public final class Store {
     state.epoch = epoch
     state.cursor = 0
     state.resync = true
+    state.unreadable = 0
     for id in state.records.keys { state.records[id]!.version = 0 }
     return true
   }

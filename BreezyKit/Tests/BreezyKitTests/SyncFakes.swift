@@ -3,46 +3,54 @@ import Foundation
 
 /// The server's rules, in memory.
 final class FakeServer {
+  typealias Backup = (records: [String: Pulled], written: [String: String], version: Int)
   var records: [String: Pulled] = [:]
+  /// The epoch each record was written in.
+  var written: [String: String] = [:]
   var version = 0
   /// Nil until the space's first write, and again after `wipe`.
   var epoch: String?
 
   func pull(since: Int) -> Page {
-    let r = Array(records.values.filter { $0.version > since }.sorted { $0.version < $1.version }.prefix(SyncEngine.pageSize))
-    return Page(records: r, cursor: r.last?.version ?? since, epoch: epoch)
+    let r = records.values.filter { $0.version > since }.sorted { $0.version < $1.version }.prefix(SyncEngine.pageSize)
+    return Page(records: r.map(marked), cursor: r.last?.version ?? since, epoch: epoch)
   }
 
   func push(_ writes: [Write]) -> PushResult {
     var accepted: [Accepted] = [], refused: [Pulled] = []
-    epoch = epoch ?? newID()
+    let epoch = epoch ?? newID()
+    self.epoch = epoch
     for w in writes {
       if let stored = records[w.id], stored.version != w.base {
-        refused.append(stored)
+        refused.append(marked(stored))
         continue
       }
       version += 1
       records[w.id] = Pulled(id: w.id, version: version, blob: w.blob)
+      written[w.id] = epoch
       accepted.append(Accepted(id: w.id, version: version))
     }
     return PushResult(accepted: accepted, refused: refused, epoch: epoch)
   }
 
+  private func marked(_ r: Pulled) -> Pulled {
+    var r = r
+    if written[r.id] != epoch { r.stale = true }
+    return r
+  }
+
   /// The database as a backup holds it.
-  func snapshot() -> (records: [String: Pulled], version: Int) { (records, version) }
+  func snapshot() -> Backup { (records, written, version) }
 
   /// The backup put back, with a new epoch as the README says to give it.
-  func restore(_ s: (records: [String: Pulled], version: Int)) {
-    records = s.records
-    version = s.version
+  func restore(_ b: Backup) {
+    (records, written, version) = b
     epoch = newID()
   }
 
   /// The space lost.
   func wipe() {
-    records = [:]
-    version = 0
-    epoch = nil
+    (records, written, version, epoch) = ([:], [:], 0, nil)
   }
 
   /// Adds a record as another device would.
@@ -50,6 +58,7 @@ final class FakeServer {
     epoch = epoch ?? newID()
     version += 1
     records[id] = Pulled(id: id, version: version, blob: blob)
+    written[id] = epoch
   }
 }
 
@@ -60,6 +69,8 @@ final class FakeTransport: Transport {
   var calls = 0
   /// Runs before each pull, as another part of the app might while a request is out.
   var beforePull: (() -> Void)?
+  /// Runs before each push, as another device might sync meanwhile.
+  var beforePush: (() async -> Void)?
 
   init(_ server: FakeServer) { self.server = server }
 
@@ -70,6 +81,7 @@ final class FakeTransport: Transport {
   }
 
   func push(_ writes: [Write]) async throws -> PushResult {
+    await beforePush?()
     try check()
     return server.push(writes)
   }
@@ -104,16 +116,25 @@ let testServer = "https://example.com/breezy/sync.php"
   }
 }
 
-/// Two devices in one space with a board holding one card, both synced.
-@MainActor func pair() async -> (FakeServer, Device, Device, String) {
+/// Two devices in one space with a board holding one card, both synced; `ids` names the board and the card.
+@MainActor func pair(ids: () -> String = newID) async -> (FakeServer, Device, Device, String) {
   let server = FakeServer()
   let a = Device(server)
   let invite = a.store.startSyncing(server: testServer)
-  let id = a.store.createBoard(title: "Plans", contents: board([card(newID(), 0, 0, "x")]))
+  let id = ids()
+  var changes = Records.changes(from: Board(), to: board([card(ids(), 0, 0, "x")]), board: id, orders: [:])
+  changes[id] = .fields(Records.board(title: "Plans").fields)
+  a.store.apply(changes)
   await a.engine.sync()
   let b = Device(server, joining: invite)
   await b.engine.sync()
   return (server, a, b, id)
+}
+
+/// Ids from a seeded generator, so that a run replays.
+func seededIDs(_ seed: UInt64) -> () -> String {
+  var rng = SplitMix(state: seed)
+  return { Base64URL.encode(Data((0..<16).map { _ in UInt8.random(in: 0...255, using: &rng) })) }
 }
 
 struct SplitMix: RandomNumberGenerator {

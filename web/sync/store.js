@@ -125,16 +125,16 @@ export class Store {
   }
 
   /**
-   * Records from the server, merged three ways into those with local changes. While resyncing, a record this device has
-   * keeps its own contents, to be pushed over the server's.
+   * Records from the server, merged three ways into those with local changes. While resyncing, a stale record this device
+   * has becomes its base, so that what the device has since is pushed.
    */
   merge(items) {
     if (!items.length) return;
     const boards = new Set();
-    for (const { id, version, record } of items) {
+    for (const { id, version, record, stale } of items) {
       const old = this.state.records[id];
-      if (old && this.state.resync) {
-        this.state.records[id] = { base: null, version, current: old.current };
+      if (old && this.state.resync && stale) {
+        this.state.records[id] = { base: record, version, current: old.current };
         continue;
       }
       if (old && version <= old.version) continue;
@@ -167,7 +167,7 @@ export class Store {
     const resync = s.epoch != null;
     s.epoch = epoch;
     if (resync) {
-      Object.assign(s, { cursor: 0, resync: true });
+      Object.assign(s, { cursor: 0, resync: true, unreadable: 0 });
       for (const [id, r] of Object.entries(s.records)) s.records[id] = { ...r, version: 0 };
     }
     this.onDirty();
