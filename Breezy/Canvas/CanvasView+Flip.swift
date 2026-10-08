@@ -10,57 +10,64 @@ extension CanvasView {
   }
 
   /// Lifts card `id` and turns it over, putting back the one in hand; nil just puts it back. The
-  /// state changes at once so an editor can take focus; copies of the old faces swing away while
-  /// the new faces swing in.
+  /// state changes at once so an editor can take focus; the card turns in one springy flip, copies
+  /// of the old faces showing until halfway and the new faces after.
   func turn(_ id: String?) {
     let id = id.flatMap { board.card($0) == nil ? nil : $0 }
     guard id != turned else { return }
     let affected = [turned, id].compactMap { $0 }
-    let animate = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    let animate = !Spring.reduced
     let ghosts = animate ? affected.compactMap { cardLayers[$0].map(ghost) } : []
     turned = id
     layoutCards()
     guard animate else { return }
-    let half = 0.13
-    var p = CATransform3DIdentity
-    p.m34 = -1 / 1000
+    let curve = Spring.turn.curve()
+    let duration = Double(curve.count - 1) / 120
+    // each face shows only on its side of halfway
+    let half = Double(curve.firstIndex { $0 >= 0.5 }!) / Double(curve.count - 1)
+    func flip(_ l: CALayer, from: CGFloat, to: CGFloat, shown: [Float]) -> CAAnimationGroup {
+      var p = l.transform
+      p.m34 = -1 / 1000
+      let turn = CAKeyframeAnimation(keyPath: "transform")
+      turn.values = curve.map { NSValue(caTransform3D: CATransform3DRotate(p, from + (to - from) * $0, 0, 1, 0)) }
+      let face = CAKeyframeAnimation(keyPath: "opacity")
+      face.values = shown
+      face.keyTimes = [0, NSNumber(value: half), 1]
+      face.calculationMode = .discrete
+      let g = CAAnimationGroup()
+      g.animations = [turn, face]
+      g.duration = duration
+      return g
+    }
     for g in ghosts {
-      let a = CABasicAnimation(keyPath: "transform")
-      a.fromValue = p
-      a.toValue = CATransform3DRotate(p, .pi / 2, 0, 1, 0)
-      a.duration = half
-      a.timingFunction = CAMediaTimingFunction(name: .easeIn)
-      a.fillMode = .forwards
-      a.isRemovedOnCompletion = false
       CATransaction.begin()
       CATransaction.setCompletionBlock { g.removeFromSuperlayer() }
+      let a = flip(g, from: 0, to: .pi, shown: [1, 0])
+      a.fillMode = .forwards
+      a.isRemovedOnCompletion = false
       g.add(a, forKey: "flip")
       CATransaction.commit()
     }
     for cid in affected {
       guard let l = cardLayers[cid] else { continue }
-      let a = CABasicAnimation(keyPath: "transform")
-      a.fromValue = CATransform3DRotate(p, -.pi / 2, 0, 1, 0)
-      a.toValue = p
-      a.duration = half
-      a.beginTime = CACurrentMediaTime() + half
-      a.timingFunction = CAMediaTimingFunction(name: .easeOut)
-      a.fillMode = .backwards
-      l.add(a, forKey: "flip")
+      l.add(flip(l, from: -.pi, to: 0, shown: [0, 1]), forKey: "flip")
     }
   }
 
-  /// A copy of card layer `l` as it looks now, for the turn animation.
-  private func ghost(_ l: CardLayer) -> CALayer {
+  /// A copy of card layer `l` as it looks now, to turn away or shrink away.
+  func ghost(_ l: CardLayer) -> CALayer {
     let g = CALayer()
+    let now = l.presentation() ?? l
     g.contents = l.contents
     g.contentsScale = l.contentsScale
-    g.frame = l.frame
+    g.bounds = now.bounds
+    g.position = now.position
+    g.transform = now.transform
     g.zPosition = l.zPosition + 1
     g.shadowColor = l.shadowColor
-    g.shadowOpacity = l.shadowOpacity
-    g.shadowRadius = l.shadowRadius
-    g.shadowOffset = l.shadowOffset
+    g.shadowOpacity = now.shadowOpacity
+    g.shadowRadius = now.shadowRadius
+    g.shadowOffset = now.shadowOffset
     g.shadowPath = l.shadowPath
     host.layer!.addSublayer(g)
     return g

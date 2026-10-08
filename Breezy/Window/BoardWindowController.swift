@@ -3,16 +3,15 @@ import BreezyKit
 
 extension NSToolbarItem.Identifier {
   static let newLane = Self("newLane")
-  static let zoom = Self("zoom")
 }
 
-/// One board window: the toolbar, the scroll view with the canvas and, from Task 7, the dot grid
-/// behind it.
+/// One board window: the toolbar, the scroll view with the canvas, the dot grid behind it and the
+/// zoom capsule above.
 final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
   let canvas: CanvasView
   let scrollView = BoardScrollView()
-  let zoomItem = NSToolbarItem(itemIdentifier: .zoom)
-  private let zoomButton = ReadoutButton(title: "", target: nil, action: nil)
+  let zoomCapsule = ZoomCapsule()
+  private var shownZoom: Int?
   private let grid = GridView()
   private var restored = false
   private let finder = NSTextFinder()
@@ -53,6 +52,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.autoresizingMask = [.width, .height]
     root.addSubview(grid)
     root.addSubview(scrollView)
+    zoomCapsule.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin]
+    root.addSubview(zoomCapsule)
     window.contentView = root
     grid.frame = root.bounds
     scrollView.frame = root.bounds
@@ -71,7 +72,10 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       self?.finderClient.invalidate()
     }
     DispatchQueue.main.async { [weak self] in
-      if self?.restored == false { self?.fit() }
+      guard let self else { return }
+      if !restored { fit() }
+      // from here on, a new zoom shows
+      shownZoom = Self.percent(scrollView.magnification)
     }
   }
 
@@ -96,13 +100,27 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     }
   }
 
+  static func percent(_ zoom: CGFloat) -> Int { Int((zoom * 100).rounded()) }
+
   @objc func viewMoved() {
-    let label = "\(Int((scrollView.magnification * 100).rounded())) %"
-    zoomButton.readout = label
+    let z = Self.percent(scrollView.magnification)
+    if let shown = shownZoom, shown != z {
+      shownZoom = z
+      showZoom(z)
+    }
     grid.update(origin: scrollView.contentView.bounds.origin, zoom: scrollView.magnification)
     // a zoom step moves the bounds more than once; the cards follow once, when the frame is laid out
     canvas.needsLayout = true
     window?.invalidateRestorableState()
+  }
+
+  /// The capsule sits at the top of the board, below the toolbar and any find bar.
+  private func showZoom(_ z: Int) {
+    guard let root = window?.contentView else { return }
+    let clip = root.convert(scrollView.contentView.frame, from: scrollView)
+    let s = ZoomCapsule.size
+    zoomCapsule.frame = NSRect(x: (clip.midX - s.width / 2).rounded(), y: (clip.maxY - 12 - s.height).rounded(), width: s.width, height: s.height)
+    zoomCapsule.show("\(z) %")
   }
 
   var centre: NSPoint {
@@ -110,9 +128,9 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     return NSPoint(x: r.midX, y: r.midY)
   }
 
-  @objc func zoomIn(_ sender: Any?) { scrollView.animator().setMagnification(scrollView.magnification * 1.25, centeredAt: centre) }
-  @objc func zoomOut(_ sender: Any?) { scrollView.animator().setMagnification(scrollView.magnification / 1.25, centeredAt: centre) }
-  @objc func actualSize(_ sender: Any?) { scrollView.animator().setMagnification(1, centeredAt: centre) }
+  @objc func zoomIn(_ sender: Any?) { scrollView.springMagnification(to: scrollView.magnification * 1.25, centeredAt: centre) }
+  @objc func zoomOut(_ sender: Any?) { scrollView.springMagnification(to: scrollView.magnification / 1.25, centeredAt: centre) }
+  @objc func actualSize(_ sender: Any?) { scrollView.springMagnification(to: 1, centeredAt: centre) }
   @objc func newLane(_ sender: Any?) { canvas.addLaneAtCentre() }
 
   func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
@@ -156,7 +174,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     viewMoved()
   }
 
-  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [.flexibleSpace, .newLane, .zoom] }
+  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [.flexibleSpace, .newLane] }
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
   func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
@@ -170,89 +188,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       item.target = self
       item.action = #selector(newLane(_:))
       return item
-    case .zoom:
-      zoomButton.bezelStyle = .toolbar
-      zoomButton.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-      zoomButton.target = self
-      zoomButton.action = #selector(actualSize(_:))
-      zoomItem.view = zoomButton
-      zoomItem.label = "Zoom"
-      zoomItem.toolTip = "Actual size (⌘0 or ⇧0)"
-      return zoomItem
     default:
       return nil
     }
-  }
-}
-
-/// The zoom readout. Its text is a subview of its own: a new title would lay out the toolbar on
-/// every zoom step, and redrawing the button would redraw its bezel.
-final class ReadoutButton: NSButton {
-  private let label = ReadoutLabel()
-  var readout: String {
-    get { label.text }
-    set { label.text = newValue }
-  }
-
-  override init(frame: NSRect) {
-    super.init(frame: frame)
-    label.autoresizingMask = [.width, .height]
-    addSubview(label)
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var intrinsicContentSize: NSSize { NSSize(width: 64, height: super.intrinsicContentSize.height) }
-
-  override func layout() {
-    super.layout()
-    label.frame = bounds
-    label.font = font
-  }
-
-  override func accessibilityLabel() -> String? { readout }
-}
-
-private final class ReadoutLabel: NSView {
-  /// Redrawn at most 30 times a second during a zoom, and once more when it stops; faster digits
-  /// cannot be read anyway, and each redraw lays out the text.
-  var text = "100 %" {
-    didSet {
-      guard text != oldValue else { return }
-      let wait = 1.0 / 30 - (CACurrentMediaTime() - drawn)
-      if wait <= 0 { return needsDisplay = true }
-      guard !pending else { return }
-      pending = true
-      DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
-        self?.pending = false
-        self?.needsDisplay = true
-      }
-    }
-  }
-  private var drawn = 0.0
-  private var pending = false
-  var font: NSFont?
-  private var observers: [NSObjectProtocol] = []
-
-  override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-  /// A toolbar button's title colours, measured: no system colour matches them.
-  private static let active = NSColor(name: nil) { $0.isDark ? .white : .black }
-  private static let inactive = NSColor(name: nil) { $0.isDark ? .disabledControlTextColor : NSColor(white: 0, alpha: 0.31) }
-
-  /// Greyed out while the window is inactive, as toolbar controls are.
-  override func viewDidMoveToWindow() {
-    observers.forEach(NotificationCenter.default.removeObserver)
-    observers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map {
-      NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in self?.needsDisplay = true }
-    }
-  }
-
-  override func draw(_ dirtyRect: NSRect) {
-    drawn = CACurrentMediaTime()
-    let color = window?.isKeyWindow == true ? Self.active : Self.inactive
-    let s = NSAttributedString(string: text, attributes: [.font: font ?? .systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: color])
-    let size = s.size()
-    s.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
   }
 }
