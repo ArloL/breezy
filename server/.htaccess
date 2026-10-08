@@ -1,0 +1,2 @@
+# Apache with PHP as CGI or FPM drops the Authorization header unless told to pass it on.
+CGIPassAuth On

@@ -1,0 +1,126 @@
+<?php
+// Breezy's sync server: keeps each space's records, encrypted on the devices, and hands back those
+// changed since a version. See docs/superpowers/specs/2026-10-08-breezy-sync-design.md.
+declare(strict_types=1);
+
+const PAGE = 500;
+const MAX_BLOB = 65536;
+const MAX_REQUEST = 1048576;
+const ORIGINS = ['https://arlol.github.io', 'http://localhost:58565'];
+
+function reply(int $status, ?array $body = null): void {
+  http_response_code($status);
+  if ($body !== null) {
+    header('Content-Type: application/json');
+    echo json_encode($body, JSON_UNESCAPED_SLASHES);
+  }
+  exit;
+}
+
+function b64d(mixed $s): ?string {
+  if (!is_string($s) || !preg_match('/^[A-Za-z0-9_-]*$/', $s)) return null;
+  $t = strtr($s, '-_', '+/');
+  $d = base64_decode(str_pad($t, (int)ceil(strlen($t) / 4) * 4, '='), true);
+  return $d === false ? null : $d;
+}
+
+function b64e(string $d): string {
+  return rtrim(strtr(base64_encode($d), '+/', '-_'), '=');
+}
+
+function bytes(mixed $s, int $length): ?string {
+  $d = b64d($s);
+  return $d !== null && strlen($d) === $length ? $d : null;
+}
+
+function query(PDO $db, string $sql, array $params): PDOStatement {
+  $st = $db->prepare($sql);
+  foreach (array_values($params) as $i => $v) $st->bindValue($i + 1, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_LOB);
+  $st->execute();
+  return $st;
+}
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, ORIGINS, true)) {
+  header("Access-Control-Allow-Origin: $origin");
+  header('Access-Control-Allow-Headers: Authorization, Content-Type');
+  header('Access-Control-Allow-Methods: GET, POST');
+  header('Access-Control-Max-Age: 86400');
+}
+header('Vary: Origin');
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method === 'OPTIONS') reply(204);
+
+$space = bytes($_GET['space'] ?? null, 16);
+if ($space === null) reply(400, ['error' => 'space']);
+$auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+  ?? (function_exists('getallheaders') ? (getallheaders()['Authorization'] ?? '') : '');
+$token = preg_match('/^Bearer ([A-Za-z0-9_-]+)$/', $auth, $m) ? bytes($m[1], 32) : null;
+if ($token === null) reply(401);
+$hash = hash('sha256', $token, true);
+
+$config = require (getenv('BREEZY_CONFIG') ?: __DIR__ . '/config.php');
+$db = new PDO($config['dsn'], $config['user'] ?? null, $config['password'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+
+if ($method === 'GET') {
+  $since = filter_var($_GET['since'] ?? '0', FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+  if ($since === false) reply(400, ['error' => 'since']);
+  $row = query($db, 'SELECT token_hash FROM spaces WHERE id = ?', [$space])->fetch(PDO::FETCH_ASSOC);
+  if ($row && !hash_equals($row['token_hash'], $hash)) reply(401);
+  $records = [];
+  if ($row) {
+    $st = query($db, 'SELECT id, version, data FROM records WHERE space = ? AND version > ? ORDER BY version LIMIT ' . PAGE, [$space, $since]);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+      $records[] = ['id' => b64e($r['id']), 'version' => (int)$r['version'], 'blob' => b64e($r['data'])];
+    }
+  }
+  reply(200, ['records' => $records, 'cursor' => $records ? $records[count($records) - 1]['version'] : $since]);
+}
+
+if ($method !== 'POST') reply(405);
+$body = file_get_contents('php://input', false, null, 0, MAX_REQUEST + 1);
+if (strlen($body) > MAX_REQUEST) reply(413);
+$request = json_decode($body, true);
+$list = is_array($request) ? ($request['writes'] ?? null) : null;
+if (!is_array($list) || array_values($list) !== $list) reply(400, ['error' => 'writes']);
+$writes = [];
+foreach ($list as $w) {
+  $id = is_array($w) ? bytes($w['id'] ?? null, 16) : null;
+  $data = is_array($w) ? b64d($w['blob'] ?? null) : null;
+  $base = is_array($w) ? ($w['base'] ?? null) : null;
+  if ($id === null || $data === null || !is_int($base) || $base < 0 || strlen($data) < 28) reply(400, ['error' => 'write']);
+  if (strlen($data) > MAX_BLOB) reply(413);
+  $writes[] = [$id, $base, $data];
+}
+
+$db->beginTransaction();
+$row = query($db, "SELECT token_hash, version FROM spaces WHERE id = ?$lock", [$space])->fetch(PDO::FETCH_ASSOC);
+if (!$row) {
+  query($db, 'INSERT INTO spaces (id, token_hash, version) VALUES (?, ?, 0)', [$space, $hash]);
+  $version = 0;
+} elseif (!hash_equals($row['token_hash'], $hash)) {
+  $db->rollBack();
+  reply(401);
+} else {
+  $version = (int)$row['version'];
+}
+$accepted = [];
+$refused = [];
+foreach ($writes as [$id, $base, $data]) {
+  $stored = query($db, 'SELECT version, data FROM records WHERE space = ? AND id = ?', [$space, $id])->fetch(PDO::FETCH_ASSOC);
+  // a record the server does not have is taken whatever its base, so that devices can refill a lost database
+  if ($stored && (int)$stored['version'] !== $base) {
+    $refused[] = ['id' => b64e($id), 'version' => (int)$stored['version'], 'blob' => b64e($stored['data'])];
+    continue;
+  }
+  $version++;
+  $sql = $stored
+    ? 'UPDATE records SET version = ?, data = ? WHERE space = ? AND id = ?'
+    : 'INSERT INTO records (version, data, space, id) VALUES (?, ?, ?, ?)';
+  query($db, $sql, [$version, $data, $space, $id]);
+  $accepted[] = ['id' => b64e($id), 'version' => $version];
+}
+query($db, 'UPDATE spaces SET version = ? WHERE id = ?', [$version, $space]);
+$db->commit();
+reply(200, ['accepted' => $accepted, 'refused' => $refused]);
