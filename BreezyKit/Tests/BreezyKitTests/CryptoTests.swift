@@ -55,6 +55,8 @@ private func vector() throws -> Vector { try JSONDecoder().decode(Vector.self, f
   #expect(Invite.validServer("https://example.com/breezy/sync.php"))
   #expect(Invite.validServer("http://localhost:58566/sync.php"))
   #expect(Invite.validServer("http://127.0.0.1:58566/sync.php"))
+  #expect(Invite.validServer("HTTPS://Example.com/breezy/sync.php"))
+  #expect(Invite.validServer("http://LOCALHOST:58566/sync.php"))
   #expect(!Invite.validServer("http://example.com/sync.php"))
   #expect(!Invite.validServer("example.com"))
   #expect(!Invite.validServer(""))
