@@ -16,7 +16,7 @@ public struct Record: Codable, Equatable, Sendable {
 
   public var kind: String? { self["kind"]?.string }
   public var deleted: Bool { self["deleted"] == .bool(true) }
-  public var format: Int { self["format"]?.number.map { Int($0) } ?? 0 }
+  public var format: Int { self["format"]?.number.map { Int(min(max($0, -1e9), 1e9)) } ?? 0 }
   public var board: String? { self["board"]?.string }
 
   /// What stays of a deleted record, for good.
@@ -69,9 +69,9 @@ public enum Records {
       switch r.kind {
       case "card":
         let notes = r["notes"]?.string ?? ""
-        let color = Int(r["color"]?.number ?? 1)
+        let color = Int(min(max(r["color"]?.number ?? 1, 1), 5))
         let w = r["w"]?.number.flatMap { $0.isFinite ? $0 : nil } ?? Metrics.cardWidth
-        let c = Card(id: rid, x: x, y: y, w: w, text: r["text"]?.string ?? "", notes: notes.isEmpty ? nil : notes, color: min(max(color, 1), 5))
+        let c = Card(id: rid, x: x, y: y, w: w, text: r["text"]?.string ?? "", notes: notes.isEmpty ? nil : notes, color: color)
         cards.append((r["order"]?.string ?? "", c))
       case "lane":
         let (w, h) = unpair(r["size"]) ?? (Metrics.laneWidth, Metrics.laneHeight)
