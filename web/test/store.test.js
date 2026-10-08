@@ -114,7 +114,9 @@ test("a new epoch is taken and a changed one resyncs", () => {
   assert.equal(s.state.epoch, "e1");
   assert.equal(s.state.cursor, 4);
   assert.equal(s.noteEpoch("e1"), false);
+  s.noteUnreadable();
   assert.equal(s.noteEpoch(null), true);
+  assert.equal(s.state.unreadable, 0);
   assert.deepEqual([s.state.resync, s.state.cursor, s.state.epoch], [true, 0, null]);
   assert.ok(Object.values(s.state.records).every((r) => r.version === 0));
   s.resynced();
@@ -129,4 +131,20 @@ test("a state saved before epochs takes one without resyncing", () => {
   const s = new Store({ server: null, space: null, secret: null, cursor: 3, records: {}, held: {}, unreadable: 0 });
   assert.equal(s.noteEpoch("e1"), false);
   assert.equal(s.state.cursor, 3);
+});
+
+test("a resync takes a stale record as base and merges a fresh one", () => {
+  const s = new Store();
+  const id = s.createBoard("Plans", { cards: [card("c", "mine")], lanes: [] });
+  settle(s, 4);
+  s.noteEpoch("e1");
+  s.noteEpoch("e2");
+  const backup = { ...s.state.records.c.current, text: "backup" };
+  s.merge([{ id: "c", version: 2, record: backup, stale: true }]);
+  assert.deepEqual(s.state.records.c.base, backup);
+  assert.deepEqual(s.pending().map((p) => [p.id, p.base, p.record.text]), [["c", 2, "mine"]]);
+  const fresh = { ...s.state.records[id].current, title: "Ideas" };
+  s.merge([{ id, version: 7, record: fresh }]);
+  assert.equal(s.title(id), "Ideas");
+  assert.deepEqual([s.state.records[id].base, s.state.records[id].version], [fresh, 7]);
 });

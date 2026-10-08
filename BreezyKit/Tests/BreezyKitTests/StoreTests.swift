@@ -168,7 +168,9 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(!s.note(epoch: "e1"))
   #expect(s.state.epoch == "e1" && s.state.cursor == 4)
   #expect(!s.note(epoch: "e1"))
+  s.noteUnreadable()
   #expect(s.note(epoch: nil))
+  #expect(s.state.unreadable == 0)
   #expect(s.state.resync && s.state.cursor == 0 && s.state.epoch == nil)
   #expect(s.state.records.values.allSatisfy { $0.version == 0 })
   s.resynced()
@@ -176,4 +178,22 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(!s.note(epoch: "e2"))
   s.startSyncing(server: "https://example.com/sync.php")
   #expect(s.state.epoch == nil)
+}
+
+@Test func aResyncTakesAStaleRecordAsBaseAndMergesAFreshOne() {
+  let s = Store()
+  let id = s.createBoard(title: "Plans", contents: board([card("c", 0, 0, "mine")]))
+  settle(s, version: 4)
+  _ = s.note(epoch: "e1")
+  _ = s.note(epoch: "e2")
+  var backup = s.state.records["c"]!.current
+  backup["text"] = .string("backup")
+  s.merge([Incoming(id: "c", version: 2, record: backup, stale: true)])
+  #expect(s.state.records["c"]!.base == backup)
+  #expect(s.pending.map(\.id) == ["c"] && s.pending[0].base == 2 && s.pending[0].record["text"] == .string("mine"))
+  var fresh = s.state.records[id]!.current
+  fresh["title"] = .string("Ideas")
+  s.merge([Incoming(id: id, version: 7, record: fresh)])
+  #expect(s.title(of: id) == "Ideas")
+  #expect(s.state.records[id]!.base == fresh && s.state.records[id]!.version == 7)
 }

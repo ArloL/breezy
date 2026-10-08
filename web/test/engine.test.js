@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FakeServer, SERVER, device, pair, mulberry } from "./helpers/fake-server.js";
+import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.js";
 import { statusLines, TransportError } from "../sync/engine.js";
 import { SpaceKeys } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
@@ -186,17 +186,18 @@ test("a space joined mid-cycle gets nothing from the old one", async () => {
  * Two synced devices, a backup, edits on both, the backup restored, more edits on both, then syncs in `order`
  * ("ab" or "ba").
  */
-async function restored(order) {
-  const { server, a, b, id } = await pair(newID);
+async function restored(order, ids = newID) {
+  const { server, a, b, id } = await pair(ids);
   const c = a.store.board(id).cards[0].id;
   const backup = server.snapshot();
-  const added = [];
+  const added = [ids(), ids()];
+  const add = (n, y) => (x) => x.cards.push({ id: added[n], x: 0, y, w: 240, text: "", color: 1 });
   a.edit(id, (x) => (x.cards[0].color = 3));
-  b.edit(id, (x) => added.push(R.addCard(x, 0, 100)));
+  b.edit(id, add(0, 100));
   for (const d of [a, b, a]) await d.engine.sync();
   server.restore(backup);
   a.edit(id, (x) => (R.card(x, c).text = "after"));
-  b.edit(id, (x) => added.push(R.addCard(x, 0, 200)));
+  b.edit(id, add(1, 200));
   for (let round = 0; round < 3; round++) for (const d of order === "ab" ? [a, b] : [b, a]) await d.engine.sync();
   return { a, b, id, c, added };
 }
@@ -208,8 +209,7 @@ for (const order of ["ab", "ba"]) {
     assert.deepEqual(b.store.board(id), expected);
     assert.equal(expected.cards.length, 3);
     assert.equal(R.card(expected, c).color, 3);
-    // b resyncing later pushes its own copy of every record it holds over a's (Ruling 13)
-    if (order === "ba") assert.equal(R.card(expected, c).text, "after");
+    assert.equal(R.card(expected, c).text, "after");
     for (const card of added) assert.ok(R.card(expected, card));
     for (const d of [a, b]) {
       assert.deepEqual(d.store.pending(), []);
@@ -218,6 +218,51 @@ for (const order of ["ab", "ba"]) {
     }
   });
 }
+
+test("a late resync keeps what others did since", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const c = a.store.board(id).cards[0].id;
+  let d;
+  a.edit(id, (x) => (d = R.addCard(x, 0, 100)));
+  for (const x of [a, b]) await x.engine.sync();
+  const backup = server.snapshot();
+  a.edit(id, (x) => (R.card(x, c).color = 3));
+  for (const x of [a, b]) await x.engine.sync();
+  server.restore(backup);
+  for (let i = 0; i < 5; i++) await a.engine.sync();
+  a.edit(id, (x) => {
+    R.card(x, c).text = "after";
+    x.cards = x.cards.filter((k) => k.id !== d);
+  });
+  await a.engine.sync();
+  for (let round = 0; round < 2; round++) for (const x of [b, a]) await x.engine.sync();
+  for (const x of [a, b]) {
+    assert.deepEqual(x.store.board(id).cards.map((k) => [k.text, k.color]), [["after", 3]]);
+    assert.deepEqual(x.store.pending(), []);
+    assert.equal(x.engine.status.state, "synced");
+  }
+});
+
+test("overlapping resyncs make no copies", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const backup = server.snapshot();
+  a.edit(id, (x) => (x.cards[0].text = "only a"));
+  await a.engine.sync();
+  server.restore(backup);
+  let once = true;
+  a.transport.beforePush = async () => {
+    if (!once) return;
+    once = false;
+    await b.engine.sync();
+  };
+  await a.engine.sync();
+  for (let round = 0; round < 2; round++) for (const x of [b, a]) await x.engine.sync();
+  for (const x of [a, b]) {
+    assert.deepEqual(x.store.board(id).cards.map((k) => k.text), ["only a"]);
+    assert.deepEqual(x.store.pending(), []);
+    assert.equal(x.engine.status.state, "synced");
+  }
+});
 
 test("devices refill a lost space", async () => {
   const { server, a, b, id } = await pair(newID);
@@ -238,10 +283,16 @@ test("devices refill a lost space", async () => {
 
 test("restores end the same whatever the ids", async () => {
   for (let run = 0; run < 200; run++) {
-    const { a, b, id, added } = await restored(run % 2 ? "ba" : "ab");
-    assert.deepEqual(b.store.board(id), a.store.board(id));
-    assert.deepEqual([...a.store.pending(), ...b.store.pending()], []);
-    for (const card of added) assert.ok(R.card(a.store.board(id), card));
+    const { a, b, id, c, added } = await restored(run % 2 ? "ba" : "ab", seededIDs(run));
+    const expected = a.store.board(id);
+    assert.deepEqual(b.store.board(id), expected, `run ${run}`);
+    assert.equal(R.card(expected, c).text, "after", `run ${run}`);
+    for (const card of added) assert.ok(R.card(expected, card), `run ${run}`);
+    for (const d of [a, b]) {
+      assert.deepEqual(d.store.pending(), [], `run ${run}`);
+      assert.equal(d.engine.status.state, "synced", `run ${run}`);
+      assert.equal(d.store.state.resync, false, `run ${run}`);
+    }
   }
 });
 

@@ -206,17 +206,17 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
 
 /// Two synced devices, a backup, edits on both, the backup restored, more edits on both, then syncs in `order`
 /// ("ab" or "ba"). Returns the devices, the board, a's card edited after the restore, and the cards b added.
-@MainActor func restored(_ order: String) async -> (Device, Device, String, String, [String]) {
-  let (server, a, b, id) = await pair()
+@MainActor func restored(_ order: String, ids: () -> String = newID) async -> (Device, Device, String, String, [String]) {
+  let (server, a, b, id) = await pair(ids: ids)
   let c = a.store.board(id).cards[0].id
   let backup = server.snapshot()
-  var added = [""]
+  let added = [ids(), ids()]
   a.edit(id) { $0.setColor([c], 3) }
-  b.edit(id) { added[0] = $0.addCard(x: 0, y: 100) }
+  b.edit(id) { $0.cards.append(card(added[0], 0, 100)) }
   for d in [a, b, a] { await d.engine.sync() }
   server.restore(backup)
   a.edit(id) { $0.setText(c, "after") }
-  b.edit(id) { added.append($0.addCard(x: 0, y: 200)) }
+  b.edit(id) { $0.cards.append(card(added[1], 0, 200)) }
   for _ in 0..<3 { for d in order == "ab" ? [a, b] : [b, a] { await d.engine.sync() } }
   return (a, b, id, c, added)
 }
@@ -227,13 +227,59 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   #expect(b.store.board(id) == expected)
   #expect(expected.cards.count == 3)
   #expect(expected.card(c)?.color == 3)
-  // b resyncing later pushes its own copy of every record it holds over a's (Ruling 13)
-  if order == "ba" { #expect(expected.card(c)?.text == "after") }
+  #expect(expected.card(c)?.text == "after")
   for card in added { #expect(expected.card(card) != nil) }
   for d in [a, b] {
     #expect(d.store.pending.isEmpty)
     #expect(d.engine.status.state == .synced)
     #expect(!d.store.state.resync)
+  }
+}
+
+@MainActor @Test func aLateResyncKeepsWhatOthersDidSince() async {
+  let (server, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  var d = ""
+  a.edit(id) { d = $0.addCard(x: 0, y: 100) }
+  for x in [a, b] { await x.engine.sync() }
+  let backup = server.snapshot()
+  a.edit(id) { $0.setColor([c], 3) }
+  for x in [a, b] { await x.engine.sync() }
+  server.restore(backup)
+  for _ in 0..<5 { await a.engine.sync() }
+  a.edit(id) {
+    $0.setText(c, "after")
+    $0.remove([d])
+  }
+  await a.engine.sync()
+  for _ in 0..<2 { for x in [b, a] { await x.engine.sync() } }
+  for x in [a, b] {
+    #expect(x.store.board(id).cards.map(\.text) == ["after"])
+    #expect(x.store.board(id).card(c)?.color == 3)
+    #expect(x.store.pending.isEmpty)
+    #expect(x.engine.status.state == .synced)
+  }
+}
+
+@MainActor @Test func overlappingResyncsMakeNoCopies() async {
+  let (server, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  let backup = server.snapshot()
+  a.edit(id) { $0.setText(c, "only a") }
+  await a.engine.sync()
+  server.restore(backup)
+  var once = true
+  a.transport.beforePush = {
+    guard once else { return }
+    once = false
+    await b.engine.sync()
+  }
+  await a.engine.sync()
+  for _ in 0..<2 { for x in [b, a] { await x.engine.sync() } }
+  for x in [a, b] {
+    #expect(x.store.board(id).cards.map(\.text) == ["only a"])
+    #expect(x.store.pending.isEmpty)
+    #expect(x.engine.status.state == .synced)
   }
 }
 
@@ -256,9 +302,12 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
 
 @MainActor @Test func restoresEndTheSameWhateverTheIDs() async {
   for run in 0..<200 {
-    let (a, b, id, _, added) = await restored(run % 2 == 0 ? "ab" : "ba")
-    #expect(b.store.board(id) == a.store.board(id))
-    #expect(a.store.pending.isEmpty && b.store.pending.isEmpty)
-    #expect(added.allSatisfy { a.store.board(id).card($0) != nil })
+    let (a, b, id, c, added) = await restored(run % 2 == 0 ? "ab" : "ba", ids: seededIDs(UInt64(run)))
+    let expected = a.store.board(id)
+    #expect(b.store.board(id) == expected, "run \(run)")
+    #expect(expected.card(c)?.text == "after" && added.allSatisfy { expected.card($0) != nil }, "run \(run)")
+    for d in [a, b] {
+      #expect(d.store.pending.isEmpty && d.engine.status.state == .synced && !d.store.state.resync, "run \(run)")
+    }
   }
 }

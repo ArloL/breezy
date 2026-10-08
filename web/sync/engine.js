@@ -209,7 +209,7 @@ export class SyncEngine {
       return { unreadable: true };
     }
     if ((record.format ?? 0) > FORMAT) return { held: { id: p.id, version: p.version, blob: p.blob } };
-    return { item: { id: p.id, version: p.version, record } };
+    return { item: { id: p.id, version: p.version, record, stale: p.stale === true } };
   }
 
   async decodeAll(records, keys) {

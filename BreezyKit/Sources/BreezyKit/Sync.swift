@@ -4,6 +4,8 @@ public struct Pulled: Codable, Equatable, Sendable {
   public var id: String
   public var version: Int
   public var blob: String
+  /// Written before the space's epoch last changed, so as a restored backup has it.
+  public var stale: Bool?
 }
 
 public struct Page: Codable, Equatable, Sendable {
@@ -265,7 +267,7 @@ public struct SyncStatus: Equatable, Sendable {
       store.hold(p.id, version: p.version, blob: p.blob)
       return nil
     }
-    return Incoming(id: p.id, version: p.version, record: record)
+    return Incoming(id: p.id, version: p.version, record: record, stale: p.stale ?? false)
   }
 
   /// Records held for a newer Breezy, which this one may now read.

@@ -1,20 +1,27 @@
 import { Store } from "../../sync/store.js";
 import { SyncEngine, PAGE_SIZE, TransportError } from "../../sync/engine.js";
-import { changes } from "../../sync/records.js";
+import { changes, boardRecord } from "../../sync/records.js";
+import { encode } from "../../sync/base64.js";
 import { newID } from "../../rules.js";
 
 /** The server's rules, in memory. */
 export class FakeServer {
   constructor() {
     this.records = new Map();
+    /** The epoch each record was written in. */
+    this.written = new Map();
     this.version = 0;
     /** Null until the space's first write, and again after `wipe`. */
     this.epoch = null;
   }
 
+  marked(r) {
+    return this.written.get(r.id) === this.epoch ? r : { ...r, stale: true };
+  }
+
   pull(since) {
     const records = [...this.records.values()].filter((r) => r.version > since).sort((a, b) => a.version - b.version).slice(0, PAGE_SIZE);
-    return { records, cursor: records.at(-1)?.version ?? since, epoch: this.epoch };
+    return { records: records.map((r) => this.marked(r)), cursor: records.at(-1)?.version ?? since, epoch: this.epoch };
   }
 
   push(writes) {
@@ -23,10 +30,10 @@ export class FakeServer {
     for (const w of writes) {
       const stored = this.records.get(w.id);
       if (stored && stored.version !== w.base) {
-        refused.push(stored);
+        refused.push(this.marked(stored));
         continue;
       }
-      this.records.set(w.id, { id: w.id, version: ++this.version, blob: w.blob });
+      this.put(w.id, w.blob);
       accepted.push({ id: w.id, version: this.version });
     }
     return { accepted, refused, epoch: this.epoch };
@@ -34,22 +41,24 @@ export class FakeServer {
 
   /** The database as a backup holds it. */
   snapshot() {
-    return { records: new Map(this.records), version: this.version };
+    return { records: new Map(this.records), written: new Map(this.written), version: this.version };
   }
 
   /** The backup put back, with a new epoch as the README says to give it. */
-  restore({ records, version }) {
-    Object.assign(this, { records: new Map(records), version, epoch: newID() });
+  restore({ records, written, version }) {
+    Object.assign(this, { records: new Map(records), written: new Map(written), version, epoch: newID() });
   }
 
   /** The space lost. */
   wipe() {
-    Object.assign(this, { records: new Map(), version: 0, epoch: null });
+    Object.assign(this, { records: new Map(), written: new Map(), version: 0, epoch: null });
   }
 
+  /** Adds a record as another device would. */
   put(id, blob) {
     this.epoch ??= newID();
     this.records.set(id, { id, version: ++this.version, blob });
+    this.written.set(id, this.epoch);
   }
 }
 
@@ -59,6 +68,8 @@ export class FakeTransport {
     this.online = true;
     this.failure = null;
     this.calls = 0;
+    /** Runs before each push, as another device might sync meanwhile. */
+    this.beforePush = async () => {};
   }
 
   check() {
@@ -73,6 +84,7 @@ export class FakeTransport {
   }
 
   async push(writes) {
+    await this.beforePush();
     this.check();
     return structuredClone(this.server.push(writes));
   }
@@ -94,12 +106,14 @@ export function device(server, invite) {
   return { store, transport, engine, edit };
 }
 
-/** Two devices in one space with a board holding one card, both synced. */
-export async function pair(newID) {
+/** Two devices in one space with a board holding one card, both synced; `ids` names the board and the card. */
+export async function pair(ids) {
   const server = new FakeServer();
   const a = device(server);
   const invite = a.store.startSyncing(SERVER);
-  const id = a.store.createBoard("Plans", { cards: [{ id: newID(), x: 0, y: 0, w: 240, text: "x", color: 1 }], lanes: [] });
+  const id = ids();
+  const contents = { cards: [{ id: ids(), x: 0, y: 0, w: 240, text: "x", color: 1 }], lanes: [] };
+  a.store.apply({ ...changes({ cards: [], lanes: [] }, contents, id, {}), [id]: { fields: boardRecord("Plans") } });
   await a.engine.sync();
   const b = device(server, invite);
   await b.engine.sync();
@@ -114,4 +128,10 @@ export function mulberry(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Ids from a seeded generator, so that a run replays. */
+export function seededIDs(seed) {
+  const rnd = mulberry(seed);
+  return () => encode(Uint8Array.from({ length: 16 }, () => Math.floor(rnd() * 256)));
 }
