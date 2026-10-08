@@ -18,6 +18,7 @@ A space holds records, each with a random 128-bit id (22 characters, base64url, 
 - `order` is a text sort key that replaces the array order of cards, so stacking order survives merges. Raising a card gives it a key after the highest; a new card gets one too. Keys are fractional indices: a key can always be made between two others.
 - `pos` and `size` are single fields, so a merge never takes x from one move and y from another.
 - Deleting a board deletes its lanes and cards. A record whose board is deleted or missing is not shown.
+- The store drops a new record whose board is deleted, so leaving a board deleted elsewhere cannot leave orphan cards.
 - Not synced: which card is turned, the camera, the selection, undo.
 
 ## Store
@@ -33,7 +34,7 @@ A board on screen is a `Board` value, as now: `BoardModel` (Swift) and `web/mode
 
 ## Sync
 
-A cycle runs when a board opens, when the app comes back to the foreground, every 5 s while a board is visible, and 1 s after a local change.
+A cycle runs when a board opens, when the app comes back to the foreground, every 5 s while any Breezy window or the web app (board or board list) is visible, and 1 s after a local change.
 
 1. **Pull** every record after the cursor, in pages of 500. Merge each into the store (below), then advance the cursor.
 2. **Push** pending records, each with its base version. Accepted records take the returned version and their current becomes their base. For each refused record, merge the returned record into the store and push again; after three refusals in one cycle, back off.
@@ -73,8 +74,9 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 | Request | Does |
 |---|---|
 | `GET sync.php?space=S&since=N` | `{records: [{id, version, blob}], cursor}`, ordered by version, at most 500 |
-| `POST sync.php?space=S` with `{writes: [{id, base, blob}]}` | in one transaction that locks the space row: each write whose stored version equals `base` (0: no stored record) gets the space's next version; returns `{accepted: [{id, version}], refused: [{id, version, blob}]}` |
+| `POST sync.php?space=S` with `{writes: [{id, base, blob}]}` | in one transaction that locks the space row: each write whose stored version equals `base` (0: no stored record), or whose id the server has no record for whatever its base, so devices can refill a restored or lost database, gets the space's next version; returns `{accepted: [{id, version}], refused: [{id, version, blob}]}` |
 
+- POST retries the whole transaction on a MySQL deadlock or duplicate-key race. Unexpected errors answer 500 `{"error":"server"}` without details.
 - The first POST to an unknown space creates it with the token's hash. Space ids are 128-bit random.
 - Ids, blobs and tokens travel as base64url.
 - Limits: a blob at most 64 KB, a request at most 1 MB. Otherwise 413.

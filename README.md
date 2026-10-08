@@ -1,6 +1,6 @@
 # Breezy
 
-A whiteboard for work thoughts: sticky-note cards and lanes on an infinite canvas. A native Mac app; each board is a `.breezy` file.
+A whiteboard for work thoughts: sticky-note cards and lanes on an infinite canvas. A native Mac app and a web app, which can share boards through a small server.
 
 ## Build
 
@@ -11,12 +11,14 @@ xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Release -deri
 open build/Build/Products/Release/Breezy.app
 ```
 
-Boards save themselves and reopen where they were left after a relaunch; File → Revert To → Browse All Versions shows earlier states.
+Boards live in `~/Library/Application Support/Breezy/space.json` and reopen where they were left after a relaunch.
 
 ## Use
 
 | Do | How |
 |---|---|
+| Boards | ⇧⌘B lists them; ⌘N makes one; click a selected title to rename it, ⌫ to delete |
+| Sync | Breezy → Start Syncing…, Join Space…, Share Invite |
 | Pan / zoom | scroll / pinch or ⌘-scroll; ⌘0 or ⇧0 return to 100 % |
 | Select | click; ⇧-click to add; drag on empty space for a box |
 | New card | double-click empty space |
@@ -39,9 +41,20 @@ scripts/selftest.sh                    # after a Debug build; for when XCUITest 
 scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scripts/bench-summary.py
 ```
 
+## Sync
+
+Two people share one space of boards across their devices. Everything is encrypted on the devices; the server stores only what it cannot read. See `docs/superpowers/specs/2026-10-08-breezy-sync-design.md`.
+
+The server is `server/sync.php` on PHP 8 with MySQL: upload `sync.php` and `.htaccess`, run `schema.sql`, and copy `config.example.php` to `config.php` with the database's details. It must be served over HTTPS. `.htaccess` needs `AllowOverride AuthConfig` for `CGIPassAuth`. The server has been smoke-tested against MySQL 8.4. Then Start Syncing on one device with the address of `sync.php`, Share Invite, and Join Space on the others with the link.
+
+```bash
+server/test.sh   # sync.php against SQLite, then the Mac's HTTP client against it; needs php (brew install php)
+server/dev.sh    # serves http://127.0.0.1:58566/sync.php from build/ for trying sync on this Mac
+```
+
 ## Touch prototype
 
-`web/` is a touch version for trying Breezy's interaction on a phone. It keeps nothing: reloading starts from the sample board, `?stress` loads 500 cards. Every push to `main` publishes it at https://arlol.github.io/breezy/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. In a desktop browser it takes a mouse, trackpad and keyboard as the Mac app does. Once installed it launches from a local copy of one version, without the network; `web/sw.js` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
+`web/` is a touch version for trying Breezy's interaction on a phone. It keeps its boards in the browser and opens on a list of them; `?stress` loads 500 cards into a board it does not keep. Every push to `main` publishes it at https://arlol.github.io/breezy/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. In a desktop browser it takes a mouse, trackpad and keyboard as the Mac app does. Once installed it launches from a local copy of one version, without the network; `web/sw.js` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
 
 ```bash
 npx --yes live-server@1.2.2 web --port=58565 --no-browser
