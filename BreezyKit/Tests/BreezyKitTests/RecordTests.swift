@@ -55,3 +55,12 @@ private func records(_ changes: [String: Change]) -> [String: Record] {
   #expect(Base64URL.decode(id)?.count == 16)
   #expect(newID() != id)
 }
+
+@Test func hugeNumbersFromAnotherDeviceDoNotTrap() {
+  func card(_ color: Double) -> Card {
+    Records.board("B", from: ["c": Record(["kind": .string("card"), "board": .string("B"), "color": .number(color)])]).cards[0]
+  }
+  #expect(card(1e30).color == 5 && card(-1e30).color == 1)
+  #expect(Record(["format": .number(1e30)]).format > Record.format)
+  #expect(Record(["format": .number(-1e30)]).format < Record.format)
+}
