@@ -184,17 +184,21 @@ test("a space joined mid-cycle gets nothing from the old one", async () => {
 
 /**
  * Two synced devices, a backup, edits on both, the backup restored, more edits on both, then syncs in `order`
- * ("ab" or "ba").
+ * ("ab" or "ba"). When `behind`, a edits the card before the backup and b sees nothing after pairing until the restore.
  */
-async function restored(order, ids = newID) {
+async function restored(order, { behind = false, ids = newID } = {}) {
   const { server, a, b, id } = await pair(ids);
   const c = a.store.board(id).cards[0].id;
+  if (behind) {
+    a.edit(id, (x) => (R.card(x, c).text = "seen by backup"));
+    await a.engine.sync();
+  }
   const backup = server.snapshot();
   const added = [ids(), ids()];
   const add = (n, y) => (x) => x.cards.push({ id: added[n], x: 0, y, w: 240, text: "", color: 1 });
   a.edit(id, (x) => (x.cards[0].color = 3));
   b.edit(id, add(0, 100));
-  for (const d of [a, b, a]) await d.engine.sync();
+  for (const d of behind ? [a] : [a, b, a]) await d.engine.sync();
   server.restore(backup);
   a.edit(id, (x) => (R.card(x, c).text = "after"));
   b.edit(id, add(1, 200));
@@ -243,6 +247,27 @@ test("a late resync keeps what others did since", async () => {
   }
 });
 
+test("a device behind the backup keeps what it has", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const c = a.store.board(id).cards[0].id;
+  let d;
+  a.edit(id, (x) => (d = R.addCard(x, 0, 100)));
+  for (const x of [a, b]) await x.engine.sync();
+  a.edit(id, (x) => {
+    R.card(x, c).text = "seen by backup";
+    x.cards = x.cards.filter((k) => k.id !== d);
+  });
+  await a.engine.sync();
+  server.restore(server.snapshot());
+  await a.engine.sync();
+  for (let round = 0; round < 2; round++) for (const x of [b, a]) await x.engine.sync();
+  for (const x of [a, b]) {
+    assert.deepEqual(x.store.board(id).cards.map((k) => k.text), ["seen by backup"]);
+    assert.deepEqual(x.store.pending(), []);
+    assert.equal(x.engine.status.state, "synced");
+  }
+});
+
 test("overlapping resyncs make no copies", async () => {
   const { server, a, b, id } = await pair(newID);
   const backup = server.snapshot();
@@ -283,7 +308,7 @@ test("devices refill a lost space", async () => {
 
 test("restores end the same whatever the ids", async () => {
   for (let run = 0; run < 200; run++) {
-    const { a, b, id, c, added } = await restored(run % 2 ? "ba" : "ab", seededIDs(run));
+    const { a, b, id, c, added } = await restored(run % 2 ? "ba" : "ab", { behind: run % 4 >= 2, ids: seededIDs(run) });
     const expected = a.store.board(id);
     assert.deepEqual(b.store.board(id), expected, `run ${run}`);
     assert.equal(R.card(expected, c).text, "after", `run ${run}`);

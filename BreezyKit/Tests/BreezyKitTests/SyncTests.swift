@@ -205,15 +205,22 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
 }
 
 /// Two synced devices, a backup, edits on both, the backup restored, more edits on both, then syncs in `order`
-/// ("ab" or "ba"). Returns the devices, the board, a's card edited after the restore, and the cards b added.
-@MainActor func restored(_ order: String, ids: () -> String = newID) async -> (Device, Device, String, String, [String]) {
+/// ("ab" or "ba"). When `behind`, a edits the card before the backup and b sees nothing after pairing until the
+/// restore. Returns the devices, the board, a's card edited after the restore, and the cards b added.
+@MainActor func restored(_ order: String, behind: Bool = false, ids: () -> String = newID) async
+  -> (Device, Device, String, String, [String])
+{
   let (server, a, b, id) = await pair(ids: ids)
   let c = a.store.board(id).cards[0].id
+  if behind {
+    a.edit(id) { $0.setText(c, "seen by backup") }
+    await a.engine.sync()
+  }
   let backup = server.snapshot()
   let added = [ids(), ids()]
   a.edit(id) { $0.setColor([c], 3) }
   b.edit(id) { $0.cards.append(card(added[0], 0, 100)) }
-  for d in [a, b, a] { await d.engine.sync() }
+  for d in behind ? [a] : [a, b, a] { await d.engine.sync() }
   server.restore(backup)
   a.edit(id) { $0.setText(c, "after") }
   b.edit(id) { $0.cards.append(card(added[1], 0, 200)) }
@@ -261,6 +268,27 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   }
 }
 
+@MainActor @Test func aDeviceBehindTheBackupKeepsWhatItHas() async {
+  let (server, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  var d = ""
+  a.edit(id) { d = $0.addCard(x: 0, y: 100) }
+  for x in [a, b] { await x.engine.sync() }
+  a.edit(id) {
+    $0.setText(c, "seen by backup")
+    $0.remove([d])
+  }
+  await a.engine.sync()
+  server.restore(server.snapshot())
+  await a.engine.sync()
+  for _ in 0..<2 { for x in [b, a] { await x.engine.sync() } }
+  for x in [a, b] {
+    #expect(x.store.board(id).cards.map(\.text) == ["seen by backup"])
+    #expect(x.store.pending.isEmpty)
+    #expect(x.engine.status.state == .synced)
+  }
+}
+
 @MainActor @Test func overlappingResyncsMakeNoCopies() async {
   let (server, a, b, id) = await pair()
   let c = a.store.board(id).cards[0].id
@@ -302,7 +330,7 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
 
 @MainActor @Test func restoresEndTheSameWhateverTheIDs() async {
   for run in 0..<200 {
-    let (a, b, id, c, added) = await restored(run % 2 == 0 ? "ab" : "ba", ids: seededIDs(UInt64(run)))
+    let (a, b, id, c, added) = await restored(run % 2 == 0 ? "ab" : "ba", behind: run % 4 >= 2, ids: seededIDs(UInt64(run)))
     let expected = a.store.board(id)
     #expect(b.store.board(id) == expected, "run \(run)")
     #expect(expected.card(c)?.text == "after" && added.allSatisfy { expected.card($0) != nil }, "run \(run)")

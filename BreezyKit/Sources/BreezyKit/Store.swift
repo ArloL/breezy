@@ -6,6 +6,8 @@ public struct StoredRecord: Codable, Equatable, Sendable {
   public var version: Int
   /// As this device has it.
   public var current: Record
+  /// While a resync runs, the version from before it, to tell a backup newer than this device from an older one.
+  public var prior: Int?
   public var pending: Bool { current != base }
 }
 
@@ -153,13 +155,14 @@ public final class Store {
   }
 
   /// Records from the server, merged three ways into those with local changes. While resyncing, a
-  /// stale record this device has becomes its base, so that what the device has since is pushed.
+  /// stale record this device has seen at least as new becomes its base, so that what the device has
+  /// since is pushed.
   public func merge(_ items: [Incoming]) {
     guard !items.isEmpty else { return }
     var boards = Set<String>()
     for item in items {
       let old = state.records[item.id]
-      if let old, state.resync, item.stale {
+      if let old, state.resync, item.stale, item.version <= old.prior ?? 0 {
         state.records[item.id] = StoredRecord(base: item.record, version: item.version, current: old.current)
         continue
       }
@@ -197,7 +200,10 @@ public final class Store {
     state.cursor = 0
     state.resync = true
     state.unreadable = 0
-    for id in state.records.keys { state.records[id]!.version = 0 }
+    for (id, r) in state.records {
+      state.records[id]!.prior = r.prior ?? r.version
+      state.records[id]!.version = 0
+    }
     return true
   }
 
@@ -205,7 +211,10 @@ public final class Store {
   public func resynced() {
     guard state.resync else { return }
     state.resync = false
-    for (id, s) in state.records where s.version == 0 { state.records[id]!.base = nil }
+    for (id, s) in state.records {
+      state.records[id]!.prior = nil
+      if s.version == 0 { state.records[id]!.base = nil }
+    }
     onDirty?()
   }
 

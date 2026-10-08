@@ -126,14 +126,15 @@ export class Store {
 
   /**
    * Records from the server, merged three ways into those with local changes. While resyncing, a stale record this device
-   * has becomes its base, so that what the device has since is pushed.
+   * has seen at least as new becomes its base, so that what the device has since is pushed. A record's `prior` keeps its
+   * version from before the resync, to tell a backup newer than this device from an older one.
    */
   merge(items) {
     if (!items.length) return;
     const boards = new Set();
     for (const { id, version, record, stale } of items) {
       const old = this.state.records[id];
-      if (old && this.state.resync && stale) {
+      if (old && this.state.resync && stale && version <= (old.prior ?? 0)) {
         this.state.records[id] = { base: record, version, current: old.current };
         continue;
       }
@@ -168,7 +169,7 @@ export class Store {
     s.epoch = epoch;
     if (resync) {
       Object.assign(s, { cursor: 0, resync: true, unreadable: 0 });
-      for (const [id, r] of Object.entries(s.records)) s.records[id] = { ...r, version: 0 };
+      for (const [id, r] of Object.entries(s.records)) s.records[id] = { ...r, prior: r.prior ?? r.version, version: 0 };
     }
     this.onDirty();
     return resync;
@@ -179,7 +180,7 @@ export class Store {
     const s = this.state;
     if (!s.resync) return;
     s.resync = false;
-    for (const [id, r] of Object.entries(s.records)) if (r.version === 0) s.records[id] = { ...r, base: null };
+    for (const [id, { prior, ...r }] of Object.entries(s.records)) s.records[id] = r.version === 0 ? { ...r, base: null } : r;
     this.onDirty();
   }
 
