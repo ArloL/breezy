@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FakeServer, SERVER, device, pair, mulberry } from "./helpers/fake-server.js";
-import { statusLines } from "../sync/engine.js";
+import { statusLines, TransportError } from "../sync/engine.js";
 import { SpaceKeys } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
 import { newID } from "../rules.js";
@@ -180,4 +180,27 @@ test("a space joined mid-cycle gets nothing from the old one", async () => {
   await joiner.engine.sync();
   assert.equal(joiner.store.state.cursor, 0);
   assert.deepEqual(joiner.store.boards(), []);
+});
+
+test("a failure in the old space leaves the new one free to sync", async () => {
+  const other = new FakeServer();
+  const o = device(other);
+  const invite = o.store.startSyncing(SERVER);
+  const a = device(new FakeServer());
+  a.store.startSyncing(SERVER);
+  a.transport.pull = async () => {
+    a.store.join(invite);
+    throw new TransportError("unreachable");
+  };
+  await a.engine.sync();
+  assert.equal(a.engine.failures, 0);
+  assert.equal(a.engine.retryAt, 0);
+  assert.notEqual(a.engine.status.state, "unreachable");
+  let pulled = false;
+  a.transport.pull = async () => {
+    pulled = true;
+    return { records: [], cursor: 0 };
+  };
+  await a.engine.sync();
+  assert.ok(pulled);
 });

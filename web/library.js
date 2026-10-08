@@ -45,7 +45,7 @@ export class Library {
     this.engine = new SyncEngine(store);
     this.engine.flushLocal = () => this.binding?.flush();
     this.engine.onStatus = () => app.ui.updateSync();
-    setInterval(() => !document.hidden && this.id && this.engine.sync(), 5000);
+    setInterval(() => !document.hidden && this.engine.sync(), 5000);
     document.addEventListener("visibilitychange", () => document.hidden || this.engine.sync());
     app.ui.updateSync();
     const change = app.model.onChange;
@@ -184,7 +184,15 @@ export class Library {
     } catch (error) {
       if (error?.name === "AbortError") return;
     }
-    await navigator.clipboard?.writeText(link).catch(() => {});
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      return ask({
+        title: "Share Invite",
+        message: "Copy this link and paste it into Join Space on the other device. Anyone with the link can read and change every board in this space.",
+        value: link, ok: "OK", cancel: null,
+      });
+    }
     await ask({
       title: "Invite link copied",
       message: "Paste it into Join Space on the other device. Anyone with the link can read and change every board in this space.",
