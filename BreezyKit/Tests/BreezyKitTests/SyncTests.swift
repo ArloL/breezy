@@ -170,3 +170,19 @@ import Testing
     #expect(d.store.board(id) == expected)
   }
 }
+
+@MainActor @Test func aRefusalWeCannotReadLeavesTheEditWaiting() async throws {
+  let (server, a, _, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  a.edit(id) { $0.setText(c, "mine") }
+  let keys = try SpaceKeys(state: a.store.state)
+  let plain = try JSONEncoder().encode(Record(["format": .number(2), "kind": .string("card")]))
+  server.put(c, blob: Base64URL.encode(try keys.seal(plain, id: Base64URL.decode(c)!)))
+  await a.engine.sync()
+  let unreadable = a.store.state.unreadable
+  await a.engine.sync()
+  #expect(a.engine.status.state == .synced)
+  #expect(a.engine.status.lines().contains("Update Breezy to see all changes"))
+  #expect(a.store.pending.map(\.id) == [c])
+  #expect(a.store.state.unreadable == unreadable)
+}
