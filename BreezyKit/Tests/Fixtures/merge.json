@@ -1,0 +1,106 @@
+[
+  {
+    "name": "a field changed here only stays",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "copy": null
+  },
+  {
+    "name": "a field changed there only comes in",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 3, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 3, "pos": [0, 0], "w": 240, "order": "V" },
+    "copy": null
+  },
+  {
+    "name": "changes to different fields combine",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 3, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 3, "pos": [0, 0], "w": 240, "order": "V" },
+    "copy": null
+  },
+  {
+    "name": "the same change on both sides is no conflict",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "copy": null
+  },
+  {
+    "name": "text changed on both sides makes a copy",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 2, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "c", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "c", "notes": "", "color": 2, "pos": [0, 0], "w": 240, "order": "V" },
+    "copy": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 2, "pos": [24, 24], "w": 240, "order": "V" }
+  },
+  {
+    "name": "notes changed on both sides make a copy",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "x", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "y", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "y", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "copy": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "x", "color": 1, "pos": [24, 24], "w": 240, "order": "V" }
+  },
+  {
+    "name": "other fields changed on both sides take the server's",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [24, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [48, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [48, 0], "w": 240, "order": "V" },
+    "copy": null
+  },
+  {
+    "name": "a delete there wins",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 2, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "deleted": true },
+    "record": { "format": 1, "kind": "card", "deleted": true },
+    "copy": null
+  },
+  {
+    "name": "a delete there keeps text changed here as a copy",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "deleted": true },
+    "record": { "format": 1, "kind": "card", "deleted": true },
+    "copy": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [24, 24], "w": 240, "order": "V" }
+  },
+  {
+    "name": "a delete here keeps text changed there as a copy",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "deleted": true },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "c", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "record": { "format": 1, "kind": "card", "deleted": true },
+    "copy": { "format": 1, "kind": "card", "board": "B", "text": "c", "notes": "", "color": 1, "pos": [24, 24], "w": 240, "order": "V" }
+  },
+  {
+    "name": "fields this version does not know are kept",
+    "base": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "local": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V" },
+    "incoming": { "format": 1, "kind": "card", "board": "B", "text": "a", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V", "tag": "x" },
+    "record": { "format": 1, "kind": "card", "board": "B", "text": "b", "notes": "", "color": 1, "pos": [0, 0], "w": 240, "order": "V", "tag": "x" },
+    "copy": null
+  },
+  {
+    "name": "a lane title changed on both sides takes the server's",
+    "base": { "format": 1, "kind": "lane", "board": "B", "title": "Doing", "pos": [0, 0], "size": [480, 720] },
+    "local": { "format": 1, "kind": "lane", "board": "B", "title": "Now", "pos": [0, 0], "size": [480, 720] },
+    "incoming": { "format": 1, "kind": "lane", "board": "B", "title": "Later", "pos": [0, 0], "size": [480, 720] },
+    "record": { "format": 1, "kind": "lane", "board": "B", "title": "Later", "pos": [0, 0], "size": [480, 720] },
+    "copy": null
+  },
+  {
+    "name": "with no base the server's title wins",
+    "base": null,
+    "local": { "format": 1, "kind": "board", "title": "Mine" },
+    "incoming": { "format": 1, "kind": "board", "title": "Theirs" },
+    "record": { "format": 1, "kind": "board", "title": "Theirs" },
+    "copy": null
+  }
+]
