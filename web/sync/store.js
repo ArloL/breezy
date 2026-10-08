@@ -73,7 +73,7 @@ export class Store {
     this.apply(out);
   }
 
-  /** Local edits. A deleted record stays deleted; partial fields for an unknown record are dropped. */
+  /** Local edits. A deleted record stays deleted; partial fields for an unknown record, and new records on a deleted board, are dropped. */
   apply(edits) {
     const boards = new Set();
     for (const [id, change] of Object.entries(edits)) {
@@ -88,7 +88,7 @@ export class Store {
         this.state.records[id] = { ...s, current };
         boards.add(current.board ?? id);
       } else {
-        if (!change.fields.kind) continue;
+        if (!change.fields.kind || this.state.records[change.fields.board]?.current.deleted === true) continue;
         this.state.records[id] = { base: null, version: 0, current: change.fields };
         boards.add(change.fields.board ?? id);
       }

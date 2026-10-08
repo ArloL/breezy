@@ -233,9 +233,11 @@ public struct SyncStatus: Equatable, Sendable {
       retryAt = nil
       update(.synced)
     } catch TransportError.unauthorized {
+      guard same() else { return }
       stopped = true
       update(.notInSpace)
     } catch {
+      guard same() else { return }
       failures += 1
       retryAt = now().addingTimeInterval(min(60, 5 * pow(2, Double(failures - 1))))
       update(error as? TransportError == .offline ? .offline : .unreachable)

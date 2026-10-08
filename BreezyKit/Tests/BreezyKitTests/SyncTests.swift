@@ -186,3 +186,20 @@ import Testing
   #expect(a.store.pending.map(\.id) == [c])
   #expect(a.store.state.unreadable == unreadable)
 }
+
+@MainActor @Test(arguments: [TransportError.unreachable, .unauthorized])
+func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) async {
+  let invite = Store().startSyncing(server: testServer)
+  let a = Device(FakeServer())
+  a.store.startSyncing(server: testServer)
+  a.transport.failure = failure
+  a.transport.beforePull = { a.store.join(invite) }
+  await a.engine.sync()
+  #expect(a.engine.status.state == .local)
+  a.transport.failure = nil
+  a.transport.beforePull = nil
+  let calls = a.transport.calls
+  await a.engine.sync()
+  #expect(a.transport.calls > calls)
+  #expect(a.engine.status.state == .synced)
+}
