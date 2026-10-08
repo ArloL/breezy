@@ -147,14 +147,15 @@ export class SyncEngine {
       this.flushLocal();
       if (!this.heldTried) {
         this.heldTried = true;
-        await this.retryHeld(keys);
+        if (!(await this.retryHeld(keys, same))) return;
       }
       for (;;) {
         const page = await transport.pull(this.store.state.cursor);
         if (!same()) return;
-        const items = await this.decodeAll(page.records, keys);
+        const decoded = await this.decodeAll(page.records, keys);
         this.flushLocal();
-        this.store.merge(items);
+        if (!same()) return;
+        this.apply(decoded);
         this.store.advance(page.cursor);
         if (page.records.length < PAGE_SIZE) break;
       }
@@ -167,15 +168,12 @@ export class SyncEngine {
         if (!same()) return;
         for (const a of result.accepted) if (sent.has(a.id)) this.store.accepted(a.id, a.version, sent.get(a.id));
         if (!result.refused.length) continue;
-        const items = [];
-        for (const p of result.refused) {
-          const r = await this.decodeOne(p, keys);
-          if (r) items.push(r);
-          else this.blocked.add(p.id);
-        }
+        const decoded = await this.decodeAll(result.refused, keys);
         this.flushLocal();
-        this.store.merge(items);
-        if (items.length && ++refusals === 3) throw new TransportError("unreachable");
+        if (!same()) return;
+        this.apply(decoded);
+        for (const id of decoded.failed) this.blocked.add(id);
+        if (decoded.items.length && ++refusals === 3) throw new TransportError("unreachable");
       }
       this.failures = 0;
       this.retryAt = 0;
@@ -192,40 +190,47 @@ export class SyncEngine {
     }
   }
 
+  /** Opens one record without touching the store: an item, a hold or an unreadable. */
   async decodeOne(p, keys) {
     let record;
     try {
       record = JSON.parse(new TextDecoder().decode(await keys.open(decode(p.blob), decode(p.id))));
       if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error("not a record");
     } catch {
-      this.store.noteUnreadable();
-      return null;
+      return { unreadable: true };
     }
-    if ((record.format ?? 0) > FORMAT) {
-      this.store.hold(p.id, p.version, p.blob);
-      return null;
-    }
-    return { id: p.id, version: p.version, record };
+    if ((record.format ?? 0) > FORMAT) return { held: { id: p.id, version: p.version, blob: p.blob } };
+    return { item: { id: p.id, version: p.version, record } };
   }
 
-  async decodeAll(items, keys) {
-    const out = [];
-    for (const p of items) {
+  async decodeAll(records, keys) {
+    const out = { items: [], held: [], unreadable: 0, failed: [] };
+    for (const p of records) {
       const r = await this.decodeOne(p, keys);
-      if (r) out.push(r);
+      if (r.item) out.items.push(r.item);
+      else {
+        out.failed.push(p.id);
+        if (r.held) out.held.push(r.held);
+        else out.unreadable++;
+      }
     }
     return out;
   }
 
-  /** Records held for a newer Breezy, which this one may now read. */
-  async retryHeld(keys) {
-    const ready = [];
-    for (const [id, h] of Object.entries(this.store.state.held)) {
-      this.store.release(id);
-      const r = await this.decodeOne({ id, version: h.version, blob: h.blob }, keys);
-      if (r) ready.push(r);
-    }
-    this.store.merge(ready);
+  apply({ items, held, unreadable }) {
+    for (const h of held) this.store.hold(h.id, h.version, h.blob);
+    for (let i = 0; i < unreadable; i++) this.store.noteUnreadable();
+    this.store.merge(items);
+  }
+
+  /** Records held for a newer Breezy, which this one may now read; false if the space changed meanwhile. */
+  async retryHeld(keys, same) {
+    const ids = Object.keys(this.store.state.held);
+    const decoded = await this.decodeAll(ids.map((id) => ({ id, ...this.store.state.held[id] })), keys);
+    if (!same()) return false;
+    for (const id of ids) this.store.release(id);
+    this.apply(decoded);
+    return true;
   }
 
   async outgoing(keys) {
