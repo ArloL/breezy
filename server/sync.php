@@ -40,6 +40,14 @@ function query(PDO $db, string $sql, array $params): PDOStatement {
   return $st;
 }
 
+ini_set('display_errors', '0');
+set_exception_handler(function (Throwable $e) {
+  global $db;
+  if (isset($db) && $db->inTransaction()) $db->rollBack();
+  error_log((string)$e);
+  reply(500, ['error' => 'server']);
+});
+
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, ORIGINS, true)) {
   header("Access-Control-Allow-Origin: $origin");
@@ -94,33 +102,43 @@ foreach ($list as $w) {
   $writes[] = [$id, $base, $data];
 }
 
-$db->beginTransaction();
-$row = query($db, "SELECT token_hash, version FROM spaces WHERE id = ?$lock", [$space])->fetch(PDO::FETCH_ASSOC);
-if (!$row) {
-  query($db, 'INSERT INTO spaces (id, token_hash, version) VALUES (?, ?, 0)', [$space, $hash]);
-  $version = 0;
-} elseif (!hash_equals($row['token_hash'], $hash)) {
-  $db->rollBack();
-  reply(401);
-} else {
-  $version = (int)$row['version'];
-}
-$accepted = [];
-$refused = [];
-foreach ($writes as [$id, $base, $data]) {
-  $stored = query($db, 'SELECT version, data FROM records WHERE space = ? AND id = ?', [$space, $id])->fetch(PDO::FETCH_ASSOC);
-  // a record the server does not have is taken whatever its base, so that devices can refill a lost database
-  if ($stored && (int)$stored['version'] !== $base) {
-    $refused[] = ['id' => b64e($id), 'version' => (int)$stored['version'], 'blob' => b64e($stored['data'])];
-    continue;
+// Concurrent creators of one space deadlock or collide on its key; the loser runs again.
+for ($attempt = 1;; $attempt++) {
+  try {
+    $db->beginTransaction();
+    $row = query($db, "SELECT token_hash, version FROM spaces WHERE id = ?$lock", [$space])->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+      query($db, 'INSERT INTO spaces (id, token_hash, version) VALUES (?, ?, 0)', [$space, $hash]);
+      $version = 0;
+    } elseif (!hash_equals($row['token_hash'], $hash)) {
+      $db->rollBack();
+      reply(401);
+    } else {
+      $version = (int)$row['version'];
+    }
+    $accepted = [];
+    $refused = [];
+    foreach ($writes as [$id, $base, $data]) {
+      $stored = query($db, 'SELECT version, data FROM records WHERE space = ? AND id = ?', [$space, $id])->fetch(PDO::FETCH_ASSOC);
+      // a record the server does not have is taken whatever its base, so that devices can refill a lost database
+      if ($stored && (int)$stored['version'] !== $base) {
+        $refused[] = ['id' => b64e($id), 'version' => (int)$stored['version'], 'blob' => b64e($stored['data'])];
+        continue;
+      }
+      $version++;
+      $sql = $stored
+        ? 'UPDATE records SET version = ?, data = ? WHERE space = ? AND id = ?'
+        : 'INSERT INTO records (version, data, space, id) VALUES (?, ?, ?, ?)';
+      query($db, $sql, [$version, $data, $space, $id]);
+      $accepted[] = ['id' => b64e($id), 'version' => $version];
+    }
+    query($db, 'UPDATE spaces SET version = ? WHERE id = ?', [$version, $space]);
+    $db->commit();
+    break;
+  } catch (PDOException $e) {
+    if ($db->inTransaction()) $db->rollBack();
+    if ($attempt >= 5 || !in_array((string)$e->getCode(), ['40001', '23000'], true)) throw $e;
+    usleep(random_int(5000, 50000));
   }
-  $version++;
-  $sql = $stored
-    ? 'UPDATE records SET version = ?, data = ? WHERE space = ? AND id = ?'
-    : 'INSERT INTO records (version, data, space, id) VALUES (?, ?, ?, ?)';
-  query($db, $sql, [$version, $data, $space, $id]);
-  $accepted[] = ['id' => b64e($id), 'version' => $version];
 }
-query($db, 'UPDATE spaces SET version = ? WHERE id = ?', [$version, $space]);
-$db->commit();
 reply(200, ['accepted' => $accepted, 'refused' => $refused]);
