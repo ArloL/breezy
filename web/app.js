@@ -53,6 +53,16 @@ export class App {
     return this.view.heightOf;
   }
 
+  /** Shows `board` in place of the one shown, with no undo history. */
+  load(board) {
+    this.endEditing();
+    this.turn(null);
+    this.ui.closeFind();
+    this.state.selection = new Set();
+    this.model.replace(board);
+    this.view.setCamera({ x: 16, y: this.ui.area().top + 16, zoom: 0.75 });
+  }
+
   selectedCards() {
     return this.model.board.cards.filter((c) => this.state.selection.has(c.id));
   }
