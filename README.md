@@ -47,6 +47,8 @@ Two people share one space of boards across their devices. Everything is encrypt
 
 The server is `server/sync.php` on PHP 8 with MySQL: upload `sync.php` and `.htaccess`, run `schema.sql`, and copy `config.example.php` to `config.php` with the database's details. It must be served over HTTPS. `.htaccess` needs `AllowOverride AuthConfig` for `CGIPassAuth`. The server has been smoke-tested against MySQL 8.4. Then Start Syncing on one device with the address of `sync.php`, Share Invite, and Join Space on the others with the link.
 
+After restoring a backup of the database, run `UPDATE spaces SET epoch = RANDOM_BYTES(16);` so that devices pull everything again and push what the backup lacks.
+
 ```bash
 server/test.sh   # sync.php against SQLite, then the Mac's HTTP client against it; needs php (brew install php)
 server/dev.sh    # serves http://127.0.0.1:58566/sync.php from build/ for trying sync on this Mac
