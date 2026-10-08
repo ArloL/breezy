@@ -104,3 +104,47 @@ test("a cancelled gesture puts the board back and records nothing", () => {
   assert.equal(m.inGesture, false);
   assert.equal(m.canUndo, false);
 });
+
+test("undo leaves changes from another device alone", () => {
+  const m = fresh();
+  m.perform("Colour", (b) => (b.cards[0].color = 3));
+  m.applyRemote({ ...structuredClone(m.board), cards: [{ ...m.board.cards[0], x: 48 }] });
+  m.undo();
+  assert.equal(m.board.cards[0].color, 1);
+  assert.equal(x(m), 48);
+});
+
+test("undo keeps a field the other device changed since", () => {
+  const m = fresh();
+  m.perform("Colour", (b) => (b.cards[0].color = 3));
+  m.applyRemote({ ...structuredClone(m.board), cards: [{ ...m.board.cards[0], color: 4 }] });
+  m.undo();
+  assert.equal(m.board.cards[0].color, 4);
+});
+
+test("redo puts back only what the step changed", () => {
+  const m = fresh();
+  m.perform("Colour", (b) => (b.cards[0].color = 3));
+  m.undo();
+  m.applyRemote({ ...structuredClone(m.board), cards: [{ ...m.board.cards[0], text: "y" }] });
+  m.redo();
+  assert.equal(m.board.cards[0].color, 3);
+  assert.equal(m.board.cards[0].text, "y");
+});
+
+test("changes from another device add no step and wait for a gesture", () => {
+  const m = fresh();
+  m.applyRemote({ ...structuredClone(m.board), cards: [{ ...m.board.cards[0], color: 2 }] });
+  assert.equal(m.canUndo, false);
+  m.begin();
+  m.applyRemote({ ...structuredClone(m.board), cards: [{ ...m.board.cards[0], color: 5 }] });
+  assert.equal(m.board.cards[0].color, 2);
+});
+
+test("replace shows another board with no history", () => {
+  const m = fresh();
+  m.perform("Move", (b) => (b.cards[0].x = 24));
+  m.replace({ cards: [], lanes: [] });
+  assert.deepEqual(m.board, { cards: [], lanes: [] });
+  assert.equal(m.canUndo, false);
+});
