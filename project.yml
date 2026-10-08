@@ -23,20 +23,6 @@ targets:
         CFBundleIconFile: Breezy
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
-        CFBundleDocumentTypes:
-          - CFBundleTypeName: Breezy Board
-            CFBundleTypeRole: Editor
-            CFBundleTypeIconFile: Board
-            LSHandlerRank: Owner
-            LSItemContentTypes: [local.breezy.board]
-            NSDocumentClass: $(PRODUCT_MODULE_NAME).BoardDocument
-        UTExportedTypeDeclarations:
-          - UTTypeIdentifier: local.breezy.board
-            UTTypeDescription: Breezy Board
-            UTTypeIconFile: Board
-            UTTypeConformsTo: [public.json]
-            UTTypeTagSpecification:
-              public.filename-extension: [breezy]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: local.breezy.app

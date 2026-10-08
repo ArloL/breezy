@@ -1,6 +1,6 @@
 import AppKit
 
-// Draws the app and document icons and writes Breezy.icns and Board.icns into the directory given.
+// Draws the app icon and writes Breezy.icns into the directory given.
 let out = URL(fileURLWithPath: CommandLine.arguments[1])
 
 func png(_ px: Int, _ draw: (CGFloat) -> Void) -> Data {
@@ -48,8 +48,6 @@ func appIcon(_ s: CGFloat) {
   card(NSRect(x: s * 0.24, y: s * 0.3, width: s * 0.52, height: s * 0.36))
 }
 
-func docIcon(_ s: CGFloat) { card(NSRect(x: s * 0.14, y: s * 0.26, width: s * 0.72, height: s * 0.48)) }
-
 func icns(_ name: String, _ draw: (CGFloat) -> Void) {
   let set = out.appendingPathComponent("\(name).iconset")
   try? FileManager.default.removeItem(at: set)
@@ -67,4 +65,3 @@ func icns(_ name: String, _ draw: (CGFloat) -> Void) {
 }
 
 icns("Breezy", appIcon)
-icns("Board", docIcon)

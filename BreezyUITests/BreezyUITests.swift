@@ -6,20 +6,23 @@ final class BreezyUITests: XCTestCase {
   override func setUp() { continueAfterFailure = false }
   override func tearDown() { app?.terminate() }
 
-  /// Launches the app on a board written from `json` into a temporary file.
+  /// Launches the app on a board written from `json` into a temporary file, with a store in a
+  /// temporary folder; returns the board file and the store's file.
   @discardableResult
-  func open(_ json: String) -> URL {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".breezy")
+  func open(_ json: String) -> (board: URL, store: URL) {
+    let tmp = FileManager.default.temporaryDirectory
+    let url = tmp.appendingPathComponent(UUID().uuidString + ".breezy")
+    let store = tmp.appendingPathComponent(UUID().uuidString)
     try! json.write(to: url, atomically: true, encoding: .utf8)
     app = XCUIApplication()
-    app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-BreezyBoard", url.path]
+    app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-BreezyBoard", url.path, "-BreezyStore", store.path]
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5))
-    return url
+    return (url, store.appendingPathComponent("space.json"))
   }
 
   func testOpensABoard() {
-    let url = open(#"{"format": 1, "cards": [], "lanes": []}"#)
+    let url = open(#"{"format": 1, "cards": [], "lanes": []}"#).board
     XCTAssertTrue(app.windows.firstMatch.title.hasPrefix(url.deletingPathExtension().lastPathComponent))
   }
 
@@ -54,12 +57,19 @@ final class BreezyUITests: XCTestCase {
   }
 
   func testClosingWhileEditingKeepsText() throws {
-    let url = open(empty)
+    let store = open(empty).store
     app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
     app.typeText("Kept")
     app.typeKey("w", modifierFlags: .command)
     XCTAssertTrue(app.windows.firstMatch.waitForNonExistence(timeout: 5))
-    XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).contains(#""text" : "Kept""#))
+    let deadline = Date().addingTimeInterval(5)
+    var text = ""
+    while Date() < deadline {
+      text = (try? String(contentsOf: store, encoding: .utf8)) ?? ""
+      if text.contains(#""text":"Kept""#) { break }
+      Thread.sleep(forTimeInterval: 0.2)
+    }
+    XCTAssertTrue(text.contains(#""text":"Kept""#))
   }
 
   func testFindTurnsACardToAMatchOnItsBack() {

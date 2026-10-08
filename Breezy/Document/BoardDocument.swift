@@ -1,41 +1,65 @@
 import AppKit
 import BreezyKit
 
-/// A `.breezy` file. Every change goes through `model`, whose undo manager is the document's, so
-/// the Edit menu, the edited dot and autosave follow it.
+/// One board's window and undo, without a file: the board lives in the library's store. AppKit's
+/// documents still give the window its undo manager and title.
 final class BoardDocument: NSDocument {
-  let model = BoardModel()
+  let boardID: String
+  let model: BoardModel
+  let binding: BoardBinding
 
-  override init() {
+  init(boardID: String, store: Store) {
+    self.boardID = boardID
+    // stacked as this Mac measures text; the store keeps the positions as they came
+    var b = store.board(boardID)
+    let heights = Dictionary(uniqueKeysWithValues: b.cards.map { ($0.id, Double(TextMetrics.frontHeight($0.text, width: CGFloat($0.w)))) })
+    b.gravity { heights[$0] ?? 2 * Metrics.grid }
+    model = BoardModel(board: b)
+    binding = BoardBinding(id: boardID, model: model, store: store)
     super.init()
     undoManager = model.undoManager
-    // a drag or edit in progress has no undo step yet, but its change is unsaved; closing then
-    // saves it as it stands rather than ending the edit, which would wait on the close's own save
-    model.onPending = { [weak self] pending in self?.updateChangeCount(pending ? .changeDone : .changeUndone) }
   }
 
-  override class var autosavesInPlace: Bool { true }
+  var windowController: BoardWindowController? { windowControllers.first as? BoardWindowController }
 
   override func makeWindowControllers() {
-    addWindowController(BoardWindowController(model: model))
+    let wc = BoardWindowController(model: model, boardID: boardID)
+    addWindowController(wc)
+    binding.restack = { [weak wc] b in wc?.canvas.restack(&b) }
+    wc.window?.identifier = NSUserInterfaceItemIdentifier("board")
+    wc.window?.restorationClass = BoardRestorer.self
   }
 
-  /// Saves off the main thread: encoding and writing, and the wait on Spotlight that follows, would
-  /// otherwise hold up a drag or typing whenever macOS autosaves.
-  override func canAsynchronouslyWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType) -> Bool { true }
+  override var displayName: String! {
+    get { MainActor.assumeIsolated { Library.shared.store.title(of: boardID) } ?? "Board" }
+    set {}
+  }
 
-  /// Saves an edit in progress as it would stand once finished, without ending it. The main thread
-  /// waits only until the board is copied.
-  override func data(ofType typeName: String) throws -> Data {
-    var board = model.board
-    for case let wc as BoardWindowController in windowControllers {
-      if let id = wc.canvas.editing?.id { board.finishEdit(id) }
+  // the store saves; a document never counts as edited, so closing never asks
+  override func updateChangeCount(_ change: NSDocument.ChangeType) {}
+  override var isDocumentEdited: Bool { false }
+
+  /// A closing window leaves the document before `close()`, so its edit ends here.
+  override func removeWindowController(_ windowController: NSWindowController) {
+    (windowController as? BoardWindowController)?.canvas.endEditing()
+    super.removeWindowController(windowController)
+  }
+
+  override func close() {
+    windowController?.canvas.endEditing()
+    binding.flush()
+    super.close()
+  }
+}
+
+/// Brings back the board windows open at quit; a window's state holds its board's id.
+final class BoardRestorer: NSObject, NSWindowRestoration {
+  static func restoreWindow(
+    withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder, completionHandler: @escaping (NSWindow?, Error?) -> Void
+  ) {
+    let window = MainActor.assumeIsolated {
+      (state.decodeObject(of: NSString.self, forKey: "board") as String?).flatMap { Library.shared.open($0, display: false)?.window }
     }
-    unblockUserInteraction()
-    return try BoardFormat.encode(board)
-  }
-
-  override func read(from data: Data, ofType typeName: String) throws {
-    model.replace(try BoardFormat.decode(data).recentred(within: Double(CanvasView.origin) - 2_000))
+    completionHandler(window, window == nil ? CocoaError(.fileNoSuchFile) : nil)
   }
 }

@@ -141,22 +141,19 @@ extension SelfTest {
     finish(name, nil)
   }
 
-  /// Closing the window mid-edit saves the typed text.
+  /// Closing while a card is being edited keeps its text in the store's file.
   fileprivate static func closeWhileEditing(_ d: Driver) {
     let name = "close-while-editing"
-    guard let url = d.wc.document.flatMap({ ($0 as? NSDocument)?.fileURL }) else { finish(name, "no file") }
+    let file = StoreFile(url: DebugLaunch.storeDirectory.appendingPathComponent("space.json"))
     d.doubleClick(d.canvas.visibleWorldCentre)
     d.type("Kept")
     d.window.performClose(nil)
     var tries = 0
     func poll() {
-      let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-      if text.contains(#""text" : "Kept""#) { finish(name, nil) }
+      let texts = ((try? file.load()) ?? nil)?.records.values.compactMap { $0.current.deleted ? nil : $0.current["text"]?.string } ?? []
+      if texts.contains("Kept") { finish(name, nil) }
       tries += 1
-      if tries > 25 {
-        let sheet = d.window.attachedSheet.map { _ in "a sheet is open" } ?? "no sheet"
-        finish(name, "file has no Kept (\(sheet)): \(text.prefix(200))")
-      }
+      if tries > 25 { finish(name, "the store has no Kept: \(texts)") }
       d.later(0.2, poll)
     }
     d.later(0.2, poll)
@@ -164,17 +161,17 @@ extension SelfTest {
 }
 
 extension SelfTest {
-  /// Closing right after creating a card leaves no blank card in the file.
+  /// Closing right after creating a card leaves no blank card in the store.
   fileprivate static func closeBlankCard(_ d: Driver) {
     let name = "close-blank-card"
-    guard let url = d.wc.document.flatMap({ ($0 as? NSDocument)?.fileURL }) else { finish(name, "no file") }
+    let file = StoreFile(url: DebugLaunch.storeDirectory.appendingPathComponent("space.json"))
     d.doubleClick(d.canvas.visibleWorldCentre)
     d.type(" ")
     d.window.performClose(nil)
     d.later(1.5) {
-      let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-      guard let b = try? BoardFormat.decode(Data(text.utf8)) else { finish(name, "unreadable file: \(text.prefix(200))") }
-      finish(name, b.cards.isEmpty ? nil : "file has \(b.cards.count) cards")
+      guard let state = (try? file.load()) ?? nil else { finish(name, "no store file") }
+      let cards = state.records.values.filter { $0.current.kind == "card" && !$0.current.deleted }
+      finish(name, cards.isEmpty ? nil : "the store has \(cards.count) cards")
     }
   }
 }
