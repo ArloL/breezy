@@ -46,3 +46,13 @@ test("new ids are 16 random bytes", () => {
   assert.equal(decode(id).length, 16);
   assert.notEqual(newID(), id);
 });
+
+test("only a JSON number sets a colour", () => {
+  const [c] = boardFrom({ c: { format: 1, kind: "card", board: "B", color: "3" } }, "B").cards;
+  assert.equal(c.color, 1);
+});
+
+test("only deleted: true leaves a record out", () => {
+  const [c] = boardFrom({ c: { format: 1, kind: "card", board: "B", deleted: 1 } }, "B").cards;
+  assert.equal(c.id, "c");
+});
