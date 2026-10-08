@@ -130,7 +130,14 @@ jobs:
         sed -i "s/data-version=\"dev\"/data-version=\"${NEW_VERSION}\"/" _site/index.html
         grep --fixed-strings --quiet "data-version=\"${NEW_VERSION}\"" _site/index.html
         node scripts/make-web-version.mjs _site "${NEW_VERSION}"
-    - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+    # after the version file, which lists what the service worker keeps offline: not these
+    - name: Add the sync server
+      run: cp server/sync.php server/.htaccess _site/
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: site
+        path: _site
+        include-hidden-files: true
     - name: Make sure build did not change anything
       run: git diff --exit-code
   release:
@@ -168,26 +175,50 @@ jobs:
           ./target/*
     - name: Make sure build did not change anything
       run: git diff --exit-code
-  # the touch prototype on GitHub Pages, whose environment takes deployments from main only
-  pages:
+  # the web app and the sync server on breezy.k5d.de, over FTPS; the production environment
+  # holds the hosting and database credentials
+  deploy:
     needs:
     - web
     - release
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-slim
     permissions:
-      pages: write
-      id-token: write
+      contents: read
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: production
+      url: https://breezy.k5d.de/
     # one deployment at a time, and never cut short
     concurrency:
-      group: pages
+      group: deploy
       cancel-in-progress: false
     steps:
-    - id: deployment
-      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: site
+        path: _site
+    - name: Write the sync server's config
+      env:
+        DATABASE_HOST: ${{ vars.BREEZY_DATABASE_HOST }}
+        DATABASE_NAME: ${{ vars.BREEZY_DATABASE_NAME }}
+        DATABASE_USER: ${{ secrets.BREEZY_DATABASE_USER }}
+        DATABASE_PASSWORD: ${{ secrets.BREEZY_DATABASE_PASSWORD }}
+      run: |
+        config=$(jq --null-input --compact-output \
+          --arg dsn "mysql:host=${DATABASE_HOST};dbname=${DATABASE_NAME};charset=utf8mb4" \
+          --arg user "$DATABASE_USER" --arg password "$DATABASE_PASSWORD" \
+          '{dsn: $dsn, user: $user, password: $password}' | base64 --wrap=0)
+        printf "<?php return json_decode(base64_decode('%s'), true);\n" "$config" > "$RUNNER_TEMP/config.php"
+    - name: Upload
+      env:
+        BREEZY_WEB_USER: ${{ secrets.BREEZY_WEB_USER }}
+        BREEZY_WEB_PASSWORD: ${{ secrets.BREEZY_WEB_PASSWORD }}
+      run: BREEZY_CONFIG_FILE="$RUNNER_TEMP/config.php" scripts/deploy.sh _site
+    - name: Make sure build did not change anything
+      run: git diff --exit-code
   required-status-check:
     name: main.required-status-check
     needs:

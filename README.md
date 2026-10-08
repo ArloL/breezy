@@ -45,7 +45,7 @@ scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scr
 
 Two people share one space of boards across their devices. Everything is encrypted on the devices; the server stores only what it cannot read. See `docs/superpowers/specs/2026-10-08-breezy-sync-design.md`.
 
-The server is `server/sync.php` on PHP 8 with MySQL: upload `sync.php` and `.htaccess`, run `schema.sql`, and copy `config.example.php` to `config.php` with the database's details. It must be served over HTTPS. `.htaccess` needs `AllowOverride AuthConfig` for `CGIPassAuth`. The server has been smoke-tested against MySQL 8.4. Then Start Syncing on one device with the address of `sync.php`, Share Invite, and Join Space on the others with the link.
+The server is `server/sync.php` on PHP 8 with MySQL, served with the web app at https://breezy.k5d.de/sync.php. Every push to `main` uploads both over FTPS (`scripts/deploy.sh`), with the `production` environment's secrets `BREEZY_WEB_USER`, `BREEZY_WEB_PASSWORD`, `BREEZY_DATABASE_USER` and `BREEZY_DATABASE_PASSWORD` and variables `BREEZY_DATABASE_HOST` and `BREEZY_DATABASE_NAME`; the deploy writes the database's details to `config.php` above the web root. Run `schema.sql` once on the database. It must be served over HTTPS, and `.htaccess` needs `AllowOverride AuthConfig` for `CGIPassAuth`. The server has been smoke-tested against MySQL 8.4. Then Start Syncing on one device with the address of `sync.php`, Share Invite, and Join Space on the others with the link.
 
 After restoring a backup of the database, run `UPDATE spaces SET epoch = RANDOM_BYTES(16);` so that devices pull everything again and push what the backup lacks.
 
@@ -56,7 +56,7 @@ server/dev.sh    # serves http://127.0.0.1:58566/sync.php from build/ for trying
 
 ## Touch prototype
 
-`web/` is a touch version for trying Breezy's interaction on a phone. It keeps its boards in the browser and opens on a list of them; `?stress` loads 500 cards into a board it does not keep. Every push to `main` publishes it at https://arlol.github.io/breezy/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. In a desktop browser it takes a mouse, trackpad and keyboard as the Mac app does. Once installed it launches from a local copy of one version, without the network; `web/sw.js` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
+`web/` is a touch version for trying Breezy's interaction on a phone. It keeps its boards in the browser and opens on a list of them; `?stress` loads 500 cards into a board it does not keep. Every push to `main` publishes it at https://breezy.k5d.de/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. In a desktop browser it takes a mouse, trackpad and keyboard as the Mac app does. Once installed it launches from a local copy of one version, without the network; `web/sw.js` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
 
 ```bash
 npx --yes live-server@1.2.2 web --port=58565 --no-browser

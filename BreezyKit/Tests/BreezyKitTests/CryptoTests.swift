@@ -42,7 +42,7 @@ private func vector() throws -> Vector { try JSONDecoder().decode(Vector.self, f
 @Test func whatIsNotAnInviteIsRefused() throws {
   let v = try vector()
   for text in [
-    "", "https://arlol.github.io/breezy/", "https://arlol.github.io/breezy/#join=abc",
+    "", "https://breezy.k5d.de/", "https://breezy.k5d.de/#join=abc",
     Invite(server: "ftp://example.com", space: v.space, secret: v.secret).link,
     Invite(server: v.server, space: "AAAA", secret: v.secret).link,
     Invite(server: v.server, space: v.space, secret: "AAAA").link,

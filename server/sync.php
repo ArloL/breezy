@@ -8,7 +8,7 @@ declare(strict_types=1);
 const PAGE = 500;
 const MAX_BLOB = 65536;
 const MAX_REQUEST = 1048576;
-const ORIGINS = ['https://arlol.github.io', 'http://localhost:58565'];
+const ORIGINS = ['https://breezy.k5d.de', 'http://localhost:58565'];
 
 function reply(int $status, ?array $body = null): void {
   http_response_code($status);
@@ -76,7 +76,8 @@ $token = preg_match('/^Bearer ([A-Za-z0-9_-]+)$/', $auth, $m) ? bytes($m[1], 32)
 if ($token === null) reply(401);
 $hash = hash('sha256', $token, true);
 
-$config = require (getenv('BREEZY_CONFIG') ?: __DIR__ . '/config.php');
+// the config is best kept above the web root, where it can never be served
+$config = require (getenv('BREEZY_CONFIG') ?: (is_file(__DIR__ . '/../config.php') ? __DIR__ . '/../config.php' : __DIR__ . '/config.php'));
 $db = new PDO($config['dsn'], $config['user'] ?? null, $config['password'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
 

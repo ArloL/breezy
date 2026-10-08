@@ -2,7 +2,7 @@
 import { encode, decode } from "./base64.js";
 
 const enc = new TextEncoder();
-export const INVITE_PREFIX = "https://arlol.github.io/breezy/#join=";
+export const INVITE_PREFIX = "https://breezy.k5d.de/#join=";
 export const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));
 
 export class SpaceKeys {

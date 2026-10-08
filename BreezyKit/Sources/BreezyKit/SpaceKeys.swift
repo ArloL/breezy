@@ -29,7 +29,7 @@ public struct SpaceKeys {
 
 /// What joins a device to a space: the server, the space and its secret, as a link.
 public struct Invite: Codable, Equatable, Sendable {
-  public static let prefix = "https://arlol.github.io/breezy/#join="
+  public static let prefix = "https://breezy.k5d.de/#join="
   public var server: String
   public var space: String
   public var secret: String

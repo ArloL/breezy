@@ -84,8 +84,8 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 - Ids, blobs, tokens and epochs travel as base64url.
 - Limits: a blob at most 64 KB, a request at most 1 MB. Otherwise 413.
 - 401 for a wrong token, 400 for a malformed request.
-- HTTPS only. CORS allows `https://arlol.github.io` and `http://localhost:58565`.
-- Deploying is by hand: upload `sync.php`, run `schema.sql`, put the database credentials in `server/config.php`, which git ignores.
+- HTTPS only. The web app is served from the same origin, https://breezy.k5d.de; CORS allows it and `http://localhost:58565`.
+- Every push to `main` uploads the web app and `sync.php` to https://breezy.k5d.de over FTPS; the database credentials go into `config.php` above the web root, written from the `production` environment's secrets. `schema.sql` is run once by hand.
 
 ## Encryption
 
@@ -97,7 +97,7 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 ## Joining
 
 - **Start Syncing** creates a space with a new secret on a server URL you enter, and uploads every local record.
-- **Share Invite** gives a link: `https://arlol.github.io/breezy/#join=<base64url of {server, space, secret} as JSON>`. The part after `#` never reaches a server. The Mac copies it; the web app opens the share sheet.
+- **Share Invite** gives a link: `https://breezy.k5d.de/#join=<base64url of {server, space, secret} as JSON>`. The part after `#` never reaches a server. The Mac copies it; the web app opens the share sheet.
 - **Join Space** takes a pasted link. On iOS an installed web app has its own storage, separate from Safari's, so opening the link in Safari would not join it; the link is pasted inside the app. Joining asks first, naming the server's host, when the device has boards of its own or the web app was opened from the link; then the space's boards replace the device's.
 - Before syncing, a device works alone on its local boards.
 - Anyone with the link or a copy of a device's store can join. Changing the secret or removing a person is out of scope; a new space and a new invite do it.

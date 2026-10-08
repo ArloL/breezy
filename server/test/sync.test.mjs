@@ -125,9 +125,9 @@ test("malformed requests are refused", async () => {
 
 test("only the app's pages may call from a browser", async () => {
   const c = client();
-  const ok = await c.call("OPTIONS", {}, undefined, { Origin: "https://arlol.github.io" });
+  const ok = await c.call("OPTIONS", {}, undefined, { Origin: "https://breezy.k5d.de" });
   assert.equal(ok.status, 204);
-  assert.equal(ok.headers.get("access-control-allow-origin"), "https://arlol.github.io");
+  assert.equal(ok.headers.get("access-control-allow-origin"), "https://breezy.k5d.de");
   const other = await c.call("OPTIONS", {}, undefined, { Origin: "https://example.com" });
   assert.equal(other.headers.get("access-control-allow-origin"), null);
 });

@@ -128,7 +128,8 @@ addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET" || !request.url.startsWith(SCOPE)) return;
   const path = request.url.slice(SCOPE.length).split(/[?#]/)[0];
-  if (path === "sw.js" || path === "version.json") return;
+  // the worker, its version file and the sync server are the network's
+  if (path === "sw.js" || path === "version.json" || path === "sync.php") return;
   if (request.mode === "navigate") {
     const response = serve(launch, request);
     event.respondWith(response);
