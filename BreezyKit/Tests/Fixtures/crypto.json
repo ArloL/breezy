@@ -1,0 +1,12 @@
+{
+  "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "space": "QEFCQ0RFRkdISUpLTE1OTw",
+  "id": "YGFiY2RlZmdoaWprbG1ubw",
+  "nonce": "gIGCg4SFhoeIiYqL",
+  "plaintext": "{\"format\":1,\"kind\":\"board\",\"title\":\"Plans\"}",
+  "token": "zkIWReSOCPzlBul9zmJo3zsGBFXz1dZ4r_t5nYATtQI",
+  "tokenHash": "qd466AWYMss8t8tSy4czk3Fo4ObWyeht6QEO6mMSklc",
+  "blob": "gIGCg4SFhoeIiYqLCD5NiFc_mM3evpb5SgXl1WlqsBtw62Y1OYQb9SzevkGzUHB47Zw8yJBM4ytZJ5_CIRjBsT1s26zV7TY",
+  "server": "https://example.com/breezy/sync.php",
+  "invite": "https://arlol.github.io/breezy/#join=eyJzZWNyZXQiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R4QVJFaE1VRlJZWEdCa2FHeHdkSGg4Iiwic2VydmVyIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9icmVlenkvc3luYy5waHAiLCJzcGFjZSI6IlFFRkNRMFJGUmtkSVNVcExURTFPVHcifQ"
+}
