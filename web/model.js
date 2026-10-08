@@ -1,3 +1,5 @@
+import { rebase } from "./rebase.js";
+
 export const UNDO_LIMIT = 100;
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -5,7 +7,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /**
  * The board being edited, with undo. A change goes through `perform`, or through a gesture
  * (`begin`, `update`…, `end`) such as a drag or an edit session; either records one step, and
- * only when the board changed.
+ * only when the board changed. A step undoes field by field, so changes from another device made since stay.
  */
 export class Model {
   constructor(board) {
@@ -75,13 +77,29 @@ export class Model {
   swap(from, to) {
     if (this.inGesture || !from.length) return;
     const step = from.pop();
-    to.push({ board: this.board, name: step.name });
-    this.board = step.board;
+    to.push({ from: step.to, to: step.from, name: step.name });
+    this.board = rebase(step.from, step.to, this.board);
+    this.onChange();
+  }
+
+  /** Changes from another device, without a step; ignored during a gesture. */
+  applyRemote(board) {
+    if (this.inGesture) return;
+    this.board = board;
+    this.onChange();
+  }
+
+  /** Another board in place of this one, with no history. */
+  replace(board) {
+    this.board = board;
+    this.start = null;
+    this.undos = [];
+    this.redos = [];
     this.onChange();
   }
 
   record(before, name) {
-    this.undos.push({ board: before, name });
+    this.undos.push({ from: structuredClone(this.board), to: before, name });
     if (this.undos.length > UNDO_LIMIT) this.undos.shift();
     this.redos = [];
   }
