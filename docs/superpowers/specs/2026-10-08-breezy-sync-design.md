@@ -39,6 +39,8 @@ A cycle runs when a board opens, when the app comes back to the foreground, ever
 1. **Pull** every record after the cursor, in pages of 500. Merge each into the store (below), then advance the cursor.
 2. **Push** pending records, each with its base version. Accepted records take the returned version and their current becomes their base. For each refused record, merge the returned record into the store and push again; after three refusals in one cycle, back off.
 
+Every response names the space's *epoch*, a random value it gets when created and a new one when its database is restored from a backup (null for a space the server lacks). A device takes the epoch when it has none. When it differs from the one stored, the device resyncs: it pulls from 0, and each record it already has takes the server's version but keeps the device's contents, with no base, so it is pushed over the server's copy; records the server lacks are pushed with base 0, which recreates a lost space with a new epoch. Refusals merge as usual. A device that resyncs later overwrites, record by record, what devices that resynced earlier changed after the restore.
+
 Merged changes are applied to the open `Board` and spring into place like any other change, without adding undo steps; while a drag or an edit is in progress they wait until it ends. The stacking rules then run on the board, but only for what this device shows: the Mac and the browser measure text differently, and pushing each other's layouts would go back and forth forever. Positions go to the server only from local edits.
 
 ### Merge
@@ -64,7 +66,7 @@ An undo step keeps, per changed field, its value before and after. Undoing write
 `server/sync.php` on PHP 8 with PDO, and `server/schema.sql`:
 
 ```sql
-CREATE TABLE spaces  (id BINARY(16) PRIMARY KEY, token_hash BINARY(32) NOT NULL, version BIGINT NOT NULL);
+CREATE TABLE spaces  (id BINARY(16) PRIMARY KEY, token_hash BINARY(32) NOT NULL, version BIGINT NOT NULL, epoch BINARY(16) NOT NULL);
 CREATE TABLE records (space BINARY(16), id BINARY(16), version BIGINT NOT NULL, data MEDIUMBLOB NOT NULL,
                       PRIMARY KEY (space, id), KEY (space, version));
 ```
@@ -73,12 +75,13 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 
 | Request | Does |
 |---|---|
-| `GET sync.php?space=S&since=N` | `{records: [{id, version, blob}], cursor}`, ordered by version, at most 500 |
-| `POST sync.php?space=S` with `{writes: [{id, base, blob}]}` | in one transaction that locks the space row: each write whose stored version equals `base` (0: no stored record), or whose id the server has no record for whatever its base, so devices can refill a restored or lost database, gets the space's next version; returns `{accepted: [{id, version}], refused: [{id, version, blob}]}` |
+| `GET sync.php?space=S&since=N` | `{records: [{id, version, blob}], cursor, epoch}`, ordered by version, at most 500; `epoch` is null for an unknown space |
+| `POST sync.php?space=S` with `{writes: [{id, base, blob}]}` | in one transaction that locks the space row: each write whose stored version equals `base` (0: no stored record), or whose id the server has no record for whatever its base, so devices can refill a restored or lost database, gets the space's next version; returns `{accepted: [{id, version}], refused: [{id, version, blob}], epoch}` |
 
 - POST retries the whole transaction on a MySQL deadlock or duplicate-key race. Unexpected errors answer 500 `{"error":"server"}` without details.
-- The first POST to an unknown space creates it with the token's hash. Space ids are 128-bit random.
-- Ids, blobs and tokens travel as base64url.
+- The first POST to an unknown space creates it with the token's hash and a random 16-byte epoch. Space ids are 128-bit random.
+- After restoring the database from a backup, `UPDATE spaces SET epoch = RANDOM_BYTES(16);` makes devices resync.
+- Ids, blobs, tokens and epochs travel as base64url.
 - Limits: a blob at most 64 KB, a request at most 1 MB. Otherwise 413.
 - 401 for a wrong token, 400 for a malformed request.
 - HTTPS only. CORS allows `https://arlol.github.io` and `http://localhost:58565`.

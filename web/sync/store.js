@@ -6,7 +6,9 @@ import { mergeRecord, equalRecords } from "./merge.js";
 import { encode } from "./base64.js";
 import { randomBytes } from "./crypto.js";
 
-export const emptyState = () => ({ server: null, space: null, secret: null, cursor: 0, records: {}, held: {}, unreadable: 0 });
+export const emptyState = () => ({
+  server: null, space: null, secret: null, cursor: 0, records: {}, held: {}, unreadable: 0, epoch: null, resync: false,
+});
 
 export const withFreshIDs = (board) => ({
   cards: board.cards.map((c) => ({ ...c, id: newID() })),
@@ -122,12 +124,19 @@ export class Store {
     this.onDirty();
   }
 
-  /** Records from the server, merged three ways into those with local changes. */
+  /**
+   * Records from the server, merged three ways into those with local changes. While resyncing, a record this device has
+   * keeps its own contents, to be pushed over the server's.
+   */
   merge(items) {
     if (!items.length) return;
     const boards = new Set();
     for (const { id, version, record } of items) {
       const old = this.state.records[id];
+      if (old && this.state.resync) {
+        this.state.records[id] = { base: null, version, current: old.current };
+        continue;
+      }
       if (old && version <= old.version) continue;
       let current = record;
       if (old && !equalRecords(old.current, old.base)) {
@@ -145,6 +154,32 @@ export class Store {
 
   advance(cursor) {
     this.state.cursor = Math.max(this.state.cursor, cursor);
+    this.onDirty();
+  }
+
+  /**
+   * Takes the server's epoch when none is stored; when it differs from the stored one, as after a restore from a backup or
+   * the loss of the space, starts pulling everything again, as `merge` and `resynced` describe, and returns true.
+   */
+  noteEpoch(epoch = null) {
+    const s = this.state;
+    if (epoch === (s.epoch ?? null)) return false;
+    const resync = s.epoch != null;
+    s.epoch = epoch;
+    if (resync) {
+      Object.assign(s, { cursor: 0, resync: true });
+      for (const [id, r] of Object.entries(s.records)) s.records[id] = { ...r, version: 0 };
+    }
+    this.onDirty();
+    return resync;
+  }
+
+  /** The resync's pull is done; records the server lacks wait to be pushed as new. */
+  resynced() {
+    const s = this.state;
+    if (!s.resync) return;
+    s.resync = false;
+    for (const [id, r] of Object.entries(s.records)) if (r.version === 0) s.records[id] = { ...r, base: null };
     this.onDirty();
   }
 
@@ -174,7 +209,7 @@ export class Store {
   /** A new space on `server` for the boards here; every record waits to be pushed. */
   startSyncing(server) {
     const s = this.state;
-    Object.assign(s, { server, space: encode(randomBytes(16)), secret: encode(randomBytes(32)), cursor: 0, held: {}, unreadable: 0 });
+    Object.assign(s, { server, space: encode(randomBytes(16)), secret: encode(randomBytes(32)), cursor: 0, epoch: null, resync: false, held: {}, unreadable: 0 });
     for (const [id, r] of Object.entries(s.records)) s.records[id] = { ...r, base: null, version: 0 };
     this.onDirty();
     return this.invite;

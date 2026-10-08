@@ -24,12 +24,32 @@ public struct SpaceState: Codable, Equatable, Sendable {
   public var records: [String: StoredRecord] = [:]
   public var held: [String: Held] = [:]
   public var unreadable = 0
+  /// The server's name for this copy of the space; a database restored from a backup gets a new one.
+  public var epoch: String?
+  /// Pulling everything again after the epoch changed.
+  public var resync = false
 
   public init() {}
 
   public var invite: Invite? {
     guard let server, let space, let secret else { return nil }
     return Invite(server: server, space: space, secret: secret)
+  }
+}
+
+extension SpaceState {
+  /// Files from before `epoch` and `resync` read as not resyncing.
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    server = try c.decodeIfPresent(String.self, forKey: .server)
+    space = try c.decodeIfPresent(String.self, forKey: .space)
+    secret = try c.decodeIfPresent(String.self, forKey: .secret)
+    cursor = try c.decode(Int.self, forKey: .cursor)
+    records = try c.decode([String: StoredRecord].self, forKey: .records)
+    held = try c.decode([String: Held].self, forKey: .held)
+    unreadable = try c.decode(Int.self, forKey: .unreadable)
+    epoch = try c.decodeIfPresent(String.self, forKey: .epoch)
+    resync = try c.decodeIfPresent(Bool.self, forKey: .resync) ?? false
   }
 }
 
@@ -130,12 +150,17 @@ public final class Store {
     onDirty?()
   }
 
-  /// Records from the server, merged three ways into those with local changes.
+  /// Records from the server, merged three ways into those with local changes. While resyncing, a
+  /// record this device has keeps its own contents, to be pushed over the server's.
   public func merge(_ items: [Incoming]) {
     guard !items.isEmpty else { return }
     var boards = Set<String>()
     for item in items {
       let old = state.records[item.id]
+      if let old, state.resync {
+        state.records[item.id] = StoredRecord(base: nil, version: item.version, current: old.current)
+        continue
+      }
       if let old, item.version <= old.version { continue }
       var current = item.record
       if let old, old.pending {
@@ -153,6 +178,31 @@ public final class Store {
 
   public func advance(to cursor: Int) {
     state.cursor = max(state.cursor, cursor)
+    onDirty?()
+  }
+
+  /// Takes the server's epoch when none is stored; when it differs from the stored one, as after a
+  /// restore from a backup or the loss of the space, starts pulling everything again, as `merge`
+  /// and `resynced` describe, and returns true.
+  public func note(epoch: String?) -> Bool {
+    guard epoch != state.epoch else { return false }
+    defer { onDirty?() }
+    guard state.epoch != nil else {
+      state.epoch = epoch
+      return false
+    }
+    state.epoch = epoch
+    state.cursor = 0
+    state.resync = true
+    for id in state.records.keys { state.records[id]!.version = 0 }
+    return true
+  }
+
+  /// The resync's pull is done; records the server lacks wait to be pushed as new.
+  public func resynced() {
+    guard state.resync else { return }
+    state.resync = false
+    for (id, s) in state.records where s.version == 0 { state.records[id]!.base = nil }
     onDirty?()
   }
 
@@ -189,6 +239,8 @@ public final class Store {
     state.space = Base64URL.encode(randomBytes(16))
     state.secret = Base64URL.encode(randomBytes(32))
     state.cursor = 0
+    state.epoch = nil
+    state.resync = false
     state.held = [:]
     state.unreadable = 0
     for id in state.records.keys {

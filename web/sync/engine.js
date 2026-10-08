@@ -152,12 +152,16 @@ export class SyncEngine {
       for (;;) {
         const page = await transport.pull(this.store.state.cursor);
         if (!same()) return;
+        if (this.store.noteEpoch(page.epoch)) continue;
         const decoded = await this.decodeAll(page.records, keys);
         this.flushLocal();
         if (!same()) return;
         this.apply(decoded);
         this.store.advance(page.cursor);
-        if (page.records.length < PAGE_SIZE) break;
+        if (page.records.length < PAGE_SIZE) {
+          this.store.resynced();
+          break;
+        }
       }
       let refusals = 0;
       for (let round = 0; round < 10; round++) {
@@ -166,6 +170,10 @@ export class SyncEngine {
         if (!writes.length) break;
         const result = await transport.push(writes);
         if (!same()) return;
+        if (this.store.noteEpoch(result.epoch)) {
+          this.again = true;
+          return;
+        }
         for (const a of result.accepted) if (sent.has(a.id)) this.store.accepted(a.id, a.version, sent.get(a.id));
         if (!result.refused.length) continue;
         const decoded = await this.decodeAll(result.refused, keys);

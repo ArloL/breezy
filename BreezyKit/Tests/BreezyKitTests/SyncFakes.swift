@@ -5,14 +5,17 @@ import Foundation
 final class FakeServer {
   var records: [String: Pulled] = [:]
   var version = 0
+  /// Nil until the space's first write, and again after `wipe`.
+  var epoch: String?
 
   func pull(since: Int) -> Page {
     let r = Array(records.values.filter { $0.version > since }.sorted { $0.version < $1.version }.prefix(SyncEngine.pageSize))
-    return Page(records: r, cursor: r.last?.version ?? since)
+    return Page(records: r, cursor: r.last?.version ?? since, epoch: epoch)
   }
 
   func push(_ writes: [Write]) -> PushResult {
     var accepted: [Accepted] = [], refused: [Pulled] = []
+    epoch = epoch ?? newID()
     for w in writes {
       if let stored = records[w.id], stored.version != w.base {
         refused.append(stored)
@@ -22,11 +25,29 @@ final class FakeServer {
       records[w.id] = Pulled(id: w.id, version: version, blob: w.blob)
       accepted.append(Accepted(id: w.id, version: version))
     }
-    return PushResult(accepted: accepted, refused: refused)
+    return PushResult(accepted: accepted, refused: refused, epoch: epoch)
+  }
+
+  /// The database as a backup holds it.
+  func snapshot() -> (records: [String: Pulled], version: Int) { (records, version) }
+
+  /// The backup put back, with a new epoch as the README says to give it.
+  func restore(_ s: (records: [String: Pulled], version: Int)) {
+    records = s.records
+    version = s.version
+    epoch = newID()
+  }
+
+  /// The space lost.
+  func wipe() {
+    records = [:]
+    version = 0
+    epoch = nil
   }
 
   /// Adds a record as another device would.
   func put(_ id: String, blob: String) {
+    epoch = epoch ?? newID()
     version += 1
     records[id] = Pulled(id: id, version: version, blob: blob)
   }
