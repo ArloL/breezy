@@ -221,10 +221,11 @@ test("a file missing from the snapshot comes from the network", async () => {
   assert.equal(await (await w.get("late.js")).text(), "// late");
 });
 
-test("the worker and the version file are left to the browser", async () => {
+test("the worker, the version file and the sync server are left to the browser", async () => {
   const w = worker();
   assert.equal(w.get("sw.js"), undefined);
   assert.equal(w.get("version.json?t=1"), undefined);
+  assert.equal(w.get("sync.php?space=s&since=0"), undefined);
 });
 
 test("an update reuses unchanged files from the running snapshot", async () => {

@@ -34,7 +34,7 @@ test("a pasted invite may have text around it", () => {
 
 test("what is not an invite is refused", () => {
   for (const text of [
-    "", "https://arlol.github.io/breezy/", "https://arlol.github.io/breezy/#join=abc",
+    "", "https://breezy.k5d.de/", "https://breezy.k5d.de/#join=abc",
     inviteLink({ server: "ftp://example.com", space: v.space, secret: v.secret }),
     inviteLink({ server: v.server, space: "AAAA", secret: v.secret }),
     inviteLink({ server: v.server, space: v.space, secret: "AAAA" }),
