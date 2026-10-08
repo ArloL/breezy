@@ -109,4 +109,7 @@ if (demo === "find") {
 }
 if (demo === "add") app.ui.act("add");
 
-if (!scratch) await Library.open(app);
+if (!scratch) {
+  document.body.dataset.screen = "boards";
+  await Library.open(app);
+}

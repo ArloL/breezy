@@ -59,6 +59,7 @@ export class App {
     this.turn(null);
     this.ui.closeFind();
     this.state.selection = new Set();
+    this.view.ready = false;
     this.model.replace(board);
     this.view.setCamera({ x: 16, y: this.ui.area().top + 16, zoom: 0.75 });
   }

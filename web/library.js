@@ -43,8 +43,12 @@ export class Library {
       const c = R.card(b, id);
       return c ? app.view.frontHeight(c.text, c.w) : 0;
     });
-    document.addEventListener("visibilitychange", () => document.hidden && this.saver.flush());
-    addEventListener("pagehide", () => this.saver.flush());
+    const hide = () => {
+      this.binding?.flush();
+      this.saver.flush();
+    };
+    document.addEventListener("visibilitychange", () => document.hidden && hide());
+    addEventListener("pagehide", hide);
     document.querySelector('[data-act="boards"]').hidden = false;
   }
 
