@@ -20,7 +20,7 @@ public struct Room {
 extension Board {
   @discardableResult
   public mutating func addCard(x: Double, y: Double) -> String {
-    let card = Card(id: newID("c"), x: snap(x), y: snap(y))
+    let card = Card(id: newID(), x: snap(x), y: snap(y))
     cards.append(card)
     return card.id
   }
@@ -67,7 +67,7 @@ extension Board {
 
   @discardableResult
   public mutating func addLane(x: Double, y: Double) -> String {
-    let lane = Lane(id: newID("l"), x: snap(x), y: snap(y))
+    let lane = Lane(id: newID(), x: snap(x), y: snap(y))
     lanes.append(lane)
     return lane.id
   }

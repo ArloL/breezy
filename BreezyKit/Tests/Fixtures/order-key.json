@@ -1,0 +1,14 @@
+{
+  "between": [
+    ["", null, "V"], ["V", null, "l"], ["", "V", "G"], ["V", "W", "VV"], ["z", null, "zV"],
+    ["a", "a1", "a0V"], ["0V", "1", "0l"], ["", "1", "0V"], ["", "01", "00V"]
+  ],
+  "assign": [
+    { "name": "fresh ids count up", "ids": ["a", "b", "c"], "keys": {}, "result": { "a": "V", "b": "l", "c": "t" } },
+    { "name": "keys in order stay", "ids": ["a", "b", "c"], "keys": { "a": "V", "b": "l", "c": "t" }, "result": { "a": "V", "b": "l", "c": "t" } },
+    { "name": "a raised card goes after the last", "ids": ["b", "c", "a"], "keys": { "a": "V", "b": "l", "c": "t" }, "result": { "a": "x", "b": "l", "c": "t" } },
+    { "name": "a new card between two", "ids": ["a", "d", "b"], "keys": { "a": "V", "b": "l" }, "result": { "a": "V", "b": "l", "d": "d" } },
+    { "name": "equal keys from two devices part", "ids": ["a", "b", "c"], "keys": { "a": "V", "b": "V", "c": "l" }, "result": { "a": "G", "b": "V", "c": "l" } },
+    { "name": "a broken key is replaced", "ids": ["a", "b"], "keys": { "a": "V0", "b": "l" }, "result": { "a": "O", "b": "l" } }
+  ]
+}
