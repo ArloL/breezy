@@ -2,6 +2,14 @@ import AppKit
 import BreezyKit
 import IOSurface
 
+/// The cards or lane a drag holds, and how far they are drawn from where the board keeps them.
+struct Held: Equatable {
+  var ids: Set<String> = []
+  var offset = CGSize.zero
+  /// A resized lane's size beyond the grid.
+  var growth = CGSize.zero
+}
+
 /// The scroll view's document view: draws the board held by `model` and turns pointer and key
 /// input into changes on it. World coordinates, as stored in the board, are offset by `origin`.
 final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
@@ -22,8 +30,13 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   }
   /// The card showing its back.
   var turned: String?
-  /// Cards held in a drag: above the others and not animated.
+  /// Cards lifted by a drag: above the others, a little larger.
   var raised: Set<String> = []
+  /// What the pointer holds, which follows it exactly; the board keeps it on the grid, where it
+  /// lands on release.
+  var held = Held()
+  /// Cards just added to the board, which grow in when they first show.
+  var appearing: Set<String> = []
   var heights: [String: Double] = [:]
   var cardLayers: [String: CardLayer] = [:]
   var pool: [CardLayer] = []
@@ -34,6 +47,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var renaming: (id: String, field: NSTextField)?
   var editingID: String? { editing?.id }
   var drag: Drag?
+  /// Where the pointer is during a drag, in window coordinates.
+  var dragPoint: NSPoint?
+  var edgeScrolling: (link: CADisplayLink, since: CFTimeInterval, last: CFTimeInterval)?
   /// The card under the pointer, for Space.
   var hovered: String?
   /// Brings cards to the exact scale once a zoom has settled.
@@ -67,8 +83,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   // MARK: geometry
 
-  func world(_ event: NSEvent) -> NSPoint {
-    let p = convert(event.locationInWindow, from: nil)
+  func world(_ event: NSEvent) -> NSPoint { world(at: event.locationInWindow) }
+
+  func world(at windowPoint: NSPoint) -> NSPoint {
+    let p = convert(windowPoint, from: nil)
     return NSPoint(x: p.x - Self.origin, y: p.y - Self.origin)
   }
 
@@ -106,6 +124,18 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   // MARK: rendering
 
   private func boardChanged(from before: Board) {
+    if before.cards.count != board.cards.count || !zip(before.cards, board.cards).allSatisfy({ $0.id == $1.id }) {
+      let now = Set(board.cards.map(\.id)), then = Set(before.cards.map(\.id))
+      appearing = now.subtracting(then)
+      // a deleted card shrinks and fades while the others close up
+      if !Spring.reduced {
+        for id in then.subtracting(now) {
+          guard let l = cardLayers[id] else { continue }
+          let g = ghost(l)
+          g.vanish { g.removeFromSuperlayer() }
+        }
+      }
+    }
     if let t = turned, board.card(t) == nil { turned = nil }
     let live = Set(board.cards.map(\.id) + board.lanes.map(\.id))
     if !selection.isSubset(of: live) { selection = selection.intersection(live) }
@@ -116,17 +146,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// Brings lanes, card heights and card layers in line with the board; heights are measured
   /// again only for cards whose text or width differ from `before`.
   func sync(from before: Board? = nil) {
-    var live = Set<String>()
-    for l in board.lanes {
-      live.insert(l.id)
-      let v = laneViews[l.id] ?? makeLaneView(l)
-      v.lane = l
-      v.frame = doc(l.rect)
-    }
-    for (id, v) in laneViews where !live.contains(id) {
-      v.removeFromSuperview()
-      laneViews[id] = nil
-    }
+    placeLanes(appearing: before != nil)
     func measure(_ c: Card) -> Double { Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w))) }
     if let prev = before?.cards, prev.count == board.cards.count, zip(prev, board.cards).allSatisfy({ $0.id == $1.id }) {
       for (p, c) in zip(prev, board.cards) where p.text != c.text || p.w != c.w { heights[c.id] = measure(c) }
@@ -134,6 +154,45 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       heights = Dictionary(uniqueKeysWithValues: board.cards.map { ($0.id, measure($0)) })
     }
     layoutCards()
+  }
+
+  /// Places the lanes: those the pointer does not hold spring to their new places; when
+  /// `appearing`, new lanes grow in and deleted ones shrink away.
+  func placeLanes(appearing: Bool = false) {
+    let animate = !Spring.reduced
+    var live = Set<String>()
+    for l in board.lanes {
+      live.insert(l.id)
+      let isNew = laneViews[l.id] == nil
+      let v = laneViews[l.id] ?? makeLaneView(l)
+      v.lane = l
+      let old = v.layer?.position
+      v.frame = laneFrame(l)
+      guard animate, let layer = v.layer else { continue }
+      if isNew {
+        if appearing { layer.appear() }
+      } else if held.ids.contains(l.id) {
+        layer.stopMoving()
+      } else {
+        // in the layer's coordinates, which AppKit may flip
+        if let old { layer.springMove(from: CGSize(width: old.x - layer.position.x, height: old.y - layer.position.y)) }
+      }
+    }
+    for (id, v) in laneViews where !live.contains(id) {
+      laneViews[id] = nil
+      if animate, appearing, let layer = v.layer {
+        layer.vanish { v.removeFromSuperview() }
+      } else {
+        v.removeFromSuperview()
+      }
+    }
+  }
+
+  func laneFrame(_ l: Lane) -> NSRect {
+    guard held.ids.contains(l.id) else { return doc(l.rect) }
+    let r = doc(l.rect)
+    return NSRect(x: r.minX + held.offset.width, y: r.minY + held.offset.height,
+                  width: r.width + held.growth.width, height: r.height + held.growth.height)
   }
 
   private func makeLaneView(_ l: Lane) -> LaneView {
@@ -149,8 +208,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   }
 
   /// Gives a layer to each card near the viewport and takes it back from the rest, so the cost of
-  /// scrolling and the memory follow what is on screen, not the size of the board. Moves animate
-  /// with one easing curve, except for cards just shown or held by the pointer. While the zoom
+  /// scrolling and the memory follow what is on screen, not the size of the board. Moves spring,
+  /// except for cards just shown or held by the pointer; new cards grow in. While the zoom
   /// changes, bitmaps are drawn in steps of a quarter, so a pinch does not redraw on every frame,
   /// and cards off screen keep theirs, so a zoom step draws only what it shows. Once the zoom has
   /// settled for a moment, `settle` draws them all at the exact scale, one bitmap pixel per screen
@@ -169,14 +228,14 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     let v = visibleRect
     let near = v.insetBy(dx: -v.width / 4, dy: -v.height / 4)
     let dark = effectiveAppearance.isDark
+    let animate = !Spring.reduced
     CATransaction.begin()
-    CATransaction.setAnimationDuration(0.22)
-    CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1))
-    CATransaction.setDisableActions(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     var live = Set<String>()
     var lagging = false
     for (i, c) in board.cards.enumerated() {
-      let r = doc(drawnRect(c))
+      var r = doc(drawnRect(c))
+      let isHeld = held.ids.contains(c.id)
+      if isHeld { r = r.offsetBy(dx: held.offset.width, dy: held.offset.height) }
       guard r.intersects(near) else { continue }
       live.insert(c.id)
       let isNew = cardLayers[c.id] == nil
@@ -187,20 +246,23 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       let s = keep ? l.contentsScale : scale
       if s != exact { lagging = true }
       let f = NSRect(origin: grid(r.origin), size: NSSize(width: (r.width * s).rounded(.up) / s, height: (r.height * s).rounded(.up) / s))
-      // a new pixel grid moves the layer a fraction of a pixel, the card not at all
-      let moved = l.rect != r
+      // a new pixel grid moves the layer a fraction of a pixel, the card not at all; a size snaps
+      let old = l.rect
       l.rect = r
-      if isNew || raised.contains(c.id) || !moved {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        l.frame = f
-        CATransaction.commit()
-      } else {
-        l.frame = f
+      // not the frame, which a lift's scale would distort
+      l.bounds = CGRect(origin: .zero, size: f.size)
+      l.position = CGPoint(x: f.midX, y: f.midY)
+      if isHeld {
+        l.stopMoving()
+      } else if animate, !isNew, let old {
+        l.springMove(from: CGSize(width: old.minX - r.minX, height: old.minY - r.minY))
       }
+      l.setLifted(raised.contains(c.id), animated: animate && !isNew)
+      if isNew && animate && appearing.contains(c.id) { l.appear() }
       let look = CardLayer.Look(card: c, back: c.id == turned, editing: c.id == editingID, dark: dark)
       l.configure(look, size: r.size, selected: selection.contains(c.id), scale: s, appearance: effectiveAppearance)
     }
+    appearing = []
     for (id, l) in cardLayers where !live.contains(id) {
       l.recycle()
       cardLayers[id] = nil

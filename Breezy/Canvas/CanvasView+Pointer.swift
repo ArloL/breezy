@@ -46,7 +46,6 @@ extension CanvasView {
       model.begin()
       drag = Drag(kind: .cards, id: c.id, start: p, origins: held.map { Origin(id: $0.id, x: $0.x, y: $0.y) },
                   room: Room(base: board.layout(excluding: Set(held.map(\.id))), heightOf: height))
-      raised = Set(held.map(\.id))
       return
     }
     if let l = lane(at: p) {
@@ -74,9 +73,16 @@ extension CanvasView {
   }
 
   override func mouseDragged(with event: NSEvent) {
-    guard var d = drag else { return }
-    autoscroll(with: event)
-    let p = world(event)
+    guard drag != nil else { return }
+    dragPoint = event.locationInWindow
+    dragged()
+    edgeScroll()
+  }
+
+  /// Carries the drag to where the pointer is; the board may have scrolled under it.
+  private func dragged() {
+    guard var d = drag, let w = dragPoint else { return }
+    let p = world(at: w)
     let dx = Double(p.x - d.start.x)
     let dy = Double(p.y - d.start.y)
     if d.kind == .marquee {
@@ -90,35 +96,121 @@ extension CanvasView {
       selection = d.base.union(board.cardsInRect(r, heightOf: height).map(\.id))
       return
     }
-    d.moved = d.moved || hypot(dx, dy) * zoom > 3
+    if !d.moved && hypot(dx, dy) * zoom > 3 {
+      d.moved = true
+      switch d.kind {
+      case .cards:
+        raised = Set(d.origins.map(\.id))
+        held.ids = raised
+      case .lane: held.ids = Set([d.id!] + d.origins.map(\.id))
+      case .resize: held.ids = [d.id!]
+      case .marquee: break
+      }
+    }
     drag = d
     guard d.moved else { return }
+    // what the pointer holds follows it exactly, set before the board's change lays it out
+    func offset(_ o: Origin, _ x: Double?, _ y: Double?) -> CGSize {
+      guard let x, let y else { return .zero }
+      return CGSize(width: o.x + dx - x, height: o.y + dy - y)
+    }
+    let before = (board, held)
     switch d.kind {
-    case .cards: model.update { $0.moveCards(d.origins, dx: dx, dy: dy, room: d.room) }
-    case .lane: if let o = d.laneOrigin { model.update { $0.moveLane(o, cards: d.origins, dx: dx, dy: dy) } }
-    case .resize: if let id = d.id { model.update { $0.resizeLane(id, w: d.size.width + dx, h: d.size.height + dy) } }
+    case .cards:
+      let o = d.origins[0]
+      model.update {
+        $0.moveCards(d.origins, dx: dx, dy: dy, room: d.room)
+        held.offset = offset(o, $0.card(o.id)?.x, $0.card(o.id)?.y)
+      }
+    case .lane:
+      guard let o = d.laneOrigin else { break }
+      model.update {
+        $0.moveLane(o, cards: d.origins, dx: dx, dy: dy)
+        held.offset = offset(o, $0.lane(o.id)?.x, $0.lane(o.id)?.y)
+      }
+    case .resize:
+      guard let id = d.id else { break }
+      model.update {
+        $0.resizeLane(id, w: d.size.width + dx, h: d.size.height + dy)
+        if let l = $0.lane(id) {
+          held.growth = CGSize(width: max(Metrics.laneMin, d.size.width + dx) - l.w, height: max(Metrics.laneMin, d.size.height + dy) - l.h)
+        }
+      }
     case .marquee: break
     }
+    if board == before.0 && held != before.1 {
+      placeLanes()
+      layoutCards()
+    }
+  }
+
+  /// Near or past the edge of the visible area a drag scrolls the board, slowly at first and
+  /// faster the longer it stays there, as in Freeform.
+  private func edgeScroll() {
+    // a press that has not become a drag yet stays put
+    guard let d = drag, d.moved || d.kind == .marquee, edgeDirection() != nil else { return stopEdgeScroll() }
+    guard edgeScrolling == nil else { return }
+    let link = displayLink(target: self, selector: #selector(edgeTick(_:)))
+    link.add(to: .main, forMode: .common)
+    let now = CACurrentMediaTime()
+    edgeScrolling = (link, now, now)
+  }
+
+  func stopEdgeScroll() {
+    edgeScrolling?.link.invalidate()
+    edgeScrolling = nil
+  }
+
+  /// Which way the board scrolls for a pointer within `EdgeScroll.zone` points of an edge.
+  private func edgeDirection() -> CGVector? {
+    guard let clip = enclosingScrollView?.contentView, let p = dragPoint else { return nil }
+    let a = clip.convert(clip.bounds, to: nil)
+    let zone = CGFloat(EdgeScroll.zone)
+    func dir(_ v: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat { v - lo <= zone ? -1 : hi - v <= zone ? 1 : 0 }
+    // the window's y grows upwards, the board's downwards
+    let v = CGVector(dx: dir(p.x, a.minX, a.maxX), dy: -dir(p.y, a.minY, a.maxY))
+    return v == .zero ? nil : v
+  }
+
+  @objc private func edgeTick(_ link: CADisplayLink) {
+    guard var e = edgeScrolling, let dir = edgeDirection(), let sv = enclosingScrollView else { return stopEdgeScroll() }
+    let ms = min(64, max(0, (link.timestamp - e.last) * 1000))
+    e.last = link.timestamp
+    edgeScrolling = e
+    let d = CGFloat(EdgeScroll.speed(heldMs: (link.timestamp - e.since) * 1000) * ms) / zoom
+    let clip = sv.contentView
+    var b = clip.bounds
+    b.origin.x += dir.dx * d
+    b.origin.y += dir.dy * d
+    clip.scroll(to: clip.constrainBoundsRect(b).origin)
+    sv.reflectScrolledClipView(clip)
+    dragged()
   }
 
   override func mouseUp(with event: NSEvent) {
     guard let d = drag else { return }
     drag = nil
+    dragPoint = nil
+    stopEdgeScroll()
     marquee.isHidden = true
+    // what was held springs from the pointer to its place on the grid
+    raised = []
+    held = Held()
     switch d.kind {
     case .cards:
-      raised = []
       if d.moved, let room = d.room {
         model.update { $0.land(Set(d.origins.map(\.id)), room: room) }
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
       } else if let id = d.id {
         selection = [id]
       }
       model.end("Move")
-      layoutCards()
     case .lane: model.end("Move Lane")
     case .resize: model.end("Resize Lane")
     case .marquee: break
     }
+    placeLanes()
+    layoutCards()
   }
 
   /// The folded corner, which turns the card over.

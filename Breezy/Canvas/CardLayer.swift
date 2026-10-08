@@ -52,6 +52,8 @@ final class CardLayer: CALayer {
   var deferred = false
   /// Needs drawing only at a new scale, so its current bitmap can stand in meanwhile.
   private(set) var refining = false
+  /// Raised by a drag: a little larger, with a deeper shadow.
+  private(set) var lifted = false
   /// The selection ring, only while selected: most cards never are, and a layer each is a layer
   /// more to commit and keep.
   private var ring: CALayer?
@@ -66,30 +68,61 @@ final class CardLayer: CALayer {
   override init(layer: Any) { super.init(layer: layer) }
   required init?(coder: NSCoder) { fatalError() }
 
-  /// Only moves animate: a cross-faded redraw would hold two bitmaps per card.
-  override func action(forKey event: String) -> CAAction? {
-    event == "position" || event == "bounds" ? super.action(forKey: event) : NSNull()
-  }
+  /// The canvas animates moves itself, with springs; a cross-faded redraw would hold two bitmaps per card.
+  override func action(forKey event: String) -> CAAction? { NSNull() }
 
   func configure(_ look: Look, size: CGSize, selected: Bool, scale: CGFloat, appearance: NSAppearance) {
     setRing(selected, appearance)
     guard look != self.look || size != self.size || scale != contentsScale else { return }
     if look.dark != self.look?.dark { ring?.borderColor = Theme.cg(Theme.accent, in: appearance) }
-    if look.back != self.look?.back {
-      shadowOpacity = look.back ? 0.24 : 0.16
-      shadowRadius = look.back ? 9 : 2
-      shadowOffset = CGSize(width: 0, height: look.back ? 5 : 1)
-    }
+    let turning = look.back != self.look?.back
     // only the scale changed: the old bitmap, stretched, can show until the sharp one is drawn
     refining = look == self.look && size == self.size && appearance == self.appearance && contents != nil
     self.look = look
     self.size = size
     self.appearance = appearance
+    if turning { setShadow(animated: false) }
     // otherwise let the old bitmap go before the new one is drawn, rather than holding both
     if scale != contentsScale && !refining { contents = nil }
     contentsScale = scale
     setNeedsLayout()
     setNeedsDisplay()
+  }
+
+  /// Lifts the card with a little pop, or puts it down.
+  func setLifted(_ on: Bool, animated: Bool) {
+    guard on != lifted else { return }
+    lifted = on
+    let from = presentation()?.transform ?? transform
+    transform = on ? CATransform3DMakeScale(1.05, 1.05, 1) : CATransform3DIdentity
+    setShadow(animated: animated)
+    guard animated else { return }
+    let a = Spring.lift.animation("transform")
+    a.fromValue = NSValue(caTransform3D: from)
+    a.toValue = NSValue(caTransform3D: transform)
+    add(a, forKey: "lift")
+  }
+
+  private func setShadow(animated: Bool) {
+    let back = look?.back == true
+    let opacity: Float = lifted ? 0.26 : back ? 0.24 : 0.16
+    let radius: CGFloat = lifted ? 18 : back ? 9 : 2
+    let offset = CGSize(width: 0, height: lifted ? 10 : back ? 5 : 1)
+    if animated {
+      let p = presentation() ?? self
+      for (key, from, to) in [("shadowOpacity", p.shadowOpacity as Any, opacity as Any), ("shadowRadius", p.shadowRadius, radius),
+                              ("shadowOffset", NSValue(size: p.shadowOffset), NSValue(size: offset))] {
+        let a = CABasicAnimation(keyPath: key)
+        a.fromValue = from
+        a.toValue = to
+        a.duration = 0.2
+        a.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+        add(a, forKey: key)
+      }
+    }
+    shadowOpacity = opacity
+    shadowRadius = radius
+    shadowOffset = offset
   }
 
   private func setRing(_ on: Bool, _ appearance: NSAppearance) {
@@ -109,6 +142,9 @@ final class CardLayer: CALayer {
   }
 
   func recycle() {
+    removeAllAnimations()
+    transform = CATransform3DIdentity
+    lifted = false
     deferred = false
     refining = false
     ring?.removeFromSuperlayer()
@@ -139,6 +175,9 @@ final class CardLayer: CALayer {
 
   override func layoutSublayers() {
     super.layoutSublayers()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    defer { CATransaction.commit() }
     ring?.frame = CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4)
     shadowPath = Self.outline(size, ear: input?.ear ?? 0, yDown: contentsAreFlipped())
   }

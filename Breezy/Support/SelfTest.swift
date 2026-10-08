@@ -10,7 +10,7 @@ enum SelfTest {
     let d = Driver(wc)
     // a check that blocks the main thread still ends
     Thread.detachNewThread {
-      Thread.sleep(forTimeInterval: 20)
+      Thread.sleep(forTimeInterval: 30)
       let sheet = (d.window.attachedSheet ?? NSApp.modalWindow).map { w in
         (w.contentView?.subviews ?? []).compactMap { ($0 as? NSTextField)?.stringValue }.joined(separator: " | ")
       }
@@ -218,7 +218,8 @@ extension SelfTest {
     sv.magnification = 0.5
     d.click(NSPoint(x: 0, y: 600))
     d.key("=", code: 29, mods: .shift)
-    d.later(0.6) {
+    // the zoom springs there
+    d.later(1.2) {
       if abs(sv.magnification - 1) > 0.001 { finish(name, "⇧0 left zoom at \(sv.magnification)") }
       d.wc.place(origin: NSPoint(x: CanvasView.origin - 300, y: CanvasView.origin - 200), zoom: 0.75)
       if (d.wc.document as? NSDocument)?.isDocumentEdited == true { finish(name, "scrolling edited the document") }
@@ -295,7 +296,8 @@ extension SelfTest {
       NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
       d.canvas.turn(back ? "a" : nil)
       d.wc.place(origin: NSPoint(x: CanvasView.origin - 40, y: CanvasView.origin - 40), zoom: zoom)
-      d.later(0.6) {
+      // after the turn's spring
+      d.later(0.9) {
         let before = d.image()
         d.canvas.beginEdit("a")
         d.canvas.editing?.view.insertionPointColor = .clear

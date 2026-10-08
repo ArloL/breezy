@@ -17,7 +17,7 @@ Boards save themselves and reopen where they were left after a relaunch; File �
 
 | Do | How |
 |---|---|
-| Pan / zoom | scroll / pinch or ⌘-scroll; ⌘0, ⇧0 or the zoom readout return to 100 % |
+| Pan / zoom | scroll / pinch or ⌘-scroll; ⌘0 or ⇧0 return to 100 % |
 | Select | click; ⇧-click to add; drag on empty space for a box |
 | New card | double-click empty space |
 | Edit card | double-click it; Esc or ⌘↩ to finish; the first line is the title |

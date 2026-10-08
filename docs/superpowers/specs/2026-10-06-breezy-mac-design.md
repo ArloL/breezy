@@ -7,15 +7,15 @@ A native Mac app for the Breezy whiteboard: sticky-note cards and lanes on an in
 ### Canvas
 - Infinite board on a 24 pt dot grid; positions snap to it.
 - Two-finger scroll pans, with momentum. Pinch or ⌘-scroll zooms around the pointer, from 25 % to 200 %.
-- The toolbar shows the zoom; clicking it, ⌘0 or ⇧0 (matched by key position) returns to 100 % around the window centre. ⌘+ and ⌘− zoom in steps.
-- Dragging empty space draws a selection box; ⇧-drag adds to the selection. Dragging near the window edge scrolls the board.
+- While the zoom changes, a capsule at the top of the board shows it and fades a second after, as in Freeform. ⌘0 or ⇧0 (matched by key position) returns to 100 % around the window centre; ⌘+ and ⌘− zoom in steps. These commands spring there, and a scroll or pinch catches them.
+- Dragging empty space draws a selection box; ⇧-drag adds to the selection. A drag within 24 pt of the visible area's edge, or past it, scrolls the board as Freeform does: a crawl for most of a second, then a sharp speed-up.
 
 ### Cards
 - Double-clicking empty space creates a card at the snapped pointer, ready to type. Esc, ⌘↩ or a click elsewhere ends editing. A card blank on both sides is deleted when editing ends.
 - Plain text. The first line is the title, set semibold, also while typing.
 - Width 240 pt; height is a whole number of 24 pt lines.
 - Click selects, ⇧-click toggles. Dragging moves every selected card, snapping live. `1`–`5` set the colour of selected cards: yellow, pink, blue, green, grey. ⌫ and Delete remove them.
-- Each card has a back for longer notes. Space over a card (else on the selected one), or clicking the folded corner that marks a card with notes, turns it over with a flip animation, lifts it above the others and widens it to 480 pt. Space, Esc or a click elsewhere turns it back. One card is turned at a time, and the turn is not saved.
+- Each card has a back for longer notes. Space over a card (else on the selected one), or clicking the folded corner that marks a card with notes, turns it over in one springy flip, lifts it above the others and widens it to 480 pt. Space, Esc or a click elsewhere turns it back. One card is turned at a time, and the turn is not saved.
 - Double-click edits the side facing up. Tab while editing turns the card and keeps editing.
 
 ### Lanes
@@ -35,7 +35,7 @@ A native Mac app for the Breezy whiteboard: sticky-note cards and lanes on an in
 - Light and dark appearance follow the system. Every colour token, the five card tints included, has a dark value.
 
 ### Look
-Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft tints for cards, and one orange accent used only for selection, the caret and the find highlight. Lane titles are spaced capitals; a card's title looks the same on both sides. No text is smaller than 16 pt, and text sits on a 24 pt line equal to the grid. Positions animate with one easing curve, except what the pointer holds; Reduce Motion turns animation off.
+Rams-era restraint: warm paper, one ink at three strengths, hairline rules, soft tints for cards, and one orange accent used only for selection, the caret and the find highlight. Lane titles are spaced capitals; a card's title looks the same on both sides. No text is smaller than 16 pt, and text sits on a 24 pt line equal to the grid. Things move as in the [touch prototype](2026-10-07-breezy-touch-native-feel-design.md): what the pointer holds follows it exactly, off the grid, and springs onto the grid when dropped; everything else springs to new places, redirecting smoothly. A dragged card lifts to 1.05× with a deeper shadow. New cards and lanes grow in from 0.9×; deleted ones shrink and fade. Reduce Motion turns animation off.
 
 ### Out of scope
 Sync, export, gravity switched off per lane, an iOS app, arrows between cards, images, markdown.
@@ -54,7 +54,7 @@ Sync, export, gravity switched off per lane, an iOS app, arrows between cards, i
 
 ### App
 - `BoardDocument` — an `NSDocument` subclass. It owns the current `Board`, applies every change through BreezyKit, registers undo (`levelsOfUndo = 100`) and autosaves in place, off the main thread.
-- `BoardWindowController` — the window, the toolbar (New Lane, zoom readout) and the find bar, an `NSTextFinder` whose client is backed by BreezyKit's search.
+- `BoardWindowController` — the window, the toolbar (New Lane), the zoom capsule and the find bar, an `NSTextFinder` whose client is backed by BreezyKit's search.
 - `CanvasView` — the scroll view's document view. It turns pointer, trackpad and key input into document changes and holds no board state of its own.
 - Rendering: a card is a `CALayer` showing an `IOSurface` of its own, drawn at the zoom's scale from a snapshot of what it depends on, so that several cards can be drawn at once on all cores; only cards near the viewport have one, and none while the window is out of sight. Scrolling and zooming lay out the cards once per frame. Lanes draw fill and border as layer properties; the dot grid repeats one dot with replicator layers behind the scroll view. Also the inline card editor (a TextKit 1 `NSTextView`) and the flip animation.
 - `Theme` — colour tokens with light and dark values, re-applied to layers when the effective appearance changes.
