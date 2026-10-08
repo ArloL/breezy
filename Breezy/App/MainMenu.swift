@@ -4,15 +4,21 @@ import AppKit
 enum MainMenu {
   static func make() -> NSMenu {
     let main = NSMenu()
-    main.addItem(submenu("Breezy", [
+    let app = submenu("Breezy", [
       item("About Breezy", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+      .separator(),
+      item("Start Syncing…", #selector(AppDelegate.startSyncing(_:))),
+      item("Join Space…", #selector(AppDelegate.joinSpace(_:))),
+      item("Share Invite", #selector(AppDelegate.shareInvite(_:))),
       .separator(),
       item("Hide Breezy", #selector(NSApplication.hide(_:)), "h"),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
       item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
       .separator(),
       item("Quit Breezy", #selector(NSApplication.terminate(_:)), "q"),
-    ]))
+    ])
+    app.submenu?.delegate = SyncMenu.shared
+    main.addItem(app)
     main.addItem(submenu("File", [
       item("New Board", #selector(AppDelegate.newBoard(_:)), "n"),
       .separator(),

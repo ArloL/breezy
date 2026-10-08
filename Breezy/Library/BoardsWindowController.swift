@@ -47,6 +47,9 @@ import BreezyKit
     NotificationCenter.default.addObserver(forName: .boardsChanged, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated { self?.reload() }
     }
+    NotificationCenter.default.addObserver(forName: .syncStatusChanged, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.updateStatus() }
+    }
     reload()
   }
 
@@ -55,7 +58,10 @@ import BreezyKit
   func reload() {
     boards = Library.shared.store.boards
     table.reloadData()
+    updateStatus()
   }
+
+  func updateStatus() { status.stringValue = Library.shared.statusLines.joined(separator: " · ") }
 
   func numberOfRows(in tableView: NSTableView) -> Int { boards.count }
 
@@ -66,7 +72,7 @@ import BreezyKit
     field.drawsBackground = false
     field.isEditable = true
     field.delegate = self
-    field.tag = row
+    field.identifier = NSUserInterfaceItemIdentifier(boards[row].id)
     field.translatesAutoresizingMaskIntoConstraints = false
     cell.addSubview(field)
     cell.textField = field
@@ -79,8 +85,7 @@ import BreezyKit
   }
 
   func controlTextDidEndEditing(_ obj: Notification) {
-    guard let field = obj.object as? NSTextField, boards.indices.contains(field.tag) else { return }
-    let b = boards[field.tag]
+    guard let field = obj.object as? NSTextField, let id = field.identifier?.rawValue, let b = boards.first(where: { $0.id == id }) else { return }
     let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !title.isEmpty, title != b.title else {
       field.stringValue = b.title
