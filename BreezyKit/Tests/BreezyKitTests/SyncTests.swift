@@ -203,3 +203,62 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   #expect(a.transport.calls > calls)
   #expect(a.engine.status.state == .synced)
 }
+
+/// Two synced devices, a backup, edits on both, the backup restored, more edits on both, then syncs in `order`
+/// ("ab" or "ba"). Returns the devices, the board, a's card edited after the restore, and the cards b added.
+@MainActor func restored(_ order: String) async -> (Device, Device, String, String, [String]) {
+  let (server, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  let backup = server.snapshot()
+  var added = [""]
+  a.edit(id) { $0.setColor([c], 3) }
+  b.edit(id) { added[0] = $0.addCard(x: 0, y: 100) }
+  for d in [a, b, a] { await d.engine.sync() }
+  server.restore(backup)
+  a.edit(id) { $0.setText(c, "after") }
+  b.edit(id) { added.append($0.addCard(x: 0, y: 200)) }
+  for _ in 0..<3 { for d in order == "ab" ? [a, b] : [b, a] { await d.engine.sync() } }
+  return (a, b, id, c, added)
+}
+
+@MainActor @Test(arguments: ["ab", "ba"]) func devicesRecoverFromARestoredServer(_ order: String) async {
+  let (a, b, id, c, added) = await restored(order)
+  let expected = a.store.board(id)
+  #expect(b.store.board(id) == expected)
+  #expect(expected.cards.count == 3)
+  #expect(expected.card(c)?.color == 3)
+  // b resyncing later pushes its own copy of every record it holds over a's (Ruling 13)
+  if order == "ba" { #expect(expected.card(c)?.text == "after") }
+  for card in added { #expect(expected.card(card) != nil) }
+  for d in [a, b] {
+    #expect(d.store.pending.isEmpty)
+    #expect(d.engine.status.state == .synced)
+    #expect(!d.store.state.resync)
+  }
+}
+
+@MainActor @Test func devicesRefillALostSpace() async {
+  let (server, a, b, id) = await pair()
+  server.wipe()
+  b.edit(id) { _ = $0.addCard(x: 0, y: 100) }
+  await b.engine.sync()
+  #expect(server.records.count == 3)
+  #expect(server.epoch == b.store.state.epoch)
+  a.edit(id) { _ = $0.addCard(x: 0, y: 200) }
+  for _ in 0..<2 { for d in [a, b] { await d.engine.sync() } }
+  #expect(a.store.board(id).cards.count == 3)
+  #expect(b.store.board(id) == a.store.board(id))
+  for d in [a, b] {
+    #expect(d.store.pending.isEmpty)
+    #expect(d.engine.status.state == .synced)
+  }
+}
+
+@MainActor @Test func restoresEndTheSameWhateverTheIDs() async {
+  for run in 0..<200 {
+    let (a, b, id, _, added) = await restored(run % 2 == 0 ? "ab" : "ba")
+    #expect(b.store.board(id) == a.store.board(id))
+    #expect(a.store.pending.isEmpty && b.store.pending.isEmpty)
+    #expect(added.allSatisfy { a.store.board(id).card($0) != nil })
+  }
+}

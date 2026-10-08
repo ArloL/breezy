@@ -153,3 +153,27 @@ func settle(_ s: Store, version: Int = 1) {
   file.save(s.state, wait: true)
   #expect(try file.load()?.records.count == 2)
 }
+
+@Test func aFileFromBeforeEpochsStillLoads() throws {
+  let json = #"{"cursor":3,"records":{},"held":{},"unreadable":0,"server":"https://example.com/sync.php"}"#
+  let state = try JSONDecoder().decode(SpaceState.self, from: Data(json.utf8))
+  #expect(state.cursor == 3 && state.epoch == nil && !state.resync)
+}
+
+@Test func aNewEpochIsTakenAndAChangedOneResyncs() {
+  let s = Store()
+  _ = s.createBoard(title: "Plans")
+  settle(s, version: 4)
+  s.advance(to: 4)
+  #expect(!s.note(epoch: "e1"))
+  #expect(s.state.epoch == "e1" && s.state.cursor == 4)
+  #expect(!s.note(epoch: "e1"))
+  #expect(s.note(epoch: nil))
+  #expect(s.state.resync && s.state.cursor == 0 && s.state.epoch == nil)
+  #expect(s.state.records.values.allSatisfy { $0.version == 0 })
+  s.resynced()
+  #expect(!s.state.resync && s.pending.count == 1 && s.pending[0].base == 0)
+  #expect(!s.note(epoch: "e2"))
+  s.startSyncing(server: "https://example.com/sync.php")
+  #expect(s.state.epoch == nil)
+}

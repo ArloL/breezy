@@ -9,6 +9,8 @@ public struct Pulled: Codable, Equatable, Sendable {
 public struct Page: Codable, Equatable, Sendable {
   public var records: [Pulled]
   public var cursor: Int
+  /// Nil for a space the server doesn't have.
+  public var epoch: String?
 }
 
 public struct Write: Codable, Equatable, Sendable {
@@ -25,6 +27,7 @@ public struct Accepted: Codable, Equatable, Sendable {
 public struct PushResult: Codable, Equatable, Sendable {
   public var accepted: [Accepted]
   public var refused: [Pulled]
+  public var epoch: String?
 }
 
 public enum TransportError: Error, Equatable {
@@ -200,10 +203,14 @@ public struct SyncStatus: Equatable, Sendable {
       while true {
         let page = try await transport.pull(since: store.state.cursor)
         guard same() else { return }
+        if store.note(epoch: page.epoch) { continue }
         flushLocal?()
         store.merge(page.records.compactMap { decode($0, keys) })
         store.advance(to: page.cursor)
-        if page.records.count < Self.pageSize { break }
+        if page.records.count < Self.pageSize {
+          store.resynced()
+          break
+        }
       }
       var refusals = 0
       for _ in 0..<10 {
@@ -212,6 +219,10 @@ public struct SyncStatus: Equatable, Sendable {
         if writes.isEmpty { break }
         let result = try await transport.push(writes)
         guard same() else { return }
+        if store.note(epoch: result.epoch) {
+          again = true
+          return
+        }
         for a in result.accepted { if let r = sent[a.id] { store.accepted(a.id, version: a.version, record: r) } }
         if result.refused.isEmpty { continue }
         flushLocal?()

@@ -104,3 +104,29 @@ test("fresh ids keep the board otherwise", () => {
   assert.equal(b.cards[0].id.length, 22);
   assert.deepEqual({ ...b.cards[0], id: "c" }, card("c"));
 });
+
+test("a new epoch is taken and a changed one resyncs", () => {
+  const s = new Store();
+  s.createBoard("Plans");
+  settle(s, 4);
+  s.advance(4);
+  assert.equal(s.noteEpoch("e1"), false);
+  assert.equal(s.state.epoch, "e1");
+  assert.equal(s.state.cursor, 4);
+  assert.equal(s.noteEpoch("e1"), false);
+  assert.equal(s.noteEpoch(null), true);
+  assert.deepEqual([s.state.resync, s.state.cursor, s.state.epoch], [true, 0, null]);
+  assert.ok(Object.values(s.state.records).every((r) => r.version === 0));
+  s.resynced();
+  assert.equal(s.state.resync, false);
+  assert.deepEqual(s.pending().map((p) => p.base), [0]);
+  assert.equal(s.noteEpoch("e2"), false);
+  s.startSyncing("https://example.com/sync.php");
+  assert.equal(s.state.epoch, null);
+});
+
+test("a state saved before epochs takes one without resyncing", () => {
+  const s = new Store({ server: null, space: null, secret: null, cursor: 3, records: {}, held: {}, unreadable: 0 });
+  assert.equal(s.noteEpoch("e1"), false);
+  assert.equal(s.state.cursor, 3);
+});
