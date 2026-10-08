@@ -76,8 +76,7 @@ $token = preg_match('/^Bearer ([A-Za-z0-9_-]+)$/', $auth, $m) ? bytes($m[1], 32)
 if ($token === null) reply(401);
 $hash = hash('sha256', $token, true);
 
-// the config is best kept above the web root, where it can never be served
-$config = require (getenv('BREEZY_CONFIG') ?: (is_file(__DIR__ . '/../config.php') ? __DIR__ . '/../config.php' : __DIR__ . '/config.php'));
+$config = require (getenv('BREEZY_CONFIG') ?: __DIR__ . '/config.php');
 $db = new PDO($config['dsn'], $config['user'] ?? null, $config['password'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
 

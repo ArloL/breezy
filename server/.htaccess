@@ -1,2 +1,7 @@
 # Apache with PHP as CGI or FPM drops the Authorization header unless told to pass it on.
 CGIPassAuth On
+# The database credentials sit next to sync.php, as PHP may not read outside the web root here;
+# browsers never get them, even if PHP stops running.
+<Files "config.php">
+  Require all denied
+</Files>

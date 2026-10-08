@@ -116,23 +116,11 @@ jobs:
         package-manager-cache: false
     - name: Test the touch prototype
       run: node --test web/test/*.test.js
-    - name: Leave the tests out of the site
-      run: |
-        mkdir _site
-        cp -R web/. _site/
-        rm -r _site/test _site/package.json
     # Off main there is no tag, so the page's own placeholder version stays.
-    - name: Stamp the version
-      if: ${{ needs.version.outputs.new_version != '' }}
+    - name: Build the site
       env:
         NEW_VERSION: ${{ needs.version.outputs.new_version }}
-      run: |
-        sed -i "s/data-version=\"dev\"/data-version=\"${NEW_VERSION}\"/" _site/index.html
-        grep --fixed-strings --quiet "data-version=\"${NEW_VERSION}\"" _site/index.html
-        node scripts/make-web-version.mjs _site "${NEW_VERSION}"
-    # after the version file, which lists what the service worker keeps offline: not these
-    - name: Add the sync server
-      run: cp server/sync.php server/.htaccess _site/
+      run: scripts/build-site.sh _site "$NEW_VERSION"
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: site
@@ -200,23 +188,13 @@ jobs:
       with:
         name: site
         path: _site
-    - name: Write the sync server's config
-      env:
-        DATABASE_HOST: ${{ vars.BREEZY_DATABASE_HOST }}
-        DATABASE_NAME: ${{ vars.BREEZY_DATABASE_NAME }}
-        DATABASE_USER: ${{ secrets.BREEZY_DATABASE_USER }}
-        DATABASE_PASSWORD: ${{ secrets.BREEZY_DATABASE_PASSWORD }}
-      run: |
-        config=$(jq --null-input --compact-output \
-          --arg dsn "mysql:host=${DATABASE_HOST};dbname=${DATABASE_NAME};charset=utf8mb4" \
-          --arg user "$DATABASE_USER" --arg password "$DATABASE_PASSWORD" \
-          '{dsn: $dsn, user: $user, password: $password}' | base64 --wrap=0)
-        printf "<?php return json_decode(base64_decode('%s'), true);\n" "$config" > "$RUNNER_TEMP/config.php"
     - name: Upload
       env:
         BREEZY_WEB_USER: ${{ secrets.BREEZY_WEB_USER }}
         BREEZY_WEB_PASSWORD: ${{ secrets.BREEZY_WEB_PASSWORD }}
-      run: BREEZY_CONFIG_FILE="$RUNNER_TEMP/config.php" scripts/deploy.sh _site
+        BREEZY_DATABASE_USER: ${{ secrets.BREEZY_DATABASE_USER }}
+        BREEZY_DATABASE_PASSWORD: ${{ secrets.BREEZY_DATABASE_PASSWORD }}
+      run: scripts/deploy.py _site
     - name: Make sure build did not change anything
       run: git diff --exit-code
   required-status-check:
