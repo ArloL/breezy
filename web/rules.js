@@ -1,3 +1,4 @@
+import { encode } from "./sync/base64.js";
 export const GRID = 24;
 export const CARD_W = 240;
 export const BACK_W = 480;
@@ -27,21 +28,22 @@ export const lineBelow = (r) => Math.ceil((r.y + r.h + ROOM) / GRID) * GRID;
 export const cardRect = (c, h) => ({ x: c.x, y: c.y, w: c.w, h });
 export const laneRect = (l) => ({ x: l.x, y: l.y, w: l.w, h: l.h });
 
-export function newID(prefix) {
-  return prefix + Date.now().toString(36) + Math.floor(Math.random() * 60466176).toString(36);
+/** 16 random bytes: ids are made on every device and must not collide. */
+export function newID() {
+  return encode(crypto.getRandomValues(new Uint8Array(16)));
 }
 
 export const card = (b, id) => b.cards.find((c) => c.id === id);
 export const lane = (b, id) => b.lanes.find((l) => l.id === id);
 
 export function addCard(b, x, y) {
-  const c = { id: newID("c"), x: snap(x), y: snap(y), w: CARD_W, text: "", color: 1 };
+  const c = { id: newID(), x: snap(x), y: snap(y), w: CARD_W, text: "", color: 1 };
   b.cards.push(c);
   return c.id;
 }
 
 export function addLane(b, x, y) {
-  const l = { id: newID("l"), x: snap(x), y: snap(y), w: LANE_W, h: LANE_H, title: "Lane" };
+  const l = { id: newID(), x: snap(x), y: snap(y), w: LANE_W, h: LANE_H, title: "Lane" };
   b.lanes.push(l);
   return l.id;
 }
