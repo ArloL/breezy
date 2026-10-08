@@ -28,5 +28,6 @@ export async function saveState(state) {
     t.objectStore("state").put(state, "space");
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error ?? new Error("transaction aborted"));
   });
 }
