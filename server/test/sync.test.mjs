@@ -1,10 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 const URL_ = process.env.BREEZY_URL;
 const b64 = (bytes) => Buffer.from(bytes).toString("base64url");
 const rand = (n) => b64(randomBytes(n));
+
+/** Gives `space` a new epoch, as the README says to after restoring a backup; needs BREEZY_CONFIG. */
+function renewEpoch(space) {
+  execFileSync("php", ["-r", `
+    $c = require getenv("BREEZY_CONFIG");
+    $db = new PDO($c["dsn"], $c["user"] ?? null, $c["password"] ?? null);
+    $st = $db->prepare("UPDATE spaces SET epoch = ? WHERE id = ?");
+    $st->bindValue(1, random_bytes(16), PDO::PARAM_LOB);
+    $st->bindValue(2, base64_decode(strtr($argv[1], "-_", "+/") . "=="), PDO::PARAM_LOB);
+    $st->execute();`, space]);
+}
 
 function client(space = rand(16), token = rand(32)) {
   const call = async (method, query = {}, body, headers = {}) => {
@@ -62,6 +74,21 @@ test("a space keeps its epoch, which no other space has", async () => {
   assert.equal((await c.push([{ id: rand(16), base: 0, blob: rand(40) }])).body.epoch, epoch);
   assert.equal((await c.pull()).body.epoch, epoch);
   assert.notEqual((await d.push([{ id: rand(16), base: 0, blob: rand(40) }])).body.epoch, epoch);
+});
+
+test("records written before the epoch changed are stale", { skip: !process.env.BREEZY_CONFIG && "needs BREEZY_CONFIG" }, async () => {
+  const c = client();
+  const old = { id: rand(16), base: 0, blob: rand(40) };
+  await c.push([old]);
+  renewEpoch(c.space);
+  const fresh = { id: rand(16), base: 0, blob: rand(40) };
+  await c.push([fresh]);
+  assert.deepEqual((await c.pull()).body.records, [
+    { id: old.id, version: 1, blob: old.blob, stale: true },
+    { id: fresh.id, version: 2, blob: fresh.blob },
+  ]);
+  assert.deepEqual((await c.push([{ id: old.id, base: 0, blob: rand(40) }])).body.refused, [{ id: old.id, version: 1, blob: old.blob, stale: true }]);
+  assert.deepEqual((await c.push([{ id: fresh.id, base: 0, blob: rand(40) }])).body.refused, [{ id: fresh.id, version: 2, blob: fresh.blob }]);
 });
 
 test("pulls come in pages of 500", async () => {

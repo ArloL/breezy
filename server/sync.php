@@ -1,7 +1,8 @@
 <?php
 // Breezy's sync server: keeps each space's records, encrypted on the devices, and hands back those
 // changed since a version. A space's epoch changes when its database is restored, so that devices pull
-// everything again. See docs/superpowers/specs/2026-10-08-breezy-sync-design.md.
+// everything again; records written before that are marked stale. See
+// docs/superpowers/specs/2026-10-08-breezy-sync-design.md.
 declare(strict_types=1);
 
 const PAGE = 500;
@@ -32,6 +33,13 @@ function b64e(string $d): string {
 function bytes(mixed $s, int $length): ?string {
   $d = b64d($s);
   return $d !== null && strlen($d) === $length ? $d : null;
+}
+
+/** A record as the devices get it; `stale` when it was written before the space's epoch changed. */
+function pulled(array $r, string $epoch): array {
+  $out = ['id' => b64e($r['id']), 'version' => (int)$r['version'], 'blob' => b64e($r['data'])];
+  if ($r['epoch'] !== $epoch) $out['stale'] = true;
+  return $out;
 }
 
 function query(PDO $db, string $sql, array $params): PDOStatement {
@@ -79,10 +87,8 @@ if ($method === 'GET') {
   if ($row && !hash_equals($row['token_hash'], $hash)) reply(401);
   $records = [];
   if ($row) {
-    $st = query($db, 'SELECT id, version, data FROM records WHERE space = ? AND version > ? ORDER BY version LIMIT ' . PAGE, [$space, $since]);
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
-      $records[] = ['id' => b64e($r['id']), 'version' => (int)$r['version'], 'blob' => b64e($r['data'])];
-    }
+    $st = query($db, 'SELECT id, version, data, epoch FROM records WHERE space = ? AND version > ? ORDER BY version LIMIT ' . PAGE, [$space, $since]);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $records[] = pulled($r, $row['epoch']);
   }
   $cursor = $records ? $records[count($records) - 1]['version'] : $since;
   reply(200, ['records' => $records, 'cursor' => $cursor, 'epoch' => $row ? b64e($row['epoch']) : null]);
@@ -123,17 +129,17 @@ for ($attempt = 1;; $attempt++) {
     $accepted = [];
     $refused = [];
     foreach ($writes as [$id, $base, $data]) {
-      $stored = query($db, 'SELECT version, data FROM records WHERE space = ? AND id = ?', [$space, $id])->fetch(PDO::FETCH_ASSOC);
+      $stored = query($db, 'SELECT id, version, data, epoch FROM records WHERE space = ? AND id = ?', [$space, $id])->fetch(PDO::FETCH_ASSOC);
       // a record the server does not have is taken whatever its base, so that devices can refill a lost database
       if ($stored && (int)$stored['version'] !== $base) {
-        $refused[] = ['id' => b64e($id), 'version' => (int)$stored['version'], 'blob' => b64e($stored['data'])];
+        $refused[] = pulled($stored, $epoch);
         continue;
       }
       $version++;
       $sql = $stored
-        ? 'UPDATE records SET version = ?, data = ? WHERE space = ? AND id = ?'
-        : 'INSERT INTO records (version, data, space, id) VALUES (?, ?, ?, ?)';
-      query($db, $sql, [$version, $data, $space, $id]);
+        ? 'UPDATE records SET version = ?, data = ?, epoch = ? WHERE space = ? AND id = ?'
+        : 'INSERT INTO records (version, data, epoch, space, id) VALUES (?, ?, ?, ?, ?)';
+      query($db, $sql, [$version, $data, $epoch, $space, $id]);
       $accepted[] = ['id' => b64e($id), 'version' => $version];
     }
     query($db, 'UPDATE spaces SET version = ? WHERE id = ?', [$version, $space]);
