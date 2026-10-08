@@ -95,7 +95,7 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 
 - **Start Syncing** creates a space with a new secret on a server URL you enter, and uploads every local record.
 - **Share Invite** gives a link: `https://arlol.github.io/breezy/#join=<base64url of {server, space, secret} as JSON>`. The part after `#` never reaches a server. The Mac copies it; the web app opens the share sheet.
-- **Join Space** takes a pasted link. On iOS an installed web app has its own storage, separate from Safari's, so opening the link in Safari would not join it; the link is pasted inside the app. Joining asks first when the device has boards of its own, then replaces them with the space's.
+- **Join Space** takes a pasted link. On iOS an installed web app has its own storage, separate from Safari's, so opening the link in Safari would not join it; the link is pasted inside the app. Joining asks first, naming the server's host, when the device has boards of its own or the web app was opened from the link; then the space's boards replace the device's.
 - Before syncing, a device works alone on its local boards.
 - Anyone with the link or a copy of a device's store can join. Changing the secret or removing a person is out of scope; a new space and a new invite do it.
 
@@ -110,7 +110,7 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 
 ## Web app
 
-- The store is IndexedDB. The app asks for persistent storage; if iOS clears it anyway, a synced device gets everything back on its next pull.
+- The store is IndexedDB. The app asks for persistent storage; if iOS clears it anyway, the invite goes too: the device joins again with the link and then gets everything back.
 - It opens on a list of boards; a board's top bar gains a back button. The first launch on a device creates one board from the sample. `?stress` loads 500 cards into a board that is not stored.
 - The ⋯ menu gains Start Syncing, Join Space, Share Invite and the sync status.
 - New modules in `web/sync/`: `records.js`, `merge.js`, `order-key.js`, `store.js`, `client.js`, `crypto.js`.
@@ -127,6 +127,7 @@ The status reads "Synced just now", "Offline — 3 changes waiting", "Can't reac
 | a record's `format` is newer than the app | kept unapplied; "Update Breezy to see all changes"; unknown fields in a known format are kept and ignored |
 | a record over 64 KB | not pushed; "Card too long to sync" until shortened |
 | the Mac's store fails to write | the standard save-error alert |
+| the web app's store fails to write | the database is reopened and the write tried once more; if that fails too, "Boards can’t be saved on this device" until a write succeeds |
 
 ## Testing
 
