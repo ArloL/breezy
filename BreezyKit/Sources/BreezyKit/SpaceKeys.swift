@@ -58,8 +58,9 @@ public struct Invite: Codable, Equatable, Sendable {
 
   /// HTTPS, or plain HTTP to this computer for trying the server out.
   public static func validServer(_ s: String) -> Bool {
-    guard let u = URL(string: s), let host = u.host, !host.isEmpty else { return false }
-    return u.scheme == "https" || (u.scheme == "http" && ["localhost", "127.0.0.1"].contains(host))
+    guard let u = URL(string: s), let host = u.host?.lowercased(), !host.isEmpty else { return false }
+    let scheme = u.scheme?.lowercased()
+    return scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1"].contains(host))
   }
 }
 

@@ -62,7 +62,7 @@ if ($method === 'OPTIONS') reply(204);
 $space = bytes($_GET['space'] ?? null, 16);
 if ($space === null) reply(400, ['error' => 'space']);
 $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-  ?? (function_exists('getallheaders') ? (getallheaders()['Authorization'] ?? '') : '');
+  ?? (function_exists('getallheaders') ? (array_change_key_case(getallheaders(), CASE_LOWER)['authorization'] ?? '') : '');
 $token = preg_match('/^Bearer ([A-Za-z0-9_-]+)$/', $auth, $m) ? bytes($m[1], 32) : null;
 if ($token === null) reply(401);
 $hash = hash('sha256', $token, true);
