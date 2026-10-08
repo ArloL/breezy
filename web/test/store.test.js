@@ -148,3 +148,17 @@ test("a resync takes a stale record as base and merges a fresh one", () => {
   assert.equal(s.title(id), "Ideas");
   assert.deepEqual([s.state.records[id].base, s.state.records[id].version], [fresh, 7]);
 });
+
+test("a resync merges a backup newer than this device", () => {
+  const s = new Store();
+  s.createBoard("Plans", { cards: [card("c", "old")], lanes: [] });
+  settle(s, 2);
+  s.noteEpoch("e1");
+  s.noteEpoch("e2");
+  const backup = { ...s.state.records.c.current, text: "newer" };
+  s.merge([{ id: "c", version: 5, record: backup, stale: true }]);
+  assert.deepEqual([s.state.records.c.current, s.state.records.c.base], [backup, backup]);
+  s.resynced();
+  assert.ok(Object.values(s.state.records).every((r) => r.prior === undefined));
+  assert.ok(!s.pending().some((p) => p.id === "c"));
+});

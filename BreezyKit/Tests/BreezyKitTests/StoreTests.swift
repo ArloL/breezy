@@ -197,3 +197,18 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(s.title(of: id) == "Ideas")
   #expect(s.state.records[id]!.base == fresh && s.state.records[id]!.version == 7)
 }
+
+@Test func aResyncMergesABackupNewerThanThisDevice() {
+  let s = Store()
+  _ = s.createBoard(title: "Plans", contents: board([card("c", 0, 0, "old")]))
+  settle(s, version: 2)
+  _ = s.note(epoch: "e1")
+  _ = s.note(epoch: "e2")
+  var backup = s.state.records["c"]!.current
+  backup["text"] = .string("newer")
+  s.merge([Incoming(id: "c", version: 5, record: backup, stale: true)])
+  #expect(s.state.records["c"]!.current == backup && s.state.records["c"]!.base == backup)
+  s.resynced()
+  #expect(s.state.records.values.allSatisfy { $0.prior == nil })
+  #expect(!s.pending.contains { $0.id == "c" })
+}
