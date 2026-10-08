@@ -7,6 +7,8 @@ final class CardHostView: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     layer = CALayer()
+    // a layer-hosting view's layer animates implicitly: adding a card would cross-fade the board
+    layer!.actions = ["sublayers": NSNull()]
     wantsLayer = true
   }
 
