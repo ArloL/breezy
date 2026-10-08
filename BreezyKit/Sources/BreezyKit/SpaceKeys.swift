@@ -62,3 +62,13 @@ public struct Invite: Codable, Equatable, Sendable {
     return u.scheme == "https" || (u.scheme == "http" && ["localhost", "127.0.0.1"].contains(host))
   }
 }
+
+extension SpaceKeys {
+  struct NotSyncing: Error {}
+
+  public init(state: SpaceState) throws {
+    guard let invite = state.invite, let space = Base64URL.decode(invite.space), space.count == 16,
+          let secret = Base64URL.decode(invite.secret), secret.count == 32 else { throw NotSyncing() }
+    self.init(space: space, secret: secret)
+  }
+}
