@@ -4,6 +4,8 @@ import { loadState, saveState } from "./sync/idb.js";
 import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
+import { SyncEngine, statusLines } from "./sync/engine.js";
+import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
 import * as R from "./rules.js";
 
 /** The boards on this device: the store in IndexedDB, the board list and the open board. */
@@ -20,6 +22,12 @@ export class Library {
     const lib = new Library(app, new Store(state ?? undefined), readOnly);
     if (!state) lib.store.createBoard("Sample", withFreshIDs(sampleBoard()));
     lib.showList();
+    if (location.hash.includes("#join=")) {
+      const text = location.href;
+      history.replaceState(null, "", location.pathname + location.search);
+      lib.join(text);
+    }
+    lib.engine.sync();
     return lib;
   }
 
@@ -34,6 +42,12 @@ export class Library {
     this.saver.enabled = !readOnly;
     store.onDirty = () => this.saver.schedule();
     store.onChange = (boards, remote) => this.changed(boards, remote);
+    this.engine = new SyncEngine(store);
+    this.engine.flushLocal = () => this.binding?.flush();
+    this.engine.onStatus = () => app.ui.updateSync();
+    setInterval(() => !document.hidden && this.id && this.engine.sync(), 5000);
+    document.addEventListener("visibilitychange", () => document.hidden || this.engine.sync());
+    app.ui.updateSync();
     const change = app.model.onChange;
     app.model.onChange = () => {
       change();
@@ -58,6 +72,8 @@ export class Library {
       if (remote) this.binding.pull();
     }
     if (!this.id) this.renderList();
+    if (!remote) this.engine.changed();
+    this.app.ui.updateSync();
   }
 
   open(id) {
@@ -69,6 +85,7 @@ export class Library {
     document.body.dataset.screen = "board";
     this.app.load(b);
     this.binding = new Binding(this.store, this.app.model, id, this.restack);
+    this.engine.sync();
   }
 
   showList() {
@@ -116,5 +133,62 @@ export class Library {
       ok: null, danger: "Delete",
     });
     if (sure?.danger) this.store.deleteBoard(id);
+  }
+
+  statusLines() {
+    return [...(this.readOnly ? ["Boards can’t be saved on this device"] : []), ...statusLines(this.engine.status)];
+  }
+
+  async startSyncing() {
+    const r = await ask({
+      title: "Start Syncing",
+      message: "The address of your Breezy server. Boards are encrypted on this device; the server can’t read them.",
+      value: "", placeholder: "https://example.com/breezy/sync.php", ok: "Start",
+    });
+    const server = r?.value?.trim();
+    if (!server) return;
+    if (!validServer(server)) return ask({ title: "That isn’t a server address", message: "Use an https:// address ending in sync.php.", cancel: null });
+    this.store.startSyncing(server);
+    this.engine.reset();
+    await this.engine.sync();
+  }
+
+  async join(text) {
+    if (text === undefined) {
+      const r = await ask({ title: "Join Space", message: "Paste the invite link from another device.", value: "", placeholder: "Invite link", ok: "Join" });
+      if (!r) return;
+      text = r.value;
+    }
+    const invite = parseInvite(text);
+    if (!invite) return ask({ title: "That isn’t an invite link", message: "Copy the whole link from Share Invite on the other device.", cancel: null });
+    const n = this.store.boards().length;
+    if (n) {
+      const sure = await ask({
+        title: "Replace the boards here?",
+        message: `Joining shows the space’s boards instead of the ${n === 1 ? "board" : `${n} boards`} on this device, which are deleted from it.`,
+        ok: null, danger: "Join",
+      });
+      if (!sure?.danger) return;
+    }
+    this.showList();
+    this.store.join(invite);
+    this.engine.reset();
+    await this.engine.sync();
+  }
+
+  async share() {
+    const link = inviteLink(this.store.invite);
+    try {
+      await navigator.share({ url: link });
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+    await navigator.clipboard?.writeText(link).catch(() => {});
+    await ask({
+      title: "Invite link copied",
+      message: "Paste it into Join Space on the other device. Anyone with the link can read and change every board in this space.",
+      cancel: null,
+    });
   }
 }

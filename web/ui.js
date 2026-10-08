@@ -69,6 +69,15 @@ export class UI {
     this.update();
   }
 
+  /** The ⋯ menu's sync status and the actions that fit it. */
+  updateSync() {
+    const lib = this.app.library;
+    if (!lib) return;
+    this.$(".menu.more .status").textContent = lib.statusLines().join("\n");
+    this.$('[data-act="start-sync"]').hidden = lib.store.syncing;
+    this.$('[data-act="share"]').hidden = !lib.store.syncing;
+  }
+
   act(name, b) {
     const app = this.app;
     switch (name) {
@@ -78,6 +87,9 @@ export class UI {
       case "redo": return app.redo();
       case "search": return this.openFind();
       case "version": b.textContent = b.dataset.next ? `${b.dataset.version}, ${b.dataset.next} ready` : b.dataset.version; return;
+      case "start-sync": this.closeMenu(); return app.library?.startSyncing();
+      case "join": this.closeMenu(); return app.library?.join();
+      case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
       case "colour": this.closeMenu(); return app.colour(Number(b.dataset.colour));
