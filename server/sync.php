@@ -1,6 +1,7 @@
 <?php
 // Breezy's sync server: keeps each space's records, encrypted on the devices, and hands back those
-// changed since a version. See docs/superpowers/specs/2026-10-08-breezy-sync-design.md.
+// changed since a version. A space's epoch changes when its database is restored, so that devices pull
+// everything again. See docs/superpowers/specs/2026-10-08-breezy-sync-design.md.
 declare(strict_types=1);
 
 const PAGE = 500;
@@ -74,7 +75,7 @@ $lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '
 if ($method === 'GET') {
   $since = filter_var($_GET['since'] ?? '0', FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
   if ($since === false) reply(400, ['error' => 'since']);
-  $row = query($db, 'SELECT token_hash FROM spaces WHERE id = ?', [$space])->fetch(PDO::FETCH_ASSOC);
+  $row = query($db, 'SELECT token_hash, epoch FROM spaces WHERE id = ?', [$space])->fetch(PDO::FETCH_ASSOC);
   if ($row && !hash_equals($row['token_hash'], $hash)) reply(401);
   $records = [];
   if ($row) {
@@ -83,7 +84,8 @@ if ($method === 'GET') {
       $records[] = ['id' => b64e($r['id']), 'version' => (int)$r['version'], 'blob' => b64e($r['data'])];
     }
   }
-  reply(200, ['records' => $records, 'cursor' => $records ? $records[count($records) - 1]['version'] : $since]);
+  $cursor = $records ? $records[count($records) - 1]['version'] : $since;
+  reply(200, ['records' => $records, 'cursor' => $cursor, 'epoch' => $row ? b64e($row['epoch']) : null]);
 }
 
 if ($method !== 'POST') reply(405);
@@ -106,15 +108,17 @@ foreach ($list as $w) {
 for ($attempt = 1;; $attempt++) {
   try {
     $db->beginTransaction();
-    $row = query($db, "SELECT token_hash, version FROM spaces WHERE id = ?$lock", [$space])->fetch(PDO::FETCH_ASSOC);
+    $row = query($db, "SELECT token_hash, version, epoch FROM spaces WHERE id = ?$lock", [$space])->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
-      query($db, 'INSERT INTO spaces (id, token_hash, version) VALUES (?, ?, 0)', [$space, $hash]);
+      $epoch = random_bytes(16);
+      query($db, 'INSERT INTO spaces (id, token_hash, version, epoch) VALUES (?, ?, 0, ?)', [$space, $hash, $epoch]);
       $version = 0;
     } elseif (!hash_equals($row['token_hash'], $hash)) {
       $db->rollBack();
       reply(401);
     } else {
       $version = (int)$row['version'];
+      $epoch = $row['epoch'];
     }
     $accepted = [];
     $refused = [];
@@ -141,4 +145,4 @@ for ($attempt = 1;; $attempt++) {
     usleep(random_int(5000, 50000));
   }
 }
-reply(200, ['accepted' => $accepted, 'refused' => $refused]);
+reply(200, ['accepted' => $accepted, 'refused' => $refused, 'epoch' => b64e($epoch)]);

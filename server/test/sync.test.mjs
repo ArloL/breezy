@@ -26,9 +26,11 @@ test("the first write makes the space, and a pull gets it back", async () => {
   const w = { id: rand(16), base: 0, blob: rand(40) };
   const pushed = await c.push([w]);
   assert.equal(pushed.status, 200);
-  assert.deepEqual(pushed.body, { accepted: [{ id: w.id, version: 1 }], refused: [] });
-  assert.deepEqual((await c.pull()).body, { records: [{ id: w.id, version: 1, blob: w.blob }], cursor: 1 });
-  assert.deepEqual((await c.pull(1)).body, { records: [], cursor: 1 });
+  const { epoch } = pushed.body;
+  assert.match(epoch, /^[A-Za-z0-9_-]{22}$/);
+  assert.deepEqual(pushed.body, { accepted: [{ id: w.id, version: 1 }], refused: [], epoch });
+  assert.deepEqual((await c.pull()).body, { records: [{ id: w.id, version: 1, blob: w.blob }], cursor: 1, epoch });
+  assert.deepEqual((await c.pull(1)).body, { records: [], cursor: 1, epoch });
 });
 
 test("a write on a stale base is refused with what is stored", async () => {
@@ -51,7 +53,15 @@ test("a wrong token can neither read nor write", async () => {
 });
 
 test("an unknown space reads as empty", async () => {
-  assert.deepEqual((await client().pull(7)).body, { records: [], cursor: 7 });
+  assert.deepEqual((await client().pull(7)).body, { records: [], cursor: 7, epoch: null });
+});
+
+test("a space keeps its epoch, which no other space has", async () => {
+  const c = client(), d = client();
+  const epoch = (await c.push([{ id: rand(16), base: 0, blob: rand(40) }])).body.epoch;
+  assert.equal((await c.push([{ id: rand(16), base: 0, blob: rand(40) }])).body.epoch, epoch);
+  assert.equal((await c.pull()).body.epoch, epoch);
+  assert.notEqual((await d.push([{ id: rand(16), base: 0, blob: rand(40) }])).body.epoch, epoch);
 });
 
 test("pulls come in pages of 500", async () => {
