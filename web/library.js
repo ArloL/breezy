@@ -40,6 +40,10 @@ export class Library {
     app.library = this;
     this.saver = new Saver(() => saveState(this.store.state));
     this.saver.enabled = !readOnly;
+    this.saver.onError = (error) => {
+      console.warn("boards not saved", error);
+      app.ui.updateSync();
+    };
     store.onDirty = () => this.saver.schedule();
     store.onChange = (boards, remote) => this.changed(boards, remote);
     this.engine = new SyncEngine(store);
@@ -136,7 +140,8 @@ export class Library {
   }
 
   statusLines() {
-    return [...(this.readOnly ? ["Boards can’t be saved on this device"] : []), ...statusLines(this.engine.status)];
+    const unsaved = this.readOnly || this.saver.failed;
+    return [...(unsaved ? ["Boards can’t be saved on this device"] : []), ...statusLines(this.engine.status)];
   }
 
   async startSyncing() {
