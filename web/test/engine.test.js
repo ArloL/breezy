@@ -160,3 +160,24 @@ test("a refusal we cannot read leaves the edit waiting", async () => {
   assert.deepEqual(a.store.pending().map((p) => p.id), [c]);
   assert.equal(a.store.state.unreadable, unreadable);
 });
+
+test("a space joined mid-cycle gets nothing from the old one", async () => {
+  const other = new FakeServer();
+  const o = device(other);
+  const invite = o.store.startSyncing(SERVER);
+  o.store.createBoard("New space board");
+  await o.engine.sync();
+  const server = new FakeServer();
+  const a = device(server);
+  const old = a.store.startSyncing(SERVER);
+  a.store.createBoard("Old space board");
+  await a.engine.sync();
+  const joiner = device(server, old);
+  let calls = 0;
+  joiner.engine.flushLocal = () => {
+    if (++calls === 2) joiner.store.join(invite);
+  };
+  await joiner.engine.sync();
+  assert.equal(joiner.store.state.cursor, 0);
+  assert.deepEqual(joiner.store.boards(), []);
+});
