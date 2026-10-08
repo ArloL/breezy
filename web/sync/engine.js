@@ -179,6 +179,7 @@ export class SyncEngine {
       this.retryAt = 0;
       this.update("synced");
     } catch (error) {
+      if (!same()) return;
       if (error?.kind === "unauthorized") {
         this.stopped = true;
         return this.update("notInSpace");
