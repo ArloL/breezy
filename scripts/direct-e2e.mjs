@@ -22,12 +22,19 @@ process.on("exit", cleanup);
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 process.on("uncaughtException", (e) => { console.error(e); process.exit(1); });
 process.on("unhandledRejection", (e) => { console.error(e); process.exit(1); });
-const spawnGroup = (cmd, args, opts) => spawn(cmd, args, { ...opts, detached: true });
+const spawnGroup = (cmd, args, opts) => {
+  const c = spawn(cmd, args, { ...opts, detached: true });
+  c.on("exit", (code, signal) => { if (!done) { console.error(`${cmd} exited early (${code ?? signal})`); process.exit(1); } });
+  return c;
+};
+let done = false;
 
 function chromium() {
   if (process.env.BREEZY_CHROMIUM) return process.env.BREEZY_CHROMIUM;
   const cache = join(homedir(), "Library/Caches/ms-playwright");
-  const dir = readdirSync(cache).filter((d) => /^chromium-\d+$/.test(d)).sort().at(-1);
+  if (!existsSync(cache)) throw new Error(`no Playwright cache at ${cache}: set BREEZY_CHROMIUM`);
+  const dir = readdirSync(cache).filter((d) => /^chromium-\d+$/.test(d)).sort((x, y) => x.slice(9) - y.slice(9)).at(-1);
+  if (!dir) throw new Error("no chromium-N in the Playwright cache: set BREEZY_CHROMIUM");
   const app = join(cache, dir, "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing");
   if (!existsSync(app)) throw new Error("no Chromium: set BREEZY_CHROMIUM");
   return app;
@@ -36,6 +43,11 @@ function chromium() {
 async function waitFor(what, test, ms = 15_000) {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) if (await test()) return;
   throw new Error(`timed out: ${what}`);
+}
+
+for (const port of [58565, 58566, 58568]) {
+  const used = await new Promise((r) => createServer().once("error", () => r(true)).listen(port, "127.0.0.1", function () { this.close(() => r(false)); }));
+  if (used) throw new Error(`port ${port} is already in use`);
 }
 
 // the web app, without live-server's reloads
@@ -61,8 +73,9 @@ async function browser(name) {
   children.push(spawnGroup(chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], { stdio: "ignore" }));
   await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")));
   const port = readFileSync(join(dir, "DevToolsActivePort"), "utf8").split("\n")[0];
-  const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  const ws = new WebSocket(pages.find((p) => p.type === "page").webSocketDebuggerUrl);
+  let page;
+  await waitFor(`${name} page`, async () => (page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((p) => p.type === "page")));
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((r) => (ws.onopen = r));
   let next = 0;
   const pending = new Map(), listeners = [];
@@ -76,14 +89,19 @@ async function browser(name) {
     pending.set(id, r);
     ws.send(JSON.stringify({ id, method, params }));
   });
-  const run = async (expression) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+  const run = async (expression) => {
+    const { result, error } = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+    if (error || result?.exceptionDetails) throw new Error(`${name}: ${JSON.stringify(error ?? result.exceptionDetails.exception?.description ?? result.exceptionDetails.text)}`);
+    return result?.result?.value;
+  };
   await send("Page.enable");
   await send("Network.enable");
   // every peer connection the page makes, so that the test can close them
   await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
   const go = async (url) => {
+    const loaded = new Promise((r) => listeners.push(function l(m) { if (m.method === "Page.loadEventFired") { listeners.splice(listeners.indexOf(l), 1); r(); } }));
     await send("Page.navigate", { url });
-    await sleep(500);
+    await Promise.race([loaded, sleep(15_000).then(() => { throw new Error(`${name}: ${url} did not load`); })]);
   };
   const click = (selector) => run(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); e?.click(); return !!e; })()`);
   const status = () => run(`document.querySelector(".menu.more .status")?.textContent ?? ""`);
@@ -96,6 +114,7 @@ const hash = link.slice(link.indexOf("#join="));
 
 async function joinSpace(b, name) {
   await b.go("http://localhost:58565/");
+  await waitFor(`${name} app`, () => b.run(`document.querySelector(".boards-groups")?.children.length > 0`));
   await b.run(`import("/sync/idb.js").then((m) => m.saveState("me", { device: ${JSON.stringify(b64(16))}, name: ${JSON.stringify(name)} }))`);
   await b.go("about:blank");
   await b.go(`http://localhost:58565/${hash}`);
@@ -114,13 +133,19 @@ await waitFor("the board on b", () => b.click(".boards-group[data-group^=\"space
 await waitFor("a channel", async () => (await a.status()).includes("Direct with 1 of 1 person"), 20_000);
 console.log("open:", await a.status());
 
-/** Body frames a sends to the relay while its mouse crosses the board. */
-async function framesWhileMoving() {
+/** Broadcast body frames (no `to`) that a sends to the relay while its mouse crosses the board from x0 to x1. */
+async function framesWhileMoving(x0, x1) {
   let frames = 0;
-  const count = (m) => m.method === "Network.webSocketFrameSent" && m.params.response.payloadData.includes('"body"') && frames++;
+  const count = (m) => {
+    if (m.method !== "Network.webSocketFrameSent") return;
+    try {
+      const f = JSON.parse(m.params.response.payloadData);
+      if (typeof f.body === "string" && f.to === undefined) frames++;
+    } catch {}
+  };
   a.listeners.push(count);
-  for (let i = 0; i < 40; i++) {
-    await a.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 300 + i * 10, y: 400 });
+  for (let i = 0; i <= 40; i++) {
+    await a.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x0 + ((x1 - x0) * i) / 40, y: 400 });
     await sleep(16);
   }
   await sleep(300);
@@ -128,15 +153,31 @@ async function framesWhileMoving() {
   return frames;
 }
 
-const direct = await framesWhileMoving();
+const cursorX = () => b.run(`(() => { const m = document.querySelector(".presence .cursor")?.style.transform.match(/translate\\((-?[\\d.]+)px/); return m ? +m[1] : null; })()`);
+/** b's cursor for a once it stops moving. */
+async function settledCursor(what, before, ms = 10_000) {
+  let last = null, since = 0;
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
+    const x = await cursorX();
+    if (x !== last) { last = x; since = Date.now(); }
+    else if (x !== null && Date.now() - since > 600 && (before === null || Math.abs(x - before) > 20)) return x;
+  }
+  throw new Error(`timed out: ${what} (cursor x ${last}, was ${before})`);
+}
+
+const start = await cursorX();
+const direct = await framesWhileMoving(300, 690);
 if (direct > 2) throw new Error(`${direct} body frames reached the relay with the channel open`);
-await waitFor("a's cursor on b", () => b.run(`!!document.querySelector(".presence .cursor")`));
-console.log("direct: relay body frames while moving:", direct);
+const first = await settledCursor("a's cursor moving on b over the channel", start);
+console.log("direct: relay body frames while moving:", direct, "| b sees a at x", first);
 
 await b.run("__pcs.forEach((pc) => pc.close())");
 await waitFor("the fall back", async () => (await a.status()).includes("Direct with 0 of 1 person"));
-const relayed = await framesWhileMoving();
+const relayed = await framesWhileMoving(690, 300);
 if (relayed < 5) throw new Error(`only ${relayed} body frames reached the relay after the channel closed`);
-console.log("fallback: relay body frames while moving:", relayed);
+const second = await settledCursor("a's cursor moving on b over the relay", first);
+if (Math.abs(second - first + 390) > 60) throw new Error(`b's cursor moved ${second - first}px after a moved -390px`);
+console.log("fallback: relay body frames while moving:", relayed, "| b sees a at x", second);
 console.log("ok");
+done = true;
 process.exit(0);

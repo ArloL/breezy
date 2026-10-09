@@ -57,7 +57,7 @@ server/dev.sh    # serves http://127.0.0.1:58566/sync.php from build/ for trying
 scripts/build-site.sh build/site local-$(git rev-parse --short HEAD) && mise exec -- scripts/deploy.py build/site   # deploys from here as CI does, with mise.local.toml's secrets
 relay/test.sh                  # the relay under wrangler dev, with its tests; first npm install --prefix relay
 npm --prefix relay run dev     # serves ws://127.0.0.1:58568/, which server/dev.sh names
-node scripts/direct-e2e.mjs    # two headless Chromiums: direct channel, then falling back to the relay; needs php and Playwright's Chromium
+node scripts/direct-e2e.mjs    # starts wrangler, server/dev.sh and a web server on 58568, 58566, 58565; two headless Chromiums open a direct channel, then fall back to the relay. Needs Node 24, php, npm install --prefix relay, and Playwright's Chromium (or BREEZY_CHROMIUM; not ungoogled-chromium)
 ```
 
 ## Touch prototype
