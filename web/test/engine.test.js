@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.js";
-import { statusLines, TransportError, validRelay } from "../sync/engine.js";
+import { statusLines, TransportError, validRelay, HttpTransport } from "../sync/engine.js";
 import { SpaceKeys } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
+import { inflateRawSync } from "node:zlib";
 import { newID } from "../rules.js";
 import * as R from "../rules.js";
 
@@ -356,7 +357,7 @@ test("the engine learns the relay and reports pushes and pulls", async () => {
   assert.equal(a.engine.relay, "wss://relay.example/");
   assert.deepEqual(relays, ["wss://relay.example/"]);
   assert.deepEqual(pushed, [server.version]);
-  assert.deepEqual(pulled, [server.version - 1]);
+  assert.deepEqual(pulled, [server.version]);
   assert.ok(a.engine.lastCycle > 0);
   server.relay = "http://not-a-relay";
   await b.engine.sync();
@@ -371,4 +372,84 @@ test("only WebSockets over TLS, or to this computer, are relays", async () => {
   a.edit(id, (x) => (x.cards[0].color = 2));
   await a.engine.sync();
   assert.equal(a.engine.relay, null);
+});
+
+test("an edit syncs in one request", async () => {
+  const { a, b, id } = await pair(newID);
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  a.transport.calls = 0;
+  await a.engine.sync();
+  assert.equal(a.transport.calls, 1);
+  await b.engine.sync();
+  assert.equal(b.store.board(id).cards[0].color, 3);
+});
+
+test("a device never pulls back what it pushed", async () => {
+  const { a, b, id } = await pair(newID);
+  const wrote = new Set(), got = [];
+  for (const m of ["pull", "push"]) {
+    const f = a.transport[m].bind(a.transport);
+    a.transport[m] = async (...args) => {
+      if (m === "push") for (const w of args[0]) wrote.add(w.id);
+      const r = await f(...args);
+      for (const p of r.records ?? []) got.push(p.id);
+      return r;
+    };
+  }
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  await a.engine.sync();
+  b.edit(id, (x) => (x.cards[0].text = "y"));
+  await b.engine.sync();
+  a.edit(id, (x) => (x.cards[0].color = 4));
+  await a.engine.sync();
+  await a.engine.sync();
+  assert.ok(wrote.size > 0);
+  assert.ok(got.length > 0);
+  assert.deepEqual(got.filter((g) => wrote.has(g) && a.store.state.records[g].base === null), []);
+  assert.equal(a.store.board(id).cards[0].text, "y");
+});
+
+test("a combined push that brings a full page goes on pulling", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const other = b.store.createBoard("Big", { cards: Array.from({ length: 600 }, (_, i) => ({ id: newID(), x: 0, y: i * 24, w: 240, text: "t", color: 1 })), lanes: [] });
+  await b.engine.sync();
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  await a.engine.sync();
+  assert.equal(a.store.board(other).cards.length, 600);
+  assert.equal(a.store.state.cursor, server.version);
+});
+
+test("a resync does not combine", async () => {
+  const { server, a, id } = await pair(newID);
+  const backup = server.snapshot();
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  await a.engine.sync();
+  server.restore(backup);
+  a.edit(id, (x) => (x.cards[0].color = 2));
+  a.transport.log = [];
+  await a.engine.sync();
+  assert.deepEqual(a.transport.log.slice(0, 2), ["push", "pull"]);
+  assert.deepEqual(a.store.pending(), []);
+});
+
+test("big requests go deflated and small ones plain", async () => {
+  const sent = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    sent.push(init);
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  try {
+    const t = new HttpTransport("https://example.com/s.php", "sp", "tok");
+    const big = [{ id: "a", base: 0, blob: "x".repeat(3000) }];
+    await t.push(big, 7);
+    await t.push([{ id: "a", base: 0, blob: "y" }]);
+    const [first, second] = sent;
+    assert.equal(first.headers["Content-Encoding"], "deflate");
+    assert.deepEqual(JSON.parse(inflateRawSync(Buffer.from(first.body)).toString()), { writes: big, since: 7 });
+    assert.equal(second.headers["Content-Encoding"], undefined);
+    assert.equal(second.body, JSON.stringify({ writes: [{ id: "a", base: 0, blob: "y" }] }));
+  } finally {
+    globalThis.fetch = real;
+  }
 });

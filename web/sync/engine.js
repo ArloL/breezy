@@ -7,6 +7,7 @@ import { FORMAT } from "./records.js";
 export const PAGE_SIZE = 500;
 export const MAX_BLOB = 65536;
 const MAX_REQUEST = 900_000;
+const DEFLATE_ABOVE = 1024;
 
 export class TransportError extends Error {
   constructor(kind) {
@@ -26,12 +27,22 @@ export class HttpTransport {
   async send(query, body) {
     const url = new URL(this.server);
     for (const [k, v] of Object.entries({ space: this.space, ...query })) url.searchParams.set(k, v);
+    const headers = { Authorization: `Bearer ${this.token}` };
+    let payload;
+    if (body) {
+      headers["Content-Type"] = "application/json";
+      payload = JSON.stringify(body);
+      if (payload.length > DEFLATE_ABOVE) {
+        payload = await new Response(new Blob([payload]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
+        headers["Content-Encoding"] = "deflate";
+      }
+    }
     let res;
     try {
       res = await fetch(url, {
         method: body ? "POST" : "GET",
-        headers: { Authorization: `Bearer ${this.token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-        body: body && JSON.stringify(body),
+        headers,
+        body: payload,
         signal: AbortSignal.timeout(20_000),
       });
     } catch {
@@ -47,8 +58,8 @@ export class HttpTransport {
     return this.send({ since });
   }
 
-  push(writes) {
-    return this.send({}, { writes });
+  push(writes, since) {
+    return this.send({}, { writes, ...(since === undefined ? {} : { since }) });
   }
 }
 
@@ -175,28 +186,20 @@ export class SyncEngine {
         this.heldTried = true;
         if (!(await this.retryHeld(keys, same))) return;
       }
-      for (;;) {
-        const page = await transport.pull(this.store.state.cursor);
-        if (!same()) return;
-        this.noteRelay(page.relay);
-        if (this.store.noteEpoch(page.epoch)) continue;
-        const decoded = await this.decodeAll(page.records, keys);
-        this.flushLocal();
-        if (!same()) return;
-        this.apply(decoded);
-        this.store.advance(page.cursor);
-        if (page.records.length < PAGE_SIZE) {
-          this.store.resynced();
-          break;
-        }
+      this.flushLocal();
+      let first = this.store.state.resync ? null : await this.outgoing(keys);
+      const combined = first?.writes.length > 0;
+      if (!combined) {
+        if (!(await this.pullAll(transport, keys, same))) return;
+        this.onPulled(this.store.state.cursor);
       }
-      this.onPulled(this.store.state.cursor);
       let refusals = 0;
       for (let round = 0; round < 10; round++) {
         this.flushLocal();
-        const { writes, sent } = await this.outgoing(keys);
+        const { writes, sent } = first ?? (await this.outgoing(keys));
+        first = null;
         if (!writes.length) break;
-        const result = await transport.push(writes);
+        const result = await transport.push(writes, combined ? this.store.state.cursor : undefined);
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
           this.again = true;
@@ -205,14 +208,25 @@ export class SyncEngine {
         for (const a of result.accepted) if (sent.has(a.id)) this.store.accepted(a.id, a.version, sent.get(a.id));
         this.noteRelay(result.relay);
         if (result.accepted.length) this.onPushed(Math.max(...result.accepted.map((a) => a.version)));
-        if (!result.refused.length) continue;
-        const decoded = await this.decodeAll(result.refused, keys);
-        this.flushLocal();
-        if (!same()) return;
-        this.apply(decoded);
-        for (const id of decoded.failed) this.blocked.add(id);
-        if (decoded.items.length && ++refusals === 3) throw new TransportError("unreachable");
+        if (result.refused.length) {
+          const decoded = await this.decodeAll(result.refused, keys);
+          this.flushLocal();
+          if (!same()) return;
+          this.apply(decoded);
+          for (const id of decoded.failed) this.blocked.add(id);
+          if (decoded.items.length && ++refusals === 3) throw new TransportError("unreachable");
+        }
+        if (combined && result.records) {
+          const taken = await this.takePage(result, keys, same);
+          if (taken === "stop") return;
+          if (taken === "again") {
+            this.again = true;
+            return;
+          }
+          if (taken === "more" && !(await this.pullAll(transport, keys, same))) return;
+        }
       }
+      if (combined) this.onPulled(this.store.state.cursor);
       this.failures = 0;
       this.retryAt = 0;
       this.lastCycle = this.now();
@@ -227,6 +241,31 @@ export class SyncEngine {
       this.failures++;
       this.retryAt = this.now() + Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
       this.update(error?.kind === "offline" ? "offline" : "unreachable");
+    }
+  }
+
+  /** Takes a page of records: "stop" if the space changed, "again" if the epoch did, "more" if the page was full. */
+  async takePage(page, keys, same) {
+    if (!same()) return "stop";
+    this.noteRelay(page.relay);
+    if (this.store.noteEpoch(page.epoch)) return "again";
+    const decoded = await this.decodeAll(page.records, keys);
+    this.flushLocal();
+    if (!same()) return "stop";
+    this.apply(decoded);
+    this.store.advance(page.cursor);
+    return page.records.length < PAGE_SIZE ? "done" : "more";
+  }
+
+  /** Pulls to the end; false if the space changed meanwhile. */
+  async pullAll(transport, keys, same) {
+    for (;;) {
+      const taken = await this.takePage(await transport.pull(this.store.state.cursor), keys, same);
+      if (taken === "stop") return false;
+      if (taken === "done") {
+        this.store.resynced();
+        return true;
+      }
     }
   }
 

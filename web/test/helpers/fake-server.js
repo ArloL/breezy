@@ -26,7 +26,7 @@ export class FakeServer {
     return { records: records.map((r) => this.marked(r)), cursor: records.at(-1)?.version ?? since, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
   }
 
-  push(writes) {
+  push(writes, since) {
     const accepted = [], refused = [];
     this.epoch ??= newID();
     for (const w of writes) {
@@ -38,7 +38,12 @@ export class FakeServer {
       this.put(w.id, w.blob);
       accepted.push({ id: w.id, version: this.version });
     }
-    return { accepted, refused, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
+    const out = { accepted, refused, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
+    if (since === undefined) return out;
+    const own = new Set(accepted.map((a) => a.version));
+    const rows = [...this.records.values()].filter((r) => r.version > since).sort((a, b) => a.version - b.version).slice(0, PAGE_SIZE);
+    const last = rows.at(-1)?.version ?? 0;
+    return { ...out, cursor: rows.length === PAGE_SIZE ? last : Math.max(this.version, last, since), records: rows.filter((r) => !own.has(r.version)).map((r) => this.marked(r)) };
   }
 
   /** The database as a backup holds it. */
@@ -70,25 +75,28 @@ export class FakeTransport {
     this.online = true;
     this.failure = null;
     this.calls = 0;
+    /** The calls made, by name. */
+    this.log = [];
     /** Runs before each push, as another device might sync meanwhile. */
     this.beforePush = async () => {};
   }
 
-  check() {
+  check(name) {
     this.calls++;
+    this.log.push(name);
     if (this.failure) throw new TransportError(this.failure);
     if (!this.online) throw new TransportError("offline");
   }
 
   async pull(since) {
-    this.check();
+    this.check("pull");
     return structuredClone(this.server.pull(since));
   }
 
-  async push(writes) {
+  async push(writes, since) {
     await this.beforePush();
-    this.check();
-    return structuredClone(this.server.push(writes));
+    this.check("push");
+    return structuredClone(this.server.push(writes, since));
   }
 }
 
