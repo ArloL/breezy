@@ -1,0 +1,904 @@
+{
+  "about": [
+    "Compact cursor and live bodies (web/sync/compact.js, BreezyKit's port). Each case runs fresh: one CursorEncoder, one LiveEncoder and one LiveDecoder.",
+    "A step encodes its cursor or live input with seq, at and now, after reset() when reset is true, and must give hex.",
+    "Unless lost, the decoder then reads those bytes with the receiver's overlay and must give decoded. redeliver feeds an earlier step's hex again instead.",
+    "The overlay starts empty; overlay replaces it before decoding; after each decode each item's fields merge into it.",
+    "malformed: each hex decodes to null in a fresh decoder."
+  ],
+  "fnv1a": [["",2166136261],["a",3826002220],["foobar",3214735720],["😀",3409036472]],
+  "splice": [
+    ["abc","abXc",[2,0,"X"]],
+    ["😀","",[0,2,""]],
+    ["😀","😃",[0,2,"😃"]],
+    ["abc","abc",[3,0,""]],
+    ["","hi",[0,0,"hi"]],
+    ["hello","help",[3,2,"p"]],
+    ["aaa","aa",[2,1,""]],
+    ["a😀b","a😃b",[1,2,"😃"]]
+  ],
+  "cases": [
+    {
+      "name": "cursor",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 1234.56,
+          "cursor": {"x":120,"y":-48,"board":"YGFiY2RlZmdoaWprbG1ubw"},
+          "hex": "960101cd303aca42f00000cac2400000c410606162636465666768696a6b6c6d6e6f",
+          "decoded": {"t":"cursor","seq":1,"at":1234.6,"board":"YGFiY2RlZmdoaWprbG1ubw","x":120,"y":-48}
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 1284.5,
+          "cursor": {"x":121.5,"y":-48,"board":"YGFiY2RlZmdoaWprbG1ubw"},
+          "hex": "950102cd322dca42f30000cac2400000",
+          "decoded": {"t":"cursor","seq":2,"at":1284.5,"board":"YGFiY2RlZmdoaWprbG1ubw","x":121.5,"y":-48}
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 1334.5,
+          "cursor": {"x":null,"y":null,"board":"YGFiY2RlZmdoaWprbG1ubw"},
+          "hex": "950103cd3421c0c0",
+          "decoded": {"t":"cursor","seq":3,"at":1334.5,"board":"YGFiY2RlZmdoaWprbG1ubw","x":null,"y":null}
+        },
+        {
+          "now": 150,
+          "seq": 4,
+          "at": 1384.5,
+          "cursor": {"x":0,"y":0,"board":"cHFyc3R1dnd4eXp7fH1-fw"},
+          "hex": "960104cd3615ca00000000ca00000000c410707172737475767778797a7b7c7d7e7f",
+          "decoded": {"t":"cursor","seq":4,"at":1384.5,"board":"cHFyc3R1dnd4eXp7fH1-fw","x":0,"y":0}
+        },
+        {
+          "now": 1000,
+          "seq": 5,
+          "at": 2234.5,
+          "cursor": {"x":1,"y":2,"board":"cHFyc3R1dnd4eXp7fH1-fw"},
+          "hex": "960105cd5749ca3f800000ca40000000c410707172737475767778797a7b7c7d7e7f",
+          "decoded": {"t":"cursor","seq":5,"at":2234.5,"board":"cHFyc3R1dnd4eXp7fH1-fw","x":1,"y":2}
+        },
+        {
+          "now": 1100,
+          "seq": 6,
+          "at": 2334.5,
+          "cursor": {"x":1,"y":2,"board":"cHFyc3R1dnd4eXp7fH1-fw"},
+          "hex": "950106cd5b31ca3f800000ca40000000",
+          "decoded": {"t":"cursor","seq":6,"at":2334.5,"board":"cHFyc3R1dnd4eXp7fH1-fw","x":1,"y":2}
+        }
+      ]
+    },
+    {
+      "name": "move",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 100,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[10,20]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980201cd03e8c410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810092ca41200000ca41a00000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 100,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[10,20]}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 150,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[12.5,20]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd05dcc0c081c41001010101010101010101010101010101810092ca41480000ca41a00000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 150,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[12.5,20]}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 220,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[12.5,20]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980203cd0898c0c080c0c0",
+          "decoded": {"t":"live","seq":3,"at":220,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        },
+        {"redeliver":0,"decoded":null},
+        {"redeliver":2,"decoded":null}
+      ]
+    },
+    {
+      "name": "typing",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the lazy dog"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":43},
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6f93c41001010101010101010101010101010101c22b81c410010101010101010101010101010101018103d92b54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the lazy dog"}},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":43},
+            "cursor": null
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":40},
+            "cursor": null
+          },
+          "hex": "980202cd0258c093c0c22881c41001010101010101010101010101010101810394ce048fff902300a57665727920c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 60,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog"}},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":40},
+            "cursor": null
+          }
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 110,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog!"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":49},
+            "cursor": null
+          },
+          "hex": "980203cd044cc093c0c23181c41001010101010101010101010101010101810394cebe2615c43000a121c0c0",
+          "overlay": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox"}},
+          "decoded": {
+            "t": "live",
+            "seq": 3,
+            "at": 110,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":49},
+            "cursor": null
+          }
+        },
+        {
+          "now": 150,
+          "seq": 4,
+          "at": 160,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog!","notes":"ok"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":2},
+            "cursor": null
+          },
+          "hex": "980204cd0640c093c0c20281c410010101010101010101010101010101018104a26f6bc0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 4,
+            "at": 160,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"notes":"ok"}},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":2},
+            "cursor": null
+          }
+        },
+        {
+          "now": 200,
+          "seq": 5,
+          "at": 210,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog!","notes":"ok!"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":true,"at":3},
+            "cursor": null
+          },
+          "hex": "980205cd0834c093c0c30381c410010101010101010101010101010101018104a36f6b21c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 5,
+            "at": 210,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"notes":"ok!"}},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":true,"at":3},
+            "cursor": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "lost delta",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the lazy dog"}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018103d92b54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the lazy dog"}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog"}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd0258c0c081c41001010101010101010101010101010101810394ce048fff902300a57665727920c0c0",
+          "lost": true
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 110,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog!"}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980203cd044cc0c081c41001010101010101010101010101010101810394cebe2615c43000a121c0c0",
+          "decoded": {"t":"live","seq":3,"at":110,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        },
+        {
+          "now": 1000,
+          "seq": 4,
+          "at": 1010,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog!"}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980204cd2774c410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018103d93154686520717569636b2062726f776e20666f78206a756d7073206f766572207468652076657279206c617a7920646f6721c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 4,
+            "at": 1010,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"The quick brown fox jumps over the very lazy dog!"}},
+            "caret": null,
+            "cursor": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "group",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[10.5,105]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[110.5,5],"color":2},
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[10.5,5]}
+            },
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc081c410020202020202020202020202020202028105029392ca41280000ca40a0000093c41001010101010101010101010101010101c41002020202020202020202020202020202c410fafafafafafafafafafafafafafafafa9392ca00000000ca0000000092ca42c80000ca0000000092ca00000000ca42c80000c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[10.5,5]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[110.5,5],"color":2},
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[10.5,105]}
+            },
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[20,110]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[120,10],"color":2},
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[20,10]}
+            },
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd0258c0c0809192ca41a00000ca41200000c0",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 60,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[20,10]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[120,10]},
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[20,110]}
+            },
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 110,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[20,110]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[120,10],"color":2},
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[20,10]}
+            },
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980203cd044cc0c080c0c0",
+          "decoded": {"t":"live","seq":3,"at":110,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        },
+        {
+          "now": 150,
+          "seq": 4,
+          "at": 160,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[30.25,98]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[130.25,-2],"color":2},
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[30.25,-2]}
+            },
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980204cd0640c0c0809192ca41f20000cac0000000c0",
+          "decoded": {
+            "t": "live",
+            "seq": 4,
+            "at": 160,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[30.25,-2]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[130.25,-2]},
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[30.25,98]}
+            },
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 200,
+          "seq": 5,
+          "at": 210,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[35,100]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[135,0],"color":2},
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[40,0]}
+            },
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980205cd0834c0c083c41001010101010101010101010101010101810092ca42200000ca00000000c41002020202020202020202020202020202810092ca43070000ca00000000c410fafafafafafafafafafafafafafafafa810092ca420c0000ca42c80000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 5,
+            "at": 210,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[40,0]},
+              "AgICAgICAgICAgICAgICAg": {"pos":[135,0]},
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[35,100]}
+            },
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 250,
+          "seq": 6,
+          "at": 260,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"-vr6-vr6-vr6-vr6-vr6-g":{"pos":[36,101]},"AgICAgICAgICAgICAgICAg":{"pos":[136,1],"color":2}},
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980206cd0a28c0c0809392ca42100000ca3f80000092c41002020202020202020202020202020202c410fafafafafafafafafafafafafafafafa9292ca42c80000ca0000000092ca00000000ca42c80000c0",
+          "decoded": {
+            "t": "live",
+            "seq": 6,
+            "at": 260,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AgICAgICAgICAgICAgICAg":{"pos":[136,1]},"-vr6-vr6-vr6-vr6-vr6-g":{"pos":[36,101]}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 300,
+          "seq": 7,
+          "at": 310,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"-vr6-vr6-vr6-vr6-vr6-g":{"pos":[36,101]},"AgICAgICAgICAgICAgICAg":{"pos":[136.0000001,1],"color":2}},
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AgICAgICAgICAgICAgICAg":[100,0],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980207cd0c1cc0c080c0c0",
+          "decoded": {"t":"live","seq":7,"at":310,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        }
+      ]
+    },
+    {
+      "name": "new card and lane",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "BAQEBAQEBAQEBAQEBAQEBA": {"pos":[-400,-50],"size":[600,800],"title":"Doing","kind":"lane"},
+              "AwMDAwMDAwMDAwMDAwMDAw": {"pos":[0,0],"w":240,"text":"","color":1,"kind":"card"}
+            },
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc082c41003030303030303030303030303030303850092ca00000000ca0000000002ca4370000003a005010700c41004040404040404040404040404040404840092cac3c80000cac24800000192ca44160000ca4448000006a5446f696e670701c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "AwMDAwMDAwMDAwMDAwMDAw": {"pos":[0,0],"w":240,"text":"","color":1,"kind":"card"},
+              "BAQEBAQEBAQEBAQEBAQEBA": {"pos":[-400,-50],"size":[600,800],"title":"Doing","kind":"lane"}
+            },
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "BAQEBAQEBAQEBAQEBAQEBA": {"pos":[-400,-50],"size":[600,800],"title":"Doing now","kind":"lane"},
+              "AwMDAwMDAwMDAwMDAwMDAw": {"pos":[0,0],"w":260.5,"text":"","color":1,"kind":"card"}
+            },
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd0258c0c082c410030303030303030303030303030303038102ca43824000c410040404040404040404040404040404048106a9446f696e67206e6f77c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 60,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AwMDAwMDAwMDAwMDAwMDAw":{"w":260.5},"BAQEBAQEBAQEBAQEBAQEBA":{"title":"Doing now"}},
+            "caret": null,
+            "cursor": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "keyframe after 1000 ms",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,2],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc082c41001010101010101010101010101010101820092ca3f800000ca4000000003a44e6f7465c41002020202020202020202020202020202810504c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,2],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 500,
+          "seq": 2,
+          "at": 510,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd13ecc0c081c41001010101010101010101010101010101810092ca40400000ca40800000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 510,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4]}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 1000,
+          "seq": 3,
+          "at": 1010,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980203cd2774c410606162636465666768696a6b6c6d6e6fc082c41001010101010101010101010101010101820092ca40400000ca4080000003a44e6f7465c41002020202020202020202020202020202810504c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 3,
+            "at": 1010,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 1999,
+          "seq": 4,
+          "at": 2009,
+          "live": {
+            "board": "cHFyc3R1dnd4eXp7fH1-fw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980204cd4e7ac410707172737475767778797a7b7c7d7e7fc080c0c0",
+          "decoded": {"t":"live","seq":4,"at":2009,"board":"cHFyc3R1dnd4eXp7fH1-fw","items":{},"caret":null,"cursor":null}
+        },
+        {
+          "now": 2000,
+          "seq": 5,
+          "at": 2010,
+          "live": {
+            "board": "cHFyc3R1dnd4eXp7fH1-fw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980205cd4e84c410707172737475767778797a7b7c7d7e7fc082c41001010101010101010101010101010101820092ca40400000ca4080000003a44e6f7465c41002020202020202020202020202020202810504c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 5,
+            "at": 2010,
+            "board": "cHFyc3R1dnd4eXp7fH1-fw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[3,4],"text":"Note"},"AgICAgICAgICAgICAgICAg":{"color":4}},
+            "caret": null,
+            "cursor": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "caret and folded cursor",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"Hi"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":2},
+            "cursor": [50,60]
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6f93c41001010101010101010101010101010101c20281c410010101010101010101010101010101018103a24869c092ca42480000ca42700000",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"Hi"}},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":2},
+            "cursor": [50,60]
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"Hi"}},
+            "starts": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":2},
+            "cursor": [55.5,60]
+          },
+          "hex": "980202cd0258c093c0c20280c092ca425e0000ca42700000",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 60,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {},
+            "caret": {"id":"AQEBAQEBAQEBAQEBAQEBAQ","back":false,"at":2},
+            "cursor": [55.5,60]
+          }
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 110,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"Hi"}},
+            "starts": {},
+            "caret": {"id":"AgICAgICAgICAgICAgICAg","back":true,"at":0},
+            "cursor": null
+          },
+          "hex": "980203cd044cc093c41002020202020202020202020202020202c30080c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 3,
+            "at": 110,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {},
+            "caret": {"id":"AgICAgICAgICAgICAgICAg","back":true,"at":0},
+            "cursor": null
+          }
+        },
+        {
+          "now": 150,
+          "seq": 4,
+          "at": 160,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"Hi"}},
+            "starts": {},
+            "caret": null,
+            "cursor": [1,1]
+          },
+          "hex": "980204cd0640c0c080c092ca3f800000ca3f800000",
+          "decoded": {"t":"live","seq":4,"at":160,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":[1,1]}
+        },
+        {
+          "now": 200,
+          "seq": 5,
+          "at": 210,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"text":"Hi"}},
+            "starts": {},
+            "caret": {"id":"AgICAgICAgICAgICAgICAg","back":false,"at":1},
+            "cursor": null
+          },
+          "hex": "980205cd0834c093c41002020202020202020202020202020202c20180c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 5,
+            "at": 210,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {},
+            "caret": {"id":"AgICAgICAgICAgICAgICAg","back":false,"at":1},
+            "cursor": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "reset",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,1]}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810092ca3f800000ca3f800000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,1]}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "reset": true,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,1]}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd0258c410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810092ca3f800000ca3f800000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 2,
+            "at": 60,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,1]}},
+            "caret": null,
+            "cursor": null
+          }
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 110,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1,1]}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980203cd044cc0c080c0c0",
+          "decoded": {"t":"live","seq":3,"at":110,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        }
+      ]
+    }
+  ],
+  "malformed": [
+    {"name":"not an array","hex":"c0"},
+    {"name":"unknown type","hex":"9303010a"},
+    {"name":"empty array","hex":"90"},
+    {"name":"cursor without a board, none remembered","hex":"9501010aca3f800000ca40000000"},
+    {"name":"cursor of four","hex":"9401010aca3f800000"},
+    {"name":"cursor x without y","hex":"9601010aca3f800000c0c410606162636465666768696a6b6c6d6e6f"},
+    {"name":"cursor board of 15 bytes","hex":"9601010aca3f800000ca40000000c40f6162636465666768696a6b6c6d6e6f"},
+    {"name":"seq not an integer","hex":"9601a1310aca3f800000ca40000000c410606162636465666768696a6b6c6d6e6f"},
+    {"name":"negative seq","hex":"9601ff0aca3f800000ca40000000c410606162636465666768696a6b6c6d6e6f"},
+    {
+      "name": "at not an integer",
+      "hex": "960101cb4025000000000000ca3f800000ca40000000c410606162636465666768696a6b6c6d6e6f"
+    },
+    {"name":"live of seven","hex":"9702010ac410606162636465666768696a6b6c6d6e6fc080c0"},
+    {"name":"live without a board, none remembered","hex":"9802010ac0c080c0c0"},
+    {"name":"items not a map","hex":"9802010ac410606162636465666768696a6b6c6d6e6fc090c0c0"},
+    {
+      "name": "id of 15 bytes",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c40f010101010101010101010101010101810501c0c0"
+    },
+    {
+      "name": "unknown field key",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810801c0c0"
+    },
+    {
+      "name": "kind 2",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810702c0c0"
+    },
+    {
+      "name": "pos of three",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810093ca3f800000ca40000000ca40400000c0c0"
+    },
+    {
+      "name": "color not an integer",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018105a3726564c0c0"
+    },
+    {
+      "name": "splice of three",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018103930100a178c0c0"
+    },
+    {
+      "name": "caret back not a bool",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6f93c41001010101010101010101010101010101000180c0c0"
+    },
+    {
+      "name": "group starts not matching ids",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc0809392ca3f800000ca3f80000092c41001010101010101010101010101010101c410020202020202020202020202020202029192ca00000000ca00000000c0"
+    },
+    {
+      "name": "group of two",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc0809292ca3f800000ca3f80000091c41001010101010101010101010101010101c0"
+    },
+    {"name":"truncated","hex":"960101cd303aca42f00000cac2400000c410606162636465666768696a6b6c6d6e"},
+    {"name":"trailing bytes","hex":"960101cd303aca42f00000cac2400000c410606162636465666768696a6b6c6d6e6f00"}
+  ]
+}
