@@ -571,7 +571,7 @@ test("with every channel open, cursors go only direct and every frame", async ()
   await relay.run();
   assert.equal(bodyFrames(), before);
   assert.equal(ts[0].sent.length, 2);
-  for (const { text } of ts[0].sent) ts[1].onMessage(ls[0].id, text);
+  for (const { data } of ts[0].sent) ts[1].onMessage(ls[0].id, data);
   await relay.run();
   clock.advance(200);
   assert.deepEqual(ls[1].cursors("B1").map((c) => c.x), [2]);
@@ -622,7 +622,7 @@ test("a live edit that comes direct before its hold is shown and keeps its track
   open(0, 1);
   const deliver = async () => {
     await ls[0].out;
-    for (const { text } of ts[0].sent.splice(0)) ts[1].onMessage(ls[0].id, text);
+    for (const { data } of ts[0].sent.splice(0)) ts[1].onMessage(ls[0].id, data);
     await ls[1].in;
   };
   ls[0].hold(["c1"]);
@@ -673,21 +673,21 @@ test("a connection that never speaks leaves the roster after 30 s, and the statu
 test("with every channel open, the last cursor goes once more 100 ms later, as a channel may lose it", async () => {
   const { relay, clock, ts, ls, open } = await direct();
   open(0, 1);
-  const seqOf = async (text) => JSON.parse(new TextDecoder().decode(await keys.openLive(decode(text)))).seq;
+  const seqOf = async (bytes) => JSON.parse(new TextDecoder().decode(await keys.openLive(bytes))).seq;
   ls[0].sendCursor("B1", 1, 1);
   await relay.run();
   clock.advance(8);
   ls[0].sendCursor("B1", null, null);
   await relay.run();
-  ts[1].onMessage(ls[0].id, ts[0].sent[0].text);
+  ts[1].onMessage(ls[0].id, ts[0].sent[0].data);
   clock.advance(99);
   await relay.run();
   assert.equal(ts[0].sent.length, 2);
   clock.advance(1);
   await relay.run();
   assert.equal(ts[0].sent.length, 3);
-  assert.ok((await seqOf(ts[0].sent[2].text)) > (await seqOf(ts[0].sent[1].text)));
-  ts[1].onMessage(ls[0].id, ts[0].sent[2].text);
+  assert.ok((await seqOf(ts[0].sent[2].data)) > (await seqOf(ts[0].sent[1].data)));
+  ts[1].onMessage(ls[0].id, ts[0].sent[2].data);
   await relay.run();
   assert.deepEqual(ls[1].cursors("B1"), []);
   clock.advance(1000);
@@ -700,7 +700,7 @@ test("only cursors and live edits are taken from a channel", async () => {
   open(0, 1);
   const pushes = [];
   ls[1].onPushed = (v) => pushes.push(v);
-  const sealed = encode(await keys.sealLive(new TextEncoder().encode(JSON.stringify({ t: "pushed", version: 9 }))));
+  const sealed = await keys.sealLive(new TextEncoder().encode(JSON.stringify({ t: "pushed", version: 9 })));
   ts[1].onMessage(ls[0].id, sealed);
   await relay.run();
   assert.deepEqual(pushes, []);

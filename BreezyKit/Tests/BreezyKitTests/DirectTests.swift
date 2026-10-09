@@ -6,7 +6,7 @@ import Testing
   var now = Date(timeIntervalSince1970: 1_000_000)
   let transport = FakePeerTransport()
   var relayed: [[String: JSONValue]] = []
-  var messages: [(String, String)] = []
+  var messages: [(String, PeerMessage)] = []
   var changes = 0
   lazy var direct = Direct(
     transport: transport, now: { [unowned self] in now },
@@ -35,7 +35,7 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   #expect(r.transport.log == ["create p1", "answer p1 o"])
   r.transport.release()
   #expect(r.transport.log == ["create p1", "answer p1 o", "add p1 c1"])
-  #expect(r.relayed == [["t": .string("answer"), "sdp": .string("answer-sdp p1"), "to": .string("p1")]])
+  #expect(r.relayed == [["t": .string("answer"), "sdp": .string("answer-sdp p1"), "v": .number(2), "to": .string("p1")]])
 }
 
 @MainActor @Test func anAnswerIsAcceptedThenEarlyCandidatesAdded() {
@@ -58,12 +58,51 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
 @MainActor @Test func openChannelsCarryMessages() {
   let r = Rig()
   r.direct.welcome(["p1"])
-  r.transport.onMessage?("p1", "early")
+  r.transport.onMessage?("p1", .text("early"))
   r.transport.onState?("p1", .open)
   #expect(r.direct.isOpen("p1") && r.changes == 1)
-  r.transport.onMessage?("p1", "hello")
-  #expect(r.messages.map(\.1) == ["hello"])
+  r.transport.onMessage?("p1", .text("hello"))
+  #expect(r.messages.map(\.1) == [.text("hello")])
   #expect(r.direct.send("p1", "x") && !r.direct.send("p2", "x"))
+}
+
+@MainActor @Test func offersAndAnswersSayVersion2AndALinkIs2OnlyWhenTheOtherSideSaidSo() {
+  func offerer(_ answer: [String: JSONValue]) -> Int {
+    let r = Rig()
+    r.direct.welcome(["p1"])
+    #expect(r.relayed == [["t": .string("offer"), "sdp": .string("offer-sdp p1"), "v": .number(2), "to": .string("p1")]])
+    #expect(r.direct.version("p1") == 1)
+    r.direct.heard("p1", answer)
+    return r.direct.version("p1")
+  }
+  #expect(offerer(["t": .string("answer"), "sdp": .string("a"), "v": .number(2)]) == 2)
+  #expect(offerer(["t": .string("answer"), "sdp": .string("a")]) == 1)
+  func answerer(_ offer: [String: JSONValue]) -> Int {
+    let r = Rig()
+    r.direct.heard("p1", offer)
+    #expect(r.relayed.first?["v"] == .number(2))
+    return r.direct.version("p1")
+  }
+  #expect(answerer(["t": .string("offer"), "sdp": .string("o"), "v": .number(2)]) == 2)
+  #expect(answerer(["t": .string("offer"), "sdp": .string("o")]) == 1)
+  #expect(Rig().direct.version("p9") == 1)
+}
+
+@MainActor @Test func aVersion2LinkCarriesOnlyBytesAVersion1LinkOnlyText() {
+  let r = Rig()
+  r.direct.welcome(["p1"])
+  r.direct.heard("p2", ["t": .string("offer"), "sdp": .string("o"), "v": .number(2)])
+  r.transport.onState?("p1", .open)
+  r.transport.onState?("p2", .open)
+  let bytes = Data([1, 2])
+  r.transport.onMessage?("p1", .bytes(bytes))
+  r.transport.onMessage?("p1", .text("one"))
+  r.transport.onMessage?("p2", .text("two"))
+  r.transport.onMessage?("p2", .bytes(bytes))
+  #expect(r.messages.map(\.0) == ["p1", "p2"])
+  #expect(r.messages.map(\.1) == [.text("one"), .bytes(bytes)])
+  #expect(r.direct.sendBytes("p2", bytes) && !r.direct.sendBytes("p3", bytes))
+  #expect(r.transport.sent.map(\.id) == ["p2"] && r.transport.sent.map(\.message) == [.bytes(bytes)])
 }
 
 @MainActor @Test func aChannelThatDoesNotOpenIn10sIsGivenUp() {
@@ -114,7 +153,7 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o")])
   r.transport.release()
   #expect(r.transport.log == ["create p1", "answer p1 o"])
-  #expect(r.relayed == [["t": .string("answer"), "sdp": .string("answer-sdp p1"), "to": .string("p1")]])
+  #expect(r.relayed == [["t": .string("answer"), "sdp": .string("answer-sdp p1"), "v": .number(2), "to": .string("p1")]])
   r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o2")])
   #expect(r.transport.log.last == "answer p1 o2")
 }

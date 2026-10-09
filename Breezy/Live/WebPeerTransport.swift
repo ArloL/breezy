@@ -6,7 +6,7 @@ import WebKit
 @MainActor final class WebPeerTransport: PeerTransport {
   var onCandidate: ((String, IceCandidate?) -> Void)?
   var onState: ((String, PeerState) -> Void)?
-  var onMessage: ((String, String) -> Void)?
+  var onMessage: ((String, PeerMessage) -> Void)?
   let prefix = UUID().uuidString + " "
   private let page = PeerPage.shared
 
@@ -50,6 +50,12 @@ import WebKit
     return true
   }
 
+  /// As `send`, in base64url, since script calls carry no bytes.
+  func sendBytes(_ peer: String, _ data: Data) -> Bool {
+    page.call("sendBytes(id, b64)", ["id": key(peer), "b64": Base64URL.encode(data)])
+    return true
+  }
+
   func close(_ peer: String) {
     created.remove(peer)
     page.call("close(id)", ["id": key(peer)])
@@ -66,7 +72,11 @@ import WebKit
     case "state":
       if let s = (m["state"] as? String).flatMap({ PeerState(rawValue: $0) }) { onState?(peer, s) }
     case "message":
-      if let t = m["text"] as? String { onMessage?(peer, t) }
+      if let t = m["text"] as? String {
+        onMessage?(peer, .text(t))
+      } else if let b = (m["bytes"] as? String).flatMap(Base64URL.decode) {
+        onMessage?(peer, .bytes(b))
+      }
     default:
       break
     }

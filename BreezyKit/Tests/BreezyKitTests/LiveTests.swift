@@ -582,7 +582,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   relay.run()
   #expect(broadcasts(relay) == before)
   #expect(ts[0].sent.count == 2)
-  for s in ts[0].sent { ts[1].onMessage?(ls[0].id!, s.text) }
+  for s in ts[0].sent { ts[1].onMessage?(ls[0].id!, s.message) }
   clock.advance(0.2)
   #expect(ls[1].cursors(on: "B1").map { $0.cursor.x } == [2])
 }
@@ -630,7 +630,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   let (relay, clock, ts, ls) = direct()
   open(ts, ls, 0, 1)
   let deliver = {
-    for s in ts[0].sent { ts[1].onMessage?(ls[0].id!, s.text) }
+    for s in ts[0].sent { ts[1].onMessage?(ls[0].id!, s.message) }
     ts[0].sent = []
   }
   let pos = { (x: Double, y: Double) -> JSONValue in .array([.number(x), .number(y)]) }
@@ -682,20 +682,21 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
 @MainActor @Test func withEveryChannelOpenTheLastCursorGoesOnceMore100msLater() throws {
   let (relay, clock, ts, ls) = direct()
   open(ts, ls, 0, 1)
-  let seq = { (text: String) throws -> Double? in
-    try JSONDecoder().decode([String: JSONValue].self, from: keys().openLive(Base64URL.decode(text)!))["seq"]?.number
+  let seq = { (m: PeerMessage) throws -> Double? in
+    guard case let .bytes(sealed) = m else { return nil }
+    return try JSONDecoder().decode([String: JSONValue].self, from: keys().openLive(sealed))["seq"]?.number
   }
   ls[0].sendCursor(board: "B1", x: 1, y: 1)
   clock.advance(Live.directSendInterval)
   ls[0].sendCursor(board: "B1", x: nil, y: nil)
   relay.run()
-  ts[1].onMessage?(ls[0].id!, ts[0].sent[0].text)
+  ts[1].onMessage?(ls[0].id!, ts[0].sent[0].message)
   clock.advance(0.099)
   #expect(ts[0].sent.count == 2)
   clock.advance(0.001)
   #expect(ts[0].sent.count == 3)
-  #expect(try seq(ts[0].sent[2].text)! > seq(ts[0].sent[1].text)!)
-  ts[1].onMessage?(ls[0].id!, ts[0].sent[2].text)
+  #expect(try seq(ts[0].sent[2].message)! > seq(ts[0].sent[1].message)!)
+  ts[1].onMessage?(ls[0].id!, ts[0].sent[2].message)
   #expect(ls[1].cursors(on: "B1").isEmpty)
   clock.advance(1)
   #expect(ts[0].sent.count == 3)
@@ -706,8 +707,8 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   open(ts, ls, 0, 1)
   var pushes: [Int] = []
   ls[1].onPushed = { v, _ in pushes.append(v) }
-  let sealed = Base64URL.encode(try keys().sealLive(Data(#"{"t":"pushed","version":9}"#.utf8)))
-  ts[1].onMessage?(ls[0].id!, sealed)
+  let sealed = try keys().sealLive(Data(#"{"t":"pushed","version":9}"#.utf8))
+  ts[1].onMessage?(ls[0].id!, .bytes(sealed))
   relay.run()
   #expect(pushes.isEmpty)
 }
