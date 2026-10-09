@@ -151,6 +151,53 @@
       ]
     },
     {
+      "name": "a field changed below float32 is resent",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"w":240}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018102ca43700000c0c0",
+          "decoded": {"t":"live","seq":1,"at":10,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{"AQEBAQEBAQEBAQEBAQEBAQ":{"w":240}},"caret":null,"cursor":null}
+        },
+        {
+          "now": 50,
+          "seq": 2,
+          "at": 60,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"w":240.000000001}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980202cd0258c0c081c410010101010101010101010101010101018102ca43700000c0c0",
+          "decoded": {"t":"live","seq":2,"at":60,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{"AQEBAQEBAQEBAQEBAQEBAQ":{"w":240}},"caret":null,"cursor":null}
+        },
+        {
+          "now": 100,
+          "seq": 3,
+          "at": 110,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"w":240.000000001}},
+            "starts": {},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980203cd044cc0c080c0c0",
+          "decoded": {"t":"live","seq":3,"at":110,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        }
+      ]
+    },
+    {
       "name": "one card dragged",
       "steps": [
         {

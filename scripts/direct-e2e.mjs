@@ -10,6 +10,7 @@ import { tmpdir, homedir } from "node:os";
 import { join, extname } from "node:path";
 import { randomBytes } from "node:crypto";
 import { inviteLink } from "../web/sync/crypto.js";
+import { unpack } from "../web/sync/msgpack.js";
 
 const root = new URL("..", import.meta.url).pathname;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -98,7 +99,7 @@ async function browser(name) {
   await send("Page.enable");
   await send("Network.enable");
   // every peer connection the page makes, so that the test can close them
-  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size, kind: typeof d === 'string' ? null : new Uint8Array(d)[1] }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size, kind: typeof d === 'string' ? null : new Uint8Array(d)[1], bytes: typeof d === 'string' ? null : Array.from(new Uint8Array(d)) }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
   const go = async (url) => {
     const loaded = new Promise((r) => listeners.push(function l(m) { if (m.method === "Page.loadEventFired") { listeners.splice(listeners.indexOf(l), 1); r(); } }));
     await send("Page.navigate", { url });
@@ -218,11 +219,11 @@ async function liveSizes(y) {
   await a.run(`document.activeElement.blur()`);
   const dragged = await sentDuring(async () => {
     await mouse("mousePressed", card.x, card.y, { clickCount: 1 });
-    const moves = 20, t0 = Date.now();
+    const moves = 20;
     for (let i = 1; i <= moves; i++) { await mouse("mouseMoved", card.x + i * 10, card.y + i * 4, { buttons: 1 }); await sleep(30); }
     const held = await a.run("__ch.length");
     await mouse("mouseReleased", card.x + 200, card.y + 80);
-    return { held, moves, ms: Date.now() - t0 };
+    return { held, moves };
   });
   return { typed, dragged };
 }
@@ -232,12 +233,16 @@ for (const [what, sent] of [["typing", over.typed], ["dragging a card", over.dra
   if (sent.channel.length < 3) throw new Error(`no live bodies went over the channel while ${what}`);
   if (sent.channel.some((m) => !m.bin)) throw new Error(`a channel message was text while ${what}`);
   if (sent.held !== undefined) {
-    const moves = sent.channel.slice(0, sent.held);
+    const moves = sent.channel.slice(0, sent.held), shown = moves.map((m) => `${m.kind}:${m.n}`);
     // a cursor body of its own only as the channel's resend, when a move comes late
-    if (moves.length > sent.moves + 2 || moves.filter((m) => m.kind !== 2).length > 2) throw new Error(`not one live body a move while dragging: ${moves.map((m) => `${m.kind}:${m.n}`)}`);
-    // the card goes as its group's offset; above 32 B only the keyframes, one at the press and one a second
-    const big = moves.filter((m) => m.kind === 2 && m.n > 32);
-    if (big.length > 1 + Math.ceil(sent.ms / 1000)) throw new Error(`live bodies above 32 B while dragging: ${moves.map((m) => `${m.kind}:${m.n}`)}`);
+    if (moves.length > sent.moves + 2 || moves.filter((m) => m.kind !== 2).length > 2) throw new Error(`not one live body a move while dragging: ${shown}`);
+    // past keyframes (with a board) and bodies naming the group's ids, the card goes as its group's offset, never as an item
+    const live = moves.filter((m) => m.kind === 2).map((m) => ({ n: m.n, v: unpack(Uint8Array.from(m.bytes)) }));
+    const deltas = live.filter(({ v }) => v[3] === null && v[6]?.length !== 3);
+    if (live.some(({ v }) => v[5].size)) throw new Error(`the card went as an item while dragging: ${shown}`);
+    if (deltas.filter(({ v }) => v[6]).length < 3) throw new Error(`the card's offset went in few bodies while dragging: ${shown}`);
+    // 32 B with a 1-byte seq and a 3-byte at; seq passes 127 and at 6553.5 ms in longer runs
+    if (deltas.some(({ n }) => n > 36)) throw new Error(`live bodies above 36 B between keyframes while dragging: ${shown}`);
   }
   console.log(`${what}, channel: ${sent.channel.length} binary messages, median ${median(sent.channel.map((m) => m.n))} B (${list(sent)}); relay body frames: ${bodies(sent).length}`);
 }
