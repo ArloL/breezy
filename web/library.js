@@ -1,57 +1,57 @@
-import { Store, withFreshIDs } from "./sync/store.js";
-import { Saver } from "./sync/saver.js";
-import { loadState, saveState } from "./sync/idb.js";
+import { withFreshIDs } from "./sync/store.js";
+import { Spaces } from "./sync/spaces.js";
+import { storage } from "./sync/idb.js";
 import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
-import { SyncEngine, statusLines } from "./sync/engine.js";
+import { statusLines } from "./sync/engine.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
 import * as R from "./rules.js";
 
-/** The boards on this device: the store in IndexedDB, the board list and the open board. */
+const MORE = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+
+/** The boards on this device: their groups in IndexedDB, the board list and the open board. */
 export class Library {
   static async open(app) {
-    let state = null, readOnly = false;
+    let spaces;
     try {
-      state = await loadState();
+      spaces = await Spaces.open(storage);
     } catch (error) {
       // saving now could overwrite boards that failed to load
       console.warn("boards not loaded", error);
-      readOnly = true;
+      spaces = new Spaces(storage, {}, { readOnly: true });
     }
-    const lib = new Library(app, new Store(state ?? undefined), readOnly);
-    if (!state) lib.store.createBoard("Sample", withFreshIDs(sampleBoard()));
+    const lib = new Library(app, spaces);
+    const link = location.hash.includes("#join=") ? location.href : null;
+    if (link) history.replaceState(null, "", location.pathname + location.search);
+    if (spaces.fresh && !link) spaces.local.store.createBoard("Sample", withFreshIDs(sampleBoard()));
     lib.showList();
-    if (location.hash.includes("#join=")) {
-      const text = location.href;
-      history.replaceState(null, "", location.pathname + location.search);
-      lib.join(text);
-    }
-    lib.engine.sync();
+    if (link) lib.join(link);
+    spaces.syncAll();
     return lib;
   }
 
-  constructor(app, store, readOnly) {
+  constructor(app, spaces) {
     this.app = app;
-    this.store = store;
-    this.readOnly = readOnly;
+    this.spaces = spaces;
     this.id = null;
+    this.group = null;
     this.binding = null;
+    /** The space whose menu was opened last. */
+    this.menuGroup = null;
     app.library = this;
-    this.saver = new Saver(() => saveState(this.store.state));
-    this.saver.enabled = !readOnly;
-    this.saver.onError = (error) => {
+    spaces.onChange = (group, boards, remote) => this.changed(group, boards, remote);
+    spaces.onStatus = () => {
+      this.renderStatus();
+      app.ui.updateSync();
+    };
+    spaces.onSaveError = (error) => {
       console.warn("boards not saved", error);
       app.ui.updateSync();
     };
-    store.onDirty = () => this.saver.schedule();
-    store.onChange = (boards, remote) => this.changed(boards, remote);
-    this.engine = new SyncEngine(store);
-    this.engine.flushLocal = () => this.binding?.flush();
-    this.engine.onStatus = () => app.ui.updateSync();
-    setInterval(() => !document.hidden && this.engine.sync(), 5000);
-    document.addEventListener("visibilitychange", () => document.hidden || this.engine.sync());
-    app.ui.updateSync();
+    spaces.flushLocal = () => this.binding?.flush();
+    setInterval(() => !document.hidden && spaces.syncAll(), 5000);
+    document.addEventListener("visibilitychange", () => document.hidden || spaces.syncAll());
     const change = app.model.onChange;
     app.model.onChange = () => {
       change();
@@ -63,33 +63,36 @@ export class Library {
     });
     const hide = () => {
       this.binding?.flush();
-      this.saver.flush();
+      spaces.flushAll();
     };
     document.addEventListener("visibilitychange", () => document.hidden && hide());
     addEventListener("pagehide", hide);
     document.querySelector('[data-act="boards"]').hidden = false;
   }
 
-  changed(boards, remote) {
-    if (this.id && boards.has(this.id)) {
-      if (this.store.title(this.id) === null) return this.showList();
+  changed(group, boards, remote) {
+    if (this.id && group === this.group && boards.has(this.id)) {
+      if (group.store.title(this.id) === null) return this.showList();
       if (remote) this.binding.pull();
     }
     if (!this.id) this.renderList();
-    if (!remote) this.engine.changed();
     this.app.ui.updateSync();
   }
 
   open(id) {
     this.binding?.flush();
     this.binding = null;
+    const group = this.spaces.groupOf(id);
+    if (!group) return this.showList();
     this.id = id;
-    const b = this.store.board(id);
+    this.group = group;
+    const b = group.store.board(id);
     this.restack(b);
     document.body.dataset.screen = "board";
     this.app.load(b);
-    this.binding = new Binding(this.store, this.app.model, id, this.restack);
-    this.engine.sync();
+    this.binding = new Binding(group.store, this.app.model, id, this.restack);
+    this.app.ui.updateSync();
+    group.engine.sync();
   }
 
   showList() {
@@ -97,68 +100,152 @@ export class Library {
     this.binding?.flush();
     this.binding = null;
     this.id = null;
+    this.group = null;
     document.body.dataset.screen = "boards";
     this.renderList();
+    this.app.ui.updateSync();
   }
 
+  /** A section per group; On this device only when it has boards or the device is in no space. */
   renderList() {
-    const ul = document.querySelector(".boards-list");
-    ul.replaceChildren(...this.store.boards().map(({ id, title }) => {
-      const li = document.createElement("li");
-      const open = document.createElement("button");
-      open.className = "open";
-      open.textContent = title || "Untitled";
-      open.addEventListener("click", () => this.open(id));
-      const edit = document.createElement("button");
-      edit.className = "edit";
-      edit.setAttribute("aria-label", `Rename or delete ${title || "Untitled"}`);
-      edit.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
-      edit.addEventListener("click", () => this.edit(id));
-      li.append(open, edit);
-      return li;
-    }));
-    ul.hidden = !ul.children.length;
+    const { spaces } = this;
+    const shown = spaces.groups().filter((g) => g.space || !spaces.spaces.length || g.store.boards().length);
+    document.querySelector(".boards-groups").replaceChildren(...shown.map((g) => this.renderGroup(g)));
+    this.renderStatus();
   }
 
-  async newBoard() {
+  renderGroup(g) {
+    const section = document.createElement("section");
+    section.className = "boards-group";
+    section.dataset.group = g.key;
+    const header = document.createElement("header");
+    const titles = document.createElement("div");
+    const h2 = document.createElement("h2");
+    h2.textContent = g.name;
+    const status = document.createElement("p");
+    status.className = "status";
+    titles.append(h2, status);
+    header.append(titles);
+    if (g.space) {
+      const more = document.createElement("button");
+      more.className = "edit";
+      more.setAttribute("aria-label", `${g.name} options`);
+      more.innerHTML = MORE;
+      more.addEventListener("pointerdown", () => this.pointMenu(more, g));
+      this.app.ui.menus.attach(more, document.querySelector(".menu.space"));
+      header.append(more);
+    }
+    const ul = document.createElement("ul");
+    ul.className = "boards-list";
+    for (const { id, title } of g.store.boards()) ul.append(this.renderBoard(id, title));
+    const li = document.createElement("li");
+    const add = document.createElement("button");
+    add.className = "new strong";
+    add.textContent = "New Board";
+    add.addEventListener("click", () => this.newBoard(g));
+    li.append(add);
+    ul.append(li);
+    section.append(header, ul);
+    return section;
+  }
+
+  renderBoard(id, title) {
+    const li = document.createElement("li");
+    const open = document.createElement("button");
+    open.className = "open";
+    open.textContent = title || "Untitled";
+    open.addEventListener("click", () => this.open(id));
+    const edit = document.createElement("button");
+    edit.className = "edit";
+    edit.setAttribute("aria-label", `Rename, move or delete ${title || "Untitled"}`);
+    edit.innerHTML = MORE;
+    edit.addEventListener("click", () => this.edit(id));
+    li.append(open, edit);
+    return li;
+  }
+
+  /** Each space's first status line under its name, in place, so a tap under way isn't lost to a new list. */
+  renderStatus() {
+    for (const g of this.spaces.spaces) {
+      const p = document.querySelector(`.boards-group[data-group="${g.key}"] .status`);
+      if (p) p.textContent = statusLines(g.engine.status)[0];
+    }
+  }
+
+  /** Puts the space menu under `button`, for `group`. */
+  pointMenu(button, group) {
+    this.menuGroup = group;
+    const r = button.getBoundingClientRect();
+    const menu = document.querySelector(".menu.space");
+    menu.style.top = `${r.bottom + 6}px`;
+    menu.style.right = `${innerWidth - r.right}px`;
+  }
+
+  reveal(group) {
+    document.querySelector(`.boards-group[data-group="${group.key}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+
+  async newBoard(group) {
     const r = await ask({ title: "New Board", value: "", placeholder: "Name", ok: "Create" });
     const title = r?.value?.trim();
-    if (title) this.open(this.store.createBoard(title));
+    if (title && this.spaces.groups().includes(group)) this.open(group.store.createBoard(title));
   }
 
   async edit(id) {
-    const title = this.store.title(id);
-    const r = await ask({ title: "Rename Board", value: title, ok: "Rename", danger: "Delete Board" });
-    if (r?.value?.trim() && r.value.trim() !== title) return this.store.renameBoard(id, r.value.trim());
+    const group = this.spaces.groupOf(id);
+    const title = group?.store.title(id);
+    if (title == null) return;
+    const others = this.spaces.groups().filter((g) => g !== group);
+    const r = await ask({ title: "Rename Board", value: title, ok: "Rename", danger: "Delete Board", choices: others.length ? ["Move to…"] : [] });
+    if (r?.choice === 0) return this.move(id, group, others);
+    if (r?.value?.trim() && r.value.trim() !== title) return group.store.renameBoard(id, r.value.trim());
     if (!r?.danger) return;
     const sure = await ask({
       title: `Delete “${title}”?`,
-      message: this.store.syncing ? "It is deleted on every device in the space." : "This can’t be undone.",
+      message: group.space ? `It is deleted on every device in “${group.name}”.` : "This can’t be undone.",
       ok: null, danger: "Delete",
     });
-    if (sure?.danger) this.store.deleteBoard(id);
+    if (sure?.danger) group.store.deleteBoard(id);
   }
 
+  async move(id, group, others) {
+    const title = group.store.title(id);
+    const r = await ask({ title: `Move “${title}” to`, choices: others.map((g) => g.name), ok: null });
+    const target = others[r?.choice];
+    if (!target || !this.spaces.groups().includes(target)) return;
+    if (group.space) {
+      const sure = await ask({ title: `Move “${title}” to “${target.name}”?`, message: `It is removed from “${group.name}” on every device.`, ok: "Move" });
+      if (!sure) return;
+    }
+    if (await this.spaces.move(id, target)) return;
+    await ask({ title: "Boards can’t be saved on this device", message: `“${title}” stays in “${group.name}”.`, cancel: null });
+  }
+
+  /** The ⋯ menu's lines: whether boards can be saved, and the open board's space status. */
   statusLines() {
-    const unsaved = this.readOnly || this.saver.failed;
-    return [...(unsaved ? ["Boards can’t be saved on this device"] : []), ...statusLines(this.engine.status)];
+    const unsaved = this.spaces.readOnly || this.spaces.saveFailed;
+    return [...(unsaved ? ["Boards can’t be saved on this device"] : []), ...(this.group?.space ? statusLines(this.group.engine.status) : [])];
   }
 
-  async startSyncing() {
+  async newSpace() {
+    const named = await ask({ title: "New Space", message: "Its boards are shared with whoever you send its invite.", value: "", placeholder: "Name", ok: "Next" });
+    const name = named?.value?.trim();
+    if (!name) return;
     const r = await ask({
-      title: "Start Syncing",
+      title: "Server",
       message: "The address of your Breezy server. Boards are encrypted on this device; the server can’t read them.",
-      value: "", placeholder: "https://example.com/breezy/sync.php", ok: "Start",
+      value: this.spaces.lastServer ?? "", placeholder: "https://example.com/breezy/sync.php", ok: "Create",
     });
     const server = r?.value?.trim();
     if (!server) return;
     if (!validServer(server)) return ask({ title: "That isn’t a server address", message: "Use an https:// address ending in sync.php.", cancel: null });
-    this.store.startSyncing(server);
-    this.engine.reset();
-    await this.engine.sync();
+    const g = this.spaces.newSpace(server, name);
+    this.showList();
+    this.reveal(g);
+    await g.engine.sync();
   }
 
-  /** Joins the space in `text`, a link opened or pasted, or asks for one; a link opened always asks first. */
+  /** Joins the space in `text`, a link opened or pasted, or asks for one; a link opened asks first. */
   async join(text) {
     const opened = text !== undefined;
     if (!opened) {
@@ -168,26 +255,38 @@ export class Library {
     }
     const invite = parseInvite(text);
     if (!invite) return ask({ title: "That isn’t an invite link", message: "Copy the whole link from Share Invite on the other device.", cancel: null });
-    const host = new URL(invite.server).hostname;
-    const n = this.store.boards().length;
-    if (n) {
-      const sure = await ask({
-        title: "Replace the boards here?",
-        message: `Joining the space on ${host} shows its boards instead of the ${n === 1 ? "board" : `${n} boards`} on this device, which are deleted from it.`,
-        ok: null, danger: "Join",
-      });
-      if (!sure?.danger) return;
-    } else if (opened && !(await ask({ title: `Join the space on ${host}?`, ok: "Join" }))) {
-      return;
+    const known = this.spaces.groupFor(invite.space);
+    if (!known) {
+      const host = new URL(invite.server).hostname;
+      const title = invite.name ? `Join “${invite.name}” on ${host}?` : `Join the space on ${host}?`;
+      if (opened && !(await ask({ title, ok: "Join" }))) return;
     }
+    const g = known ?? this.spaces.join(invite);
     this.showList();
-    this.store.join(invite);
-    this.engine.reset();
-    await this.engine.sync();
+    this.reveal(g);
+    await g.engine.sync();
   }
 
-  async share() {
-    const link = inviteLink(this.store.invite);
+  async renameSpace(g = this.menuGroup) {
+    if (!g?.space) return;
+    const r = await ask({ title: "Rename Space", message: "The new name shows on every device in the space.", value: g.name, ok: "Rename" });
+    const name = r?.value?.trim();
+    if (name && name !== g.name) g.store.rename(name);
+  }
+
+  async leaveSpace(g = this.menuGroup) {
+    if (!g?.space) return;
+    const sure = await ask({ title: `Leave “${g.name}”?`, message: "Its boards are removed from this device. Others in the space keep them.", ok: null, danger: "Leave" });
+    if (!sure?.danger) return;
+    if (this.group === g) this.showList();
+    await this.spaces.leave(g);
+    this.renderList();
+  }
+
+  async share(g = this.menuGroup) {
+    const invite = g?.store.invite;
+    if (!invite) return;
+    const link = inviteLink(invite);
     try {
       await navigator.share({ url: link });
       return;

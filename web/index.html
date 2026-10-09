@@ -61,8 +61,7 @@
     <h1>Boards</h1>
     <div class="pill"><button data-act="more" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
   </header>
-  <ul class="boards-list"></ul>
-  <button data-act="new-board" class="boards-new strong">New Board</button>
+  <div class="boards-groups"></div>
 </section>
 
 <div id="sheet" hidden>
@@ -70,6 +69,7 @@
     <p class="sheet-title"></p>
     <p class="sheet-message"></p>
     <input type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="sheet-choices" hidden></div>
     <div class="sheet-buttons">
       <button type="button" data-sheet="cancel">Cancel</button>
       <button type="button" data-sheet="danger" class="danger"></button>
@@ -81,11 +81,16 @@
 <div id="zoom-level" hidden></div>
 
 <div class="menu more" hidden>
-  <p class="status">Not syncing</p>
-  <button data-act="start-sync">Start Syncing</button>
+  <p class="status" hidden></p>
+  <button data-act="new-space">New Space</button>
   <button data-act="join">Join Space</button>
-  <button data-act="share" hidden>Share Invite</button>
   <button data-act="version" data-version="dev">Version</button>
+</div>
+
+<div class="menu space" hidden>
+  <button data-act="rename-space">Rename Space</button>
+  <button data-act="share">Share Invite</button>
+  <button data-act="leave-space">Leave Space</button>
 </div>
 
 <div id="find" hidden>

@@ -69,25 +69,26 @@ export class UI {
     this.update();
   }
 
-  /** The ⋯ menu's sync status and the actions that fit it. */
+  /** The ⋯ menu's status: the open board's space, and whether boards can be saved. */
   updateSync() {
     const lib = this.app.library;
     if (!lib) return;
-    this.$(".menu.more .status").textContent = lib.statusLines().join("\n");
-    this.$('[data-act="start-sync"]').hidden = lib.store.syncing;
-    this.$('[data-act="share"]').hidden = !lib.store.syncing;
+    const status = this.$(".menu.more .status");
+    status.textContent = lib.statusLines().join("\n");
+    status.hidden = !status.textContent;
   }
 
   act(name, b) {
     const app = this.app;
     switch (name) {
       case "boards": return app.library?.showList();
-      case "new-board": return app.library?.newBoard();
       case "undo": return app.undo();
       case "redo": return app.redo();
       case "search": return this.openFind();
       case "version": b.textContent = b.dataset.next ? `${b.dataset.version}, ${b.dataset.next} ready` : b.dataset.version; return;
-      case "start-sync": this.closeMenu(); return app.library?.startSyncing();
+      case "new-space": this.closeMenu(); return app.library?.newSpace();
+      case "rename-space": this.closeMenu(); return app.library?.renameSpace();
+      case "leave-space": this.closeMenu(); return app.library?.leaveSpace();
       case "join": this.closeMenu(); return app.library?.join();
       case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
