@@ -19,6 +19,11 @@ import Testing
   #expect(f["n"]?["order"] == nil)
 }
 
+@Test func startPositionsAreWhereTheHeldCardsAndLanesWereWhenTheGestureBegan() {
+  let start = board([card("a", 1, 2), card("b", 3, 4)], [lane("l", 5, 6)])
+  #expect(Records.startPositions(start, ids: ["a", "l", "new"]) == ["a": [1, 2], "l": [5, 6]])
+}
+
 @Test func anOverlayIsDrawnOverTheBoard() {
   let b = board([card("a", 0, 0, "x")], [lane("l", 0, 0)])
   let shown = b.overlaid([

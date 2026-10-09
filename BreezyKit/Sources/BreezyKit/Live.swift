@@ -18,8 +18,6 @@ public struct Person: Equatable, Sendable {
     let s = name.split(whereSeparator: \.isWhitespace).prefix(2).compactMap { $0.first.map { String($0).uppercased() } }.joined()
     return s.isEmpty ? "?" : s
   }
-
-  var hex: String { String(format: "#%06x", colour) }
 }
 
 /// Where someone's pointer is, in board coordinates.
@@ -52,7 +50,11 @@ public struct Caret: Equatable, Sendable {
 public struct Peer: Equatable, Sendable {
   /// Nil until its first presence.
   public var person: Person?
+  /// 2 when its presence says so: it reads compact bodies.
+  public var v = 1
   public var board: String?
+  /// Every board it shows; nil when its presence names only `board`.
+  public var boards: [String]?
   public var selection: [String] = []
   public var cursor: Cursor?
   public var heard: Date
@@ -69,15 +71,20 @@ public struct Peer: Equatable, Sendable {
   var motion: [String: Track] = [:]
   /// Overlay ids whose live body last came, at this time, while it did not hold them.
   var unheld: [String: Date] = [:]
+
+  /// Whether its presence shows `board`.
+  func shows(_ board: String) -> Bool { boards?.contains(board) ?? (self.board == board) }
 }
 
 /// A WebSocket as `Live` uses it; tests put a fake in its place.
 @MainActor public protocol LiveSocket: AnyObject {
   var onOpen: (() -> Void)? { get set }
   var onMessage: ((String) -> Void)? { get set }
+  var onData: ((Data) -> Void)? { get set }
   /// With the close code: 1006 when the connection failed.
   var onClose: ((Int) -> Void)? { get set }
   func send(_ text: String)
+  func sendData(_ data: Data)
   func close()
 }
 
@@ -85,6 +92,7 @@ public struct Peer: Equatable, Sendable {
 @MainActor public final class WebSocketTaskSocket: NSObject, LiveSocket, URLSessionWebSocketDelegate {
   public var onOpen: (() -> Void)?
   public var onMessage: ((String) -> Void)?
+  public var onData: ((Data) -> Void)?
   public var onClose: ((Int) -> Void)?
   private var session: URLSession!
   private var task: URLSessionWebSocketTask!
@@ -108,7 +116,7 @@ public struct Peer: Equatable, Sendable {
             self.onMessage?(s)
             self.receive()
           case .success(.data(let d)):
-            self.onMessage?(String(decoding: d, as: UTF8.self))
+            self.onData?(d)
             self.receive()
           case .success:
             self.receive()
@@ -123,6 +131,11 @@ public struct Peer: Equatable, Sendable {
   public func send(_ text: String) {
     guard !ended else { return }
     task.send(.string(text)) { _ in }
+  }
+
+  public func sendData(_ data: Data) {
+    guard !ended else { return }
+    task.send(.data(data)) { _ in }
   }
 
   /// Closes from this side, without `onClose`.
@@ -156,7 +169,8 @@ public struct Peer: Equatable, Sendable {
 }
 
 /// A space's live layer over its relay: who is here and where, what they hold, and their edits as they happen; see
-/// the multiplayer design. Bodies are sealed with the space key, so the relay reads none of them.
+/// the multiplayer and lean sync designs. Bodies are sealed with the space key, so the relay reads none of them; a
+/// version 2 channel carries compact bodies unsealed.
 @MainActor public final class Live {
   public static let sendInterval: TimeInterval = 0.05
   public static let directSendInterval: TimeInterval = 0.008
@@ -180,6 +194,62 @@ public struct Peer: Equatable, Sendable {
     return e
   }()
 
+  /// One way out, the open channels or the relay: its gate, its compact encoders, and what waits to go.
+  private final class Pipe {
+    enum Kind { case cursor, live }
+
+    let direct: Bool
+    let interval: TimeInterval
+    let cursorEncoder = CursorEncoder(), liveEncoder = LiveEncoder()
+    /// Who each encoder last sent to; another set starts from a keyframe.
+    var to: [Kind: String] = [:]
+    var cursor = false
+    /// The cursor waiting is the channels' resend of the last one.
+    var resend = false
+    var live = false
+    /// The next cursor goes to everyone: this device's cursor moved to another board.
+    var everyone = false
+    var sent = Date.distantPast, queued = false
+
+    init(direct: Bool, interval: TimeInterval) {
+      self.direct = direct
+      self.interval = interval
+    }
+
+    /// What `encode` makes for `ids`, nil when the body cannot be put compactly.
+    func compact(_ kind: Kind, _ ids: [String], _ encode: () throws -> Data) throws -> Data? {
+      let key = ids.joined(separator: " ")
+      if key != to[kind] { kind == .cursor ? cursorEncoder.reset() : liveEncoder.reset() }
+      to[kind] = key
+      do {
+        return try encode()
+      } catch is Compact.Failure {
+        return nil
+      } catch is Pack.Failure {
+        return nil
+      }
+    }
+
+    /// The next live body starts a gesture.
+    func restart() {
+      liveEncoder.reset()
+      to[.live] = nil
+    }
+  }
+
+  /// The latest live edit: what the gesture changed, and where its items were when it began.
+  private struct LiveState {
+    var board: String
+    var items: [String: LiveFields]
+    var caret: Caret?
+    var starts: [String: [Double]]
+  }
+
+  /// A sender's compact decoders, one per pipe.
+  private final class Decoders {
+    let direct = LiveDecoder(), relay = LiveDecoder()
+  }
+
   public let relay: String
   public let space: String
   let keys: SpaceKeys
@@ -200,6 +270,8 @@ public struct Peer: Equatable, Sendable {
   private let now: () -> Date
   private let uptime: () -> Double
   private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
+  /// What `at` in this device's bodies counts from, in ms of `uptime`.
+  let started: Double
   private var socket: LiveSocket?
   private var wanted = false
   private var failures = 0
@@ -210,23 +282,26 @@ public struct Peer: Equatable, Sendable {
   private var pingSent = Date.distantPast
   /// When a ping went out that nothing has answered yet.
   private var pingWaiting: Date?
-  private var presence: (board: String?, selection: [String]) = (nil, [])
+  private var presence: (board: String?, boards: [String], selection: [String]) = (nil, [], [])
   private var cursor: Cursor?
   private var cursorBoard = ""
   private var presenceSent = Date.distantPast
-  private var cursorSent = Date.distantPast, cursorQueued = false
-  /// Cursors the gate has sent.
+  /// Cursors the channels have sent, which a later one keeps from being sent again.
   private var cursorSends = 0
-  private var liveSent = Date.distantPast, liveQueued = false
-  private var lastLive: [String: JSONValue]?
+  private var lastLive: LiveState?
+  private let channels = Pipe(direct: true, interval: Live.directSendInterval)
+  private let relayPipe = Pipe(direct: false, interval: Live.sendInterval)
+  private var pipes: [Pipe] { [channels, relayPipe] }
   /// When a frame last reached the relay, which keeps this connection's holds there while it hears from it.
   private var relaySent = Date.distantPast
   private var storeCursor = 0
   private var seq = 0
   /// The other connections in the space, as the relay names them → when each joined or was last heard.
   private var roster: [String: Date] = [:]
-  private var direct: Direct?
+  private var decoders: [String: Decoders] = [:]
+  private(set) var direct: Direct?
 
+  /// `schedule(0, …)` runs on the next turn.
   public init(
     relay: String, space: String, keys: SpaceKeys, me: Person,
     socket: @escaping @MainActor (URL) -> LiveSocket = { WebSocketTaskSocket(url: $0) },
@@ -245,16 +320,22 @@ public struct Peer: Equatable, Sendable {
     self.now = now
     self.uptime = uptime
     self.schedule = schedule
+    started = uptime()
     if let transport {
       direct = Direct(
         transport: transport, now: now, relay: { [weak self] to, b in self?.send(b, to: to) },
-        // a version 2 link carries the sealed body's bytes
         message: { [weak self] from, m in
           switch m {
-          case let .text(t): self?.opened(from, t, direct: true)
-          case let .bytes(d): self?.opened(from, Base64URL.encode(d), direct: true)
+          case let .text(t): if let sealed = Base64URL.decode(t) { self?.opened(from, sealed, direct: true) }
+          case let .bytes(d): self?.take(from, d, direct: true, compactOnly: true)
           }
-        }, change: { [weak self] in self?.onChange?() })
+        },
+        change: { [weak self] in
+          guard let self else { return }
+          // a channel opened or closed: a peer moved between pipes, so each pipe's next body is a keyframe
+          for p in pipes { p.to = [:] }
+          onChange?()
+        })
     }
   }
 
@@ -271,6 +352,7 @@ public struct Peer: Equatable, Sendable {
     wanted = false
     mine = []
     lastLive = nil
+    for p in pipes { p.restart() }
     let s = socket
     socket = nil
     s?.close()
@@ -285,11 +367,18 @@ public struct Peer: Equatable, Sendable {
     socket = s
     s.onOpen = { [weak self, weak s] in
       guard let self, let s, s === socket else { return }
-      frame(["t": .string("auth"), "token": .string(Base64URL.encode(keys.relayToken))])
+      frame(["t": .string("auth"), "token": .string(Base64URL.encode(keys.relayToken)), "v": .number(2)])
     }
     s.onMessage = { [weak self, weak s] text in
       guard let self, let s, s === socket else { return }
+      // anything from the relay shows the socket is alive
+      pingWaiting = nil
       received(text)
+    }
+    s.onData = { [weak self, weak s] data in
+      guard let self, let s, s === socket else { return }
+      pingWaiting = nil
+      if let f = Frames.parseRelayFrame(data) { opened(String(f.from), f.body, direct: false) }
     }
     s.onClose = { [weak self, weak s] code in
       guard let self, let s, s === socket else { return }
@@ -323,6 +412,7 @@ public struct Peer: Equatable, Sendable {
     id = nil
     pingWaiting = nil
     peers = [:]
+    decoders = [:]
     holds = [:]
     roster = [:]
     direct?.reset()
@@ -330,49 +420,175 @@ public struct Peer: Equatable, Sendable {
   }
 
   private func frame(_ f: [String: JSONValue]) {
-    guard let socket, let data = try? Self.encoder.encode(JSONValue.object(f)) else { return }
+    guard let socket, let data = Self.json(f) else { return }
     socket.send(String(decoding: data, as: UTF8.self))
     relaySent = now()
   }
 
-  /// `body` sealed, as base64url; nil when too big to send.
-  private func seal(_ body: [String: JSONValue]) -> String? {
-    guard let plain = try? Self.encoder.encode(JSONValue.object(body)), let sealed = try? keys.sealLive(plain) else { return nil }
-    let b = Base64URL.encode(sealed)
-    return b.count <= Self.maxFrame - 100 ? b : nil
+  private static func json(_ body: [String: JSONValue]) -> Data? { try? encoder.encode(JSONValue.object(body)) }
+
+  /// How long `n` bytes are as base64url.
+  private static func b64Length(_ n: Int) -> Int { (n * 4 + 2) / 3 }
+
+  /// `plain` sealed; nil when too big to send.
+  private func seal(_ plain: Data) -> Data? {
+    guard let sealed = try? keys.sealLive(plain), Self.b64Length(sealed.count) <= Self.maxFrame - 100 else { return nil }
+    return sealed
   }
 
-  /// A sealed body to everyone else, or to connection `to`, or `fallback` instead if that is over `maxPushed`.
+  /// The relay's number for connection `id`; nil for one it does not name with digits.
+  private static func connNumber(_ id: String) -> Int? {
+    id.count <= 10 && !id.isEmpty && id.allSatisfy { $0.isASCII && $0.isNumber } ? Int(id) : nil
+  }
+
+  /// Sealed `plain` through the relay to connection `to`, or to everyone else when nil, or `fallback` instead if that is
+  /// over `maxPushed`; whether it went out.
+  @discardableResult private func post(_ plain: Data, to: String?, fallback: Data? = nil) -> Bool {
+    guard connected, let socket else { return false }
+    let conn = to.flatMap(Self.connNumber)
+    guard to == nil || conn != nil else { return false }
+    var sealed = seal(plain)
+    if let fallback, sealed.map({ Self.b64Length($0.count) > Self.maxPushed }) ?? true { sealed = seal(fallback) }
+    guard let sealed else { return false }
+    socket.sendData(Frames.relayFrame(to: conn, sealed))
+    relaySent = now()
+    return true
+  }
+
+  /// A JSON body to everyone else, or to connection `to`, or `fallback` instead if that is over `maxPushed`.
   @discardableResult private func send(_ body: [String: JSONValue], to: String? = nil, fallback: [String: JSONValue]? = nil) -> Bool {
-    guard connected else { return false }
-    var sealed = seal(body)
-    if let fallback, sealed.map({ $0.count > Self.maxPushed }) ?? true { sealed = seal(fallback) }
-    guard let b = sealed else { return false }
-    var f: [String: JSONValue] = ["body": .string(b)]
-    if let to { f["to"] = .string(to) }
-    frame(f)
-    return true
+    guard let plain = Self.json(body) else { return false }
+    return post(plain, to: to, fallback: fallback.flatMap(Self.json))
   }
 
-  /// Whether every other connection has an open channel.
-  var allDirect: Bool { !roster.isEmpty && roster.keys.allSatisfy { direct?.isOpen($0) == true } }
-  private var gateInterval: TimeInterval { allDirect ? Self.directSendInterval : Self.sendInterval }
+  // MARK: pipes
 
-  /// A cursor or live body, stamped with this device's time and the next sequence number: over every open channel, and
-  /// to the relay unless all are open; `relayOnly` for the holder's heartbeat, which keeps the holds there.
-  @discardableResult private func sendFast(_ body: [String: JSONValue], relayOnly: Bool = false) -> Bool {
-    guard connected else { return false }
-    var b = body
-    seq += 1
-    b["at"] = .number(uptime())
-    b["seq"] = .number(Double(seq))
-    guard let sealed = seal(b) else { return false }
-    if !relayOnly, let direct {
-      let bytes = Base64URL.decode(sealed) ?? Data()
-      for id in roster.keys.sorted() { if direct.version(id) == 2 { direct.sendBytes(id, bytes) } else { direct.send(id, sealed) } }
+  /// Roster connections that see `board`, or all of them for nil: by their `boards`, else their `board`, and any not
+  /// heard from yet.
+  private func recipients(_ board: String?) -> [String] {
+    roster.keys.sorted().filter { id in
+      guard let board, let p = peers[id], p.person != nil else { return true }
+      return p.shows(board)
     }
-    if relayOnly || !allDirect { frame(["body": .string(sealed)]) }
-    return true
+  }
+
+  /// Whether peer `p` sees this device's cursor board, and the board of its gesture under way.
+  private func watches(_ p: Peer) -> (cursor: Bool, live: Bool) {
+    guard p.person != nil else { return (false, false) }
+    return (!cursorBoard.isEmpty && p.shows(cursorBoard), !mine.isEmpty && lastLive.map { p.shows($0.board) } == true)
+  }
+
+  /// Peer `p` came to see this device's cursor or gesture, which `was` says it did not: they go again as they are now.
+  /// A keyframe when it was not among its pipe's last recipients; a peer without presence was, so it gets a delta on
+  /// what it was sent before.
+  private func caughtUp(_ p: Peer, _ was: (cursor: Bool, live: Bool)) {
+    let now = watches(p)
+    for pipe in pipes {
+      if now.cursor && !was.cursor { pipe.cursor = true }
+      if now.live && !was.live { pipe.live = true }
+      if pipe.cursor || pipe.live { run(pipe) }
+    }
+  }
+
+  /// Flushes `pipe` at most every its interval: on the next turn when it may, so that a cursor and a live edit from one
+  /// event go as one body, else once when it may again.
+  private func run(_ pipe: Pipe) {
+    guard !pipe.queued else { return }
+    pipe.queued = true
+    let wait = pipe.interval - now().timeIntervalSince(pipe.sent)
+    // within a microsecond is now, as dates carry rounding
+    schedule(wait > 1e-6 ? wait : 0) { [weak self, weak pipe] in
+      guard let self, let pipe else { return }
+      pipe.queued = false
+      pipe.sent = now()
+      // the encoders throw only for bad input, which `compact` takes
+      try! flush(pipe)
+    }
+  }
+
+  private func stamp() -> (seq: Int, at: Double, now: Date) {
+    seq += 1
+    return (seq, uptime() - started, now())
+  }
+
+  /// What waits on `pipe`: the latest live body for its board, with the cursor inside for compact recipients during a
+  /// gesture, then the latest cursor for whom that did not reach.
+  private func flush(_ pipe: Pipe) throws {
+    guard connected else { return }
+    let live = pipe.live ? lastLive : nil, cursor = pipe.cursor, everyone = cursor && pipe.everyone, resend = pipe.resend
+    (pipe.live, pipe.cursor, pipe.resend) = (false, false, false)
+    if cursor { pipe.everyone = false }
+    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+    if cursor && pipe.direct && !resend {
+      cursorSends += 1
+      let n = cursorSends
+      schedule(Self.cursorRepeat) { [weak self, weak pipe] in
+        guard let self, let pipe, n == cursorSends, !pipe.cursor else { return }
+        (pipe.cursor, pipe.resend) = (true, true)
+        run(pipe)
+      }
+    }
+    let c = self.cursor
+    let fold = cursor && !everyone && !mine.isEmpty && live != nil && c?.board == live?.board ? c.map { [$0.x, $0.y] } : nil
+    var folded: [String] = []
+    if let live {
+      let json: [String: JSONValue] = [
+        "t": .string("live"), "board": .string(live.board), "items": .object(Self.trimmed(live.items, by: 100).mapValues(JSONValue.object)),
+        "caret": Self.caretJSON(live.caret),
+      ]
+      let body = LiveBody(board: live.board, items: live.items, starts: live.starts, caret: live.caret, cursor: fold)
+      folded = try emit(pipe, .live, recipients(live.board), json) { s in
+        try pipe.liveEncoder.encode(body, seq: s.seq, at: s.at, now: s.now)
+      }
+    }
+    guard cursor else { return }
+    let json: [String: JSONValue] = [
+      "t": .string("cursor"), "board": .string(cursorBoard),
+      "x": c.map { .number(Self.round($0.x, 100)) } ?? .null, "y": c.map { .number(Self.round($0.y, 100)) } ?? .null,
+    ]
+    let board = cursorBoard
+    try emit(pipe, .cursor, recipients(everyone ? nil : cursorBoard), json, folded: fold != nil ? folded : []) { s in
+      try pipe.cursorEncoder.encode(seq: s.seq, at: s.at, x: c?.x, y: c?.y, board: board, now: s.now)
+    }
+  }
+
+  /// A cursor or live body to those of `ids` on `pipe`, but `folded`, which had it inside the live body: compact where
+  /// they read it, else JSON; who got it compact.
+  @discardableResult private func emit(
+    _ pipe: Pipe, _ kind: Pipe.Kind, _ ids: [String], _ json: [String: JSONValue], folded: [String] = [],
+    compact encode: ((seq: Int, at: Double, now: Date)) throws -> Data
+  ) throws -> [String] {
+    let ids = ids.filter { (direct?.isOpen($0) ?? false) == pipe.direct && !folded.contains($0) }
+    // whoever this pipe's encoder last sent to missed this body, unless it came inside the live body
+    if ids.isEmpty && folded.isEmpty { pipe.to[kind] = nil }
+    guard !ids.isEmpty else { return [] }
+    let s = stamp()
+    let plain = { () -> Data? in
+      var b = json
+      b["at"] = .number(Self.round(s.at, 10))
+      b["seq"] = .number(Double(s.seq))
+      return Self.json(b)
+    }
+    if pipe.direct, let direct {
+      let v2 = ids.filter { direct.version($0) == 2 }, v1 = ids.filter { direct.version($0) != 2 }
+      if v2.isEmpty && folded.isEmpty { pipe.to[kind] = nil }
+      let bytes = v2.isEmpty ? nil : try pipe.compact(kind, v2) { try encode(s) }
+      if let bytes { for id in v2 { direct.sendBytes(id, bytes) } }
+      if !v1.isEmpty, let sealed = plain().flatMap(seal) {
+        for id in v1 { direct.send(id, Base64URL.encode(sealed)) }
+      }
+      return bytes == nil ? [] : v2
+    }
+    let to = ids.count == 1 ? ids[0] : nil
+    if ids.allSatisfy({ peers[$0]?.v == 2 }) {
+      guard let bytes = try pipe.compact(kind, ids, { try encode(s) }) else { return [] }
+      post(bytes, to: to)
+      return ids
+    }
+    // its compact encoder's last body did not reach these
+    pipe.to[kind] = nil
+    if let p = plain() { post(p, to: to) }
+    return []
   }
 
   // MARK: receiving
@@ -398,6 +614,26 @@ public struct Peer: Equatable, Sendable {
   }
 
   private static func clamped(_ v: Double) -> Double { min(limit, max(-limit, v)) }
+
+  /// `v` to the nearest `1 / by`, halves up, as the web rounds.
+  private static func round(_ v: Double, _ by: Double) -> Double { (v * by + 0.5).rounded(.down) / by }
+
+  /// `items` with their moving fields clamped, and rounded to `1 / by` when given.
+  private static func trimmed(_ items: [String: LiveFields], by: Double? = nil) -> [String: LiveFields] {
+    func fit(_ v: JSONValue) -> JSONValue {
+      guard let n = v.number, n.isFinite else { return v }
+      return .number(by.map { round(clamped(n), $0) } ?? clamped(n))
+    }
+    return items.mapValues { f in
+      var out = f
+      for k in moving { if let v = f[k] { out[k] = v.array.map { .array($0.map(fit)) } ?? fit(v) } }
+      return out
+    }
+  }
+
+  private static func caretJSON(_ c: Caret?) -> JSONValue {
+    c.map { .object(["id": .string($0.id), "back": .bool($0.back), "at": .number(Double($0.at))]) } ?? .null
+  }
 
   private static func numbers(_ v: JSONValue?) -> [Double]? {
     if let n = v?.number, n.isFinite { return [clamped(n)] }
@@ -426,8 +662,6 @@ public struct Peer: Equatable, Sendable {
   }
 
   private func received(_ text: String) {
-    // anything from the relay shows the socket is alive
-    pingWaiting = nil
     guard text != "pong", let m = try? JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8)) else { return }
     switch m["t"]?.string {
     case "welcome":
@@ -447,6 +681,7 @@ public struct Peer: Equatable, Sendable {
     case "leave":
       guard let who = m["id"]?.string else { return }
       peers[who] = nil
+      decoders[who] = nil
       holds[who] = nil
       roster[who] = nil
       direct?.leave(who)
@@ -459,17 +694,30 @@ public struct Peer: Equatable, Sendable {
       let ids = Set((m["ids"]?.array ?? []).compactMap(\.string))
       if !ids.isEmpty { onRefused?(ids) }
     default:
-      guard let from = m["from"]?.string, let body = m["body"]?.string else { return }
+      guard let from = m["from"]?.string, let body = m["body"]?.string.flatMap(Base64URL.decode) else { return }
       opened(from, body, direct: false)
     }
   }
 
-  /// A sealed body from connection `from`, through the relay or, `direct`, over its channel, which carries only cursors
-  /// and live edits.
-  private func opened(_ from: String, _ body: String, direct isDirect: Bool) {
-    guard connected, let sealed = Base64URL.decode(body), let plain = try? keys.openLive(sealed),
-          let b = try? JSONDecoder().decode([String: JSONValue].self, from: plain)
-    else { return }
+  /// A sealed body from connection `from`, through the relay or, `direct`, over its channel.
+  private func opened(_ from: String, _ sealed: Data, direct isDirect: Bool) {
+    guard let plain = try? keys.openLive(sealed) else { return }
+    take(from, plain, direct: isDirect)
+  }
+
+  /// A body from connection `from`, compact or JSON; a channel carries only cursors and live edits, and a version 2
+  /// channel only compact ones.
+  private func take(_ from: String, _ plain: Data, direct isDirect: Bool, compactOnly: Bool = false) {
+    guard connected else { return }
+    var b: [String: JSONValue]?
+    if Compact.isCompact(plain) {
+      let d = decoders[from] ?? Decoders()
+      decoders[from] = d
+      b = (isDirect ? d.direct : d.relay).decode(plain, overlay: peers[from]?.overlay ?? [:])
+    } else if !compactOnly {
+      b = try? JSONDecoder().decode([String: JSONValue].self, from: plain)
+    }
+    guard let b else { return }
     roster[from] = now()
     switch b["t"]?.string {
     case "offer", "answer", "ice": if !isDirect { direct?.heard(from, b) }
@@ -484,6 +732,7 @@ public struct Peer: Equatable, Sendable {
     p.heard = t
     let arrival = uptime()
     let at = b["at"]?.number ?? arrival
+    // a body older than one already taken from this connection, over either pipe, is dropped
     guard !["cursor", "live"].contains(b["t"]?.string) || Self.fresh(&p, b) else {
       peers[from] = p
       return
@@ -491,23 +740,20 @@ public struct Peer: Equatable, Sendable {
     switch b["t"]?.string {
     case "presence":
       guard let device = b["device"]?.string, Base64URL.decode(device)?.count == 16 else { return }
+      let was = watches(p)
       p.person = Person(device: device, name: String((b["name"]?.string ?? "").prefix(100)))
+      p.v = (b["v"]?.number ?? 1) >= 2 ? 2 : 1
       p.board = b["board"]?.string
+      p.boards = b["boards"]?.array?.compactMap(\.string)
       p.selection = (b["selection"]?.array ?? []).compactMap(\.string)
       // a cursor not heard yet, as a newcomer gets it; later ones come as cursor messages, so a faded one stays faded
       if b["cursor"] != nil, p.cursorAt == nil {
         p.cursor = Self.cursor(b["cursor"])
         p.cursorAt = t
       }
+      caughtUp(p, was)
     case "cursor":
-      let c = Self.cursor(.object(b))
-      if c == nil || c?.board != p.cursor?.board { p.cursorTrack = nil }
-      if let c {
-        if p.cursorTrack == nil { p.cursorTrack = Track() }
-        p.cursorTrack!.push(at: at, arrival: arrival, value: [c.x, c.y])
-      }
-      p.cursor = c
-      p.cursorAt = t
+      moved(&p, Self.cursor(.object(b)), at: at, arrival: arrival)
     case "live":
       let board = b["board"]?.string
       if board != p.overlayBoard { p.motion = [:] }
@@ -524,6 +770,13 @@ public struct Peer: Equatable, Sendable {
         }
       }
       p.caret = Self.caret(b["caret"])
+      // a cursor inside a live body counts as a cursor body with its seq
+      if let board, let xy = b["cursor"]?.array, xy.count == 2,
+         let c = Self.cursor(.object(["board": .string(board), "x": xy[0], "y": xy[1]])),
+         let n = Self.integral(b["seq"]?.number), n > p.seqs["cursor"] ?? 0 {
+        p.seqs["cursor"] = n
+        moved(&p, c, at: at, arrival: arrival)
+      }
     case "pushed":
       guard let v = Self.integral(b["version"]?.number), v >= 0 else { return }
       p.awaiting = max(p.awaiting, v)
@@ -538,6 +791,17 @@ public struct Peer: Equatable, Sendable {
     peers[from] = p
     dropReleased()
     onChange?()
+  }
+
+  /// Peer `p`'s cursor is at `c`, or hidden for nil, as of its sender's `at`.
+  private func moved(_ p: inout Peer, _ c: Cursor?, at: Double, arrival: Double) {
+    if c == nil || c?.board != p.cursor?.board { p.cursorTrack = nil }
+    if let c {
+      if p.cursorTrack == nil { p.cursorTrack = Track() }
+      p.cursorTrack!.push(at: at, arrival: arrival, value: [c.x, c.y])
+    }
+    p.cursor = c
+    p.cursorAt = now()
   }
 
   /// Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
@@ -571,8 +835,8 @@ public struct Peer: Equatable, Sendable {
     onChange?()
   }
 
-  /// About once a second: forgets the silent, fades still cursors, repeats presence and a holder's live fields, and
-  /// checks that the relay still answers.
+  /// About once a second: forgets the silent, fades still cursors, repeats presence, tells the relay a holder is still
+  /// here, and checks that the relay still answers.
   public func tick() {
     let t = now()
     if connected, let p = pingWaiting, t.timeIntervalSince(p) >= Self.pongTimeout {
@@ -597,6 +861,7 @@ public struct Peer: Equatable, Sendable {
     for (conn, var p) in peers {
       if t.timeIntervalSince(p.heard) > Self.gone {
         peers[conn] = nil
+        decoders[conn] = nil
         changed = true
       } else if p.cursor != nil, t.timeIntervalSince(p.cursorAt ?? t) > Self.idleCursor {
         p.cursor = nil
@@ -604,13 +869,8 @@ public struct Peer: Equatable, Sendable {
         changed = true
       }
     }
-    // a holder the relay has not heard from lately: live edits that go only direct do not reach it
-    if connected && !mine.isEmpty && t.timeIntervalSince(relaySent) >= Self.heartbeat {
-      relaySent = t
-      if lastLive == nil || !sendFast(lastLive!, relayOnly: true) {
-        sendFast(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null], relayOnly: true)
-      }
-    }
+    // a holder the relay has not heard from lately, as live edits may go only direct, keeps its holds there
+    if connected && !mine.isEmpty && t.timeIntervalSince(relaySent) >= Self.heartbeat { frame(["t": .string("alive")]) }
     if peers.values.contains(where: { !$0.unheld.isEmpty }) {
       dropReleased()
       changed = true
@@ -622,9 +882,11 @@ public struct Peer: Equatable, Sendable {
 
   // MARK: sending
 
-  public func setPresence(board: String?, selection: [String]) {
-    guard board != presence.board || selection != presence.selection else { return }
-    presence = (board, selection)
+  /// Where this device is: `board`, every board it shows (`boards`, `board` alone by default), and what it selected.
+  public func setPresence(board: String?, boards: [String]? = nil, selection: [String]) {
+    let boards = boards ?? board.map { [$0] } ?? []
+    guard board != presence.board || boards != presence.boards || selection != presence.selection else { return }
+    presence = (board, boards, selection)
     sendPresence()
   }
 
@@ -632,42 +894,26 @@ public struct Peer: Equatable, Sendable {
     guard connected else { return }
     if to == nil { presenceSent = now() }
     send([
-      "t": .string("presence"), "device": .string(me.device), "name": .string(me.name), "colour": .string(me.hex),
-      "board": presence.board.map(JSONValue.string) ?? .null, "selection": .array(presence.selection.map(JSONValue.string)),
-      "cursor": cursor.map { .object(["board": .string($0.board), "x": .number($0.x), "y": .number($0.y)]) } ?? .null,
+      "t": .string("presence"), "v": .number(2), "device": .string(me.device), "name": .string(me.name),
+      "board": presence.board.map(JSONValue.string) ?? .null, "boards": .array(presence.boards.map(JSONValue.string)),
+      "selection": .array(presence.selection.map(JSONValue.string)),
+      "cursor": cursor.map {
+        .object(["board": .string($0.board), "x": .number(Self.round($0.x, 100)), "y": .number(Self.round($0.y, 100))])
+      } ?? .null,
     ], to: to)
   }
 
-  /// This device's pointer on `board`; nil hides it. At most every 50 ms, and the last one always goes; none while
-  /// nobody else is here, as a newcomer gets it with the presence sent when it joins.
+  /// This device's pointer on `board`; nil hides it. Each pipe sends the latest when its gate lets it; none while nobody
+  /// else is here, as a newcomer gets it with the presence sent when it joins.
   public func sendCursor(board: String, x: Double?, y: Double?) {
-    cursor = x.flatMap { x in y.map { Cursor(board: board, x: x, y: $0) } }
+    cursor = if let x, let y, x.isFinite, y.isFinite { Cursor(board: board, x: Self.clamped(x), y: Self.clamped(y)) } else { nil }
+    if board != cursorBoard { for p in pipes { p.everyone = true } }
     cursorBoard = board
-    guard !peers.isEmpty else { return }
-    let wait = gateInterval - now().timeIntervalSince(cursorSent)
-    if wait <= 0 { return flushCursor() }
-    guard !cursorQueued else { return }
-    cursorQueued = true
-    schedule(wait) { [weak self] in
-      self?.cursorQueued = false
-      self?.flushCursor()
+    guard !roster.isEmpty else { return }
+    for p in pipes {
+      (p.cursor, p.resend) = (true, false)
+      run(p)
     }
-  }
-
-  private func flushCursor() {
-    cursorSent = now()
-    sendCursorBody()
-    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
-    cursorSends += 1
-    let n = cursorSends
-    schedule(Self.cursorRepeat) { [weak self] in
-      guard let self, n == cursorSends, allDirect, !peers.isEmpty else { return }
-      sendCursorBody()
-    }
-  }
-
-  private func sendCursorBody() {
-    sendFast(["t": .string("cursor"), "board": .string(cursorBoard), "x": cursor.map { .number($0.x) } ?? .null, "y": cursor.map { .number($0.y) } ?? .null])
   }
 
   /// Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect.
@@ -682,31 +928,19 @@ public struct Peer: Equatable, Sendable {
     guard !mine.isEmpty else { return }
     mine = []
     lastLive = nil
+    for p in pipes { p.restart() }
     if connected { frame(["t": .string("release")]) }
   }
 
-  /// What the gesture under way changed of what it holds; at most every 50 ms, and repeated every 5 s while held, which
-  /// keeps the holds even while nobody else is here to be sent the rest.
-  public func sendLive(board: String, items: [String: LiveFields], caret: Caret?) {
-    lastLive = [
-      "t": .string("live"), "board": .string(board), "items": .object(items.mapValues(JSONValue.object)),
-      "caret": caret.map { .object(["id": .string($0.id), "back": .bool($0.back), "at": .number(Double($0.at))]) } ?? .null,
-    ]
-    guard !peers.isEmpty else { return }
-    let wait = gateInterval - now().timeIntervalSince(liveSent)
-    if wait <= 0 { return flushLive() }
-    guard !liveQueued else { return }
-    liveQueued = true
-    schedule(wait) { [weak self] in
-      self?.liveQueued = false
-      self?.flushLive()
+  /// What the gesture under way changed of what it holds, and where the held items were when it began (`starts`, as
+  /// `[x, y]`); each pipe sends the latest when its gate lets it.
+  public func sendLive(board: String, items: [String: LiveFields], caret: Caret?, starts: [String: [Double]] = [:]) {
+    lastLive = LiveState(board: board, items: Self.trimmed(items), caret: caret, starts: starts)
+    guard !roster.isEmpty else { return }
+    for p in pipes {
+      p.live = true
+      run(p)
     }
-  }
-
-  private func flushLive() {
-    guard let l = lastLive else { return }
-    liveSent = now()
-    sendFast(l)
   }
 
   /// Announces a push with its records, or without them when they would not fit a frame.
