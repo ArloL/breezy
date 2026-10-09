@@ -246,7 +246,7 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 .measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus, #keys, .presence .cursor { transition: none !important; }
+  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus, #keys { transition: none !important; }
 }
 body[data-screen="boards"] :is(#board, #top, #bottom, #zoom-level, #find, #keys) { display: none !important; }
 #boards {
@@ -287,7 +287,7 @@ body[data-screen="board"] #boards { display: none; }
 .menu .status { margin: 0; padding: 8px 14px; color: var(--ink2); font-size: 15px; line-height: 20px; white-space: pre-line; }
 
 #board .presence { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.presence .cursor { position: absolute; left: 0; top: 0; transition: transform 60ms linear; }
+.presence .cursor { position: absolute; left: 0; top: 0; }
 .presence .cursor svg { display: block; width: 18px; height: 18px; fill: var(--who); stroke: #fff; stroke-width: 1.2; stroke-linejoin: round; }
 .presence .cursor span, .card.taken::before, .lane.taken::before {
   padding: 0 6px; border-radius: 6px; background: var(--who); color: #fff; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;

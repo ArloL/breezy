@@ -205,6 +205,7 @@ export class Library {
   liveChanged(g) {
     this.updateLive();
     if (g === this.group) this.showPresence();
+    if (g === this.group && g.live?.animating()) this.animate();
     if (!this.id) this.renderPeople();
   }
 
@@ -221,6 +222,17 @@ export class Library {
     if ([...s.selection].some((x) => s.taken.has(x))) this.app.select(s.selection);
     this.app.view.invalidate();
     this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], carets: live && id ? live.carets(id) : [], people: live && id ? live.people(id) : [] });
+  }
+
+  /** Others' cursors and live edits, each frame while they still play back. */
+  animate() {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null;
+      if (!this.live || !this.id) return;
+      this.showPresence();
+      if (this.live.animating()) this.animate();
+    });
   }
 
   /** Asks the open board's space to hold `ids` for the gesture starting. */
