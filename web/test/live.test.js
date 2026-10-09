@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Live, initials, colourOf, PALETTE } from "../sync/live.js";
 import { SpaceKeys, randomBytes } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
-import { LiveDecoder, isCompact } from "../sync/compact.js";
+import { LiveDecoder, LiveEncoder, isCompact } from "../sync/compact.js";
 import { unpack } from "../sync/msgpack.js";
 import { parseFrame } from "../../relay/src/frames.js";
 import { FakeRelay, Clock } from "./helpers/fake-relay.js";
@@ -1006,4 +1006,130 @@ test("a body that cannot be put compactly is not sent", async () => {
   await relay.run();
   assert.deepEqual(ts[0].sent, []);
   assert.deepEqual(await relayed(), []);
+});
+
+test("a peer that comes back to the board gets the cursor as it is now, hidden too", async () => {
+  const { relay, clock, a, b } = await two();
+  b.setPresence({ board: B2, selection: [] });
+  await relay.run();
+  a.sendCursor(B1, 1, 1);
+  await relay.run();
+  clock.advance(50);
+  assert.deepEqual(b.cursors(B1).map((c) => [c.x, c.y]), [[1, 1]]);
+  a.sendCursor(B1, 50, 50);
+  await relay.run();
+  clock.advance(50);
+  a.sendCursor(B1, null, null);
+  await relay.run();
+  clock.advance(50);
+  b.setPresence({ board: B1, selection: [] });
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors(B1), []);
+});
+
+test("a peer that comes onto the board mid-drag gets the overlay without the holder moving", async () => {
+  const { relay, clock, a, b } = await two();
+  b.setPresence({ board: B2, selection: [] });
+  await relay.run();
+  a.hold([C1]);
+  a.sendLive(B1, { [C1]: { pos: [10, 0], text: "hi" } }, null);
+  await relay.run();
+  assert.equal(b.overlay(B1).size, 0);
+  b.setPresence({ board: B1, selection: [] });
+  await relay.run();
+  clock.advance(50);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.overlay(B1).get(C1), { pos: [10, 0], text: "hi" });
+});
+
+test("a peer whose boards gain the board gets the cursor and the live edit", async () => {
+  const { relay, clock, a, b } = await two();
+  b.setPresence({ board: B2, boards: [B2], selection: [] });
+  await relay.run();
+  a.sendCursor(B2, 0, 0);
+  await relay.run();
+  clock.advance(50);
+  a.sendCursor(B1, 5, 5);
+  a.hold([C1]);
+  a.sendLive(B1, moved, null);
+  await relay.run();
+  clock.advance(50);
+  a.sendCursor(B1, 6, 6);
+  await relay.run();
+  clock.advance(50);
+  b.setPresence({ board: B2, boards: [B2, B1], selection: [] });
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors(B1).map((c) => [c.x, c.y]), [[6, 6]]);
+  assert.deepEqual(Object.fromEntries(b.overlay(B1)), moved);
+});
+
+test("an older device and a current one both on the relay get one JSON broadcast that both read", async () => {
+  const { relay, clock, a, b } = await two();
+  const old = new OldDevice(relay, keys, { device: device() });
+  old.connect();
+  await relay.run();
+  await old.presence(B1);
+  await relay.run();
+  a.sendCursor(B1, 3, 4);
+  await relay.run();
+  clock.advance(200);
+  const [sent] = fast(await sentBy(relay, a.id));
+  assert.equal(sent.to, null);
+  assert.equal(sent.body.t, "cursor");
+  assert.equal(sent.body.x, 3);
+  assert.deepEqual([old.last("cursor").x, old.last("cursor").y], [3, 4]);
+  assert.deepEqual(b.cursors(B1).map((c) => [c.x, c.y]), [[3, 4]]);
+});
+
+test("a channel opening or closing mid-gesture starts that peer on a keyframe, and its overlay stays right", async () => {
+  const { relay, clock, ts, ls, open } = await direct();
+  const lastRelayed = async () => {
+    const f = relay.frames.filter((x) => x.from === ls[0].id && x.bytes).at(-1);
+    return unpack(await keys.openLive(parseFrame(f.bytes).body));
+  };
+  ls[0].hold([C1]);
+  const drag = async (x) => {
+    clock.advance(50);
+    ls[0].sendLive(B1, { [C1]: { pos: [x, 0], text: "hello" } }, null);
+    await relay.run();
+  };
+  await drag(0);
+  await drag(10);
+  assert.equal((await lastRelayed())[3], null);
+  open(0, 1);
+  await drag(20);
+  const [body] = ts[0].sent.splice(0);
+  const v = unpack(body.data);
+  assert.ok(v[3] instanceof Uint8Array);
+  assert.equal([...v[5].values()][0].get(3), "hello");
+  ts[1].onMessage(ls[0].id, body.data);
+  await relay.run();
+  ts[0].onState(ls[1].id, "closed");
+  ts[1].onState(ls[0].id, "closed");
+  await drag(30);
+  const r = await lastRelayed();
+  assert.ok(r[3] instanceof Uint8Array);
+  assert.equal([...r[5].values()][0].get(3), "hello");
+  clock.advance(200);
+  assert.deepEqual(ls[1].overlay(B1).get(C1), { pos: [30, 0], text: "hello" });
+});
+
+test("a cursor inside a live body that is not newer than the last cursor is ignored", async () => {
+  const { relay, clock, ts, ls, open } = await direct();
+  open(0, 1);
+  for (const x of [1, 2, 3]) {
+    ls[0].sendCursor(B1, x, x);
+    await relay.run();
+    clock.advance(8);
+  }
+  for (const { data } of ts[0].sent.splice(0)) ts[1].onMessage(ls[0].id, data);
+  await relay.run();
+  const stale = new LiveEncoder().encode({ board: B1, items: {}, cursor: [999, 999] }, { seq: 1, at: 0, now: 0 });
+  ts[1].onMessage(ls[0].id, stale);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(ls[1].cursors(B1).map((c) => [c.x, c.y]), [[3, 3]]);
 });
