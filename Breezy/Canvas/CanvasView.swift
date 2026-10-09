@@ -67,6 +67,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// Others' presence as it shows now, and whether it still moves; asked each frame while it does.
   var presenceNow: (() -> (CanvasPresence, Bool)?)?
   private var presenceLink: CADisplayLink?
+  var animatingPresence: Bool { presenceLink != nil }
 
   /// Draws others' cursors and live edits each frame until they stop moving.
   func animatePresence() {

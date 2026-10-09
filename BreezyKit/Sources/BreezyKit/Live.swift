@@ -715,10 +715,12 @@ public struct Peer: Equatable, Sendable {
     }.sorted { $0.key < $1.key }
   }
 
-  /// Whether any cursor or live edit is still playing back, so that the board draws again next frame.
-  public var animating: Bool {
+  /// Whether any cursor or live edit on `board` is still playing back, so that it draws again next frame.
+  public func animating(on board: String) -> Bool {
     let t = uptime()
-    return peers.values.contains { p in (p.cursor != nil && p.cursorTrack?.playing(t) == true) || p.motion.values.contains { $0.playing(t) } }
+    return peers.values.contains { p in
+      (p.cursor?.board == board && p.cursorTrack?.playing(t) == true) || (p.overlayBoard == board && p.motion.values.contains { $0.playing(t) })
+    }
   }
 
   public func carets(on board: String) -> [(key: String, person: Person, caret: Caret)] {

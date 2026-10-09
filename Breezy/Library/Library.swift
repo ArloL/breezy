@@ -147,7 +147,7 @@ extension Notification.Name {
     canvas.onSelection = { [weak self] in self?.updateLive() }
     canvas.presenceNow = { [weak self] in
       guard let live = self?.spaces.group(of: id)?.live else { return nil }
-      return (CanvasPresence(live, board: id), live.animating)
+      return (CanvasPresence(live, board: id), live.animating(on: id))
     }
     canvas.hold = { [weak self] ids in self?.spaces.group(of: id)?.live?.hold(ids) }
     doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
@@ -189,8 +189,10 @@ extension Notification.Name {
   func liveChanged(_ g: Spaces.Group) {
     updateLive()
     for d in documents where g.store.title(of: d.boardID) != nil {
-      d.windowController?.canvas.presence = CanvasPresence(g.live, board: d.boardID)
-      if g.live?.animating == true { d.windowController?.canvas.animatePresence() }
+      guard let canvas = d.windowController?.canvas else { continue }
+      // while the display link runs, it shows the presence each frame
+      if !canvas.animatingPresence { canvas.presence = CanvasPresence(g.live, board: d.boardID) }
+      if g.live?.animating(on: d.boardID) == true { canvas.animatePresence() }
       d.windowController?.showPeople(g.live?.people(on: d.boardID) ?? [])
     }
     // the list follows only when who is on which board changes, not with every cursor

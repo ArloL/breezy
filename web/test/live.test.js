@@ -431,10 +431,11 @@ test("cursors play back smoothly between updates", async () => {
   // the buffer is one 50 ms interval: 50 ms after the last arrived, playback is halfway between the last two
   clock.advance(-25);
   assert.deepEqual(b.cursors("B1").map((c) => c.x), [15]);
-  assert.ok(b.animating());
+  assert.ok(b.animating("B1"));
+  assert.ok(!b.animating("B2"));
   clock.advance(100);
   assert.deepEqual(b.cursors("B1").map((c) => c.x), [20]);
-  assert.ok(!b.animating());
+  assert.ok(!b.animating("B1"));
 });
 
 test("a cursor on another board jumps there", async () => {

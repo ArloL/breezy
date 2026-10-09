@@ -431,10 +431,11 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   }
   clock.advance(-0.025)
   #expect(b.cursors(on: "B1").map { $0.cursor.x } == [15])
-  #expect(b.animating)
+  #expect(b.animating(on: "B1"))
+  #expect(!b.animating(on: "B2"))
   clock.advance(0.1)
   #expect(b.cursors(on: "B1").map { $0.cursor.x } == [20])
-  #expect(!b.animating)
+  #expect(!b.animating(on: "B1"))
 }
 
 @MainActor @Test func aCursorOnAnotherBoardJumpsThere() {

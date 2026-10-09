@@ -30,8 +30,12 @@ export class Presence {
   show({ cursors, carets = [], people }) {
     this.cursors = cursors;
     this.carets = carets;
-    this.row.hidden = !people.length;
-    this.row.replaceChildren(...people.map(chip));
+    const key = people.map((p) => `${p.device} ${p.name}`).join("\n");
+    if (key !== this.people) {
+      this.people = key;
+      this.row.hidden = !people.length;
+      this.row.replaceChildren(...people.map(chip));
+    }
     this.place();
   }
 

@@ -74,8 +74,10 @@ export class UI {
     const lib = this.app.library;
     if (!lib) return;
     const status = this.$(".menu.more .status");
-    status.textContent = lib.statusLines().join("\n");
-    status.hidden = !status.textContent;
+    const text = lib.statusLines().join("\n");
+    if (text === status.textContent) return;
+    status.textContent = text;
+    status.hidden = !text;
   }
 
   act(name, b) {
