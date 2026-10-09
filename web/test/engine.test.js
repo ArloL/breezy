@@ -597,3 +597,32 @@ test("a combined cycle reports the cursor of the page it took before a later rou
   assert.equal(a.engine.status.state, "unreachable");
   assert.deepEqual(pulled, [server.version]);
 });
+
+test("big requests go plain where deflate-raw is missing", async () => {
+  const sent = [];
+  const [realFetch, realStream] = [globalThis.fetch, globalThis.CompressionStream];
+  globalThis.fetch = async (url, init) => {
+    sent.push(init);
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  const big = [{ id: "a", base: 0, blob: "x".repeat(3000) }];
+  try {
+    const t = new HttpTransport("https://example.com/s.php", "sp", "tok");
+    delete globalThis.CompressionStream;
+    await t.push(big, 7);
+    globalThis.CompressionStream = class {
+      constructor(format) {
+        throw new TypeError(`unsupported ${format}`);
+      }
+    };
+    await t.push(big, 7);
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.CompressionStream = realStream;
+  }
+  assert.equal(sent.length, 2);
+  for (const s of sent) {
+    assert.equal(s.headers["Content-Encoding"], undefined);
+    assert.equal(s.body, JSON.stringify({ writes: big, since: 7 }));
+  }
+});

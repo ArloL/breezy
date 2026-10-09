@@ -16,6 +16,17 @@ export class TransportError extends Error {
   }
 }
 
+/** `text` as raw DEFLATE, or null where the browser cannot make it. */
+function deflateRaw(text) {
+  let stream;
+  try {
+    stream = new CompressionStream("deflate-raw");
+  } catch {
+    return null;
+  }
+  return new Response(new Blob([text]).stream().pipeThrough(stream)).arrayBuffer();
+}
+
 /** The server's two calls; see server/sync.php. */
 export class HttpTransport {
   constructor(server, space, token) {
@@ -32,8 +43,9 @@ export class HttpTransport {
     if (body) {
       headers["Content-Type"] = "application/json";
       payload = JSON.stringify(body);
-      if (payload.length > DEFLATE_ABOVE) {
-        payload = await new Response(new Blob([payload]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
+      const deflated = payload.length > DEFLATE_ABOVE && deflateRaw(payload);
+      if (deflated) {
+        payload = await deflated;
         headers["Content-Encoding"] = "deflate";
       }
     }
