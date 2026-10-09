@@ -43,9 +43,9 @@ public indirect enum Pack: Equatable, Sendable {
   public var array: [Pack]? { if case .array(let v) = self { v } else { nil } }
   public var map: [(Pack, Pack)]? { if case .map(let v) = self { v } else { nil } }
 
-  public func packed() -> Data {
+  public func packed() throws -> Data {
     var out = Data()
-    write(&out)
+    try write(&out)
     return out
   }
 
@@ -77,11 +77,11 @@ public indirect enum Pack: Equatable, Sendable {
     }
   }
 
-  private func write(_ out: inout Data) {
+  private func write(_ out: inout Data) throws {
     switch self {
     case .null: out.append(0xc0)
     case .bool(let b): out.append(b ? 0xc3 : 0xc2)
-    case .int(let v): Pack.writeInt(&out, v)
+    case .int(let v): try Pack.writeInt(&out, v)
     case .float32(let v):
       out.append(0xca)
       out.append(contentsOf: Pack.be(UInt64(v.bitPattern), 4))
@@ -97,17 +97,18 @@ public indirect enum Pack: Equatable, Sendable {
       out.append(b)
     case .array(let a):
       Pack.header(&out, a.count, fix: 0x90, fixMax: 15, tags: (nil, 0xdc, 0xdd))
-      for x in a { x.write(&out) }
+      for x in a { try x.write(&out) }
     case .map(let m):
       Pack.header(&out, m.count, fix: 0x80, fixMax: 15, tags: (nil, 0xde, 0xdf))
       for (k, v) in m {
-        k.write(&out)
-        v.write(&out)
+        try k.write(&out)
+        try v.write(&out)
       }
     }
   }
 
-  private static func writeInt(_ out: inout Data, _ v: Int64) {
+  private static func writeInt(_ out: inout Data, _ v: Int64) throws {
+    guard (-maxSafe...maxSafe).contains(v) else { throw Failure.range }
     if v >= 0 {
       if v < 0x80 { out.append(UInt8(v)) }
       else if v < 0x100 { out.append(contentsOf: [0xcc, UInt8(v)]) }
@@ -153,7 +154,9 @@ public indirect enum Pack: Equatable, Sendable {
     mutating func raw(_ k: Int) throws -> Data { Data(bytes[try take(k)]) }
 
     mutating func str(_ k: Int) throws -> Pack {
-      guard let s = String(data: try raw(k), encoding: .utf8) else { throw Failure.utf8 }
+      let b = try raw(k)
+      let s = String(decoding: b, as: UTF8.self)
+      guard s.utf8.elementsEqual(b) else { throw Failure.utf8 }
       return .string(s)
     }
 
