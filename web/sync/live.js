@@ -535,12 +535,12 @@ export class Live {
     });
   }
 
-  /** Whether any cursor or live edit is still playing back, so that the board draws again next frame. */
-  animating() {
+  /** Whether any cursor or live edit on `board` is still playing back, so that it draws again next frame. */
+  animating(board) {
     const now = this.clock();
     for (const p of this.peers.values()) {
-      if (p.cursor && p.cursorTrack?.playing(now)) return true;
-      for (const t of p.motion.values()) if (t.playing(now)) return true;
+      if (p.cursor?.board === board && p.cursorTrack?.playing(now)) return true;
+      if (p.overlayBoard === board) for (const t of p.motion.values()) if (t.playing(now)) return true;
     }
     return false;
   }

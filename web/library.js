@@ -58,7 +58,7 @@ export class Library {
     spaces.flushLocal = () => this.binding?.flush();
     setInterval(() => !document.hidden && spaces.syncAll({ polling: true }), 5000);
     setInterval(() => this.tick(), 1000);
-    spaces.onLive = (g) => this.liveChanged(g);
+    spaces.onLive = () => this.liveChanged();
     app.onSelect = () => this.updateLive();
     document.addEventListener("visibilitychange", () => this.updateLive());
     document.addEventListener("visibilitychange", () => document.hidden || spaces.syncAll());
@@ -108,7 +108,7 @@ export class Library {
     this.app.ui.updateSync();
     group.engine.sync();
     this.updateLive();
-    this.showPresence();
+    this.showPresence(true);
   }
 
   showList() {
@@ -121,7 +121,7 @@ export class Library {
     this.renderList();
     this.app.ui.updateSync();
     this.updateLive();
-    this.showPresence();
+    this.showPresence(true);
   }
 
   /** A section per group; On this device only when it has boards or the device is in no space. */
@@ -202,37 +202,49 @@ export class Library {
     }
   }
 
-  liveChanged(g) {
-    this.updateLive();
-    if (g === this.group) this.showPresence();
-    if (g === this.group) this.app.ui.updateSync();
-    if (g === this.group && g.live?.animating()) this.animate();
-    if (!this.id) this.renderPeople();
+  /** A live layer changed: its effects follow at the next frame, however many messages came meanwhile. */
+  liveChanged() {
+    this.liveDirty = true;
+    this.animate();
   }
 
-  /** Others on the open board: what they hold and have selected, their cursors, and their initials. */
-  showPresence() {
+  /** Others on the open board: what they hold and have selected, their cursors, and their initials. The board draws
+   * again only when what they hold or have selected changed, or while they edit it; `force` after it was opened. */
+  showPresence(force = false) {
     const { live, id } = this;
     const s = this.app.state;
-    s.taken = new Map();
-    s.seen = new Map();
+    const taken = new Map(), seen = new Map();
     if (live && id) {
-      for (const [item, p] of live.selections(id)) s.seen.set(item, p.colour);
-      for (const item of live.taken()) s.taken.set(item, live.holderOf(item));
+      for (const [item, p] of live.selections(id)) seen.set(item, p.colour);
+      for (const item of live.taken()) taken.set(item, live.holderOf(item));
     }
-    if ([...s.selection].some((x) => s.taken.has(x))) this.app.select(s.selection);
-    this.app.view.invalidate();
+    const key = JSON.stringify([[...seen], [...taken].map(([item, p]) => [item, p.device, p.name])]);
+    const overlay = live && id ? live.overlay(id).size : 0;
+    if (force || key !== this.presenceKey || overlay || this.overlaySize) {
+      this.presenceKey = key;
+      [s.taken, s.seen] = [taken, seen];
+      if ([...s.selection].some((x) => s.taken.has(x))) this.app.select(s.selection);
+      this.app.view.invalidate();
+    }
+    this.overlaySize = overlay;
     this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], carets: live && id ? live.carets(id) : [], people: live && id ? live.people(id) : [] });
   }
 
-  /** Others' cursors and live edits, each frame while they still play back. */
+  /** At most once a frame: what changed in the live layers, and others' cursors and live edits while they still play
+   * back. */
   animate() {
     if (this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = null;
+      if (this.liveDirty) {
+        this.liveDirty = false;
+        this.updateLive();
+        this.app.ui.updateSync();
+        if (!this.id) this.renderPeople();
+      }
       if (!this.live || !this.id) return;
       this.showPresence();
-      if (this.live.animating()) this.animate();
+      if (this.live.animating(this.id)) this.animate();
     });
   }
 
