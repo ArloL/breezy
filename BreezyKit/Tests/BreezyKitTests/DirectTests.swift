@@ -115,6 +115,8 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   r.transport.release()
   #expect(r.transport.log == ["create p1", "answer p1 o"])
   #expect(r.relayed == [["t": .string("answer"), "sdp": .string("answer-sdp p1"), "to": .string("p1")]])
+  r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o2")])
+  #expect(r.transport.log.last == "answer p1 o2")
 }
 
 @MainActor @Test func aFailedAcceptClosesTheConnection() {
@@ -124,4 +126,30 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   r.direct.heard("p1", ["t": .string("answer"), "sdp": .string("a")])
   #expect(r.transport.log.contains("close p1"))
   #expect(!r.direct.isOpen("p1"))
+}
+
+@MainActor @Test func aFailedOfferClosesTheConnection() {
+  let r = Rig()
+  r.transport.fail = ["offer"]
+  r.direct.welcome(["p1"])
+  #expect(r.transport.log.contains("close p1"))
+  #expect(r.relayed.isEmpty)
+}
+
+@MainActor @Test func aFailedAnswerClosesTheConnection() {
+  let r = Rig()
+  r.transport.fail = ["answer"]
+  r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o")])
+  #expect(r.transport.log.contains("close p1"))
+  #expect(r.relayed.isEmpty)
+}
+
+@MainActor @Test func aCandidateIndexThatIsNotAnIntegerIsDropped() {
+  let r = Rig()
+  r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o")])
+  for index in [1e300, 1.5, .infinity] {
+    r.direct.heard("p1", ice.merging(["index": .number(index)]) { $1 })
+  }
+  r.direct.heard("p1", ice.merging(["index": .number(2)]) { $1 })
+  #expect(r.transport.added.map(\.index) == [nil, nil, nil, 2])
 }

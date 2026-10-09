@@ -169,7 +169,12 @@ import Foundation
     later { [self] in done(!fail.contains("accept")) }
   }
 
-  func add(_ peer: String, candidate: IceCandidate) { log.append("add \(peer) \(candidate.candidate)") }
+  var added: [IceCandidate] = []
+
+  func add(_ peer: String, candidate: IceCandidate) {
+    added.append(candidate)
+    log.append("add \(peer) \(candidate.candidate)")
+  }
 
   func send(_ peer: String, _ text: String) -> Bool {
     sent.append((peer, text))

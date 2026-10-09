@@ -128,7 +128,7 @@ public enum PeerState: String, Sendable { case open, closed, failed }
       }
     case "ice":
       guard let l, let c = b["candidate"]?.string else { return }
-      let candidate = IceCandidate(candidate: c, mid: b["mid"]?.string, index: b["index"]?.number.map { Int($0) })
+      let candidate = IceCandidate(candidate: c, mid: b["mid"]?.string, index: b["index"]?.number.flatMap { Int(exactly: $0) })
       if l.remote { transport.add(from, candidate: candidate) } else { l.inbox.append(candidate) }
     default:
       return
