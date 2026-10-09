@@ -205,6 +205,7 @@ export class Library {
   liveChanged(g) {
     this.updateLive();
     if (g === this.group) this.showPresence();
+    if (g === this.group) this.app.ui.updateSync();
     if (g === this.group && g.live?.animating()) this.animate();
     if (!this.id) this.renderPeople();
   }
@@ -373,7 +374,7 @@ export class Library {
   /** The ⋯ menu's lines: whether boards can be saved, and the open board's space status. */
   statusLines() {
     const unsaved = this.spaces.readOnly || this.spaces.saveFailed;
-    return [...(unsaved ? ["Boards can’t be saved on this device"] : []), ...(this.group?.space ? statusLines(this.group.engine.status) : [])];
+    return [...(unsaved ? ["Boards can’t be saved on this device"] : []), ...(this.group?.space ? statusLines(this.group.engine.status) : []), ...(this.group?.live?.directStatus() ? [this.group.live.directStatus()] : [])];
   }
 
   async newSpace() {

@@ -4,6 +4,7 @@ import { Live, initials, colourOf, PALETTE } from "../sync/live.js";
 import { SpaceKeys, randomBytes } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
 import { FakeRelay, Clock } from "./helpers/fake-relay.js";
+import { FakeTransport } from "./helpers/fake-transport.js";
 
 const SPACE = "QEFCQ0RFRkdISUpLTE1OTw";
 const keys = await SpaceKeys.create(decode(SPACE), decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"));
@@ -478,4 +479,99 @@ test("duplicates and late bodies are dropped; bodies without seq or at are taken
   await relay.run();
   clock.advance(200);
   assert.deepEqual(b.cursors("B1").map((c) => c.x), [3]);
+});
+
+/** `n` devices with fake transports, all on board B1, the last one the newcomer. */
+async function direct(n = 2) {
+  const relay = new FakeRelay(), clock = new Clock();
+  const ts = [], ls = [];
+  for (let i = 0; i < n; i++) {
+    const t = new FakeTransport();
+    const l = new Live({ relay: "wss://relay.example/", space: SPACE, keys, me: { device: device(), name: `P${i}` }, socket: () => relay.connect(), now: clock.now, clock: clock.now, schedule: clock.schedule, peerTransport: () => t });
+    l.connect();
+    await relay.run();
+    l.setPresence({ board: "B1", selection: [] });
+    await relay.run();
+    ts.push(t);
+    ls.push(l);
+  }
+  /** Opens the channel between devices i and j, both ways. */
+  const open = (i, j) => {
+    ts[i].onState(ls[j].id, "open");
+    ts[j].onState(ls[i].id, "open");
+  };
+  const bodyFrames = () => relay.frames.filter((f) => f.text.includes('"body"') && !f.text.includes('"to"')).length;
+  return { relay, clock, ts, ls, open, bodyFrames };
+}
+
+test("the newcomer offers through the relay and the others answer", async () => {
+  const { ts, ls } = await direct();
+  assert.deepEqual(ts[1].log.slice(0, 2), [`create ${ls[0].id}`, `offer ${ls[0].id}`]);
+  assert.deepEqual(ts[0].log.slice(0, 2), [`create ${ls[1].id}`, `answer ${ls[1].id} offer-sdp ${ls[0].id}`]);
+  assert.ok(ts[1].log.includes(`accept ${ls[0].id} answer-sdp ${ls[1].id}`));
+});
+
+test("with every channel open, cursors go only direct and every frame", async () => {
+  const { relay, clock, ts, ls, open, bodyFrames } = await direct();
+  open(0, 1);
+  assert.equal(ls[0].sendMs, 8);
+  const before = bodyFrames();
+  ls[0].sendCursor("B1", 1, 1);
+  await relay.run();
+  clock.advance(8);
+  ls[0].sendCursor("B1", 2, 2);
+  await relay.run();
+  assert.equal(bodyFrames(), before);
+  assert.equal(ts[0].sent.length, 2);
+  for (const { text } of ts[0].sent) ts[1].onMessage(ls[0].id, text);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(ls[1].cursors("B1").map((c) => c.x), [2]);
+});
+
+test("with a channel short, cursors go to the relay too", async () => {
+  const { relay, ts, ls, open, bodyFrames } = await direct(3);
+  open(0, 1);
+  assert.equal(ls[0].sendMs, 50);
+  const before = bodyFrames();
+  ls[0].sendCursor("B1", 1, 1);
+  await relay.run();
+  assert.equal(bodyFrames(), before + 1);
+  assert.deepEqual(ts[0].sent.map((s) => s.id), [ls[1].id]);
+});
+
+test("while holding, the heartbeat goes to the relay even with every channel open", async () => {
+  const { relay, clock, ls, open, bodyFrames } = await direct();
+  open(0, 1);
+  ls[0].hold(["c1"]);
+  ls[0].sendLive("B1", moved, null);
+  await relay.run();
+  const before = bodyFrames();
+  clock.advance(5000);
+  ls[0].tick();
+  await relay.run();
+  assert.equal(bodyFrames(), before + 1);
+});
+
+test("only cursors and live edits are taken from a channel", async () => {
+  const { relay, ts, ls, open } = await direct();
+  open(0, 1);
+  const pushes = [];
+  ls[1].onPushed = (v) => pushes.push(v);
+  const sealed = encode(await keys.sealLive(new TextEncoder().encode(JSON.stringify({ t: "pushed", version: 9 }))));
+  ts[1].onMessage(ls[0].id, sealed);
+  await relay.run();
+  assert.deepEqual(pushes, []);
+});
+
+test("a peer leaving closes its connection; the status line counts open channels", async () => {
+  const { relay, ts, ls, open } = await direct();
+  assert.equal(ls[0].directStatus(), "Direct with 0 of 1 person");
+  open(0, 1);
+  assert.equal(ls[0].directStatus(), "Direct with 1 of 1 person");
+  const gone = ls[1].id;
+  ls[1].close();
+  await relay.run();
+  assert.ok(ts[0].log.includes(`close ${gone}`));
+  assert.equal(ls[0].directStatus(), null);
 });

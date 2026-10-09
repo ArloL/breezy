@@ -3,9 +3,12 @@
 import { encode, decode } from "./base64.js";
 import { LIVE_FIELDS } from "./overlay.js";
 import { Track } from "./track.js";
+import { Direct } from "./direct.js";
+import { RTCTransport } from "./rtc.js";
 
 export const PALETTE = ["#e5484d", "#f76b15", "#12a594", "#8e4ec6", "#3e63dd", "#e93d82", "#ad7f58", "#00a2c7"];
 export const SEND_MS = 50;
+export const DIRECT_SEND_MS = 8;
 export const HEARTBEAT_MS = 5_000;
 export const PRESENCE_MS = 15_000;
 export const GONE_MS = 30_000;
@@ -45,7 +48,7 @@ class Gate {
 
   run(go) {
     this.go = go;
-    const wait = SEND_MS - (this.live.now() - this.sent);
+    const wait = this.live.sendMs - (this.live.now() - this.sent);
     if (wait <= 0) return this.fire();
     if (this.queued) return;
     this.queued = true;
@@ -62,7 +65,7 @@ class Gate {
 }
 
 export class Live {
-  constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = () => Date.now(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms) }) {
+  constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = () => Date.now(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms), peerTransport = typeof RTCPeerConnection === "function" ? () => new RTCTransport() : null }) {
     Object.assign(this, { relay, space, keys, me, makeSocket: socket, now, clock, schedule });
     this.seq = 0;
     this.ws = null;
@@ -96,6 +99,14 @@ export class Live {
     this.onPushed = () => {};
     this.onRefused = () => {};
     this.onUnauthorized = () => {};
+    /** The other connections in the space, as the relay names them. */
+    this.roster = new Set();
+    this.direct = peerTransport && new Direct(peerTransport(), {
+      now,
+      relay: (to, body) => this.send(body, to),
+      message: (from, text) => (this.in = this.in.then(() => this.opened(from, text, true)).catch(() => {})),
+      change: () => this.onChange(),
+    });
   }
 
   get connected() {
@@ -157,6 +168,8 @@ export class Live {
     this.pingWaiting = null;
     this.peers.clear();
     this.holds.clear();
+    this.roster.clear();
+    this.direct?.reset();
     if (had) this.onChange();
   }
 
@@ -168,13 +181,19 @@ export class Live {
     });
   }
 
+  /** `body` sealed, as base64url; null when too big to send. */
+  async seal(body) {
+    const sealed = encode(await this.keys.sealLive(enc.encode(JSON.stringify(body))));
+    return sealed.length > MAX_FRAME - 100 ? null : sealed;
+  }
+
   /** A sealed body to everyone else, or to connection `to`; resolves to whether it went out. */
   send(body, to) {
     if (!this.connected) return Promise.resolve(false);
     const ws = this.ws;
     const sent = this.out.then(async () => {
-      const sealed = encode(await this.keys.sealLive(enc.encode(JSON.stringify(body))));
-      if (sealed.length > MAX_FRAME - 100 || ws !== this.ws || ws.readyState !== 1) return false;
+      const sealed = await this.seal(body);
+      if (!sealed || ws !== this.ws || ws.readyState !== 1) return false;
       ws.send(JSON.stringify(to ? { to, body: sealed } : { body: sealed }));
       return true;
     }).catch(() => false);
@@ -182,9 +201,30 @@ export class Live {
     return sent;
   }
 
-  /** A cursor or live body, stamped with this device's time and the next sequence number. */
-  sendFast(body) {
-    return this.send({ ...body, at: this.clock(), seq: ++this.seq });
+  /** Whether every other connection has an open channel. */
+  get allDirect() {
+    return this.roster.size > 0 && [...this.roster].every((id) => this.direct?.isOpen(id));
+  }
+
+  get sendMs() {
+    return this.allDirect ? DIRECT_SEND_MS : SEND_MS;
+  }
+
+  /** A cursor or live body, stamped with this device's time and the next sequence number: over every open channel, and
+   * to the relay unless all are open; `relayOnly` for the holder's heartbeat, which keeps the holds there. */
+  sendFast(body, { relayOnly = false } = {}) {
+    if (!this.connected) return Promise.resolve(false);
+    const stamped = { ...body, at: this.clock(), seq: ++this.seq };
+    const ws = this.ws;
+    const sent = this.out.then(async () => {
+      const sealed = await this.seal(stamped);
+      if (!sealed || ws !== this.ws) return false;
+      if (!relayOnly) for (const id of this.roster) this.direct?.send(id, sealed);
+      if ((relayOnly || !this.allDirect) && ws.readyState === 1) ws.send(JSON.stringify({ body: sealed }));
+      return true;
+    }).catch(() => false);
+    this.out = sent;
+    return sent;
   }
 
   async received(text) {
@@ -201,14 +241,19 @@ export class Live {
         this.failures = 0;
         this.pingSent = this.now();
         this.holds = holdsFrom(m.holds);
+        this.roster = new Set(Array.isArray(m.peers) ? m.peers.filter((p) => typeof p === "string") : []);
+        this.direct?.welcome([...this.roster]);
         this.sendPresence();
         if (this.mine.size) this.frame({ t: "hold", ids: [...this.mine].sort() });
         return this.onChange();
       case "join":
+        this.roster.add(m.id);
         return this.sendPresence(m.id);
       case "leave":
         this.peers.delete(m.id);
         this.holds.delete(m.id);
+        this.roster.delete(m.id);
+        this.direct?.leave(m.id);
         return this.onChange();
       case "holds":
         this.holds = holdsFrom(m.holds);
@@ -218,14 +263,22 @@ export class Live {
         if (Array.isArray(m.ids) && m.ids.length) this.onRefused(new Set(m.ids));
         return;
     }
-    if (typeof m?.from !== "string" || typeof m.body !== "string") return;
+    if (typeof m?.from === "string" && typeof m.body === "string") await this.opened(m.from, m.body, false);
+  }
+
+  /** A sealed body from connection `from`, through the relay or, `direct`, over its channel, which carries only
+   * cursors and live edits. */
+  async opened(from, body, direct) {
     let b;
     try {
-      b = JSON.parse(dec.decode(await this.keys.openLive(decode(m.body))));
+      b = JSON.parse(dec.decode(await this.keys.openLive(decode(body))));
     } catch {
       return;
     }
-    if (this.connected) this.heard(m.from, b);
+    if (!this.connected) return;
+    if (["offer", "answer", "ice"].includes(b?.t)) return direct || this.direct?.heard(from, b);
+    if (direct && b?.t !== "cursor" && b?.t !== "live") return;
+    this.heard(from, b);
   }
 
   heard(from, b) {
@@ -318,6 +371,7 @@ export class Live {
       this.pingSent = this.pingWaiting = now;
       if (this.ws.readyState === 1) this.ws.send("ping");
     }
+    this.direct?.tick();
     let changed = false;
     for (const [conn, p] of this.peers) {
       if (now - p.heard > GONE_MS) {
@@ -332,7 +386,7 @@ export class Live {
     if (this.connected && this.mine.size && now - this.liveGate.sent >= HEARTBEAT_MS) {
       this.liveGate.sent = now;
       const minimal = { t: "live", board: this.presence.board ?? this.cursorBoard, items: {}, caret: null };
-      (this.lastLive ? this.sendFast(this.lastLive) : Promise.resolve(false)).then((ok) => ok || this.sendFast(minimal));
+      (this.lastLive ? this.sendFast(this.lastLive, { relayOnly: true }) : Promise.resolve(false)).then((ok) => ok || this.sendFast(minimal, { relayOnly: true }));
     }
     if (changed) this.onChange();
   }
@@ -386,6 +440,14 @@ export class Live {
     this.lastLive = { t: "live", board, items, caret };
     if (!this.peers.size) return;
     this.liveGate.run(() => this.lastLive && this.sendFast(this.lastLive));
+  }
+
+  /** "Direct with 1 of 2 people", for the status lines, while anyone else is here. */
+  directStatus() {
+    const people = [...this.roster].filter((id) => this.peers.get(id)?.person);
+    if (!people.length) return null;
+    const open = people.filter((id) => this.direct?.isOpen(id)).length;
+    return `Direct with ${open} of ${people.length} ${people.length === 1 ? "person" : "people"}`;
   }
 
   sendPushed(version) {
