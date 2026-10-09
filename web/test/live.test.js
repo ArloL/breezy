@@ -599,6 +599,37 @@ test("a long gesture with every channel open still reaches the relay every 5 s",
   assert.ok(bodyFrames() - before >= 2);
 });
 
+test("a live edit that comes direct before its hold is shown and keeps its track; one never held goes after a second", async () => {
+  const { relay, clock, ts, ls, open } = await direct();
+  open(0, 1);
+  const deliver = async () => {
+    await ls[0].out;
+    for (const { text } of ts[0].sent.splice(0)) ts[1].onMessage(ls[0].id, text);
+    await ls[1].in;
+  };
+  ls[0].hold(["c1"]);
+  ls[0].sendLive("B1", { c1: { pos: [0, 0] } }, null);
+  await deliver();
+  assert.deepEqual(Object.fromEntries(ls[1].overlay("B1")), { c1: { pos: [0, 0] } });
+  await relay.run();
+  assert.deepEqual([...ls[1].taken()], ["c1"]);
+  clock.advance(50);
+  ls[0].sendLive("B1", { c1: { pos: [10, 0] } }, null);
+  await deliver();
+  clock.advance(25);
+  assert.deepEqual(ls[1].overlay("B1").get("c1"), { pos: [5, 0] });
+
+  ls[0].sendLive("B1", { c2: { pos: [1, 1] } }, null);
+  await deliver();
+  await relay.run();
+  clock.advance(999);
+  ls[1].tick();
+  assert.ok(ls[1].overlay("B1").has("c2"));
+  clock.advance(1);
+  ls[1].tick();
+  assert.deepEqual([...ls[1].overlay("B1").keys()], ["c1"]);
+});
+
 test("only cursors and live edits are taken from a channel", async () => {
   const { relay, ts, ls, open } = await direct();
   open(0, 1);

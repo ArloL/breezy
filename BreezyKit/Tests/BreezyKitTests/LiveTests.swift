@@ -607,6 +607,37 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(broadcasts(relay) - before >= 2)
 }
 
+@MainActor @Test func aLiveEditThatComesDirectBeforeItsHoldIsShownAndKeepsItsTrack() {
+  let (relay, clock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  let deliver = {
+    for s in ts[0].sent { ts[1].onMessage?(ls[0].id!, s.text) }
+    ts[0].sent = []
+  }
+  let pos = { (x: Double, y: Double) -> JSONValue in .array([.number(x), .number(y)]) }
+  ls[0].hold(["c1"])
+  ls[0].sendLive(board: "B1", items: ["c1": ["pos": pos(0, 0)]], caret: nil)
+  deliver()
+  #expect(ls[1].overlay(on: "B1") == ["c1": ["pos": pos(0, 0)]])
+  relay.run()
+  #expect(ls[1].taken == ["c1"])
+  clock.advance(0.05)
+  ls[0].sendLive(board: "B1", items: ["c1": ["pos": pos(10, 0)]], caret: nil)
+  deliver()
+  clock.advance(0.025)
+  #expect(ls[1].overlay(on: "B1")["c1"] == ["pos": pos(5, 0)])
+
+  ls[0].sendLive(board: "B1", items: ["c2": ["pos": pos(1, 1)]], caret: nil)
+  deliver()
+  relay.run()
+  clock.advance(0.999)
+  ls[1].tick()
+  #expect(ls[1].overlay(on: "B1")["c2"] != nil)
+  clock.advance(0.001)
+  ls[1].tick()
+  #expect(Array(ls[1].overlay(on: "B1").keys) == ["c1"])
+}
+
 @MainActor @Test func onlyCursorsAndLiveEditsAreTakenFromAChannel() throws {
   let (relay, _, ts, ls) = direct()
   open(ts, ls, 0, 1)

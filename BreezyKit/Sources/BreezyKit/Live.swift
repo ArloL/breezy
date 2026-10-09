@@ -67,6 +67,8 @@ public struct Peer: Equatable, Sendable {
   var cursorTrack: Track?
   /// Tracks of the overlay's moving fields, keyed "id field".
   var motion: [String: Track] = [:]
+  /// Overlay ids whose live body last came, at this time, while it did not hold them.
+  var unheld: [String: Date] = [:]
 }
 
 /// A WebSocket as `Live` uses it; tests put a fake in its place.
@@ -161,6 +163,7 @@ public struct Peer: Equatable, Sendable {
   public static let heartbeat: TimeInterval = 5
   public static let presenceInterval: TimeInterval = 15
   public static let gone: TimeInterval = 30
+  public static let holdGrace: TimeInterval = 1
   public static let idleCursor: TimeInterval = 60
   public static let maxBackoff: TimeInterval = 30
   public static let pingInterval: TimeInterval = 20
@@ -480,6 +483,7 @@ public struct Peer: Equatable, Sendable {
       for (id, f) in b["items"]?.object ?? [:] {
         guard let f = f.object else { continue }
         p.overlay[id, default: [:]].merge(f.filter { Records.liveFieldNames.contains($0.key) || $0.key == "kind" }) { $1 }
+        p.unheld[id] = holds[from]?.contains(id) == true ? nil : t
         for k in Self.moving {
           guard let v = Self.numbers(f[k]) else { continue }
           // a value of another length than the track's cannot be played back with it
@@ -504,15 +508,26 @@ public struct Peer: Equatable, Sendable {
     onChange?()
   }
 
-  /// Overlays of items no longer held go, unless their holder pushed a version not pulled yet.
+  /// Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
+  /// `holdGrace` after its last live body, as that may come direct before the relay says it is held.
   private func dropReleased() {
+    let t = now()
     for (conn, var p) in peers {
       guard p.awaiting <= storeCursor else { continue }
       p.awaiting = 0
       let held = holds[conn] ?? []
-      p.overlay = p.overlay.filter { held.contains($0.key) }
+      for id in p.overlay.keys {
+        if held.contains(id) {
+          p.unheld[id] = nil
+        } else if let since = p.unheld[id], t.timeIntervalSince(since) < Self.holdGrace {
+          continue
+        } else {
+          p.overlay[id] = nil
+          p.unheld[id] = nil
+        }
+      }
       p.motion = p.motion.filter { p.overlay[String($0.key.prefix { $0 != " " })] != nil }
-      if held.isEmpty { p.caret = nil }
+      if held.isEmpty && p.unheld.isEmpty { p.caret = nil }
       peers[conn] = p
     }
   }
@@ -556,6 +571,10 @@ public struct Peer: Equatable, Sendable {
       if lastLive == nil || !sendFast(lastLive!, relayOnly: true) {
         sendFast(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null], relayOnly: true)
       }
+    }
+    if peers.values.contains(where: { !$0.unheld.isEmpty }) {
+      dropReleased()
+      changed = true
     }
     if connected && t.timeIntervalSince(presenceSent) >= Self.presenceInterval { sendPresence() }
     direct?.tick()
