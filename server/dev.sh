@@ -13,5 +13,7 @@ if [[ ! -s $db ]] || ! php -r $current $db; then
   rm -f $db
   php -r '$db = new PDO("sqlite:" . $argv[1]); $db->exec(file_get_contents("schema.sql"));' $db
 fi
-print -r -- "<?php return ['dsn' => 'sqlite:$db'];" > $root/build/sync-dev-config.php
+# the relay npm --prefix relay run dev serves; BREEZY_DEV_RELAY= leaves it out
+relay=${BREEZY_DEV_RELAY-ws://127.0.0.1:58568/}
+print -r -- "<?php return ['dsn' => 'sqlite:$db'${relay:+, 'relay' => '$relay'}];" > $root/build/sync-dev-config.php
 BREEZY_CONFIG=$root/build/sync-dev-config.php exec php -S 127.0.0.1:58566 -t .

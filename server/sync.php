@@ -1,6 +1,7 @@
 <?php
 // Breezy's sync server: keeps each space's records, encrypted on the devices, and hands back those
-// changed since a version. A space's epoch changes when its database is restored, so that devices pull
+// changed since a version. Responses name the live layer's relay when config.php does.
+// A space's epoch changes when its database is restored, so that devices pull
 // everything again; records written before that are marked stale. See
 // docs/superpowers/specs/2026-10-08-breezy-sync-design.md.
 declare(strict_types=1);
@@ -49,6 +50,12 @@ function query(PDO $db, string $sql, array $params): PDOStatement {
   return $st;
 }
 
+/** `body` with the relay's address, when the config names one. */
+function named(array $body): array {
+  global $relay;
+  return $relay === null ? $body : $body + ['relay' => $relay];
+}
+
 ini_set('display_errors', '0');
 set_exception_handler(function (Throwable $e) {
   global $db;
@@ -77,6 +84,7 @@ if ($token === null) reply(401);
 $hash = hash('sha256', $token, true);
 
 $config = require (getenv('BREEZY_CONFIG') ?: __DIR__ . '/config.php');
+$relay = is_string($config['relay'] ?? null) && preg_match('#^wss?://#', $config['relay']) ? $config['relay'] : null;
 $db = new PDO($config['dsn'], $config['user'] ?? null, $config['password'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
 
@@ -91,7 +99,7 @@ if ($method === 'GET') {
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $records[] = pulled($r, $row['epoch']);
   }
   $cursor = $records ? $records[count($records) - 1]['version'] : $since;
-  reply(200, ['records' => $records, 'cursor' => $cursor, 'epoch' => $row ? b64e($row['epoch']) : null]);
+  reply(200, named(['records' => $records, 'cursor' => $cursor, 'epoch' => $row ? b64e($row['epoch']) : null]));
 }
 
 if ($method !== 'POST') reply(405);
@@ -151,4 +159,4 @@ for ($attempt = 1;; $attempt++) {
     usleep(random_int(5000, 50000));
   }
 }
-reply(200, ['accepted' => $accepted, 'refused' => $refused, 'epoch' => b64e($epoch)]);
+reply(200, named(['accepted' => $accepted, 'refused' => $refused, 'epoch' => b64e($epoch)]));
