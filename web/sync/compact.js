@@ -76,10 +76,11 @@ export class CursorEncoder extends Encoder {
 
   /** `x` or `y` null hides. */
   encode({ x, y, board }, { seq, at, now }) {
+    const b = bin(board);
     const key = this.keyframe(now);
     const shown = x != null && y != null;
     const out = [1, seq, tenths(at), shown ? new Float32(x) : null, shown ? new Float32(y) : null];
-    if (key || board !== this.board) out.push(bin(board));
+    if (key || board !== this.board) out.push(b);
     this.board = board;
     return pack(out);
   }
@@ -109,9 +110,11 @@ export class LiveEncoder extends Encoder {
 
   /** `{ board, items: {id: fields since start}, starts: {id: [x, y]}, caret, cursor: [x, y] | null }` → bytes. */
   encode({ board, items, starts = {}, caret = null, cursor = null }, { seq, at, now }) {
+    const boardBin = bin(board), caretBin = caret && bin(caret.id);
+    const ids = Object.keys(items).map((id) => [id, bin(id)]).sort(([, a], [, b]) => byBytes(a, b));
+    for (const f of Object.values(items)) if ("kind" in f && !KINDS.includes(f.kind)) throw new RangeError(`compact: unknown kind ${f.kind}`);
     const key = this.keyframe(now);
     if (key) [this.sent, this.groupSet] = [new Map(), null];
-    const ids = Object.keys(items).map((id) => [id, bin(id)]).sort(([, a], [, b]) => byBytes(a, b));
     const group = groupOf(ids, items, starts);
     const grouped = new Set(group?.ids.map(([id]) => id));
     const out = new Map();
@@ -136,9 +139,9 @@ export class LiveEncoder extends Encoder {
       this.groupSet = set;
     }
     this.offset = group?.offset ?? null;
-    const b = key || board !== this.board ? bin(board) : null;
+    const b = key || board !== this.board ? boardBin : null;
     this.board = board;
-    const c = caret ? [key || caret.id !== this.caretId ? bin(caret.id) : null, caret.back, caret.at] : null;
+    const c = caret ? [key || caret.id !== this.caretId ? caretBin : null, caret.back, caret.at] : null;
     this.caretId = caret?.id ?? null;
     return pack([2, seq, tenths(at), b, c, out, g, cursor ? f32(cursor) : null]);
   }
@@ -148,10 +151,7 @@ export class LiveEncoder extends Encoder {
 function field(name, v, was) {
   if (name === "pos" || name === "size") return f32(v);
   if (name === "w") return new Float32(v);
-  if (name === "kind") {
-    if (!KINDS.includes(v)) throw new RangeError(`compact: unknown kind ${v}`);
-    return KINDS.indexOf(v);
-  }
+  if (name === "kind") return KINDS.indexOf(v);
   if (TEXTS.has(name) && typeof was === "string") {
     const s = [fnv1a(was), ...splice(was, v)];
     if (pack(s).length < pack(v).length) return s;
@@ -172,7 +172,7 @@ function unfield(name, v, current) {
     case "color":
       return Number.isSafeInteger(v) ? v : BAD;
     case "kind":
-      return KINDS[v] ?? BAD;
+      return Number.isInteger(v) ? KINDS[v] ?? BAD : BAD;
   }
   if (typeof v === "string") return v;
   if (!Array.isArray(v) || v.length !== 4 || !v.slice(0, 3).every(uint) || typeof v[3] !== "string") return BAD;
@@ -231,7 +231,9 @@ export class LiveDecoder {
       if (!isId(id) || !(fields instanceof Map)) return null;
       const key = encode(id), f = {};
       for (const [k, x] of fields) {
-        if (!Number.isInteger(k) || !FIELDS[k]) return null;
+        if (!Number.isInteger(k)) return null;
+        // a field from a newer sender
+        if (!FIELDS[k]) continue;
         const value = unfield(FIELDS[k], x, overlay.get(key)?.[FIELDS[k]]);
         if (value === BAD) return null;
         if (value !== undefined) f[FIELDS[k]] = value;
