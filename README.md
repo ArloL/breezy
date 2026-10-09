@@ -47,12 +47,16 @@ Each space is a set of boards shared with whoever has its invite; a device can j
 
 The server is `server/sync.php` on PHP 8 with MySQL, served with the web app at https://breezy.k5d.de/sync.php. Every push to `main` builds both (`scripts/build-site.sh`) and uploads what changed over FTPS (`scripts/deploy.py`), with the `production` environment's secrets `BREEZY_WEB_USER`, `BREEZY_WEB_PASSWORD`, `BREEZY_DATABASE_USER` and `BREEZY_DATABASE_PASSWORD`; the deploy writes the database's details to `config.php` next to `sync.php`, which `.htaccess` keeps from browsers. Run `schema.sql` once on the database. It must be served over HTTPS, and `.htaccess` needs `AllowOverride AuthConfig` for `CGIPassAuth`. The server has been smoke-tested against MySQL 8.4. Then New Space on one device with the address of `sync.php`, Share Invite from its menu, and Join Space on the others with the link.
 
+Cursors, who is on which board, held cards and edits as they happen go through a relay, `relay/`: a Cloudflare Worker with a Durable Object per space, which forwards what the devices seal and cannot read it. `sync.php` names it from `config.php`'s `relay`, which the deploy writes from `BREEZY_RELAY` (default `wss://breezy-relay.blissfulbird.workers.dev/`). Deploy the relay by hand: `npx --prefix relay wrangler login` once, then `npm --prefix relay run deploy`. Without a relay, boards sync as before, polling every 5 s.
+
 After restoring a backup of the database, run `UPDATE spaces SET epoch = RANDOM_BYTES(16);` so that devices pull everything again and push what the backup lacks.
 
 ```bash
 server/test.sh   # sync.php against SQLite, then the Mac's HTTP client against it; needs php (brew install php)
 server/dev.sh    # serves http://127.0.0.1:58566/sync.php from build/ for trying sync on this Mac
 scripts/build-site.sh build/site local-$(git rev-parse --short HEAD) && mise exec -- scripts/deploy.py build/site   # deploys from here as CI does, with mise.local.toml's secrets
+relay/test.sh                  # the relay under wrangler dev, with its tests; first npm install --prefix relay
+npm --prefix relay run dev     # serves ws://127.0.0.1:58568/, which server/dev.sh names
 ```
 
 ## Touch prototype
