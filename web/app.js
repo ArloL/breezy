@@ -3,6 +3,7 @@ import { Model } from "./model.js";
 import { View } from "./view.js";
 import { UI } from "./ui.js";
 import { Input } from "./input.js";
+import { Presence } from "./presence.js";
 
 function caretToEnd(el) {
   const r = document.createRange();
