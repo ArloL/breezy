@@ -199,7 +199,8 @@ export class SyncEngine {
         const { writes, sent } = first ?? (await this.outgoing(keys));
         first = null;
         if (!writes.length) break;
-        const result = await transport.push(writes, combined ? this.store.state.cursor : undefined);
+        const request = combined ? this.store.state.cursor : undefined;
+        const result = await transport.push(writes, request);
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
           this.again = true;
@@ -217,7 +218,8 @@ export class SyncEngine {
           if (decoded.items.length && ++refusals === 3) throw new TransportError("unreachable");
         }
         if (combined && result.records) {
-          const taken = await this.takePage(result, keys, same);
+          const own = result.accepted.filter((a) => a.version > request && a.version <= result.cursor).length;
+          const taken = await this.takePage(result, keys, same, own);
           if (taken === "stop") return;
           if (taken === "again") {
             this.again = true;
@@ -244,8 +246,8 @@ export class SyncEngine {
     }
   }
 
-  /** Takes a page of records: "stop" if the space changed, "again" if the epoch did, "more" if the page was full. */
-  async takePage(page, keys, same) {
+  /** Takes a page of records: "stop" if the space changed, "again" if the epoch did, "more" if the page was full, counting `own` writes left out of it. */
+  async takePage(page, keys, same, own = 0) {
     if (!same()) return "stop";
     this.noteRelay(page.relay);
     if (this.store.noteEpoch(page.epoch)) return "again";
@@ -254,7 +256,7 @@ export class SyncEngine {
     if (!same()) return "stop";
     this.apply(decoded);
     this.store.advance(page.cursor);
-    return page.records.length < PAGE_SIZE ? "done" : "more";
+    return page.records.length + own < PAGE_SIZE ? "done" : "more";
   }
 
   /** Pulls to the end; false if the space changed meanwhile. */
