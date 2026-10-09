@@ -56,3 +56,18 @@ test("an invite may name its space", () => {
   assert.deepEqual(parseInvite(v.namedInvite), named);
   assert.equal("name" in parseInvite(v.invite), false);
 });
+
+test("live messages match the shared vector", async () => {
+  const lv = fixture("live.json");
+  const keys = await SpaceKeys.create(decode(lv.space), decode(lv.secret));
+  assert.equal(encode(await keys.sealLive(enc.encode(lv.plaintext), decode(lv.nonce))), lv.body);
+  assert.equal(new TextDecoder().decode(await keys.openLive(decode(lv.body))), lv.plaintext);
+});
+
+test("live messages and records never pass for each other", async () => {
+  const keys = await SpaceKeys.create(randomBytes(16), randomBytes(32));
+  const body = await keys.sealLive(enc.encode("x"));
+  await assert.rejects(keys.open(body, enc.encode("live")));
+  await assert.rejects(keys.openLive(await keys.seal(enc.encode("x"), randomBytes(16))));
+  await assert.rejects((await SpaceKeys.create(randomBytes(16), randomBytes(32))).openLive(body));
+});

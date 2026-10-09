@@ -79,6 +79,15 @@ export class SyncEngine {
     this.onStatus = () => {};
     /** Called before merging, so that edits not yet in the store get there first. */
     this.flushLocal = () => {};
+    /** The relay the server last named; null until it names one. */
+    this.relay = null;
+    this.onRelay = () => {};
+    /** After a push the server took, with the highest version it gave. */
+    this.onPushed = () => {};
+    /** After the pulls of a cycle, with the store's cursor. */
+    this.onPulled = () => {};
+    /** When a cycle last ended synced, in ms. */
+    this.lastCycle = 0;
     this.running = null;
     this.again = false;
     this.stopped = false;
@@ -126,6 +135,13 @@ export class SyncEngine {
     this.blocked.clear();
   }
 
+  noteRelay(r) {
+    const relay = typeof r === "string" && /^wss?:\/\//.test(r) ? r : null;
+    if (relay === this.relay) return;
+    this.relay = relay;
+    this.onRelay(relay);
+  }
+
   async keysOf({ space, secret }) {
     const k = `${space}|${secret}`;
     if (this.keysFor !== k) {
@@ -152,6 +168,7 @@ export class SyncEngine {
       for (;;) {
         const page = await transport.pull(this.store.state.cursor);
         if (!same()) return;
+        this.noteRelay(page.relay);
         if (this.store.noteEpoch(page.epoch)) continue;
         const decoded = await this.decodeAll(page.records, keys);
         this.flushLocal();
@@ -163,6 +180,7 @@ export class SyncEngine {
           break;
         }
       }
+      this.onPulled(this.store.state.cursor);
       let refusals = 0;
       for (let round = 0; round < 10; round++) {
         this.flushLocal();
@@ -175,6 +193,8 @@ export class SyncEngine {
           return;
         }
         for (const a of result.accepted) if (sent.has(a.id)) this.store.accepted(a.id, a.version, sent.get(a.id));
+        this.noteRelay(result.relay);
+        if (result.accepted.length) this.onPushed(Math.max(...result.accepted.map((a) => a.version)));
         if (!result.refused.length) continue;
         const decoded = await this.decodeAll(result.refused, keys);
         this.flushLocal();
@@ -185,6 +205,7 @@ export class SyncEngine {
       }
       this.failures = 0;
       this.retryAt = 0;
+      this.lastCycle = this.now();
       this.update("synced");
     } catch (error) {
       if (!same()) return;

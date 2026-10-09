@@ -13,6 +13,8 @@ export class FakeServer {
     this.version = 0;
     /** Null until the space's first write, and again after `wipe`. */
     this.epoch = null;
+    /** The relay the server names, if any. */
+    this.relay = null;
   }
 
   marked(r) {
@@ -21,7 +23,7 @@ export class FakeServer {
 
   pull(since) {
     const records = [...this.records.values()].filter((r) => r.version > since).sort((a, b) => a.version - b.version).slice(0, PAGE_SIZE);
-    return { records: records.map((r) => this.marked(r)), cursor: records.at(-1)?.version ?? since, epoch: this.epoch };
+    return { records: records.map((r) => this.marked(r)), cursor: records.at(-1)?.version ?? since, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
   }
 
   push(writes) {
@@ -36,7 +38,7 @@ export class FakeServer {
       this.put(w.id, w.blob);
       accepted.push({ id: w.id, version: this.version });
     }
-    return { accepted, refused, epoch: this.epoch };
+    return { accepted, refused, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
   }
 
   /** The database as a backup holds it. */

@@ -40,6 +40,26 @@ export class SpaceKeys {
     const iv = blob.slice(0, 12);
     return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: this.aad(id) }, this.key, blob.slice(12)));
   }
+
+  /** A live message's body: bound to the space, and marked live so that it never passes for a record. */
+  async sealLive(plain, nonce = randomBytes(12)) {
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: this.liveAad() }, this.key, plain));
+    const out = new Uint8Array(nonce.length + ct.length);
+    out.set(nonce);
+    out.set(ct, nonce.length);
+    return out;
+  }
+
+  async openLive(body) {
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: body.slice(0, 12), additionalData: this.liveAad() }, this.key, body.slice(12)));
+  }
+
+  liveAad() {
+    const a = new Uint8Array(4 + this.space.length);
+    a.set(enc.encode("live"));
+    a.set(this.space, 4);
+    return a;
+  }
 }
 
 /** HTTPS, or plain HTTP to this computer for trying the server out. */

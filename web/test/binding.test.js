@@ -52,3 +52,15 @@ test("local edits reach the store field by field", () => {
   assert.equal(store.board(id).cards[0].text, "theirs");
   assert.equal(store.board(id).cards[0].color, 3);
 });
+
+test("changes to items others hold are not written", () => {
+  const { store, id, model, binding } = opened([card("a", 0), card("b", 96)]);
+  binding.taken = () => new Set(["b"]);
+  model.perform("Move", (b) => {
+    b.cards[0].x = 48;
+    b.cards[1].x = 480;
+  });
+  binding.flush();
+  assert.equal(store.board(id).cards.find((c) => c.id === "a").x, 48);
+  assert.equal(store.board(id).cards.find((c) => c.id === "b").x, 0);
+});
