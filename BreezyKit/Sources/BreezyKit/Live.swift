@@ -209,6 +209,8 @@ public struct Peer: Equatable, Sendable {
   private var cursorSent = Date.distantPast, cursorQueued = false
   private var liveSent = Date.distantPast, liveQueued = false
   private var lastLive: [String: JSONValue]?
+  /// When a frame last reached the relay, which keeps this connection's holds there while it hears from it.
+  private var relaySent = Date.distantPast
   private var storeCursor = 0
   private var seq = 0
   /// The other connections in the space, as the relay names them.
@@ -312,8 +314,9 @@ public struct Peer: Equatable, Sendable {
   }
 
   private func frame(_ f: [String: JSONValue]) {
-    guard let data = try? Self.encoder.encode(JSONValue.object(f)) else { return }
-    socket?.send(String(decoding: data, as: UTF8.self))
+    guard let socket, let data = try? Self.encoder.encode(JSONValue.object(f)) else { return }
+    socket.send(String(decoding: data, as: UTF8.self))
+    relaySent = now()
   }
 
   /// `body` sealed, as base64url; nil when too big to send.
@@ -540,13 +543,14 @@ public struct Peer: Equatable, Sendable {
         changed = true
       }
     }
-    if connected && t.timeIntervalSince(presenceSent) >= Self.presenceInterval { sendPresence() }
-    if connected && !mine.isEmpty && t.timeIntervalSince(liveSent) >= Self.heartbeat {
-      liveSent = t
+    // a holder the relay has not heard from lately: live edits that go only direct do not reach it
+    if connected && !mine.isEmpty && t.timeIntervalSince(relaySent) >= Self.heartbeat {
+      relaySent = t
       if lastLive == nil || !sendFast(lastLive!, relayOnly: true) {
         sendFast(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null], relayOnly: true)
       }
     }
+    if connected && t.timeIntervalSince(presenceSent) >= Self.presenceInterval { sendPresence() }
     direct?.tick()
     if changed { onChange?() }
   }

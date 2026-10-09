@@ -553,6 +553,22 @@ test("while holding, the heartbeat goes to the relay even with every channel ope
   assert.equal(bodyFrames(), before + 1);
 });
 
+test("a long gesture with every channel open still reaches the relay every 5 s", async () => {
+  const { relay, clock, ls, open, bodyFrames } = await direct();
+  open(0, 1);
+  ls[0].hold(["c1"]);
+  await relay.run();
+  const before = bodyFrames();
+  for (let t = 0; t < 12_000; t += 8) {
+    ls[0].sendLive("B1", { c1: { pos: [t, 0] } }, null);
+    await relay.run();
+    clock.advance(8);
+    if (t % 1000 === 0) ls[0].tick();
+  }
+  await relay.run();
+  assert.ok(bodyFrames() - before >= 2);
+});
+
 test("only cursors and live edits are taken from a channel", async () => {
   const { relay, ts, ls, open } = await direct();
   open(0, 1);
