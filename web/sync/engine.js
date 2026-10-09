@@ -103,7 +103,8 @@ export class SyncEngine {
     /** The relay the server last named; null until it names one. */
     this.relay = null;
     this.onRelay = () => {};
-    /** After a push the server took, with the highest version it gave. */
+    /** After a push the server took: `{version, epoch, records}`, the highest version it gave and the accepted writes as
+     * `{id, version, blob}`. */
     this.onPushed = () => {};
     /** After the pulls of a cycle, with the store's cursor. */
     this.onPulled = () => {};
@@ -197,7 +198,7 @@ export class SyncEngine {
       let refusals = 0;
       for (let round = 0; round < 10; round++) {
         this.flushLocal();
-        const { writes, sent } = first ?? (await this.outgoing(keys));
+        const { writes, sent, blobs } = first ?? (await this.outgoing(keys));
         first = null;
         if (!writes.length) break;
         const request = combined ? this.store.state.cursor : undefined;
@@ -209,7 +210,10 @@ export class SyncEngine {
         }
         for (const a of result.accepted) if (sent.has(a.id)) this.store.accepted(a.id, a.version, sent.get(a.id));
         this.noteRelay(result.relay);
-        if (result.accepted.length) this.onPushed(Math.max(...result.accepted.map((a) => a.version)));
+        if (result.accepted.length) {
+          const records = result.accepted.filter((a) => blobs.has(a.id)).map((a) => ({ id: a.id, version: a.version, blob: blobs.get(a.id) }));
+          this.onPushed({ version: Math.max(...result.accepted.map((a) => a.version)), epoch: result.epoch, records });
+        }
         if (result.refused.length) {
           const decoded = await this.decodeAll(result.refused, keys);
           this.flushLocal();
@@ -245,6 +249,49 @@ export class SyncEngine {
       this.retryAt = this.now() + Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
       this.update(error?.kind === "offline" ? "offline" : "unreachable");
     }
+  }
+
+  /** Applies the records another device just pushed, as the page after the cursor, without a pull; false, changing
+   * nothing, when they do not follow on from what this one has. */
+  async receivePushed({ epoch, records } = {}) {
+    while (this.running) await this.running.catch(() => {});
+    const state = this.store.state;
+    if (!this.store.syncing || state.resync || state.epoch == null || epoch !== state.epoch) return false;
+    if (!Array.isArray(records) || !records.length) return false;
+    const page = records.map(({ id, version, blob }) => ({ id, version, blob }));
+    if (!page.every((r) => typeof r.id === "string" && typeof r.blob === "string" && Number.isSafeInteger(r.version))) return false;
+    page.sort((x, y) => x.version - y.version);
+    if (page.some((r, i) => i && r.version !== page[i - 1].version + 1) || state.cursor < page[0].version - 1) return false;
+    const last = page.at(-1).version;
+    if (state.cursor >= last) return true;
+    let ok = false;
+    this.running = (async () => {
+      try {
+        const keys = await this.keysOf(state);
+        const same = () => this.store.state.space === state.space && this.store.state.epoch === epoch;
+        this.flushLocal();
+        const decoded = await this.decodeAll(page, keys);
+        this.flushLocal();
+        if (same()) {
+          this.apply(decoded);
+          this.store.advance(last);
+          this.onPulled(this.store.state.cursor);
+          ok = true;
+        }
+      } catch (error) {
+        console.warn("pushed records failed", error);
+      }
+      while (this.again) {
+        this.again = false;
+        await this.cycle();
+      }
+    })();
+    try {
+      await this.running;
+    } finally {
+      this.running = null;
+    }
+    return ok;
   }
 
   /** Takes a page of records: "stop" if the space changed, "again" if the epoch did, "more" if the page was full, counting `own` writes left out of it. */
@@ -316,7 +363,7 @@ export class SyncEngine {
   }
 
   async outgoing(keys) {
-    const writes = [], sent = new Map();
+    const writes = [], sent = new Map(), blobs = new Map();
     let size = 0;
     this.tooLong = 0;
     for (const p of this.store.pending()) {
@@ -333,8 +380,9 @@ export class SyncEngine {
       if (size > MAX_REQUEST) break;
       writes.push(w);
       sent.set(p.id, p.record);
+      blobs.set(p.id, w.blob);
     }
-    return { writes, sent };
+    return { writes, sent, blobs };
   }
 
   update(state) {

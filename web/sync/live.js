@@ -19,6 +19,7 @@ export const MAX_BACKOFF_MS = 30_000;
 export const PING_MS = 20_000;
 export const PONG_TIMEOUT_MS = 10_000;
 const MAX_FRAME = 65_536;
+const MAX_PUSHED = 60_000;
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 /** The live fields that move, played back through a track. */
@@ -201,12 +202,14 @@ export class Live {
     return sealed.length > MAX_FRAME - 100 ? null : sealed;
   }
 
-  /** A sealed body to everyone else, or to connection `to`; resolves to whether it went out. */
-  send(body, to) {
+  /** A sealed body to everyone else, or to connection `to`, or `fallback` instead if that is over MAX_PUSHED; resolves to
+   * whether it went out. */
+  send(body, to, fallback) {
     if (!this.connected) return Promise.resolve(false);
     const ws = this.ws;
     const sent = this.out.then(async () => {
-      const sealed = await this.seal(body);
+      let sealed = await this.seal(body);
+      if (fallback && (!sealed || sealed.length > MAX_PUSHED)) sealed = await this.seal(fallback);
       if (!sealed || ws !== this.ws || ws.readyState !== 1) return false;
       ws.send(JSON.stringify(to ? { to, body: sealed } : { body: sealed }));
       this.relaySent = this.now();
@@ -358,7 +361,10 @@ export class Live {
         return;
     }
     this.peers.set(from, p);
-    if (b.t === "pushed") this.onPushed(b.version);
+    if (b.t === "pushed") {
+      const ok = Array.isArray(b.records) && b.records.every((r) => r && typeof r.id === "string" && typeof r.blob === "string" && integral(r.version));
+      this.onPushed(b.version, ok ? { epoch: b.epoch, records: b.records } : null);
+    }
     this.dropReleased();
     this.onChange();
   }
@@ -505,8 +511,9 @@ export class Live {
     return `Direct with ${open} of ${people.length} ${people.length === 1 ? "person" : "people"}`;
   }
 
-  sendPushed(version) {
-    this.send({ t: "pushed", version });
+  /** Announces a push with its records, or without them when they would not fit a frame. */
+  sendPushed({ version, epoch, records }) {
+    return this.send({ t: "pushed", version, epoch, records }, undefined, { t: "pushed", version });
   }
 
   /** Ids another connection holds. */

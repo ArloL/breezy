@@ -117,7 +117,7 @@ test("the overlay stays until the pull reaches the pushed version", async () => 
   a.hold(["c1"]);
   a.sendLive("B1", moved, null);
   await relay.run();
-  a.sendPushed(7);
+  a.sendPushed({ version: 7 });
   a.release();
   await relay.run();
   assert.deepEqual(pushes, [7]);
@@ -371,7 +371,7 @@ test("what this device holds is not overlaid", async () => {
   a.hold(["c1"]);
   a.sendLive("B1", moved, null);
   await relay.run();
-  a.sendPushed(7);
+  a.sendPushed({ version: 7 });
   a.release();
   await relay.run();
   assert.deepEqual(Object.fromEntries(b.overlay("B1")), moved);
@@ -716,4 +716,18 @@ test("a peer leaving closes its connection; the status line counts open channels
   await relay.run();
   assert.ok(ts[0].log.includes(`close ${gone}`));
   assert.equal(ls[0].directStatus(), null);
+});
+
+test("pushed carries its records to the others, unless they would not fit a frame", async () => {
+  const { relay, a, b } = await two();
+  const got = [];
+  b.onPushed = (v, extra) => got.push([v, extra]);
+  const records = [{ id: "AAAA", version: 5, blob: "BBBB" }];
+  await a.sendPushed({ version: 5, epoch: "e", records });
+  await relay.run();
+  await a.sendPushed({ version: 6, epoch: "e", records: [{ id: "AAAA", version: 6, blob: "x".repeat(61_000) }] });
+  await relay.run();
+  await a.send({ t: "pushed", version: 7, epoch: "e", records: [{ id: 1, version: 7, blob: "x" }] });
+  await relay.run();
+  assert.deepEqual(got, [[5, { epoch: "e", records }], [6, null], [7, null]]);
 });
