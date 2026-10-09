@@ -14,7 +14,19 @@ import WebKit
 
   private func key(_ peer: String) -> String { prefix + peer }
 
-  func create(_ peer: String) { page.call("create(id)", ["id": key(peer)]) }
+  private var created: Set<String> = []
+
+  func create(_ peer: String) {
+    created.insert(peer)
+    page.call("create(id)", ["id": key(peer)])
+  }
+
+  /// The page's process died, taking every peer connection with it.
+  func pageLost() {
+    let lost = created
+    created = []
+    for peer in lost { onState?(peer, .failed) }
+  }
 
   func offer(_ peer: String, restart: Bool, _ done: @escaping @MainActor (String?) -> Void) {
     page.call("return await offer(id, restart)", ["id": key(peer), "restart": restart]) { done($0 as? String) }
@@ -38,7 +50,10 @@ import WebKit
     return true
   }
 
-  func close(_ peer: String) { page.call("close(id)", ["id": key(peer)]) }
+  func close(_ peer: String) {
+    created.remove(peer)
+    page.call("close(id)", ["id": key(peer)])
+  }
 
   /// A message from the page about one of this transport's peers.
   func heard(_ peer: String, _ m: [String: Any]) {
@@ -75,6 +90,10 @@ import WebKit
     // the web view copied its configuration, but shares its content controller
     web.configuration.userContentController.add(self, name: "peer")
     web.navigationDelegate = self
+    load()
+  }
+
+  private func load() {
     let url = Bundle.main.url(forResource: "peer", withExtension: "html")!
     // the load Task 15 chose; this is (a)
     web.loadHTMLString(try! String(contentsOf: url, encoding: .utf8), baseURL: URL(string: "https://peer.breezy.invalid/"))
@@ -95,6 +114,15 @@ import WebKit
       let w = waiting
       waiting = []
       w.forEach { $0() }
+    }
+  }
+
+  nonisolated func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    MainActor.assumeIsolated {
+      loaded = false
+      load()
+      transports = transports.filter { $0.value() != nil }
+      for t in transports.values { t()?.pageLost() }
     }
   }
 
