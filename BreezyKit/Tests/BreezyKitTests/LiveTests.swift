@@ -559,6 +559,22 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(broadcasts(relay) == before + 1)
 }
 
+@MainActor @Test func aLongGestureWithEveryChannelOpenStillReachesTheRelayEvery5s() {
+  let (relay, clock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  ls[0].hold(["c1"])
+  relay.run()
+  let before = broadcasts(relay)
+  for t in stride(from: 0, to: 12_000, by: 8) {
+    ls[0].sendLive(board: "B1", items: ["c1": ["pos": .array([.number(Double(t)), .number(0)])]], caret: nil)
+    relay.run()
+    clock.advance(Live.directSendInterval)
+    if t % 1000 == 0 { ls[0].tick() }
+  }
+  relay.run()
+  #expect(broadcasts(relay) - before >= 2)
+}
+
 @MainActor @Test func onlyCursorsAndLiveEditsAreTakenFromAChannel() throws {
   let (relay, _, ts, ls) = direct()
   open(ts, ls, 0, 1)

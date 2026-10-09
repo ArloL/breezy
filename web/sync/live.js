@@ -92,6 +92,8 @@ export class Live {
     this.cursorGate = new Gate(this);
     this.liveGate = new Gate(this);
     this.lastLive = null;
+    /** When a frame last reached the relay, which keeps this connection's holds there while it hears from it. */
+    this.relaySent = -Infinity;
     this.storeCursor = 0;
     this.out = Promise.resolve();
     this.in = Promise.resolve();
@@ -177,7 +179,9 @@ export class Live {
   frame(f) {
     const ws = this.ws;
     this.out = this.out.then(() => {
-      if (ws === this.ws && ws.readyState === 1) ws.send(JSON.stringify(f));
+      if (ws !== this.ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify(f));
+      this.relaySent = this.now();
     });
   }
 
@@ -195,6 +199,7 @@ export class Live {
       const sealed = await this.seal(body);
       if (!sealed || ws !== this.ws || ws.readyState !== 1) return false;
       ws.send(JSON.stringify(to ? { to, body: sealed } : { body: sealed }));
+      this.relaySent = this.now();
       return true;
     }).catch(() => false);
     this.out = sent;
@@ -220,7 +225,10 @@ export class Live {
       const sealed = await this.seal(stamped);
       if (!sealed || ws !== this.ws) return false;
       if (!relayOnly) for (const id of this.roster) this.direct?.send(id, sealed);
-      if ((relayOnly || !this.allDirect) && ws.readyState === 1) ws.send(JSON.stringify({ body: sealed }));
+      if ((relayOnly || !this.allDirect) && ws.readyState === 1) {
+        ws.send(JSON.stringify({ body: sealed }));
+        this.relaySent = this.now();
+      }
       return true;
     }).catch(() => false);
     this.out = sent;
@@ -382,12 +390,13 @@ export class Live {
         changed = true;
       }
     }
-    if (this.connected && now - this.presenceSent >= PRESENCE_MS) this.sendPresence();
-    if (this.connected && this.mine.size && now - this.liveGate.sent >= HEARTBEAT_MS) {
-      this.liveGate.sent = now;
+    // a holder the relay has not heard from lately: live edits that go only direct do not reach it
+    if (this.connected && this.mine.size && now - this.relaySent >= HEARTBEAT_MS) {
+      this.relaySent = now;
       const minimal = { t: "live", board: this.presence.board ?? this.cursorBoard, items: {}, caret: null };
       (this.lastLive ? this.sendFast(this.lastLive, { relayOnly: true }) : Promise.resolve(false)).then((ok) => ok || this.sendFast(minimal, { relayOnly: true }));
     }
+    if (this.connected && now - this.presenceSent >= PRESENCE_MS) this.sendPresence();
     if (changed) this.onChange();
   }
 
