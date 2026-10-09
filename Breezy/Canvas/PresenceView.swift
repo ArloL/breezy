@@ -69,19 +69,15 @@ final class PresenceView: NSView {
     var live = Set<String>()
     for m in shown {
       live.insert(m.key)
-      var isNew = marks[m.key] == nil
       if let old = marks[m.key], old.person != m.person {
         old.layer.removeFromSuperlayer()
         marks[m.key] = nil
-        isNew = true
       }
       let l = marks[m.key]?.layer ?? make(m)
       marks[m.key] = (m.person, l)
       CATransaction.begin()
-      // a cursor glides between updates; everything else jumps
-      CATransaction.setDisableActions(isNew || m.kind != .cursor)
-      CATransaction.setAnimationDuration(0.06)
-      CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
+      // positions come from playback every frame
+      CATransaction.setDisableActions(true)
       switch m.kind {
       case .caret:
         l.frame = m.rect

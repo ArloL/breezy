@@ -64,6 +64,33 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// What others do on this board.
   var presence = CanvasPresence() { didSet { if presence != oldValue { presenceChanged(from: oldValue) } } }
   let presenceView = PresenceView()
+  /// Others' presence as it shows now, and whether it still moves; asked each frame while it does.
+  var presenceNow: (() -> (CanvasPresence, Bool)?)?
+  private var presenceLink: CADisplayLink?
+
+  /// Draws others' cursors and live edits each frame until they stop moving.
+  func animatePresence() {
+    guard presenceLink == nil, window != nil else { return }
+    let link = displayLink(target: self, selector: #selector(presenceFrame))
+    link.add(to: .main, forMode: .common)
+    presenceLink = link
+  }
+
+  @objc private func presenceFrame(_ link: CADisplayLink) {
+    guard let now = presenceNow?() else { return stopPresence() }
+    presence = now.0
+    if !now.1 { stopPresence() }
+  }
+
+  private func stopPresence() {
+    presenceLink?.invalidate()
+    presenceLink = nil
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window == nil { stopPresence() }
+  }
   /// Heights of cards whose text others are typing, as drawn.
   var overlayHeights: [String: Double] = [:]
   /// What the canvas draws: the board, with others' live edits over it.
@@ -320,11 +347,14 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   private func presenceChanged(from old: CanvasPresence) {
     let taken = Set(presence.taken.keys)
     if !selection.isDisjoint(with: taken) { selection.subtract(taken) }
-    if presence.overlay != old.overlay || presence.taken != old.taken || presence.seen != old.seen {
+    let sizing = { (o: [String: LiveFields]) in o.mapValues { [$0["text"], $0["w"]] } }
+    if sizing(presence.overlay) != sizing(old.overlay) || presence.taken != old.taken || presence.seen != old.seen {
       overlayHeights = [:]
       for c in shown.cards where presence.overlay[c.id]?["text"] != nil || presence.overlay[c.id]?["w"] != nil || board.card(c.id) == nil {
         overlayHeights[c.id] = Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w)))
       }
+    }
+    if presence.overlay != old.overlay || presence.taken != old.taken || presence.seen != old.seen {
       placeLanes()
       layoutCards()
     } else {
