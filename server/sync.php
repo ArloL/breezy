@@ -50,6 +50,20 @@ function query(PDO $db, string $sql, array $params): PDOStatement {
   return $st;
 }
 
+/** Raw DEFLATE `$data` inflated; 413 past MAX_REQUEST, 400 when it is not DEFLATE. */
+function inflated(string $data): string {
+  $z = inflate_init(ZLIB_ENCODING_RAW);
+  $out = '';
+  foreach (str_split($data, 65536) as $chunk) {
+    $part = @inflate_add($z, $chunk, ZLIB_SYNC_FLUSH);
+    if ($part === false) reply(400, ['error' => 'encoding']);
+    $out .= $part;
+    if (strlen($out) > MAX_REQUEST) reply(413);
+  }
+  if (inflate_get_status($z) !== ZLIB_STREAM_END) reply(400, ['error' => 'encoding']);
+  return $out;
+}
+
 /** `body` with the relay's address, when the config names one. */
 function named(array $body): array {
   global $relay;
@@ -67,13 +81,14 @@ set_exception_handler(function (Throwable $e) {
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, ORIGINS, true)) {
   header("Access-Control-Allow-Origin: $origin");
-  header('Access-Control-Allow-Headers: Authorization, Content-Type');
+  header('Access-Control-Allow-Headers: Authorization, Content-Encoding, Content-Type');
   header('Access-Control-Allow-Methods: GET, POST');
   header('Access-Control-Max-Age: 86400');
 }
 header('Vary: Origin');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'OPTIONS') reply(204);
+ob_start('ob_gzhandler');
 
 $space = bytes($_GET['space'] ?? null, 16);
 if ($space === null) reply(400, ['error' => 'space']);
@@ -105,9 +120,12 @@ if ($method === 'GET') {
 if ($method !== 'POST') reply(405);
 $body = file_get_contents('php://input', false, null, 0, MAX_REQUEST + 1);
 if (strlen($body) > MAX_REQUEST) reply(413);
+if (strtolower($_SERVER['HTTP_CONTENT_ENCODING'] ?? '') === 'deflate') $body = inflated($body);
 $request = json_decode($body, true);
 $list = is_array($request) ? ($request['writes'] ?? null) : null;
 if (!is_array($list) || array_values($list) !== $list) reply(400, ['error' => 'writes']);
+$since = is_array($request) && array_key_exists('since', $request) ? $request['since'] : null;
+if ($since !== null && (!is_int($since) || $since < 0)) reply(400, ['error' => 'since']);
 $writes = [];
 foreach ($list as $w) {
   $id = is_array($w) ? bytes($w['id'] ?? null, 16) : null;
@@ -159,4 +177,12 @@ for ($attempt = 1;; $attempt++) {
     usleep(random_int(5000, 50000));
   }
 }
-reply(200, named(['accepted' => $accepted, 'refused' => $refused, 'epoch' => b64e($epoch)]));
+$out = ['accepted' => $accepted, 'refused' => $refused, 'epoch' => b64e($epoch)];
+if ($since !== null) {
+  $own = array_column($accepted, 'version');
+  $rows = query($db, 'SELECT id, version, data, epoch FROM records WHERE space = ? AND version > ? ORDER BY version LIMIT ' . PAGE, [$space, $since])->fetchAll(PDO::FETCH_ASSOC);
+  $last = $rows ? (int)$rows[count($rows) - 1]['version'] : 0;
+  $out['cursor'] = count($rows) === PAGE ? $last : max($version, $last, $since);
+  $out['records'] = array_values(array_map(fn($r) => pulled($r, $epoch), array_filter($rows, fn($r) => !in_array((int)$r['version'], $own, true))));
+}
+reply(200, named($out));

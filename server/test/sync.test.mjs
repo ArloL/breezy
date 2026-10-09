@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { deflateRawSync } from "node:zlib";
 
 const URL_ = process.env.BREEZY_URL;
 const b64 = (bytes) => Buffer.from(bytes).toString("base64url");
@@ -25,12 +26,12 @@ function client(space = rand(16), token = rand(32)) {
     const res = await fetch(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
-      body: body && (typeof body === "string" ? body : JSON.stringify(body)),
+      body: body && (typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body)),
     });
     const json = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
     return { status: res.status, body: json, headers: res.headers };
   };
-  return { space, token, call, pull: (since = 0) => call("GET", { since }), push: (writes) => call("POST", {}, { writes }) };
+  return { space, token, call, pull: (since = 0) => call("GET", { since }), push: (writes) => call("POST", {}, { writes }), pushSince: (writes, since) => call("POST", {}, { writes, since }) };
 }
 
 test("the first write makes the space, and a pull gets it back", async () => {
@@ -145,4 +146,68 @@ test("the web app's engine syncs through the server", async () => {
   b.join(invite);
   await new SyncEngine(b).sync();
   assert.equal(b.title(id), "Over HTTP");
+});
+
+const write = (base = 0) => ({ id: rand(16), base, blob: rand(40) });
+
+test("a push with since answers with what others wrote", async () => {
+  const a = client(), b = client(a.space, a.token);
+  const first = [write(), write()];
+  await a.push(first);
+  const r = await b.pushSince([write()], 0);
+  assert.deepEqual(r.body.records.map((x) => x.version), [1, 2]);
+  assert.deepEqual(r.body.records.map((x) => x.id), first.map((x) => x.id));
+  assert.equal(r.body.cursor, 3);
+});
+
+test("a push with since answers in pages of 500", async () => {
+  const a = client(), b = client(a.space, a.token);
+  await a.push(Array.from({ length: 300 }, () => write()));
+  await a.push(Array.from({ length: 300 }, () => write()));
+  const r = await b.pushSince([write()], 0);
+  assert.equal(r.body.records.length, 500);
+  assert.equal(r.body.cursor, r.body.records[499].version);
+});
+
+test("a refused write comes back once as the stored record", async () => {
+  const c = client();
+  const w = write();
+  await c.push([w]);
+  const r = await c.pushSince([{ ...w, base: 0, blob: rand(40) }], 0);
+  assert.equal(r.body.refused.length, 1);
+  assert.deepEqual(r.body.records, [{ id: w.id, version: 1, blob: w.blob }]);
+  assert.equal(r.body.cursor, 1);
+});
+
+test("a push without since answers as before", async () => {
+  const r = await client().push([write()]);
+  assert.deepEqual(Object.keys(r.body).sort(), ["accepted", "epoch", "refused"]);
+});
+
+test("a bad since is refused", async () => {
+  const c = client();
+  assert.deepEqual((await c.pushSince([write()], -1)).body, { error: "since" });
+  assert.equal((await c.pushSince([write()], "x")).status, 400);
+});
+
+test("answers are gzipped for clients that ask", async () => {
+  const c = client();
+  await c.push([write()]);
+  const url = new URL(URL_);
+  url.searchParams.set("space", c.space);
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${c.token}`, "Accept-Encoding": "gzip" } });
+  assert.equal(res.headers.get("content-encoding"), "gzip");
+  assert.deepEqual(await res.json(), (await c.pull()).body);
+});
+
+test("deflated requests are inflated", async () => {
+  const c = client();
+  const deflate = { "Content-Encoding": "deflate" };
+  const w = write();
+  const ok = await c.call("POST", {}, deflateRawSync(JSON.stringify({ writes: [w] })), deflate);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body.accepted, [{ id: w.id, version: 1 }]);
+  const big = JSON.stringify({ writes: [], pad: "a".repeat(1_048_577) });
+  assert.equal((await c.call("POST", {}, deflateRawSync(big), deflate)).status, 413);
+  assert.equal((await c.call("POST", {}, Buffer.from("garbage in, garbage out"), deflate)).status, 400);
 });
