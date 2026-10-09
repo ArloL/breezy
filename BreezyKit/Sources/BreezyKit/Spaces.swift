@@ -41,7 +41,8 @@ import Foundation
     self.transport = transport
     let old = StoreFile(url: directory.appendingPathComponent("space.json"))
     if let state = try old.load() {
-      try file(for: state.space).saveNow(state)
+      let target = file(for: state.space)
+      if try target.load() == nil { try target.saveNow(state) }
       try FileManager.default.removeItem(at: old.url)
     }
     local = make(Store(state: try file(for: nil).load() ?? SpaceState()))
@@ -80,7 +81,8 @@ import Foundation
   /// On this device first, then the spaces by name.
   public var groups: [Group] {
     [local] + spaces.sorted { a, b in
-      a.name == b.name ? a.space! < b.space! : a.name.localizedStandardCompare(b.name) == .orderedAscending
+      let order = a.name.localizedStandardCompare(b.name)
+      return order == .orderedSame ? a.space! < b.space! : order == .orderedAscending
     }
   }
 

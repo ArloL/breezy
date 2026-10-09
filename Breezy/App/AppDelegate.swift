@@ -153,8 +153,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
   @MainActor @objc func leaveSpace(_ sender: Any?) {
     let g = group(sender)
+    let n = g.store.pending.count
+    let lost = n == 0 ? "" : ", but \(n == 1 ? "1 change that hasn’t" : "\(n) changes that haven’t") reached the server yet \(n == 1 ? "is" : "are") lost"
     guard g.space != nil,
-          confirm("Leave “\(g.name)”?", "Its boards are removed from this device. Others in the space keep them.", "Leave", destructive: true)
+          confirm("Leave “\(g.name)”?", "Its boards are removed from this device. Others in the space keep them\(lost).", "Leave", destructive: true)
     else { return }
     Library.shared.leave(g)
   }

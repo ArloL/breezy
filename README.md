@@ -11,7 +11,7 @@ xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Release -deri
 open build/Build/Products/Release/Breezy.app
 ```
 
-Boards live in `~/Library/Application Support/Breezy/space.json` and reopen where they were left after a relaunch.
+Boards live in `~/Library/Application Support/Breezy/Spaces/` and reopen where they were left after a relaunch.
 
 ## Use
 

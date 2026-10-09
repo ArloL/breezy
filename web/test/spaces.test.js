@@ -51,6 +51,24 @@ test("an interrupted migration runs again", async () => {
   assert.deepEqual(spaces.spaces[0].store.boards().map((b) => b.title), ["Plans"]);
 });
 
+test("an old store reappearing does not overwrite the migrated group", async () => {
+  const old = new Store();
+  old.createBoard("Old");
+  const now = new Store();
+  now.createBoard("New");
+  const storage = new MemoryStorage({ space: old.state, local: now.state });
+  const spaces = await Spaces.open(storage);
+  assert.deepEqual(spaces.local.store.boards().map((b) => b.title), ["New"]);
+  assert.equal((await storage.loadAll()).space, undefined);
+});
+
+test("spaces number-aware sort by name", async () => {
+  const spaces = await Spaces.open(new MemoryStorage());
+  spaces.newSpace(SERVER, "Space 10");
+  spaces.newSpace(SERVER, "Space 2");
+  assert.deepEqual(spaces.groups().map((g) => g.name), ["On this device", "Space 2", "Space 10"]);
+});
+
 test("a device with nothing stored is fresh", async () => {
   assert.equal((await Spaces.open(new MemoryStorage())).fresh, true);
 });
