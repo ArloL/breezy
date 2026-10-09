@@ -925,8 +925,10 @@ public struct Peer: Equatable, Sendable {
     }
   }
 
-  /// Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect.
+  /// Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. Starts a
+  /// gesture, whose first live body is a keyframe.
   public func hold(_ ids: Set<String>) {
+    for p in pipes { p.restart() }
     let fresh = ids.subtracting(mine)
     guard !fresh.isEmpty else { return }
     mine.formUnion(fresh)

@@ -658,8 +658,10 @@ export class Live {
     }
   }
 
-  /** Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. */
+  /** Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. Starts a
+   * gesture, whose first live body is a keyframe. */
   hold(ids) {
+    for (const p of this.pipes) p.restart();
     const fresh = [...ids].filter((id) => !this.mine.has(id));
     if (!fresh.length) return;
     for (const id of fresh) this.mine.add(id);

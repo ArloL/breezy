@@ -1295,3 +1295,20 @@ test("on a relay from before the lean sync design, current devices open a direct
   clock.advance(200);
   assert.deepEqual(ls[1].cursors(B1).map((c) => c.x), [1]);
 });
+
+test("holding again, as when dragging the card just edited before the edit's push releases it, starts on a keyframe", async () => {
+  const { relay, clock, a } = await two();
+  const last = async () => unpack(await keys.openLive(parseFrame(relay.frames.filter((f) => f.from === a.id && f.bytes).at(-1).bytes).body));
+  a.hold([C1]);
+  a.sendLive(B1, { [C1]: { text: "hello" } }, null);
+  await relay.run();
+  clock.advance(50);
+  a.sendLive(B1, { [C1]: { text: "hello!" } }, null);
+  await relay.run();
+  assert.equal((await last())[3], null);
+  clock.advance(50);
+  a.hold([C1]);
+  a.sendLive(B1, { [C1]: { pos: [48, 0] } }, null);
+  await relay.run();
+  assert.ok((await last())[3] instanceof Uint8Array);
+});
