@@ -4,14 +4,16 @@ Fewer round trips between a gesture ending and everyone having it, and fewer byt
 
 ## Where it stands
 
-Sizes measured with the apps' own sealing:
+Sizes in bytes, of the messages one web app sent while `scripts/direct-e2e.mjs` drove two headless Chromiums: channel messages as handed to `RTCDataChannel.send`, relay frames as seen on the WebSocket (frame byte, sealing and all). Before is the JSON text protocol with the apps' own sealing.
 
-| Message | Today on the channel | Today from the relay | After, direct | After, from the relay |
+| Message | Before, channel | Before, relay | Now, channel | Now, relay |
 |---|---|---|---|---|
-| cursor | 203 B | 260 B | ~18 B | ~50 B |
-| live, dragging 1 card | 266 B | 323 B | ~25 B | ~55 B |
-| live, dragging 10 cards | 1082 B | 1139 B | ~25 B (~200 B once a second) | ~55 B |
-| live, a key typed in a 560-character card | 1027 B | 1084 B | ~30 B | ~60 B |
+| cursor, a mouse crossing the board | 203 | 260 | 16 | 46 |
+| cursor, first body and one a second later (keyframe) | 203 | 260 | 34 | 64 |
+| live, dragging 1 card (per mouse move) | 266 | 323 | 52, alternating with 21 | 84, alternating with 53 |
+| live, a key typed in a new card, first to eleventh | 1027 (560-character card) | 1084 (560-character card) | 37 to 44, 103 for a keyframe | 69 to 76, 135 for a keyframe |
+
+A typed key's body grows by a byte per key between keyframes. The unit tests measure a three-card drag with a folded cursor at 32 B direct and 62 B from the relay.
 
 A gesture's end reaches the others after three HTTP round trips in a row: the holder's pull and push, then each receiver's pull. After: one push, then the relay.
 
