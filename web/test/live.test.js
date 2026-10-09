@@ -653,6 +653,31 @@ test("a connection that never speaks leaves the roster after 30 s, and the statu
   assert.equal(ls[0].directStatus(), "Direct with 1 of 1 person");
 });
 
+test("with every channel open, the last cursor goes once more 100 ms later, as a channel may lose it", async () => {
+  const { relay, clock, ts, ls, open } = await direct();
+  open(0, 1);
+  const seqOf = async (text) => JSON.parse(new TextDecoder().decode(await keys.openLive(decode(text)))).seq;
+  ls[0].sendCursor("B1", 1, 1);
+  await relay.run();
+  clock.advance(8);
+  ls[0].sendCursor("B1", null, null);
+  await relay.run();
+  ts[1].onMessage(ls[0].id, ts[0].sent[0].text);
+  clock.advance(99);
+  await relay.run();
+  assert.equal(ts[0].sent.length, 2);
+  clock.advance(1);
+  await relay.run();
+  assert.equal(ts[0].sent.length, 3);
+  assert.ok((await seqOf(ts[0].sent[2].text)) > (await seqOf(ts[0].sent[1].text)));
+  ts[1].onMessage(ls[0].id, ts[0].sent[2].text);
+  await relay.run();
+  assert.deepEqual(ls[1].cursors("B1"), []);
+  clock.advance(1000);
+  await relay.run();
+  assert.equal(ts[0].sent.length, 3);
+});
+
 test("only cursors and live edits are taken from a channel", async () => {
   const { relay, ts, ls, open } = await direct();
   open(0, 1);

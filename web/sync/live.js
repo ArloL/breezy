@@ -10,6 +10,7 @@ export const PALETTE = ["#e5484d", "#f76b15", "#12a594", "#8e4ec6", "#3e63dd", "
 export const SEND_MS = 50;
 export const DIRECT_SEND_MS = 8;
 export const HEARTBEAT_MS = 5_000;
+export const CURSOR_REPEAT_MS = 100;
 export const PRESENCE_MS = 15_000;
 export const GONE_MS = 30_000;
 export const HOLD_GRACE_MS = 1_000;
@@ -94,6 +95,8 @@ export class Live {
     this.cursorBoard = "";
     this.presenceSent = -Infinity;
     this.cursorGate = new Gate(this);
+    /** Cursors the gate has sent. */
+    this.cursorSends = 0;
     this.liveGate = new Gate(this);
     this.lastLive = null;
     /** When a frame last reached the relay, which keeps this connection's holds there while it hears from it. */
@@ -456,7 +459,16 @@ export class Live {
     this.cursor = Number.isFinite(x) && Number.isFinite(y) ? { board, x, y } : null;
     this.cursorBoard = board;
     if (!this.peers.size) return;
-    this.cursorGate.run(() => this.sendFast({ t: "cursor", board: this.cursorBoard, x: this.cursor?.x ?? null, y: this.cursor?.y ?? null }));
+    this.cursorGate.run(() => {
+      this.flushCursor();
+      // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+      const n = ++this.cursorSends;
+      this.schedule(CURSOR_REPEAT_MS, () => n === this.cursorSends && this.allDirect && this.peers.size && this.flushCursor());
+    });
+  }
+
+  flushCursor() {
+    this.sendFast({ t: "cursor", board: this.cursorBoard, x: this.cursor?.x ?? null, y: this.cursor?.y ?? null });
   }
 
   /** Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. */
