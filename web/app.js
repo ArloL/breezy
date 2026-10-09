@@ -147,7 +147,7 @@ export class App {
 
   /** Someone else got there first: the gesture under way goes back as it began. */
   refused() {
-    if (this.input.drag) return this.input.dragCancel();
+    if (["move", "lane", "resize"].includes(this.input.drag?.action)) return this.input.dragCancel();
     this.cancelEditing();
   }
 

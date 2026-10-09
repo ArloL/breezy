@@ -224,23 +224,23 @@ export class Library {
     const { live, id } = this;
     const model = this.app.model;
     if (model.inGesture) {
-      this.gesturing = true;
       if (live?.mine.size && id) live.sendLive(id, liveFields(model.start, model.board, live.mine, id), this.app.caret());
       return;
     }
-    if (!this.gesturing) return;
-    this.gesturing = false;
-    this.finishGesture();
+    if (live?.mine.size && !this.finishing) this.finishGesture();
   }
 
   async finishGesture() {
     const g = this.group;
-    const live = g?.live;
-    if (!live?.mine.size) return;
-    this.binding?.flush();
-    await g.engine.sync();
-    // a gesture begun meanwhile keeps the holds until it ends
-    if (!this.gesturing) live.release();
+    this.finishing = true;
+    try {
+      this.binding?.flush();
+      await g.engine.sync();
+      // a gesture begun meanwhile keeps the holds until it ends
+      if (!this.app.model.inGesture) g.live?.release();
+    } finally {
+      this.finishing = false;
+    }
   }
 
   /** Each board row's initials of whoever is on it, in place. */
