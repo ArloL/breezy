@@ -1342,3 +1342,19 @@ private func firstItem(_ v: [Pack], _ key: Int64) -> Pack? { v[5].map?.first?.1.
   clock.advance(0.2)
   #expect(ls[1].cursors(on: B1).map { $0.cursor.x } == [1])
 }
+
+@MainActor @Test func holdingAgainAsWhenDraggingTheCardJustEditedBeforeTheEditsPushReleasesItStartsOnAKeyframe() {
+  let (relay, clock, a, _) = two()
+  a.hold([C1])
+  a.sendLive(board: B1, items: [C1: ["text": .string("hello")]], caret: nil)
+  relay.run()
+  clock.advance(Live.sendInterval)
+  a.sendLive(board: B1, items: [C1: ["text": .string("hello!")]], caret: nil)
+  relay.run()
+  #expect(lastRelayed(relay, a)[3] == .null)
+  clock.advance(Live.sendInterval)
+  a.hold([C1])
+  a.sendLive(board: B1, items: moved, caret: nil)
+  relay.run()
+  #expect(lastRelayed(relay, a)[3].bin != nil)
+}
