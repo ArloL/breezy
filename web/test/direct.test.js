@@ -120,3 +120,25 @@ test("leave and reset close connections", async () => {
   d.reset();
   assert.deepEqual(transport.log.filter((l) => l.startsWith("close")), ["close p1", "close p2"]);
 });
+
+test("a second offer while an answer is in flight is ignored", async () => {
+  const { d, transport, relayed } = direct();
+  transport.deferred = true;
+  d.heard("p1", { t: "offer", sdp: "o" });
+  d.heard("p1", { t: "offer", sdp: "o" });
+  transport.release();
+  await settle();
+  assert.deepEqual(transport.log, ["create p1", "answer p1 o"]);
+  assert.deepEqual(relayed, [{ to: "p1", t: "answer", sdp: "answer-sdp p1" }]);
+});
+
+test("a failed accept closes the connection", async () => {
+  const { d, transport } = direct();
+  transport.fail.add("accept");
+  d.welcome(["p1"]);
+  await settle();
+  d.heard("p1", { t: "answer", sdp: "a" });
+  await settle();
+  assert.ok(transport.log.includes("close p1"));
+  assert.ok(!d.isOpen("p1"));
+});

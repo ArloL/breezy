@@ -12,7 +12,7 @@ export class Direct {
    * follows a channel opening or closing. */
   constructor(transport, { now, relay, message, change }) {
     Object.assign(this, { transport, now, relay, message, change });
-    /** Connection id → { id, offerer, open, everOpen, since, restarts, restartAt, remote, inbox, ready, outbox }. */
+    /** Connection id → { id, offerer, open, everOpen, since, restarts, restartAt, remote, inbox, ready, outbox, answering }. */
     this.links = new Map();
     transport.onCandidate = (id, c) => this.gathered(id, c);
     transport.onState = (id, state) => this.state(id, state);
@@ -35,7 +35,7 @@ export class Direct {
 
   link(id, offerer) {
     this.transport.create(id);
-    const l = { id, offerer, open: false, everOpen: false, since: this.now(), restarts: 0, restartAt: null, remote: false, inbox: [], ready: false, outbox: [] };
+    const l = { id, offerer, open: false, everOpen: false, since: this.now(), restarts: 0, restartAt: null, remote: false, inbox: [], ready: false, outbox: [], answering: false };
     this.links.set(id, l);
     return l;
   }
@@ -44,7 +44,8 @@ export class Direct {
     l.ready = false;
     l.remote = false;
     const sdp = await this.transport.offer(l.id, restart).catch(() => null);
-    if (sdp === null || this.links.get(l.id) !== l) return;
+    if (this.links.get(l.id) !== l) return;
+    if (sdp === null) return this.leave(l.id);
     this.relay(l.id, { t: "offer", sdp });
     this.flushOut(l);
   }
@@ -53,19 +54,24 @@ export class Direct {
   async heard(from, b) {
     let l = this.links.get(from);
     if (b.t === "offer" && typeof b.sdp === "string") {
-      if (l?.offerer) return;
+      if (l?.offerer || l?.answering) return;
       l ??= this.link(from, false);
       l.since = this.now();
       l.ready = false;
       l.remote = false;
+      l.answering = true;
       const sdp = await this.transport.answer(from, b.sdp).catch(() => null);
-      if (sdp === null || this.links.get(from) !== l) return;
+      l.answering = false;
+      if (this.links.get(from) !== l) return;
+      if (sdp === null) return this.leave(from);
       this.remoteSet(l);
       this.relay(from, { t: "answer", sdp });
       this.flushOut(l);
     } else if (b.t === "answer" && typeof b.sdp === "string" && l?.offerer) {
       const ok = await this.transport.accept(from, b.sdp).then(() => true, () => false);
-      if (ok && this.links.get(from) === l) this.remoteSet(l);
+      if (this.links.get(from) !== l) return;
+      if (ok) this.remoteSet(l);
+      else this.leave(from);
     } else if (b.t === "ice" && l) {
       const c = iceOf(b);
       if (!c) return;
