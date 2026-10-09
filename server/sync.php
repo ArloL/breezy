@@ -54,7 +54,8 @@ function query(PDO $db, string $sql, array $params): PDOStatement {
 function inflated(string $data): string {
   $z = inflate_init(ZLIB_ENCODING_RAW);
   $out = '';
-  foreach (str_split($data, 65536) as $chunk) {
+  // DEFLATE expands at most about 1000 times, so 1 KB in keeps each step near 1 MB out
+  foreach (str_split($data, 1024) as $chunk) {
     $part = @inflate_add($z, $chunk, ZLIB_SYNC_FLUSH);
     if ($part === false) reply(400, ['error' => 'encoding']);
     $out .= $part;

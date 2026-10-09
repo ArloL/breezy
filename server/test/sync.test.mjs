@@ -234,3 +234,9 @@ test("deflated requests are inflated", async () => {
   assert.equal((await c.call("POST", {}, deflateRawSync(big), deflate)).status, 413);
   assert.equal((await c.call("POST", {}, Buffer.from("garbage in, garbage out"), deflate)).status, 400);
 });
+
+test("a deflate bomb is refused before it fills memory", async () => {
+  const bomb = deflateRawSync(Buffer.alloc(200_000_000));
+  assert.ok(bomb.length < 250_000, `${bomb.length} B`);
+  assert.equal((await client().call("POST", {}, bomb, { "Content-Encoding": "deflate" })).status, 413);
+});
