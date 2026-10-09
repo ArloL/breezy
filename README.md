@@ -18,7 +18,7 @@ Boards live in `~/Library/Application Support/Breezy/space.json` and reopen wher
 | Do | How |
 |---|---|
 | Boards | ⇧⌘B lists them; ⌘N makes one; click a selected title to rename it, ⌫ to delete |
-| Sync | Breezy → Start Syncing…, Join Space…, Share Invite |
+| Spaces | Breezy → New Space…, Join Space…, Share Invite, Rename Space…, Leave Space…; right-click a board in the Boards window to move it to another space |
 | Pan / zoom | scroll / pinch or ⌘-scroll; ⌘0 or ⇧0 return to 100 % |
 | Select | click; ⇧-click to add; drag on empty space for a box |
 | New card | double-click empty space |
