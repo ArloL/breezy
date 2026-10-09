@@ -948,6 +948,41 @@ test("during a gesture over a channel, one body a frame carries the live edit an
   assert.ok(ts[0].sent.at(-1).data.length <= 24, `${ts[0].sent.at(-1).data.length} B`);
 });
 
+test("dragging a card on the grid, as the apps call it, sends one body a move: the card when it reaches a grid line, else the cursor alone", async () => {
+  const { relay, clock, ts, ls, open } = await direct();
+  open(0, 1);
+  const deliver = async () => {
+    const sent = ts[0].sent.splice(0);
+    for (const { data } of sent) ts[1].onMessage(ls[0].id, data);
+    await relay.run();
+    return sent;
+  };
+  ls[0].hold([C1]);
+  ls[0].sendCursor(B1, 100, 50);
+  await relay.run();
+  await deliver();
+  const snap = (v) => Math.round(v / 24) * 24;
+  const kinds = [];
+  for (let i = 1; i <= 6; i++) {
+    clock.advance(30);
+    // the pointer event, then the edit it makes, in one turn
+    ls[0].sendCursor(B1, 100 + i * 13, 50);
+    ls[0].sendLive(B1, { [C1]: { pos: [snap(i * 13), 0] } }, null, { [C1]: [0, 0] });
+    await relay.run();
+    const sent = await deliver();
+    assert.equal(sent.length, 1);
+    const v = unpack(sent[0].data);
+    assert.equal(v[0], 2);
+    assert.deepEqual(v[7], [100 + i * 13, 50]);
+    kinds.push(v[5].size ? "card" : "cursor");
+    if (!v[5].size) assert.ok(sent[0].data.length <= 24, `${sent[0].data.length} B`);
+  }
+  assert.deepEqual(kinds, ["card", "cursor", "card", "cursor", "card", "cursor"]);
+  clock.advance(200);
+  assert.deepEqual(ls[1].cursors(B1).map((c) => [c.x, c.y]), [[178, 50]]);
+  assert.deepEqual(ls[1].overlay(B1).get(C1), { pos: [72, 0] });
+});
+
 test("typing into a long card sends splices; one lost leaves the text as it was until the next keyframe", async () => {
   const { relay, clock, ts, ls, open } = await direct();
   open(0, 1);

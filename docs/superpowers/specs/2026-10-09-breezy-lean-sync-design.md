@@ -10,10 +10,10 @@ Sizes in bytes, of the messages one web app sent while `scripts/direct-e2e.mjs` 
 |---|---|---|---|---|
 | cursor, a mouse crossing the board | 203 | 260 | 16 | 46 |
 | cursor, first body and one a second later (keyframe) | 203 | 260 | 34 | 64 |
-| live, dragging 1 card (per mouse move) | 266 | 323 | 52, alternating with 21 | 84, alternating with 53 |
+| live, dragging 1 card (per mouse move) | 266 | 323 | 52 as the card reaches a grid line, else 21 | 84, else 53 |
 | live, a key typed in a new card, first to eleventh | 1027 (560-character card) | 1084 (560-character card) | 37 to 44, 103 for a keyframe | 69 to 76, 135 for a keyframe |
 
-A typed key's body grows by a byte per key between keyframes. The unit tests measure a three-card drag with a folded cursor at 32 B direct and 62 B from the relay.
+A drag sends one body per move with the cursor inside. The card snaps to the 24-point grid, so its `pos` changes, and goes with its 16-byte id, only on about every other move, as a `group` takes two items or more. On the relay a `pushed` notice of 374 B follows each durable push, such as a gesture's end, and a `presence` of 250 to 270 B follows a press that changes the selection. A typed key's body grows by a byte per key between keyframes, as the text goes whole until a splice is shorter. The unit tests measure a three-card drag with a folded cursor at 32 B direct and 62 B from the relay.
 
 A gesture's end reaches the others after three HTTP round trips in a row: the holder's pull and push, then each receiver's pull. After: one push, then the relay.
 
