@@ -125,6 +125,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     show(g)
   }
 
+  @MainActor @objc func yourName(_ sender: Any?) {
+    let input = field("Name")
+    input.stringValue = Library.shared.spaces.me.name
+    let alert = NSAlert()
+    alert.messageText = "Your Name"
+    alert.informativeText = "Others in your spaces see it beside your cursor."
+    alert.accessoryView = input
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = input
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+    let name = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !name.isEmpty { Library.shared.setName(name) }
+  }
+
   @MainActor @objc func renameSpace(_ sender: Any?) {
     let g = group(sender)
     guard g.space != nil else { return }

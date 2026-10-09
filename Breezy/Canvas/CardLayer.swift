@@ -38,6 +38,12 @@ final class CardLayer: CALayer {
     var ear: CGFloat { look.back ? 24 : (look.card.notes ?? "").isEmpty ? 0 : 16 }
   }
 
+  /// The outline around a card: the accent for this Mac's selection, a person's colour for what they hold or select.
+  struct Ring: Equatable {
+    var colour: CGColor
+    var width: CGFloat
+  }
+
   static var drawCount = 0
 
   private(set) var look: Look?
@@ -71,10 +77,9 @@ final class CardLayer: CALayer {
   /// The canvas animates moves itself, with springs; a cross-faded redraw would hold two bitmaps per card.
   override func action(forKey event: String) -> CAAction? { NSNull() }
 
-  func configure(_ look: Look, size: CGSize, selected: Bool, scale: CGFloat, appearance: NSAppearance) {
-    setRing(selected, appearance)
+  func configure(_ look: Look, size: CGSize, ring: Ring?, scale: CGFloat, appearance: NSAppearance) {
+    setRing(ring)
     guard look != self.look || size != self.size || scale != contentsScale else { return }
-    if look.dark != self.look?.dark { ring?.borderColor = Theme.cg(Theme.accent, in: appearance) }
     let turning = look.back != self.look?.back
     // only the scale changed: the old bitmap, stretched, can show until the sharp one is drawn
     refining = look == self.look && size == self.size && appearance == self.appearance && contents != nil
@@ -125,20 +130,21 @@ final class CardLayer: CALayer {
     shadowOffset = offset
   }
 
-  private func setRing(_ on: Bool, _ appearance: NSAppearance) {
-    guard on else {
+  private func setRing(_ r: Ring?) {
+    guard let r else {
       ring?.removeFromSuperlayer()
       ring = nil
       return
     }
-    guard ring == nil else { return }
-    let r = CALayer()
-    r.borderWidth = 2
-    r.cornerRadius = 4
-    r.borderColor = Theme.cg(Theme.accent, in: appearance)
-    r.frame = CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4)
-    addSublayer(r)
-    ring = r
+    let l = ring ?? CALayer()
+    if ring == nil {
+      l.cornerRadius = 4
+      l.frame = CGRect(origin: .zero, size: size).insetBy(dx: -4, dy: -4)
+      addSublayer(l)
+      ring = l
+    }
+    l.borderWidth = r.width
+    l.borderColor = r.colour
   }
 
   func recycle() {

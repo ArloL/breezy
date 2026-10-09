@@ -3,6 +3,7 @@ import BreezyKit
 
 extension Notification.Name {
   static let boardsChanged = Notification.Name("BreezyBoardsChanged")
+  static let peopleChanged = Notification.Name("BreezyPeopleChanged")
   static let syncStatusChanged = Notification.Name("BreezySyncStatusChanged")
 }
 
@@ -11,15 +12,30 @@ extension Notification.Name {
   static var shared: Library!
   let spaces: Spaces
   private var timer: Timer?
+  private var liveTimer: Timer?
+  private var peopleSeen = ""
   /// Boards whose windows are closing, so that the close's own flush can't close them again.
   private var closing: Set<String> = []
 
   init(directory: URL) throws {
-    spaces = try Spaces(directory: directory)
+    spaces = try Spaces(directory: directory, me: Self.me())
     spaces.onChange = { [weak self] group, boards, remote in self?.changed(group, boards, remote: remote) }
     spaces.onStatus = { _ in NotificationCenter.default.post(name: .syncStatusChanged, object: nil) }
     spaces.onError = { NSApp.presentError($0) }
     spaces.flushLocal = { [weak self] in self?.documents.forEach { $0.binding.flush() } }
+    spaces.onLive = { [weak self] g in self?.liveChanged(g) }
+    liveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        for g in self.spaces.spaces { g.live?.tick() }
+        self.updateLive()
+      }
+    }
+    for name in [NSWindow.didBecomeKeyNotification, NSWindow.didChangeOcclusionStateNotification] {
+      NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.updateLive() }
+      }
+    }
     timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.poll() }
     }
@@ -48,7 +64,7 @@ extension Notification.Name {
     let shown = NSApp.windows.contains {
       ($0.windowController is BoardWindowController || $0.windowController is BoardsWindowController) && $0.occlusionState.contains(.visible)
     }
-    if shown { syncNow() }
+    if shown { spaces.syncAll(polling: true) }
   }
 
   /// Ends edits and writes every group before quitting.
@@ -91,10 +107,66 @@ extension Notification.Name {
       doc = BoardDocument(boardID: id, store: group.store)
       NSDocumentController.shared.addDocument(doc)
       doc.makeWindowControllers()
+      wire(doc)
     }
+    if let g = spaces.group(of: id) { liveChanged(g) }
     if display { doc.showWindows() }
     syncNow()
     return doc.windowController
+  }
+
+  /// This Mac as others see it: an id made once, and the macOS account's name until it is changed.
+  static func me() -> Person {
+    let d = UserDefaults.standard
+    let device = d.string(forKey: "BreezyDevice").flatMap { Base64URL.decode($0)?.count == 16 ? $0 : nil } ?? newID()
+    d.set(device, forKey: "BreezyDevice")
+    return Person(device: device, name: d.string(forKey: "BreezyName") ?? NSFullUserName())
+  }
+
+  func setName(_ name: String) {
+    UserDefaults.standard.set(name, forKey: "BreezyName")
+    spaces.me = Person(device: spaces.me.device, name: name)
+  }
+
+  /// Hooks board `doc`'s window to its space's live layer, looked up each time, as the layer may come and go.
+  private func wire(_ doc: BoardDocument) {
+    let id = doc.boardID
+    guard let canvas = doc.windowController?.canvas else { return }
+    canvas.onPointer = { [weak self] p in
+      self?.spaces.group(of: id)?.live?.sendCursor(board: id, x: p.map { Double($0.x) }, y: p.map { Double($0.y) })
+    }
+    canvas.onSelection = { [weak self] in self?.updateLive() }
+  }
+
+  /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front.
+  func updateLive() {
+    let visible = NSApp.isHidden ? [] : NSApp.windows.filter { $0.occlusionState.contains(.visible) }
+    let listShown = visible.contains { $0.windowController is BoardsWindowController }
+    let shown = visible.compactMap { ($0.windowController?.document as? BoardDocument)?.boardID }
+    let key = (NSApp.keyWindow?.windowController?.document as? BoardDocument)?.boardID
+    for g in spaces.spaces {
+      guard let live = g.live else { continue }
+      if listShown || shown.contains(where: { g.store.title(of: $0) != nil }) { live.connect() } else { live.close() }
+      let board = key.flatMap { g.store.title(of: $0) != nil ? $0 : nil }
+      let selection = board.flatMap { b in documents.first { $0.boardID == b }?.windowController?.canvas.selection }
+      live.setPresence(board: board, selection: selection.map { $0.sorted() } ?? [])
+    }
+  }
+
+  /// Something changed in `g`'s live layer: its board windows and the Boards window follow.
+  func liveChanged(_ g: Spaces.Group) {
+    updateLive()
+    for d in documents where g.store.title(of: d.boardID) != nil {
+      d.windowController?.canvas.presence = CanvasPresence(g.live, board: d.boardID)
+      d.windowController?.showPeople(g.live?.people(on: d.boardID) ?? [])
+    }
+    // the list reloads only when who is on which board changes, not with every cursor
+    let seen = spaces.spaces.flatMap { g in g.store.boards.map { b in b.id + ":" + (g.live?.people(on: b.id) ?? []).map(\.device).joined(separator: ",") } }
+      .joined(separator: ";")
+    if seen != peopleSeen {
+      peopleSeen = seen
+      NotificationCenter.default.post(name: .peopleChanged, object: nil)
+    }
   }
 
   /// Moves board `id` to `target`; its window, if open, closes with the original and opens on the copy.

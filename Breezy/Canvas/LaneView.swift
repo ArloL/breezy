@@ -5,6 +5,7 @@ import BreezyKit
 final class LaneView: NSView {
   var lane: Lane { didSet { if lane.title != oldValue.title { header.title = renaming ? "" : lane.title } } }
   var selected = false { didSet { if selected != oldValue { needsDisplay = true } } }
+  var ringColour: NSColor? { didSet { if ringColour != oldValue { needsDisplay = true } } }
   var renaming = false { didSet { header.title = renaming ? "" : lane.title } }
   private let header = LaneHeaderView()
   private let grip = GripView()
@@ -32,8 +33,8 @@ final class LaneView: NSView {
 
   override func updateLayer() {
     layer?.backgroundColor = Theme.laneFill.cgColor
-    layer?.borderColor = (selected ? Theme.accent : Theme.hairline).cgColor
-    layer?.borderWidth = selected ? 2 : 1
+    layer?.borderColor = (selected ? Theme.accent : ringColour ?? Theme.hairline).cgColor
+    layer?.borderWidth = selected || ringColour != nil ? 2 : 1
   }
 
   override func viewDidChangeEffectiveAppearance() {

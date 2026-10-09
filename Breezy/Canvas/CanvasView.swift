@@ -26,6 +26,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       guard selection != oldValue else { return }
       for (id, v) in laneViews { v.selected = selection.contains(id) }
       layoutCards()
+      onSelection?()
     }
   }
   /// The card showing its back.
@@ -58,6 +59,13 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var laidOutZoom: CGFloat?
   /// The elements last handed out, kept alive while assistive apps query them.
   var accessibilityElements: [NSAccessibilityElement] = []
+  /// What others do on this board.
+  var presence = CanvasPresence() { didSet { if presence != oldValue { presenceChanged(from: oldValue) } } }
+  let presenceView = PresenceView()
+  /// This Mac's pointer over the board, in world points; nil when it left.
+  var onPointer: ((NSPoint?) -> Void)?
+  /// After the selection changes, for others to see.
+  var onSelection: (() -> Void)?
 
   init(model: BoardModel) {
     self.model = model
@@ -68,7 +76,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     marquee.layer?.borderWidth = 1
     marquee.isHidden = true
     addSubview(marquee)
-    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+    presenceView.frame = bounds
+    addSubview(presenceView)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     model.onChange = { [weak self] before in self?.boardChanged(from: before) }
     sync()
   }
@@ -177,6 +187,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       let isNew = laneViews[l.id] == nil
       let v = laneViews[l.id] ?? makeLaneView(l)
       v.lane = l
+      v.ringColour = (presence.taken[l.id] ?? presence.seen[l.id])?.nsColour
       let old = v.layer?.position
       v.frame = laneFrame(l)
       guard animate, let layer = v.layer else { continue }
@@ -271,7 +282,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       l.setLifted(raised.contains(c.id), animated: animate && !isNew)
       if isNew && animate && appearing.contains(c.id) { l.appear() }
       let look = CardLayer.Look(card: c, back: c.id == turned, editing: c.id == editingID, dark: dark)
-      l.configure(look, size: r.size, selected: selection.contains(c.id), scale: s, appearance: effectiveAppearance)
+      let ring: CardLayer.Ring? = selection.contains(c.id) ? CardLayer.Ring(colour: Theme.cg(Theme.accent, in: effectiveAppearance), width: 2)
+        : presence.taken[c.id].map { CardLayer.Ring(colour: $0.nsColour.cgColor, width: 2) }
+        ?? presence.seen[c.id].map { CardLayer.Ring(colour: $0.nsColour.cgColor, width: 1) }
+      l.configure(look, size: r.size, ring: ring, scale: s, appearance: effectiveAppearance)
     }
     appearing = []
     for (id, l) in cardLayers where !live.contains(id) {
@@ -292,6 +306,31 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       settling = work
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
+    showPresence()
+  }
+
+  private func presenceChanged(from old: CanvasPresence) {
+    let taken = Set(presence.taken.keys)
+    if !selection.isDisjoint(with: taken) { selection.subtract(taken) }
+    if presence.taken != old.taken || presence.seen != old.seen {
+      placeLanes()
+      layoutCards()
+    } else {
+      showPresence()
+    }
+  }
+
+  /// Puts others' cursors and the names over what they hold where the board shows them.
+  func showPresence() {
+    var marks = presence.cursors.map {
+      PresenceView.Mark(key: "cursor " + $0.key, kind: .cursor, person: $0.person, rect: NSRect(x: $0.x + Self.origin, y: $0.y + Self.origin, width: 0, height: 0))
+    }
+    for (id, person) in presence.taken {
+      guard let r = board.card(id).map(drawnRect) ?? board.lane(id)?.rect else { continue }
+      let d = doc(r)
+      marks.append(PresenceView.Mark(key: "label " + id, kind: .label, person: person, rect: NSRect(x: d.minX - 4, y: d.minY - 6, width: 0, height: 0)))
+    }
+    presenceView.show(marks, zoom: zoom)
   }
 
   /// Draws the bitmaps of several cards at once on all cores, as when a zoom step crosses to a new

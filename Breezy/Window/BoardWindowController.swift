@@ -3,6 +3,7 @@ import BreezyKit
 
 extension NSToolbarItem.Identifier {
   static let newLane = Self("newLane")
+  static let people = Self("people")
 }
 
 /// One board window: the toolbar, the scroll view with the canvas, the dot grid behind it and the
@@ -14,6 +15,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   let zoomCapsule = ZoomCapsule()
   private var shownZoom: Int?
   private let grid = GridView()
+  private let people = NSStackView()
   private var restored = false
   private let finder = NSTextFinder()
   private lazy var finderClient = BoardFinderClient(canvas: canvas)
@@ -177,7 +179,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     viewMoved()
   }
 
-  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [.flexibleSpace, .newLane] }
+  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [.flexibleSpace, .people, .newLane] }
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
   func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
@@ -191,8 +193,31 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       item.target = self
       item.action = #selector(newLane(_:))
       return item
+    case .people:
+      let item = NSToolbarItem(itemIdentifier: id)
+      item.label = "People"
+      people.spacing = 4
+      item.view = people
+      return item
     default:
       return nil
     }
+  }
+
+  /// The initials of the others on this board, in their colours.
+  func showPeople(_ list: [Person]) {
+    people.setViews(list.map { p in
+      let f = NSTextField(labelWithString: p.initials)
+      f.font = .systemFont(ofSize: 11, weight: .semibold)
+      f.textColor = .white
+      f.alignment = .center
+      f.wantsLayer = true
+      f.layer?.backgroundColor = p.nsColour.cgColor
+      f.layer?.cornerRadius = 11
+      f.toolTip = p.name
+      f.translatesAutoresizingMaskIntoConstraints = false
+      NSLayoutConstraint.activate([f.widthAnchor.constraint(equalToConstant: 22), f.heightAnchor.constraint(equalToConstant: 22)])
+      return f
+    }, in: .leading)
   }
 }
