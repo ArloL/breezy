@@ -21,6 +21,7 @@ from pathlib import Path
 
 HOST = os.environ.get("BREEZY_FTP_HOST", "a2e13.netcup.net")
 SITE_URL = os.environ.get("BREEZY_SITE_URL", "https://breezy.k5d.de")
+RELAY = os.environ.get("BREEZY_RELAY", "wss://breezy-relay.blissfulbird.workers.dev/")
 DSN = "mysql:host={};dbname={};charset=utf8mb4".format(
     os.environ.get("BREEZY_DATABASE_HOST", "10.35.46.20"), os.environ.get("BREEZY_DATABASE_NAME", "k115653_breezy"))
 LAST = ["index.html", "sw.js", "version.json"]
@@ -98,7 +99,7 @@ def live_files():
 
 def config_php():
     details = json.dumps({"dsn": DSN, "user": os.environ["BREEZY_DATABASE_USER"],
-                          "password": os.environ["BREEZY_DATABASE_PASSWORD"]})
+                          "password": os.environ["BREEZY_DATABASE_PASSWORD"], "relay": RELAY})
     encoded = base64.b64encode(details.encode()).decode()
     return f"<?php return json_decode(base64_decode('{encoded}'), true);\n".encode()
 
