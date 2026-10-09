@@ -32,6 +32,8 @@ extension CanvasView {
     let shift = event.modifierFlags.contains(.shift)
     let option = event.modifierFlags.contains(.option)
     let hit = card(at: p)
+    // what someone else holds can't be selected, moved or edited
+    if let id = hit?.id ?? lane(at: p)?.id, presence.taken[id] != nil { return }
     if let t = turned, hit?.id != t { turn(nil) }
     if event.clickCount == 2 { return doubleClick(at: p) }
     if let c = hit {
@@ -50,6 +52,7 @@ extension CanvasView {
       }
       let held = board.cards.filter { selection.contains($0.id) }
       model.begin()
+      hold?(Set(held.map(\.id)))
       drag = Drag(kind: .cards, id: c.id, start: p, origins: held.map { Origin(id: $0.id, x: $0.x, y: $0.y) },
                   room: Room(base: board.layout(excluding: Set(held.map(\.id))), heightOf: height))
       return
@@ -59,6 +62,7 @@ extension CanvasView {
       if p.x > r.x + r.w - 20 && p.y > r.y + r.h - 20 {
         selection = [l.id]
         model.begin()
+        hold?([l.id])
         drag = Drag(kind: .resize, id: l.id, start: p, size: NSSize(width: r.w, height: r.h))
         return
       }
@@ -69,7 +73,9 @@ extension CanvasView {
         }
         selection = [l.id]
         let carried = board.cardsInLane(l.id, heightOf: height).map { Origin(id: $0.id, x: $0.x, y: $0.y) }
+        if carried.contains(where: { presence.taken[$0.id] != nil }) { return }
         model.begin()
+        hold?(Set([l.id] + carried.map(\.id)))
         drag = Drag(kind: .lane, id: l.id, start: p, origins: carried, laneOrigin: Origin(id: l.id, x: l.x, y: l.y))
         return
       }

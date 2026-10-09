@@ -35,8 +35,9 @@ extension CanvasView {
 
   /// Edits the side of card `id` facing up; the session is one undo step named `name`.
   func beginEdit(_ id: String, name: String = "Edit Card") {
-    guard let c = board.card(id) else { return }
+    guard let c = board.card(id), presence.taken[id] == nil else { return }
     model.begin()
+    hold?([id])
     let back = turned == id
     // TextKit 1: lighter per keystroke than TextKit 2, and it breaks lines as TextMetrics measures
     let tv = EditorTextView(usingTextLayoutManager: false)
@@ -129,9 +130,47 @@ extension CanvasView {
     beginEdit(e.id, name: e.name)
   }
 
+  /// Ends the card edit or lane rename in progress, putting the board back as it began.
+  func cancelEditing() {
+    if let r = renaming {
+      renaming = nil
+      r.field.removeFromSuperview()
+      laneViews[r.id]?.renaming = false
+    }
+    if let e = editing {
+      editing = nil
+      e.view.removeFromSuperview()
+    }
+    model.cancel()
+    layoutCards()
+  }
+
+  /// Someone else got there first: the drag or edit under way goes back as it began.
+  func refused() {
+    guard let d = drag, d.kind != .marquee else {
+      if drag == nil, editing != nil || renaming != nil { cancelEditing() }
+      return
+    }
+    drag = nil
+    dragPoint = nil
+    stopEdgeScroll()
+    marquee.isHidden = true
+    raised = []
+    held = Held()
+    model.cancel()
+    placeLanes()
+    layoutCards()
+  }
+
+  /// Where the caret is in the card being edited, for others to draw.
+  func caret() -> Caret? {
+    editing.map { Caret(id: $0.id, back: $0.back, at: $0.view.selectedRange().location) }
+  }
+
   func beginRename(_ id: String) {
-    guard let v = laneViews[id], let l = board.lane(id) else { return }
+    guard let v = laneViews[id], let l = board.lane(id), presence.taken[id] == nil else { return }
     model.begin()
+    hold?([id])
     let f = NSTextField(frame: LaneView.headerTextRect(width: v.bounds.width))
     f.stringValue = l.title
     f.font = Typo.laneFont

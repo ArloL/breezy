@@ -95,6 +95,22 @@ enum TextMetrics {
     }
   }
 
+  /// Where offset `at` of `s` falls when laid out `width` wide: a caret's rect, from the text's top left.
+  static func caret(_ s: NSAttributedString, width: CGFloat, at: Int) -> NSRect {
+    let (storage, manager, container) = layout(s, width: width)
+    let n = storage.length
+    let i = min(max(0, at), n)
+    if n == 0 { return NSRect(x: 0, y: 0, width: 2, height: Typo.line) }
+    // after a final newline the caret is on the empty line below
+    if i == n, (storage.string as NSString).character(at: n - 1) == 10 {
+      return NSRect(x: 0, y: manager.extraLineFragmentRect.minY, width: 2, height: Typo.line)
+    }
+    let glyph = manager.glyphIndexForCharacter(at: min(i, n - 1))
+    let line = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+    let x = i == n ? manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).maxX : line.minX + manager.location(forGlyphAt: glyph).x
+    return NSRect(x: x, y: line.minY, width: 2, height: Typo.line)
+  }
+
   /// A laid-out copy of `s`; the caller keeps all three alive while using them.
   static func layout(_ s: NSAttributedString, width: CGFloat) -> (NSTextStorage, NSLayoutManager, NSTextContainer) {
     let storage = NSTextStorage(attributedString: s)
