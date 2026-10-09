@@ -117,7 +117,8 @@ export class Live {
     this.direct = peerTransport && new Direct(peerTransport(), {
       now,
       relay: (to, body) => this.send(body, to),
-      message: (from, text) => (this.in = this.in.then(() => this.opened(from, text, true)).catch(() => {})),
+      // a version 2 link carries the sealed body's bytes
+      message: (from, data) => (this.in = this.in.then(() => this.opened(from, typeof data === "string" ? data : encode(data), true)).catch(() => {})),
       change: () => this.onChange(),
     });
   }
@@ -237,7 +238,10 @@ export class Live {
     const sent = this.out.then(async () => {
       const sealed = await this.seal(stamped);
       if (!sealed || ws !== this.ws) return false;
-      if (!relayOnly) for (const id of this.roster.keys()) this.direct?.send(id, sealed);
+      if (!relayOnly && this.direct) {
+        const bytes = decode(sealed);
+        for (const id of this.roster.keys()) this.direct.version(id) === 2 ? this.direct.sendBytes(id, bytes) : this.direct.send(id, sealed);
+      }
       if ((relayOnly || !this.allDirect) && ws.readyState === 1) {
         ws.send(JSON.stringify({ body: sealed }));
         this.relaySent = this.now();

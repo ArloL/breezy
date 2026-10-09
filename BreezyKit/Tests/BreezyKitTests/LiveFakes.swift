@@ -142,9 +142,9 @@ import Foundation
 @MainActor final class FakePeerTransport: PeerTransport {
   var onCandidate: ((String, IceCandidate?) -> Void)?
   var onState: ((String, PeerState) -> Void)?
-  var onMessage: ((String, String) -> Void)?
+  var onMessage: ((String, PeerMessage) -> Void)?
   var log: [String] = []
-  var sent: [(id: String, text: String)] = []
+  var sent: [(id: String, message: PeerMessage)] = []
   var deferred = false
   var waiting: [() -> Void] = []
   var onOffer: [IceCandidate] = []
@@ -177,7 +177,12 @@ import Foundation
   }
 
   func send(_ peer: String, _ text: String) -> Bool {
-    sent.append((peer, text))
+    sent.append((peer, .text(text)))
+    return true
+  }
+
+  func sendBytes(_ peer: String, _ data: Data) -> Bool {
+    sent.append((peer, .bytes(data)))
     return true
   }
 

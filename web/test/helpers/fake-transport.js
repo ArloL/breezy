@@ -42,7 +42,12 @@ export class FakeTransport {
   }
 
   send(id, text) {
-    this.sent.push({ id, text });
+    this.sent.push({ id, data: text });
+    return true;
+  }
+
+  sendBytes(id, bytes) {
+    this.sent.push({ id, data: bytes });
     return true;
   }
 

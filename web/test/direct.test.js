@@ -9,7 +9,7 @@ function direct() {
   let t = 1_000_000;
   const transport = new FakeTransport(), relayed = [], messages = [];
   let changes = 0;
-  const d = new Direct(transport, { now: () => t, relay: (to, b) => relayed.push({ to, ...b }), message: (from, text) => messages.push({ from, text }), change: () => changes++ });
+  const d = new Direct(transport, { now: () => t, relay: (to, b) => relayed.push({ to, ...b }), message: (from, data) => messages.push({ from, data }), change: () => changes++ });
   return { d, transport, relayed, messages, advance: (ms) => (t += ms), changes: () => changes };
 }
 
@@ -33,7 +33,7 @@ test("an offer is answered; candidates that come early wait for the remote descr
   transport.release();
   await settle();
   assert.deepEqual(transport.log, ["create p1", "answer p1 o", "add p1 c1"]);
-  assert.deepEqual(relayed, [{ to: "p1", t: "answer", sdp: "answer-sdp p1" }]);
+  assert.deepEqual(relayed, [{ to: "p1", t: "answer", sdp: "answer-sdp p1", v: 2 }]);
 });
 
 test("an answer is accepted, then early candidates are added", async () => {
@@ -65,10 +65,53 @@ test("open channels carry messages; others do not", async () => {
   assert.ok(d.isOpen("p1"));
   assert.equal(changes(), 1);
   transport.onMessage("p1", "hello");
-  assert.deepEqual(messages, [{ from: "p1", text: "hello" }]);
+  assert.deepEqual(messages, [{ from: "p1", data: "hello" }]);
   assert.ok(d.send("p1", "x"));
   assert.ok(!d.send("p2", "x"));
-  assert.deepEqual(transport.sent, [{ id: "p1", text: "x" }]);
+  assert.deepEqual(transport.sent, [{ id: "p1", data: "x" }]);
+});
+
+test("offers and answers say version 2; a link is version 2 only when the other side said so", async () => {
+  const offerer = (answer) => async () => {
+    const { d, relayed } = direct();
+    d.welcome(["p1"]);
+    await settle();
+    assert.deepEqual(relayed[0], { to: "p1", t: "offer", sdp: "offer-sdp p1", v: 2 });
+    assert.equal(d.version("p1"), 1);
+    d.heard("p1", answer);
+    await settle();
+    return d.version("p1");
+  };
+  assert.equal(await offerer({ t: "answer", sdp: "a", v: 2 })(), 2);
+  assert.equal(await offerer({ t: "answer", sdp: "a" })(), 1);
+  const answerer = async (offer) => {
+    const { d, relayed } = direct();
+    d.heard("p1", offer);
+    await settle();
+    assert.equal(relayed[0].v, 2);
+    return d.version("p1");
+  };
+  assert.equal(await answerer({ t: "offer", sdp: "o", v: 2 }), 2);
+  assert.equal(await answerer({ t: "offer", sdp: "o" }), 1);
+  assert.equal(direct().d.version("p9"), 1);
+});
+
+test("a version 2 link carries only bytes, a version 1 link only text", async () => {
+  const { d, transport, messages } = direct();
+  d.welcome(["p1"]);
+  d.heard("p2", { t: "offer", sdp: "o", v: 2 });
+  await settle();
+  transport.onState("p1", "open");
+  transport.onState("p2", "open");
+  const bytes = new Uint8Array([1, 2]);
+  transport.onMessage("p1", bytes);
+  transport.onMessage("p1", "one");
+  transport.onMessage("p2", "two");
+  transport.onMessage("p2", bytes);
+  assert.deepEqual(messages, [{ from: "p1", data: "one" }, { from: "p2", data: bytes }]);
+  assert.ok(d.sendBytes("p2", bytes));
+  assert.ok(!d.sendBytes("p3", bytes));
+  assert.deepEqual(transport.sent, [{ id: "p2", data: bytes }]);
 });
 
 test("a channel that does not open within 10 s is given up", async () => {
@@ -129,7 +172,7 @@ test("a second offer while an answer is in flight is ignored", async () => {
   transport.release();
   await settle();
   assert.deepEqual(transport.log, ["create p1", "answer p1 o"]);
-  assert.deepEqual(relayed, [{ to: "p1", t: "answer", sdp: "answer-sdp p1" }]);
+  assert.deepEqual(relayed, [{ to: "p1", t: "answer", sdp: "answer-sdp p1", v: 2 }]);
 });
 
 test("a failed accept closes the connection", async () => {

@@ -248,7 +248,13 @@ public struct Peer: Equatable, Sendable {
     if let transport {
       direct = Direct(
         transport: transport, now: now, relay: { [weak self] to, b in self?.send(b, to: to) },
-        message: { [weak self] from, text in self?.opened(from, text, direct: true) }, change: { [weak self] in self?.onChange?() })
+        // a version 2 link carries the sealed body's bytes
+        message: { [weak self] from, m in
+          switch m {
+          case let .text(t): self?.opened(from, t, direct: true)
+          case let .bytes(d): self?.opened(from, Base64URL.encode(d), direct: true)
+          }
+        }, change: { [weak self] in self?.onChange?() })
     }
   }
 
@@ -361,7 +367,10 @@ public struct Peer: Equatable, Sendable {
     b["at"] = .number(uptime())
     b["seq"] = .number(Double(seq))
     guard let sealed = seal(b) else { return false }
-    if !relayOnly { for id in roster.keys.sorted() { direct?.send(id, sealed) } }
+    if !relayOnly, let direct {
+      let bytes = Base64URL.decode(sealed) ?? Data()
+      for id in roster.keys.sorted() { if direct.version(id) == 2 { direct.sendBytes(id, bytes) } else { direct.send(id, sealed) } }
+    }
     if relayOnly || !allDirect { frame(["body": .string(sealed)]) }
     return true
   }

@@ -14,6 +14,7 @@ export class RTCTransport {
     this.close(id);
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const ch = pc.createDataChannel("live", { negotiated: true, id: 0, ordered: false, maxRetransmits: 0 });
+    ch.binaryType = "arraybuffer";
     const mine = () => this.peers.get(id)?.pc === pc;
     // a restart that recovers leaves the channel open, so open is the connection's state as much as the channel's
     const report = () => mine() && this.onState(id, pc.connectionState === "failed" ? "failed" : pc.connectionState === "connected" && ch.readyState === "open" ? "open" : "closed");
@@ -21,7 +22,7 @@ export class RTCTransport {
     pc.onconnectionstatechange = report;
     ch.onopen = report;
     ch.onclose = report;
-    ch.onmessage = (e) => mine() && this.onMessage(id, String(e.data));
+    ch.onmessage = (e) => mine() && this.onMessage(id, e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : String(e.data));
     this.peers.set(id, { pc, ch });
   }
 
@@ -52,6 +53,10 @@ export class RTCTransport {
     if (p?.pc.connectionState !== "connected" || p.ch.readyState !== "open") return false;
     p.ch.send(text);
     return true;
+  }
+
+  sendBytes(id, bytes) {
+    return this.send(id, bytes);
   }
 
   close(id) {

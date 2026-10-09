@@ -7,18 +7,22 @@
 const ICE_SERVERS = [{ urls: "stun:stun.cloudflare.com:3478" }];
 const peers = new Map();
 const post = (m) => webkit.messageHandlers.peer.postMessage(m);
+// script messages carry no ArrayBuffer, so bytes cross to and from Swift in base64url
+const toB64 = (b) => btoa(Array.from(b, (x) => String.fromCharCode(x)).join("")).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const fromB64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
 function create(id) {
   close(id);
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   const ch = pc.createDataChannel("live", { negotiated: true, id: 0, ordered: false, maxRetransmits: 0 });
+  ch.binaryType = "arraybuffer";
   const mine = () => peers.get(id)?.pc === pc;
   const report = () => mine() && post({ id, kind: "state", state: pc.connectionState === "failed" ? "failed" : pc.connectionState === "connected" && ch.readyState === "open" ? "open" : "closed" });
   pc.onicecandidate = (e) => mine() && post({ id, kind: "candidate", candidate: e.candidate && { candidate: e.candidate.candidate, mid: e.candidate.sdpMid, index: e.candidate.sdpMLineIndex } });
   pc.onconnectionstatechange = report;
   ch.onopen = report;
   ch.onclose = report;
-  ch.onmessage = (e) => mine() && post({ id, kind: "message", text: String(e.data) });
+  ch.onmessage = (e) => mine() && post(e.data instanceof ArrayBuffer ? { id, kind: "message", bytes: toB64(new Uint8Array(e.data)) } : { id, kind: "message", text: String(e.data) });
   peers.set(id, { pc, ch });
 }
 
@@ -50,6 +54,10 @@ function send(id, text) {
   if (p?.pc.connectionState !== "connected" || p.ch.readyState !== "open") return false;
   p.ch.send(text);
   return true;
+}
+
+function sendBytes(id, b64) {
+  return send(id, fromB64(b64));
 }
 
 function close(id) {

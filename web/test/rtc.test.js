@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 
 class FakeChannel {
   readyState = "connecting";
-  send(text) {
-    this.sent = text;
+  send(data) {
+    this.sent = data;
   }
 }
 
@@ -49,6 +49,7 @@ test("each peer gets a negotiated, unordered channel without retransmits, over C
   assert.deepEqual(pc.config, { iceServers: ICE_SERVERS });
   assert.deepEqual(ICE_SERVERS, [{ urls: "stun:stun.cloudflare.com:3478" }]);
   assert.deepEqual(pc.options, { negotiated: true, id: 0, ordered: false, maxRetransmits: 0 });
+  assert.equal(pc.channel.binaryType, "arraybuffer");
 });
 
 test("offers, answers, candidates and messages pass through", async () => {
@@ -65,7 +66,8 @@ test("offers, answers, candidates and messages pass through", async () => {
   pc.onicecandidate({ candidate: { candidate: "x", sdpMid: "0", sdpMLineIndex: 0 } });
   pc.onicecandidate({ candidate: null });
   pc.channel.onmessage({ data: "hi" });
-  assert.deepEqual(got, [["p1", { candidate: "x", mid: "0", index: 0 }], ["p1", null], ["p1", "hi"]]);
+  pc.channel.onmessage({ data: new Uint8Array([1, 2]).buffer });
+  assert.deepEqual(got, [["p1", { candidate: "x", mid: "0", index: 0 }], ["p1", null], ["p1", "hi"], ["p1", new Uint8Array([1, 2])]]);
 });
 
 test("a connection that recovers after a restart reports open again, though its channel never closed", async () => {
@@ -88,7 +90,10 @@ test("send says whether it went; close forgets the peer", () => {
   assert.equal(t.send("p1", "x"), false);
   pc.set("connected", "open");
   assert.equal(t.send("p1", "x"), true);
+  assert.equal(t.sendBytes("p1", new Uint8Array([1])), true);
+  assert.deepEqual(pc.channel.sent, new Uint8Array([1]));
   t.close("p1");
   assert.ok(pc.closed);
   assert.equal(t.send("p1", "x"), false);
+  assert.equal(t.sendBytes("p1", new Uint8Array([1])), false);
 });

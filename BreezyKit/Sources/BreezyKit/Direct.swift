@@ -15,17 +15,20 @@ public struct IceCandidate: Equatable, Sendable {
 
 public enum PeerState: String, Sendable { case open, closed, failed }
 
+public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
+
 /// WebRTC data channels to other connections, as `Direct` drives them; the app puts a web view behind it, tests a fake.
 @MainActor public protocol PeerTransport: AnyObject {
   var onCandidate: ((String, IceCandidate?) -> Void)? { get set }
   var onState: ((String, PeerState) -> Void)? { get set }
-  var onMessage: ((String, String) -> Void)? { get set }
+  var onMessage: ((String, PeerMessage) -> Void)? { get set }
   func create(_ peer: String)
   func offer(_ peer: String, restart: Bool, _ done: @escaping @MainActor (String?) -> Void)
   func answer(_ peer: String, offer: String, _ done: @escaping @MainActor (String?) -> Void)
   func accept(_ peer: String, answer: String, _ done: @escaping @MainActor (Bool) -> Void)
   func add(_ peer: String, candidate: IceCandidate)
   @discardableResult func send(_ peer: String, _ text: String) -> Bool
+  @discardableResult func sendBytes(_ peer: String, _ data: Data) -> Bool
   func close(_ peer: String)
 }
 
@@ -38,6 +41,7 @@ public enum PeerState: String, Sendable { case open, closed, failed }
 
   private final class Link {
     let offerer: Bool
+    var version = 1
     var open = false, everOpen = false, remote = false, ready = false, answering = false
     var since: Date
     var restarts = 0
@@ -54,12 +58,13 @@ public enum PeerState: String, Sendable { case open, closed, failed }
   private let transport: PeerTransport
   private let now: () -> Date
   private let relay: (String, [String: JSONValue]) -> Void
-  private let message: (String, String) -> Void
+  private let message: (String, PeerMessage) -> Void
   private let change: () -> Void
   private var links: [String: Link] = [:]
 
+  /// `message` is what came direct: text on a version 1 link, bytes on a version 2 one.
   public init(transport: PeerTransport, now: @escaping () -> Date, relay: @escaping (String, [String: JSONValue]) -> Void,
-              message: @escaping (String, String) -> Void, change: @escaping () -> Void) {
+              message: @escaping (String, PeerMessage) -> Void, change: @escaping () -> Void) {
     self.transport = transport
     self.now = now
     self.relay = relay
@@ -67,15 +72,23 @@ public enum PeerState: String, Sendable { case open, closed, failed }
     self.change = change
     transport.onCandidate = { [weak self] in self?.gathered($0, $1) }
     transport.onState = { [weak self] in self?.state($0, $1) }
-    transport.onMessage = { [weak self] id, text in
-      guard let self, links[id]?.open == true else { return }
-      self.message(id, text)
+    transport.onMessage = { [weak self] id, m in
+      guard let self, let l = links[id], l.open else { return }
+      switch m {
+      case .text where l.version == 1, .bytes where l.version == 2: self.message(id, m)
+      default: return
+      }
     }
   }
 
   public func isOpen(_ id: String) -> Bool { links[id]?.open ?? false }
 
+  /// 2 when the other side's offer or answer said so, else 1.
+  public func version(_ id: String) -> Int { links[id]?.version ?? 1 }
+
   @discardableResult public func send(_ id: String, _ text: String) -> Bool { isOpen(id) && transport.send(id, text) }
+
+  @discardableResult public func sendBytes(_ id: String, _ data: Data) -> Bool { isOpen(id) && transport.sendBytes(id, data) }
 
   /// This connection is new to the space: it offers to each of `ids`, so two sides never offer at once.
   public func welcome(_ ids: [String]) {
@@ -96,7 +109,7 @@ public enum PeerState: String, Sendable { case open, closed, failed }
     transport.offer(id, restart: restart) { [weak self] sdp in
       guard let self, links[id] === l else { return }
       guard let sdp else { return leave(id) }
-      relay(id, ["t": .string("offer"), "sdp": .string(sdp)])
+      relay(id, ["t": .string("offer"), "sdp": .string(sdp), "v": .number(2)])
       flushOut(id, l)
     }
   }
@@ -112,19 +125,22 @@ public enum PeerState: String, Sendable { case open, closed, failed }
       l.ready = false
       l.remote = false
       l.answering = true
+      l.version = Self.version(of: b)
       transport.answer(from, offer: sdp) { [weak self] answer in
         l.answering = false
         guard let self, links[from] === l else { return }
         guard let answer else { return leave(from) }
         remoteSet(from, l)
-        relay(from, ["t": .string("answer"), "sdp": .string(answer)])
+        relay(from, ["t": .string("answer"), "sdp": .string(answer), "v": .number(2)])
         flushOut(from, l)
       }
     case "answer":
       guard let sdp = b["sdp"]?.string, let l, l.offerer else { return }
       transport.accept(from, answer: sdp) { [weak self] ok in
         guard let self, links[from] === l else { return }
-        if ok { remoteSet(from, l) } else { leave(from) }
+        guard ok else { return leave(from) }
+        l.version = Self.version(of: b)
+        remoteSet(from, l)
       }
     case "ice":
       guard let l, let c = b["candidate"]?.string else { return }
@@ -134,6 +150,8 @@ public enum PeerState: String, Sendable { case open, closed, failed }
       return
     }
   }
+
+  private static func version(of b: [String: JSONValue]) -> Int { (b["v"]?.number ?? 1) >= 2 ? 2 : 1 }
 
   private func remoteSet(_ id: String, _ l: Link) {
     l.remote = true
