@@ -9,6 +9,12 @@ public final class BoardBinding {
   public let model: BoardModel
   public let store: Store
   public var restack: ((inout Board) -> Void)?
+  /// Items someone else holds: local changes to them are not written, as the holder's are the ones that count.
+  public var taken: () -> Set<String> = { [] }
+  /// After every change to the model, after the binding's own handling.
+  public var afterEdit: (() -> Void)?
+  /// After a gesture ends or is cancelled.
+  public var afterGesture: (() -> Void)?
   /// The board as last given to or taken from the store, stacked as shown.
   private var seen: Board
   private var waiting = false
@@ -19,10 +25,16 @@ public final class BoardBinding {
     self.model = model
     self.store = store
     seen = model.board
-    model.onEdit = { [weak self] in self?.changed() }
+    model.onEdit = { [weak self] in
+      self?.changed()
+      self?.afterEdit?()
+    }
     model.onGestureEnd = { [weak self] in
       // after the gesture's undo step is registered, so that the step holds only local changes
-      DispatchQueue.main.async { if self?.waiting == true { self?.pull() } }
+      DispatchQueue.main.async {
+        if self?.waiting == true { self?.pull() }
+        self?.afterGesture?()
+      }
     }
   }
 
@@ -38,7 +50,8 @@ public final class BoardBinding {
 
   public func flush() {
     guard model.board != seen else { return }
-    let changes = Records.changes(from: seen, to: model.board, board: id, orders: store.orders(of: id))
+    let held = taken()
+    let changes = Records.changes(from: seen, to: model.board, board: id, orders: store.orders(of: id)).filter { !held.contains($0.key) }
     seen = model.board
     store.apply(changes)
   }

@@ -10,10 +10,12 @@ final class FakeServer {
   var version = 0
   /// Nil until the space's first write, and again after `wipe`.
   var epoch: String?
+  /// What the server names as its relay, if anything.
+  var relay: String?
 
   func pull(since: Int) -> Page {
     let r = records.values.filter { $0.version > since }.sorted { $0.version < $1.version }.prefix(SyncEngine.pageSize)
-    return Page(records: r.map(marked), cursor: r.last?.version ?? since, epoch: epoch)
+    return Page(records: r.map(marked), cursor: r.last?.version ?? since, epoch: epoch, relay: relay)
   }
 
   func push(_ writes: [Write]) -> PushResult {
@@ -30,7 +32,7 @@ final class FakeServer {
       written[w.id] = epoch
       accepted.append(Accepted(id: w.id, version: version))
     }
-    return PushResult(accepted: accepted, refused: refused, epoch: epoch)
+    return PushResult(accepted: accepted, refused: refused, epoch: epoch, relay: relay)
   }
 
   private func marked(_ r: Pulled) -> Pulled {

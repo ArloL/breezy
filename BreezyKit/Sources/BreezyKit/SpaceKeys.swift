@@ -25,6 +25,15 @@ public struct SpaceKeys {
   public func open(_ blob: Data, id: Data) throws -> Data {
     try AES.GCM.open(AES.GCM.SealedBox(combined: blob), using: key, authenticating: space + id)
   }
+
+  /// A live message's body: bound to the space, and marked live so that it never passes for a record.
+  public func sealLive(_ plaintext: Data, nonce: AES.GCM.Nonce = AES.GCM.Nonce()) throws -> Data {
+    try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: Data("live".utf8) + space).combined!
+  }
+
+  public func openLive(_ body: Data) throws -> Data {
+    try AES.GCM.open(AES.GCM.SealedBox(combined: body), using: key, authenticating: Data("live".utf8) + space)
+  }
 }
 
 /// What joins a device to a space: the server, the space and its secret, as a link.

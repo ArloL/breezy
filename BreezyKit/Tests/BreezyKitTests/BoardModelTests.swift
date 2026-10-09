@@ -204,3 +204,17 @@ import Testing
   m.end("Edit Card")
   #expect(ended == 1)
 }
+
+@Test func cancelPutsTheBoardBackAsTheGestureBegan() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  var ended = 0
+  m.onGestureEnd = { ended += 1 }
+  m.begin()
+  #expect(m.gestureStartBoard == m.board)
+  m.update { $0.setText("a", "typed") }
+  m.cancel()
+  #expect(m.board.card("a")?.text == "t")
+  #expect(!m.inGesture && m.gestureStartBoard == nil)
+  #expect(ended == 1)
+  #expect(!m.undoManager.canUndo)
+}

@@ -69,3 +69,23 @@ private func vector() throws -> Vector { try JSONDecoder().decode(Vector.self, f
   #expect(Invite(link: v.namedInvite) == named)
   #expect(Invite(link: v.invite)?.name == nil)
 }
+
+private struct LiveVector: Decodable { var secret, space, nonce, plaintext, body: String }
+
+@Test func liveMessagesMatchTheSharedVector() throws {
+  let v = try JSONDecoder().decode(LiveVector.self, from: fixture("live.json"))
+  let keys = SpaceKeys(space: Base64URL.decode(v.space)!, secret: Base64URL.decode(v.secret)!)
+  let sealed = try keys.sealLive(Data(v.plaintext.utf8), nonce: AES.GCM.Nonce(data: Base64URL.decode(v.nonce)!))
+  #expect(Base64URL.encode(sealed) == v.body)
+  #expect(try keys.openLive(Base64URL.decode(v.body)!) == Data(v.plaintext.utf8))
+}
+
+@Test func liveMessagesAndRecordsNeverPassForEachOther() throws {
+  let keys = SpaceKeys(space: randomBytes(16), secret: randomBytes(32))
+  let body = try keys.sealLive(Data("x".utf8))
+  #expect(throws: (any Error).self) { try keys.open(body, id: Data("live".utf8)) }
+  let blob = try keys.seal(Data("x".utf8), id: randomBytes(16))
+  #expect(throws: (any Error).self) { try keys.openLive(blob) }
+  let other = SpaceKeys(space: randomBytes(16), secret: randomBytes(32))
+  #expect(throws: (any Error).self) { try other.openLive(body) }
+}
