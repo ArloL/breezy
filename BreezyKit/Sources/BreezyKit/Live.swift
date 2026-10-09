@@ -170,6 +170,7 @@ public struct Peer: Equatable, Sendable {
   public static let pingInterval: TimeInterval = 20
   public static let pongTimeout: TimeInterval = 10
   static let maxFrame = 65_536
+  static let maxPushed = 60_000
   static let moving = ["pos", "size", "w"]
   /// Coordinates are kept this close to 0, so that playing back between two stays finite.
   static let limit = 1e7
@@ -190,7 +191,8 @@ public struct Peer: Equatable, Sendable {
   /// What this connection holds, or has asked to.
   public private(set) var mine: Set<String> = []
   public var onChange: (() -> Void)?
-  public var onPushed: ((Int) -> Void)?
+  /// A peer pushed: its highest version, and its records when they came whole.
+  public var onPushed: ((Int, Pushed?) -> Void)?
   public var onRefused: ((Set<String>) -> Void)?
   public var onUnauthorized: (() -> Void)?
 
@@ -334,9 +336,12 @@ public struct Peer: Equatable, Sendable {
     return b.count <= Self.maxFrame - 100 ? b : nil
   }
 
-  /// A sealed body to everyone else, or to connection `to`.
-  @discardableResult private func send(_ body: [String: JSONValue], to: String? = nil) -> Bool {
-    guard connected, let b = seal(body) else { return false }
+  /// A sealed body to everyone else, or to connection `to`, or `fallback` instead if that is over `maxPushed`.
+  @discardableResult private func send(_ body: [String: JSONValue], to: String? = nil, fallback: [String: JSONValue]? = nil) -> Bool {
+    guard connected else { return false }
+    var sealed = seal(body)
+    if let fallback, sealed.map({ $0.count > Self.maxPushed }) ?? true { sealed = seal(fallback) }
+    guard let b = sealed else { return false }
     var f: [String: JSONValue] = ["body": .string(b)]
     if let to { f["to"] = .string(to) }
     frame(f)
@@ -362,6 +367,16 @@ public struct Peer: Equatable, Sendable {
   }
 
   // MARK: receiving
+
+  private static func pushed(_ b: [String: JSONValue], version: Int) -> Pushed? {
+    guard let list = b["records"]?.array else { return nil }
+    var records: [Pulled] = []
+    for r in list {
+      guard let o = r.object, let id = o["id"]?.string, let blob = o["blob"]?.string, let v = integral(o["version"]?.number) else { return nil }
+      records.append(Pulled(id: id, version: v, blob: blob))
+    }
+    return Pushed(version: version, epoch: b["epoch"]?.string, records: records)
+  }
 
   private static func holds(_ v: JSONValue?) -> [String: Set<String>] {
     (v?.object ?? [:]).mapValues { Set(($0.array ?? []).compactMap(\.string)) }
@@ -504,7 +519,7 @@ public struct Peer: Equatable, Sendable {
       guard let v = Self.integral(b["version"]?.number), v >= 0 else { return }
       p.awaiting = max(p.awaiting, v)
       peers[from] = p
-      onPushed?(v)
+      onPushed?(v, Self.pushed(b, version: v))
       dropReleased()
       onChange?()
       return
@@ -685,7 +700,14 @@ public struct Peer: Equatable, Sendable {
     sendFast(l)
   }
 
-  public func sendPushed(_ version: Int) { send(["t": .string("pushed"), "version": .number(Double(version))]) }
+  /// Announces a push with its records, or without them when they would not fit a frame.
+  public func sendPushed(_ p: Pushed) {
+    let bare: [String: JSONValue] = ["t": .string("pushed"), "version": .number(Double(p.version))]
+    var full = bare
+    if let epoch = p.epoch { full["epoch"] = .string(epoch) }
+    full["records"] = .array(p.records.map { .object(["id": .string($0.id), "version": .number(Double($0.version)), "blob": .string($0.blob)]) })
+    send(full, fallback: bare)
+  }
 
   // MARK: what others do
 

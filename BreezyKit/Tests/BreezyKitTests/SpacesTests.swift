@@ -276,3 +276,38 @@ final class Servers {
   relay.run()
   #expect(relay.sockets.isEmpty)
 }
+
+@MainActor @Test func anAnnouncedPushWithItsRecordsIsTakenWithoutARequestAndWithAGapIsPulled() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let a = try liveSpaces(servers, relay), b = try liveSpaces(servers, relay)
+  let ga = a.newSpace(server: testServer, name: "Work")
+  let server = servers.server(ga.space!)
+  server.relay = "wss://relay.example/"
+  await ga.engine.sync()
+  let gb = b.join(ga.store.invite!)
+  await gb.engine.sync()
+  ga.live!.connect()
+  gb.live!.connect()
+  relay.run()
+  let id = ga.store.createBoard(title: "Plans")
+  server.pulls = []
+  await ga.engine.sync()
+  relay.run()
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(gb.store.title(of: id) == "Plans")
+  #expect(server.pulls.isEmpty)
+  gb.live!.close()
+  relay.run()
+  let id2 = ga.store.createBoard(title: "More")
+  await ga.engine.sync()
+  relay.run()
+  let id3 = ga.store.createBoard(title: "Later")
+  gb.live!.connect()
+  relay.run()
+  await ga.engine.sync()
+  relay.run()
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(gb.store.title(of: id2) == "More")
+  #expect(gb.store.title(of: id3) == "Later")
+  #expect(!server.pulls.isEmpty)
+}

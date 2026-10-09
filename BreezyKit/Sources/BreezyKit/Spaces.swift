@@ -109,9 +109,12 @@ import Foundation
       let transport = peerTransport?()
       let live = socket.map { Live(relay: relay, space: space, keys: keys, me: me, socket: $0, transport: transport) }
         ?? Live(relay: relay, space: space, keys: keys, me: me, transport: transport)
-      live.onPushed = { [weak g] _ in
+      live.onPushed = { [weak g] _, pushed in
         guard let g else { return }
-        Task { await g.engine.sync() }
+        Task {
+          if let pushed, await g.engine.receivePushed(pushed) { return }
+          await g.engine.sync()
+        }
       }
       live.onChange = { [weak self, weak g] in
         guard let self, let g else { return }
