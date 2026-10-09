@@ -630,6 +630,28 @@ test("a live edit that comes direct before its hold is shown and keeps its track
   assert.deepEqual([...ls[1].overlay("B1").keys()], ["c1"]);
 });
 
+test("a connection that never speaks leaves the roster after 30 s, and the status line counts the roster", async () => {
+  const { relay, clock, ls, open } = await direct();
+  open(0, 1);
+  const stranger = live(relay, clock, { k: await SpaceKeys.create(randomBytes(16), decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")) });
+  stranger.connect();
+  await relay.run();
+  assert.ok(!ls[0].allDirect);
+  assert.equal(ls[0].directStatus(), "Direct with 1 of 2 people");
+  for (let i = 0; i < 29; i++) {
+    clock.advance(1000);
+    for (const l of [...ls, stranger]) l.tick();
+    await relay.run();
+  }
+  assert.ok(!ls[0].allDirect);
+  clock.advance(1000);
+  for (const l of [...ls, stranger]) l.tick();
+  await relay.run();
+  assert.ok(ls[0].allDirect);
+  assert.equal(ls[0].sendMs, 8);
+  assert.equal(ls[0].directStatus(), "Direct with 1 of 1 person");
+});
+
 test("only cursors and live edits are taken from a channel", async () => {
   const { relay, ts, ls, open } = await direct();
   open(0, 1);
