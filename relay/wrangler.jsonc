@@ -1,0 +1,9 @@
+// The live layer's relay; see docs/superpowers/specs/2026-10-09-breezy-multiplayer-design.md.
+{
+  "name": "breezy-relay",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": { "bindings": [{ "name": "SPACE", "class_name": "Space" }] },
+  // the Free plan has SQLite-backed Durable Objects only
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Space"] }]
+}
