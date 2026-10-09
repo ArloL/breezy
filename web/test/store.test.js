@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Store, withFreshIDs } from "../sync/store.js";
-import { deletedRecord } from "../sync/records.js";
+import { deletedRecord, spaceRecord } from "../sync/records.js";
+import { newID } from "../rules.js";
 import { settle } from "./helpers/store.js";
 
 const card = (id, text = "t") => ({ id, x: 0, y: 0, w: 240, text, color: 1 });
@@ -161,4 +162,38 @@ test("a resync merges a backup newer than this device", () => {
   s.resynced();
   assert.ok(Object.values(s.state.records).every((r) => r.prior === undefined));
   assert.ok(!s.pending().some((p) => p.id === "c"));
+});
+
+const SECRET = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+
+test("a space is named by its record, else its invite", () => {
+  const s = new Store();
+  assert.equal(s.name, null);
+  const space = newID();
+  s.join({ server: "https://example.com/sync.php", space, secret: SECRET, name: "Ours" });
+  assert.equal(s.name, "Ours");
+  assert.deepEqual(s.pending(), []);
+  s.rename("Home");
+  assert.equal(s.name, "Home");
+  assert.equal(s.invite.name, "Home");
+  assert.deepEqual(s.boards(), []);
+  assert.deepEqual(s.pending().map((p) => [p.id, p.record]), [[space, spaceRecord("Home")]]);
+});
+
+test("a merged name is reported", () => {
+  const s = new Store();
+  s.startSyncing("https://example.com/sync.php");
+  const space = s.state.space;
+  let heard = null;
+  s.onChange = (boards) => (heard = [...boards]);
+  s.merge([{ id: space, version: 1, record: spaceRecord("Work") }]);
+  assert.equal(s.name, "Work");
+  assert.deepEqual(heard, [space]);
+});
+
+test("a store not syncing has no name to change", () => {
+  const s = new Store();
+  s.rename("Home");
+  assert.equal(s.name, null);
+  assert.deepEqual(s.state.records, {});
 });

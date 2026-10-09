@@ -49,3 +49,10 @@ test("servers must be https or this computer", () => {
   assert.ok(!validServer("example.com"));
   assert.ok(!validServer(""));
 });
+
+test("an invite may name its space", () => {
+  const named = { server: v.server, space: v.space, secret: v.secret, name: "Home & Work" };
+  assert.equal(inviteLink(named), v.namedInvite);
+  assert.deepEqual(parseInvite(v.namedInvite), named);
+  assert.equal("name" in parseInvite(v.invite), false);
+});

@@ -10,6 +10,7 @@ export const cardRecord = (c, board, order) => ({
 });
 export const laneRecord = (l, board) => ({ format: FORMAT, kind: "lane", board, title: l.title, pos: [l.x, l.y], size: [l.w, l.h] });
 export const boardRecord = (title) => ({ format: FORMAT, kind: "board", title });
+export const spaceRecord = (name) => ({ format: FORMAT, kind: "space", name });
 export const deletedRecord = (kind) => ({ format: FORMAT, kind, deleted: true });
 
 const pair = (v, fallback) => (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite) ? v : fallback);

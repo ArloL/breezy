@@ -52,7 +52,8 @@ export function validServer(s) {
   }
 }
 
-export const inviteLink = ({ server, space, secret }) => INVITE_PREFIX + encode(enc.encode(JSON.stringify({ secret, server, space })));
+export const inviteLink = ({ server, space, secret, name }) =>
+  INVITE_PREFIX + encode(enc.encode(JSON.stringify({ ...(name ? { name } : {}), secret, server, space })));
 
 /** The invite in pasted text, which may hold more than the link. */
 export function parseInvite(text) {
@@ -61,9 +62,9 @@ export function parseInvite(text) {
   const bytes = decode(text.slice(at + 6).match(/^[A-Za-z0-9_-]*/)[0]);
   if (!bytes) return null;
   try {
-    const { server, space, secret } = JSON.parse(new TextDecoder().decode(bytes));
+    const { server, space, secret, name } = JSON.parse(new TextDecoder().decode(bytes));
     if (!validServer(server) || decode(space)?.length !== 16 || decode(secret)?.length !== 32) return null;
-    return { server, space, secret };
+    return { server, space, secret, ...(typeof name === "string" && name ? { name } : {}) };
   } catch {
     return null;
   }
