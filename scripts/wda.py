@@ -15,6 +15,11 @@ The session is remembered in /tmp/wda-session between calls.
 
 Every touch first checks the app in front and refuses while a call is on screen, since it is a real phone.
 WDA_EXPECT=BUNDLE_ID also refuses when another app is in front (a home-screen web app is com.apple.webapp).
+
+The phone, an iPhone 13 mini at Display Zoom Larger Text, is 320 × 693 points, 3.375 px each.
+Leave its Auto-Lock as it is; a test page keeps the screen on with navigator.wakeLock.request('screen')
+on its first touch. In Freeform at this size, a text box (Add text box) is the drag subject: there is
+no sticky-note button.
 """
 import base64
 import json
