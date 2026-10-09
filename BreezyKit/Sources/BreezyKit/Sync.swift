@@ -34,16 +34,34 @@ public struct PushResult: Codable, Equatable, Sendable {
   public var epoch: String?
   /// The live layer's relay, when the server names one.
   public var relay: String? = nil
+  /// With `since`: what the server holds after it, without this push's own writes.
+  public var records: [Pulled]? = nil
+  /// With `records`: the cursor they bring the device to.
+  public var cursor: Int? = nil
+}
+
+/// A push the server took, as announced to the other devices.
+public struct Pushed: Equatable, Sendable {
+  public var version: Int
+  public var epoch: String?
+  public var records: [Pulled]
+
+  public init(version: Int, epoch: String?, records: [Pulled]) {
+    self.version = version
+    self.epoch = epoch
+    self.records = records
+  }
 }
 
 public enum TransportError: Error, Equatable {
   case offline, unreachable, unauthorized, tooLarge
 }
 
-/// The server's two calls; see server/sync.php.
+/// The server's two calls; see server/sync.php. A push with `since` and `epoch` also returns what the server holds
+/// after `since`, unless its epoch is another.
 public protocol Transport {
   func pull(since: Int) async throws -> Page
-  func push(_ writes: [Write]) async throws -> PushResult
+  func push(_ writes: [Write], since: Int?, epoch: String?) async throws -> PushResult
 }
 
 public struct HTTPTransport: Transport {
@@ -51,6 +69,7 @@ public struct HTTPTransport: Transport {
   let space: String
   let token: String
   let session: URLSession
+  static let deflateAbove = 1024
 
   public init?(server: String, space: String, token: Data, session: URLSession = .shared) {
     guard let url = URL(string: server) else { return nil }
@@ -65,8 +84,13 @@ public struct HTTPTransport: Transport {
     return try JSONDecoder().decode(Page.self, from: data)
   }
 
-  public func push(_ writes: [Write]) async throws -> PushResult {
-    let data = try await send([], body: JSONEncoder().encode(["writes": writes]))
+  public func push(_ writes: [Write], since: Int?, epoch: String?) async throws -> PushResult {
+    struct Body: Encodable {
+      var writes: [Write]
+      var since: Int?
+      var epoch: String?
+    }
+    let data = try await send([], body: JSONEncoder().encode(Body(writes: writes, since: since, epoch: epoch)))
     return try JSONDecoder().decode(PushResult.self, from: data)
   }
 
@@ -75,10 +99,14 @@ public struct HTTPTransport: Transport {
     c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "space", value: space)] + query
     var r = URLRequest(url: c.url!, timeoutInterval: 20)
     r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    if let body {
+    if var body {
       r.httpMethod = "POST"
-      r.httpBody = body
       r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      if body.count > Self.deflateAbove, let deflated = try? (body as NSData).compressed(using: .zlib) as Data {
+        body = deflated
+        r.setValue("deflate", forHTTPHeaderField: "Content-Encoding")
+      }
+      r.httpBody = body
     }
     let data: Data, response: URLResponse
     do {
@@ -146,8 +174,8 @@ public struct SyncStatus: Equatable, Sendable {
   /// The relay the server last named; nil until it names one.
   public private(set) var relay: String?
   public var onRelay: ((String?) -> Void)?
-  /// After a push the server took, with the highest version it gave.
-  public var onPushed: ((Int) -> Void)?
+  /// After a push the server took, with the highest version it gave and the accepted writes.
+  public var onPushed: ((Pushed) -> Void)?
   /// After the pulls of a cycle, with the store's cursor.
   public var onPulled: ((Int) -> Void)?
   /// When a cycle last ended synced.
@@ -220,50 +248,63 @@ public struct SyncStatus: Equatable, Sendable {
         heldTried = true
         retryHeld(keys)
       }
-      while true {
-        let page = try await transport.pull(since: store.state.cursor)
-        guard same() else { return }
-        note(relay: page.relay)
-        if store.note(epoch: page.epoch) { continue }
-        flushLocal?()
-        store.merge(page.records.compactMap { decode($0, keys) })
-        store.advance(to: page.cursor)
-        if page.records.count < Self.pageSize {
-          store.resynced()
-          break
-        }
+      let ready = state.resync || state.epoch == nil ? nil : outgoing(keys)
+      let combined = ready?.writes.isEmpty == false
+      var first = combined ? ready : nil
+      if !combined {
+        guard try await pullAll(transport, keys, same) else { return }
+        onPulled?(store.state.cursor)
       }
-      onPulled?(store.state.cursor)
       var refusals = 0
       for _ in 0..<10 {
         flushLocal?()
-        let (writes, sent) = outgoing(keys)
-        if writes.isEmpty { break }
-        let result = try await transport.push(writes)
+        let out = first ?? outgoing(keys)
+        first = nil
+        if out.writes.isEmpty { break }
+        let request = combined ? store.state.cursor : nil
+        let result = try await transport.push(out.writes, since: request, epoch: combined ? store.state.epoch : nil)
         guard same() else { return }
         if store.note(epoch: result.epoch) {
           again = true
           return
         }
-        for a in result.accepted { if let r = sent[a.id] { store.accepted(a.id, version: a.version, record: r) } }
+        for a in result.accepted { if let r = out.sent[a.id] { store.accepted(a.id, version: a.version, record: r) } }
         note(relay: result.relay)
-        if let top = result.accepted.map(\.version).max() { onPushed?(top) }
-        if result.refused.isEmpty { continue }
-        flushLocal?()
-        var mergeable = false
-        var items: [Incoming] = []
-        for r in result.refused {
-          if let i = decode(r, keys) {
-            items.append(i)
-            mergeable = true
-          } else {
-            blocked.insert(r.id)
+        if let top = result.accepted.map(\.version).max() {
+          let records = result.accepted.compactMap { a in out.blobs[a.id].map { Pulled(id: a.id, version: a.version, blob: $0) } }
+          onPushed?(Pushed(version: top, epoch: result.epoch, records: records))
+        }
+        if !result.refused.isEmpty {
+          flushLocal?()
+          var mergeable = false
+          var items: [Incoming] = []
+          for r in result.refused {
+            if let i = decode(r, keys) {
+              items.append(i)
+              mergeable = true
+            } else {
+              blocked.insert(r.id)
+            }
+          }
+          store.merge(items)
+          if mergeable { refusals += 1 }
+          if refusals == 3 { throw TransportError.unreachable }
+        }
+        if combined, let request, let records = result.records {
+          let cursor = result.cursor ?? store.state.cursor
+          let own = result.accepted.filter { $0.version > request && $0.version <= cursor }.count
+          let page = Page(records: records, cursor: cursor, epoch: result.epoch, relay: result.relay)
+          switch takePage(page, keys, same, own: own) {
+          case .stop: return
+          case .again:
+            again = true
+            return
+          case .more: guard try await pullAll(transport, keys, same) else { return }
+          case .done: break
           }
         }
-        store.merge(items)
-        if mergeable { refusals += 1 }
-        if refusals == 3 { throw TransportError.unreachable }
       }
+      if combined { onPulled?(store.state.cursor) }
       failures = 0
       retryAt = nil
       lastSynced = now()
@@ -278,6 +319,51 @@ public struct SyncStatus: Equatable, Sendable {
       retryAt = now().addingTimeInterval(min(60, 5 * pow(2, Double(failures - 1))))
       update(error as? TransportError == .offline ? .offline : .unreachable)
     }
+  }
+
+  private enum Taken { case stop, again, more, done }
+
+  /// Takes a page of records: `.stop` if the space changed, `.again` if the epoch did, `.more` if the page was full,
+  /// counting `own` writes left out of it.
+  private func takePage(_ page: Page, _ keys: SpaceKeys, _ same: () -> Bool, own: Int = 0) -> Taken {
+    guard same() else { return .stop }
+    note(relay: page.relay)
+    if store.note(epoch: page.epoch) { return .again }
+    flushLocal?()
+    store.merge(page.records.compactMap { decode($0, keys) })
+    store.advance(to: page.cursor)
+    return page.records.count + own < Self.pageSize ? .done : .more
+  }
+
+  /// Pulls to the end; false if the space changed meanwhile.
+  private func pullAll(_ transport: Transport, _ keys: SpaceKeys, _ same: () -> Bool) async throws -> Bool {
+    while true {
+      switch takePage(try await transport.pull(since: store.state.cursor), keys, same) {
+      case .stop: return false
+      case .done:
+        store.resynced()
+        return true
+      case .again, .more: continue
+      }
+    }
+  }
+
+  /// Takes the records another device just pushed as the page after the cursor, without a pull; false, changing
+  /// nothing, when they do not follow on from what this one has. Waits for a running cycle.
+  public func receivePushed(_ p: Pushed) async -> Bool {
+    while let running { await running.value }
+    let state = store.state
+    guard state.space != nil, !state.resync, let epoch = state.epoch, p.epoch == epoch, !p.records.isEmpty,
+          let keys = try? SpaceKeys(state: state) else { return false }
+    let page = p.records.sorted { $0.version < $1.version }
+    guard zip(page, page.dropFirst()).allSatisfy({ $1.version == $0.version + 1 }), state.cursor >= page[0].version - 1 else { return false }
+    let last = page[page.count - 1].version
+    if state.cursor >= last { return true }
+    flushLocal?()
+    store.merge(page.compactMap { decode($0, keys) })
+    store.advance(to: last)
+    onPulled?(store.state.cursor)
+    return true
   }
 
   /// A WebSocket over TLS, or plain to this computer for trying the relay out, as `Invite.validServer` has it.
@@ -317,8 +403,15 @@ public struct SyncStatus: Equatable, Sendable {
     store.merge(ready)
   }
 
-  private func outgoing(_ keys: SpaceKeys) -> ([Write], [String: Record]) {
-    var writes: [Write] = [], sent: [String: Record] = [:], size = 0
+  private struct Outgoing {
+    var writes: [Write] = []
+    var sent: [String: Record] = [:]
+    /// The sealed blob of each write, as base64url.
+    var blobs: [String: String] = [:]
+  }
+
+  private func outgoing(_ keys: SpaceKeys) -> Outgoing {
+    var out = Outgoing(), size = 0
     tooLong = 0
     for p in store.pending where !blocked.contains(p.id) {
       guard let id = Base64URL.decode(p.id), id.count == 16, let plain = try? Self.encoder.encode(p.record),
@@ -330,10 +423,11 @@ public struct SyncStatus: Equatable, Sendable {
       let w = Write(id: p.id, base: p.base, blob: Base64URL.encode(blob))
       size += w.blob.count + 64
       if size > Self.maxRequest { break }
-      writes.append(w)
-      sent[p.id] = p.record
+      out.writes.append(w)
+      out.sent[p.id] = p.record
+      out.blobs[p.id] = w.blob
     }
-    return (writes, sent)
+    return out
   }
 
   private func update(_ state: SyncStatus.State) {

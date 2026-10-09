@@ -112,11 +112,11 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
 @MainActor @Test func theOverlayStaysUntilThePullReachesThePushedVersion() {
   let (relay, _, a, b) = two()
   var pushes: [Int] = []
-  b.onPushed = { pushes.append($0) }
+  b.onPushed = { v, _ in pushes.append(v) }
   a.hold(["c1"])
   a.sendLive(board: "B1", items: moved, caret: nil)
   relay.run()
-  a.sendPushed(7)
+  a.sendPushed(Pushed(version: 7, epoch: nil, records: []))
   a.release()
   relay.run()
   #expect(pushes == [7])
@@ -366,7 +366,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   a.hold(["c1"])
   a.sendLive(board: "B1", items: moved, caret: nil)
   relay.run()
-  a.sendPushed(7)
+  a.sendPushed(Pushed(version: 7, epoch: nil, records: []))
   a.release()
   relay.run()
   #expect(b.overlay(on: "B1") == moved)
@@ -519,7 +519,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
 @MainActor @Test func numbersAPeerSendsThatCannotBePlayedBackOrReadExactlyAreIgnored() throws {
   let (relay, clock, a, b) = two()
   var pushes: [Int] = []
-  b.onPushed = { pushes.append($0) }
+  b.onPushed = { v, _ in pushes.append(v) }
   a.hold(["c1", "c2"])
   relay.run()
   let bad: JSONValue = .object(["id": .string("c1"), "back": .bool(false), "at": .number(1e300)])
@@ -705,7 +705,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   let (relay, _, ts, ls) = direct()
   open(ts, ls, 0, 1)
   var pushes: [Int] = []
-  ls[1].onPushed = { pushes.append($0) }
+  ls[1].onPushed = { v, _ in pushes.append(v) }
   let sealed = Base64URL.encode(try keys().sealLive(Data(#"{"t":"pushed","version":9}"#.utf8)))
   ts[1].onMessage?(ls[0].id!, sealed)
   relay.run()
@@ -722,4 +722,22 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   relay.run()
   #expect(ts[0].log.contains("close \(gone)"))
   #expect(ls[0].directStatus == nil)
+}
+
+@MainActor @Test func pushedCarriesItsRecordsToTheOthersUnlessTheyWouldNotFitAFrame() throws {
+  let (relay, _, a, b) = two()
+  var got: [(Int, Pushed?)] = []
+  b.onPushed = { got.append(($0, $1)) }
+  let records = [Pulled(id: "AAAA", version: 5, blob: "BBBB")]
+  a.sendPushed(Pushed(version: 5, epoch: "e", records: records))
+  relay.run()
+  a.sendPushed(Pushed(version: 6, epoch: "e", records: [Pulled(id: "AAAA", version: 6, blob: String(repeating: "x", count: 61_000))]))
+  relay.run()
+  try inject(relay, from: a, ["t": .string("pushed"), "version": .number(7), "epoch": .string("e"), "records": .array([
+    .object(["id": .number(1), "version": .number(7), "blob": .string("x")]),
+  ])])
+  #expect(got.map(\.0) == [5, 6, 7])
+  #expect(got[0].1 == Pushed(version: 5, epoch: "e", records: records))
+  #expect(got[1].1 == nil)
+  #expect(got[2].1 == nil)
 }

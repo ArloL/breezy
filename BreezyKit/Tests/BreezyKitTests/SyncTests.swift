@@ -344,7 +344,7 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   let (server, a, b, id) = await pair()
   var relays: [String?] = [], pushed: [Int] = [], pulled: [Int] = []
   a.engine.onRelay = { relays.append($0) }
-  a.engine.onPushed = { pushed.append($0) }
+  a.engine.onPushed = { pushed.append($0.version) }
   a.engine.onPulled = { pulled.append($0) }
   server.relay = "wss://relay.example/"
   let c = a.store.board(id).cards[0].id
@@ -353,7 +353,7 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   #expect(a.engine.relay == "wss://relay.example/")
   #expect(relays == ["wss://relay.example/"])
   #expect(pushed == [server.version])
-  #expect(pulled == [server.version - 1])
+  #expect(pulled == [server.version])
   #expect(a.engine.lastSynced != nil)
   server.relay = "http://not-a-relay"
   await b.engine.sync()
@@ -391,4 +391,248 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   await second?.value
   #expect(pendingAtReturn == 0)
   #expect(server.records.count == 4)
+}
+
+@MainActor @Test func anEditSyncsInOneRequest() async {
+  let (_, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  a.edit(id) { $0.setColor([c], 3) }
+  a.transport.calls = 0
+  await a.engine.sync()
+  #expect(a.transport.calls == 1)
+  await b.engine.sync()
+  #expect(b.store.board(id).cards[0].color == 3)
+}
+
+@MainActor @Test func aDeviceNeverPullsBackWhatItPushed() async {
+  let (_, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  a.transport.accepted = []
+  a.transport.received = []
+  a.edit(id) { $0.setColor([c], 3) }
+  await a.engine.sync()
+  b.edit(id) { $0.setText(c, "y") }
+  await b.engine.sync()
+  a.edit(id) { $0.setColor([c], 4) }
+  await a.engine.sync()
+  await a.engine.sync()
+  #expect(!a.transport.accepted.isEmpty)
+  #expect(!a.transport.received.isEmpty)
+  #expect(a.transport.received.filter { a.transport.accepted.contains($0) }.isEmpty)
+}
+
+@MainActor @Test func whatBecomesPendingDuringThePullIsPushedInTheSameSync() async {
+  let (_, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  b.edit(id) { $0.setText(c, "y") }
+  await b.engine.sync()
+  var pulled = false, edited = false
+  a.transport.beforePull = { pulled = true }
+  a.engine.flushLocal = {
+    guard pulled, !edited else { return }
+    edited = true
+    a.edit(id) { $0.setColor([c], 3) }
+  }
+  await a.engine.sync()
+  #expect(edited)
+  #expect(a.store.pending.isEmpty)
+  a.engine.flushLocal = nil
+  await b.engine.sync()
+  #expect(b.store.board(id).cards[0].color == 3)
+}
+
+@MainActor @Test func aDeviceWithAnEditPendingWritesNothingToARestoredServer() async {
+  let (server, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  let backup = server.snapshot()
+  b.edit(id) { $0.setText(c, "later") }
+  await b.engine.sync()
+  server.restore(backup)
+  a.edit(id) { $0.setColor([c], 3) }
+  let before = server.version
+  var first = true
+  a.transport.afterPush = {
+    if first { #expect(server.version == before) }
+    first = false
+  }
+  await a.engine.sync()
+  for d in [b, a, b, a] { await d.engine.sync() }
+  for d in [a, b] {
+    #expect(d.store.board(id).cards[0].color == 3)
+    #expect(d.store.pending.isEmpty)
+  }
+}
+
+@MainActor @Test func aCombinedPushThatBringsAFullPageGoesOnPulling() async {
+  let (server, a, b, id) = await pair()
+  let other = b.store.createBoard(title: "Big", contents: board((0..<600).map { card(newID(), 0, Double($0) * 24, "t") }))
+  await b.engine.sync()
+  let c = a.store.board(id).cards[0].id
+  a.edit(id) { $0.setColor([c], 3) }
+  await a.engine.sync()
+  #expect(a.store.board(other).cards.count == 600)
+  #expect(a.store.state.cursor == server.version)
+}
+
+@MainActor @Test func aFullPageThatHeldThisPushsOwnWriteGoesOnPulling() async {
+  let (server, a, _, id) = await pair()
+  server.afterWrites = {
+    server.afterWrites = nil
+    for _ in 0..<SyncEngine.pageSize { server.put(newID(), blob: "AAAA") }
+  }
+  let c = a.store.board(id).cards[0].id
+  a.edit(id) { $0.setColor([c], 3) }
+  await a.engine.sync()
+  #expect(a.store.state.cursor == server.version)
+}
+
+@MainActor @Test func aResyncDoesNotCombine() async {
+  let (server, a, _, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  let backup = server.snapshot()
+  a.edit(id) { $0.setColor([c], 3) }
+  await a.engine.sync()
+  server.restore(backup)
+  a.edit(id) { $0.setColor([c], 2) }
+  a.transport.log = []
+  a.transport.pushArgs = []
+  await a.engine.sync()
+  #expect(Array(a.transport.log.prefix(2)) == ["push", "pull"])
+  #expect(a.transport.pushArgs.count > 1 && a.transport.pushArgs[1].since == nil && a.transport.pushArgs[1].epoch == nil)
+  #expect(a.store.pending.isEmpty)
+}
+
+/// What `a` pushes for an edit, as `onPushed` reports it.
+@MainActor private func pushedBy(_ a: Device, _ id: String, color: Int = 3) async -> Pushed {
+  var out: Pushed?
+  a.engine.onPushed = { out = $0 }
+  let c = a.store.board(id).cards[0].id
+  a.edit(id) { $0.setColor([c], color) }
+  await a.engine.sync()
+  return out!
+}
+
+@MainActor @Test func recordsAnotherDeviceJustPushedAreAppliedWithoutAPull() async {
+  let (server, a, b, id) = await pair()
+  let p = await pushedBy(a, id)
+  #expect(p.epoch == server.epoch)
+  #expect(p.records.map(\.version) == [server.version])
+  var pulled: [Int] = []
+  b.engine.onPulled = { pulled.append($0) }
+  let calls = b.transport.calls
+  #expect(await b.engine.receivePushed(p))
+  #expect(b.transport.calls == calls)
+  #expect(b.store.state.cursor == server.version)
+  #expect(pulled == [server.version])
+  #expect(b.store.board(id).cards[0].color == 3)
+}
+
+@MainActor @Test func pushedRecordsThatDoNotFollowOnAreNotApplied() async {
+  let (_, a, b, id) = await pair()
+  let p = await pushedBy(a, id)
+  let cursor = b.store.state.cursor, calls = b.transport.log.count
+  let color = b.store.board(id).cards[0].color
+  let second = await pushedBy(a, id, color: 4)
+  func shifted(_ x: Pushed, _ by: (Int) -> Int) -> Pushed {
+    var x = x
+    x.records = x.records.enumerated().map { var r = $1; r.version += by($0); return r }
+    return x
+  }
+  var other = p
+  other.epoch = "other"
+  var both = p
+  both.records = p.records + second.records
+  for bad in [
+    other,
+    shifted(second) { _ in 5 },
+    shifted(both) { $0 * 2 },
+    second,
+    Pushed(version: p.version, epoch: p.epoch, records: []),
+  ] {
+    #expect(await b.engine.receivePushed(bad) == false)
+    #expect(b.store.state.cursor == cursor)
+    #expect(b.store.board(id).cards[0].color == color)
+  }
+  #expect(b.transport.log.count == calls)
+}
+
+@MainActor @Test func anUnreadablePushedRecordIsCountedAsInAPull() async {
+  let (_, a, b, id) = await pair()
+  var p = await pushedBy(a, id)
+  p.records[0].blob = "AAAA"
+  #expect(await b.engine.receivePushed(p))
+  #expect(b.store.state.unreadable == 1)
+  #expect(b.store.state.cursor == p.version)
+}
+
+@MainActor @Test func pushedRecordsReceivedDuringACycleWaitForItAndBothEndConsistent() async {
+  let (_, a, b, id) = await pair()
+  let c = a.store.board(id).cards[0].id
+  let p = await pushedBy(a, id)
+  b.edit(id) { $0.setText(c, "y") }
+  let cursor = b.store.state.cursor
+  var received: Task<Bool, Never>?
+  var cursorMeanwhile: Int?
+  b.transport.beforePush = {
+    guard received == nil else { return }
+    received = Task { await b.engine.receivePushed(p) }
+    for _ in 0..<3 { await Task.yield() }
+    cursorMeanwhile = b.store.state.cursor
+  }
+  await b.engine.sync()
+  #expect(await received?.value == true)
+  #expect(cursorMeanwhile == cursor)
+  #expect(b.store.pending.isEmpty)
+  #expect(b.store.state.cursor == p.version + 1)
+  await a.engine.sync()
+  for d in [a, b] {
+    #expect(d.store.board(id).cards[0].color == 3)
+    #expect(d.store.board(id).cards[0].text == "y")
+  }
+}
+
+private final class RecordingProtocol: URLProtocol, @unchecked Sendable {
+  nonisolated(unsafe) static var requests: [(encoding: String?, body: Data)] = []
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func stopLoading() {}
+
+  override func startLoading() {
+    var body = Data()
+    if let s = request.httpBodyStream {
+      s.open()
+      var buffer = [UInt8](repeating: 0, count: 65_536)
+      while s.hasBytesAvailable {
+        let n = s.read(&buffer, maxLength: buffer.count)
+        if n <= 0 { break }
+        body.append(buffer, count: n)
+      }
+      s.close()
+    }
+    Self.requests.append((request.value(forHTTPHeaderField: "Content-Encoding"), body))
+    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    client?.urlProtocol(self, didLoad: Data(#"{"accepted":[],"refused":[]}"#.utf8))
+    client?.urlProtocolDidFinishLoading(self)
+  }
+}
+
+@Test func bigRequestsGoDeflatedAndSmallOnesPlain() async throws {
+  let config = URLSessionConfiguration.ephemeral
+  config.protocolClasses = [RecordingProtocol.self]
+  let t = HTTPTransport(server: testServer, space: "sp", token: Data(count: 16), session: URLSession(configuration: config))!
+  let big = [Write(id: "a", base: 0, blob: String(repeating: "x", count: 3000))]
+  let small = [Write(id: "a", base: 0, blob: "y")]
+  _ = try await t.push(big, since: 7, epoch: "e")
+  _ = try await t.push(small, since: nil, epoch: nil)
+  let (first, second) = (RecordingProtocol.requests[0], RecordingProtocol.requests[1])
+  #expect(first.encoding == "deflate")
+  let plain = try (first.body as NSData).decompressed(using: .zlib) as Data
+  #expect(try JSONDecoder().decode([String: JSONValue].self, from: plain) == [
+    "writes": .array([.object(["id": .string("a"), "base": .number(0), "blob": .string(big[0].blob)])]),
+    "since": .number(7), "epoch": .string("e"),
+  ])
+  #expect(second.encoding == nil)
+  #expect(try JSONDecoder().decode([String: JSONValue].self, from: second.body).keys.sorted() == ["writes"])
 }

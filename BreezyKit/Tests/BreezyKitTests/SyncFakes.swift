@@ -12,13 +12,20 @@ final class FakeServer {
   var epoch: String?
   /// What the server names as its relay, if anything.
   var relay: String?
+  /// Runs after a push's writes and before it reads, as another device's write might land.
+  var afterWrites: (() -> Void)?
+
+  /// The `since` of each pull.
+  var pulls: [Int] = []
 
   func pull(since: Int) -> Page {
+    pulls.append(since)
     let r = records.values.filter { $0.version > since }.sorted { $0.version < $1.version }.prefix(SyncEngine.pageSize)
     return Page(records: r.map(marked), cursor: r.last?.version ?? since, epoch: epoch, relay: relay)
   }
 
-  func push(_ writes: [Write]) -> PushResult {
+  func push(_ writes: [Write], since: Int? = nil, epoch want: String? = nil) -> PushResult {
+    if let want, want != epoch { return PushResult(accepted: [], refused: [], epoch: epoch, relay: relay) }
     var accepted: [Accepted] = [], refused: [Pulled] = []
     let epoch = epoch ?? newID()
     self.epoch = epoch
@@ -32,7 +39,15 @@ final class FakeServer {
       written[w.id] = epoch
       accepted.append(Accepted(id: w.id, version: version))
     }
-    return PushResult(accepted: accepted, refused: refused, epoch: epoch, relay: relay)
+    var out = PushResult(accepted: accepted, refused: refused, epoch: epoch, relay: relay)
+    afterWrites?()
+    guard let since else { return out }
+    let own = Set(accepted.map(\.version))
+    let rows = records.values.filter { $0.version > since }.sorted { $0.version < $1.version }.prefix(SyncEngine.pageSize)
+    let last = rows.last?.version ?? 0
+    out.cursor = rows.count == SyncEngine.pageSize ? last : max(version, last, since)
+    out.records = rows.filter { !own.contains($0.version) }.map(marked)
+    return out
   }
 
   private func marked(_ r: Pulled) -> Pulled {
@@ -69,27 +84,43 @@ final class FakeTransport: Transport {
   var online = true
   var failure: TransportError?
   var calls = 0
+  /// The calls made, by name.
+  var log: [String] = []
+  /// The `since` and `epoch` of each push.
+  var pushArgs: [(since: Int?, epoch: String?)] = []
+  /// The versions the server accepted, and those it sent back.
+  var accepted: [Int] = [], received: [Int] = []
   /// Runs before each pull, as another part of the app might while a request is out.
   var beforePull: (() -> Void)?
   /// Runs before each push, as another device might sync meanwhile.
   var beforePush: (() async -> Void)?
+  /// Runs after each push the server took.
+  var afterPush: (() -> Void)?
 
   init(_ server: FakeServer) { self.server = server }
 
   func pull(since: Int) async throws -> Page {
     beforePull?()
-    try check()
-    return server.pull(since: since)
+    try check("pull")
+    let page = server.pull(since: since)
+    received += page.records.map(\.version)
+    return page
   }
 
-  func push(_ writes: [Write]) async throws -> PushResult {
+  func push(_ writes: [Write], since: Int?, epoch: String?) async throws -> PushResult {
     await beforePush?()
-    try check()
-    return server.push(writes)
+    try check("push")
+    pushArgs.append((since, epoch))
+    let result = server.push(writes, since: since, epoch: epoch)
+    accepted += result.accepted.map(\.version)
+    received += (result.records ?? []).map(\.version)
+    afterPush?()
+    return result
   }
 
-  private func check() throws {
+  private func check(_ name: String) throws {
     calls += 1
+    log.append(name)
     if let failure { throw failure }
     if !online { throw TransportError.offline }
   }
