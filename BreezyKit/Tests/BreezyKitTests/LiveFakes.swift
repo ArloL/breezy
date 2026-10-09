@@ -23,7 +23,8 @@ import Foundation
 }
 
 /// The relay's rules, in memory, with its frames: short ids, binary bodies to v2 sockets and JSON to older ones. What
-/// sockets send is delivered when `run` is called, which also runs the timers due now, as a next turn would.
+/// sockets send is delivered when `run` is called, which also runs the timers due now, as a next turn would. `old` acts
+/// as the relay before the lean sync design: UUID ids, JSON only, binary frames dropped unread.
 @MainActor final class FakeRelay {
   final class Socket: LiveSocket {
     var onOpen: (() -> Void)?
@@ -36,6 +37,8 @@ import Foundation
     /// 2 when its auth said so: bodies reach it as binary frames, else as JSON.
     var v = 1
     var holds: [String] = []
+    /// When the relay last read a frame from it, which keeps its holds.
+    var last = Date.distantPast
     /// Its network is gone without a close: nothing it sends arrives, and nothing reaches it.
     var halfOpen = false
 
@@ -57,6 +60,7 @@ import Foundation
   }
 
   let clock: Clock?
+  let old: Bool
   var sockets: [Socket] = []
   var queue: [() -> Void] = []
   /// The space's token, set by the first `auth`.
@@ -67,11 +71,17 @@ import Foundation
   /// Sockets opened so far.
   var opened = 0
 
-  init(clock: Clock? = nil) { self.clock = clock }
+  init(clock: Clock? = nil, old: Bool = false) {
+    self.clock = clock
+    self.old = old
+  }
+
+  private var now: Date { clock?.now ?? Date() }
 
   func connect(_ url: URL) -> LiveSocket {
     opened += 1
-    let s = Socket(relay: self, id: String(opened))
+    let s = Socket(relay: self, id: old ? UUID().uuidString.lowercased() : String(opened))
+    s.last = now
     sockets.append(s)
     queue.append { s.onOpen?() }
     return s
@@ -93,6 +103,11 @@ import Foundation
     announce()
   }
 
+  /// Lets the holds of those silent for over 10 s lapse, as the relay's alarm does.
+  func sweep() {
+    for s in sockets where s.authed && !s.holds.isEmpty && now.timeIntervalSince(s.last) > 10 { lapse(s) }
+  }
+
   private func others(_ s: Socket) -> [Socket] { sockets.filter { $0 !== s && $0.authed } }
 
   private func deliver(_ s: Socket, _ m: [String: Any]) {
@@ -110,6 +125,8 @@ import Foundation
   func received(_ s: Socket, _ data: Data) {
     guard sockets.contains(where: { $0 === s }), !s.halfOpen else { return }
     frames.append(Frame(from: s.id, bytes: data))
+    guard !old else { return }
+    s.last = now
     guard s.authed else { return drop(s, code: 4001) }
     guard let f = Self.parse(data) else { return }
     forward(s, bytes: f.body, text: nil, to: f.to.map { String($0) })
@@ -134,11 +151,12 @@ import Foundation
     }
     guard let m = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
     frames.append(Frame(from: s.id, text: text))
+    s.last = now
     guard s.authed else {
       guard m["t"] as? String == "auth", let t = m["token"] as? String, token == nil || token == t else { return drop(s, code: 4001) }
       token = t
       s.authed = true
-      s.v = m["v"] as? Int == 2 ? 2 : 1
+      s.v = m["v"] as? Int == 2 && !old ? 2 : 1
       let o = others(s)
       deliver(s, ["t": "welcome", "id": s.id, "peers": o.map(\.id), "holds": holds])
       for x in o { deliver(x, ["t": "join", "id": s.id]) }

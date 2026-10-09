@@ -36,9 +36,9 @@ function live(relay, clock, { name = "Ana", dev = device(), k = keys } = {}) {
   return new Live({ relay: "wss://relay.example/", space: SPACE, keys: k, me: { device: dev, name }, socket: () => relay.connect(), now: clock.now, clock: clock.now, schedule: clock.schedule });
 }
 
-/** Two connected devices, both showing board B1. */
-async function two() {
-  const relay = new FakeRelay(), clock = new Clock();
+/** Two connected devices, both showing board B1; through a relay from before the lean sync design when `old`. */
+async function two({ old = false } = {}) {
+  const clock = new Clock(), relay = new FakeRelay({ old, now: clock.now });
   const a = live(relay, clock, { name: "Ana Lima" }), b = live(relay, clock, { name: "Bo" });
   a.connect();
   await relay.run();
@@ -552,9 +552,10 @@ function oldChannels(l) {
   l.direct.heard = (from, { v, ...b }) => heard.call(l.direct, from, b);
 }
 
-/** `n` devices with fake transports, all on board B1, the last one the newcomer; those in `old` have older channels. */
-async function direct(n = 2, { old = [] } = {}) {
-  const relay = new FakeRelay(), clock = new Clock();
+/** `n` devices with fake transports, all on board B1, the last one the newcomer; those in `old` have older channels.
+ * `oldRelay` is a relay from before the lean sync design. */
+async function direct(n = 2, { old = [], oldRelay = false } = {}) {
+  const clock = new Clock(), relay = new FakeRelay({ old: oldRelay, now: clock.now });
   const ts = [], ls = [];
   for (let i = 0; i < n; i++) {
     const t = new FakeTransport();
@@ -1237,4 +1238,60 @@ test("a channel that opens and closes between two relay bodies starts the relay 
   clock.advance(50);
   await relay.run();
   assert.equal(ls[1].overlay(B1).get(C1).text, text);
+});
+
+test("on a relay from before the lean sync design, current devices send JSON frames and see presence, cursors, live edits and pushes", async () => {
+  const { relay, clock, a, b } = await two({ old: true });
+  assert.doesNotMatch(a.id, /^\d+$/);
+  assert.deepEqual(b.people(B1).map((p) => p.name), ["Ana Lima"]);
+  a.sendCursor(B1, 1, 1);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors(B1).map((c) => c.x), [1]);
+  a.hold([C1]);
+  a.sendLive(B1, moved, null);
+  await relay.run();
+  assert.deepEqual(Object.fromEntries(b.overlay(B1)), moved);
+  const got = [];
+  b.onPushed = (v, extra) => got.push([v, extra]);
+  const records = [{ id: "AAAA", version: 5, blob: "BBBB" }];
+  await a.sendPushed({ version: 5, epoch: "e", records });
+  await relay.run();
+  assert.deepEqual(got, [[5, { epoch: "e", records }]]);
+  assert.deepEqual(relay.frames.filter((f) => f.bytes), []);
+});
+
+test("on a relay from before the lean sync design, a holder's holds last through a long gesture to others there", async () => {
+  const { relay, clock, a, b } = await two({ old: true });
+  const c = live(relay, clock, { name: "Cy" });
+  c.connect();
+  await relay.run();
+  c.setPresence({ board: B1, selection: [] });
+  a.hold([C1]);
+  await relay.run();
+  for (let t = 0; t < 12_000; t += 50) {
+    a.sendLive(B1, { [C1]: { pos: [t, 0] } }, null);
+    await relay.run();
+    clock.advance(50);
+    if (t % 1000 === 0) {
+      a.tick();
+      relay.sweep();
+      await relay.run();
+    }
+  }
+  assert.deepEqual([...b.taken()], [C1]);
+  assert.deepEqual(c.overlay(B1).get(C1), { pos: [11_950, 0] });
+});
+
+test("on a relay from before the lean sync design, current devices open a direct channel", async () => {
+  const { relay, clock, ts, ls, open } = await direct(2, { oldRelay: true });
+  assert.ok(ts[1].log.includes(`accept ${ls[0].id} answer-sdp ${ls[1].id}`));
+  open(0, 1);
+  ls[0].sendCursor(B1, 1, 1);
+  await relay.run();
+  assert.ok(ts[0].sent.length && ts[0].sent.every((s) => s.id === ls[1].id && s.data instanceof Uint8Array));
+  for (const { data } of ts[0].sent) ts[1].onMessage(ls[0].id, data);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(ls[1].cursors(B1).map((c) => c.x), [1]);
 });

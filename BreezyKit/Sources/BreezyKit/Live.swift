@@ -442,15 +442,24 @@ public struct Peer: Equatable, Sendable {
   }
 
   /// Sealed `plain` through the relay to connection `to`, or to everyone else when nil, or `fallback` instead if that is
-  /// over `maxPushed`; whether it went out.
+  /// over `maxPushed`; whether it went out. A relay that names connections without digits predates binary frames, so it
+  /// gets `{to?, body}` as JSON.
   @discardableResult private func post(_ plain: Data, to: String?, fallback: Data? = nil) -> Bool {
-    guard connected, let socket else { return false }
+    guard let id, let socket else { return false }
+    let binary = Self.connNumber(id) != nil
     let conn = to.flatMap(Self.connNumber)
-    guard to == nil || conn != nil else { return false }
+    guard !binary || to == nil || conn != nil else { return false }
     var sealed = seal(plain)
     if let fallback, sealed.map({ Self.b64Length($0.count) > Self.maxPushed }) ?? true { sealed = seal(fallback) }
     guard let sealed else { return false }
-    socket.sendData(Frames.relayFrame(to: conn, sealed))
+    if binary {
+      socket.sendData(Frames.relayFrame(to: conn, sealed))
+    } else {
+      var f: [String: JSONValue] = ["body": .string(Base64URL.encode(sealed))]
+      if let to { f["to"] = .string(to) }
+      guard let data = Self.json(f) else { return false }
+      socket.send(String(decoding: data, as: UTF8.self))
+    }
     relaySent = now()
     return true
   }
