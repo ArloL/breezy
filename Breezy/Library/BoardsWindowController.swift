@@ -70,7 +70,7 @@ import BreezyKit
       MainActor.assumeIsolated { self?.updateStatus() }
     }
     NotificationCenter.default.addObserver(forName: .peopleChanged, object: nil, queue: .main) { [weak self] _ in
-      MainActor.assumeIsolated { self?.reload() }
+      MainActor.assumeIsolated { self?.showPeople() }
     }
     reload()
   }
@@ -109,6 +109,23 @@ import BreezyKit
     outline.scrollRowToVisible(i)
   }
 
+  /// Each shown board row's people, in place, so that a title being renamed keeps its field editor.
+  private func showPeople() {
+    for i in 0..<outline.numberOfRows {
+      guard let row = outline.item(atRow: i) as? Row, let b = row.board,
+            let cell = outline.view(atColumn: 0, row: i, makeIfNecessary: false) as? BoardCell else { continue }
+      cell.people.attributedStringValue = people(on: b.id, in: row.group)
+    }
+  }
+
+  private func people(on board: String, in group: Spaces.Group) -> NSAttributedString {
+    let s = NSMutableAttributedString()
+    for p in group.live?.people(on: board) ?? [] {
+      s.append(NSAttributedString(string: p.initials + " ", attributes: [.foregroundColor: p.nsColour, .font: NSFont.systemFont(ofSize: 11, weight: .semibold)]))
+    }
+    return s
+  }
+
   func updateStatus() {
     guard let g = selectedGroup, g.space != nil else { return status.stringValue = "" }
     status.stringValue = g.engine.status.lines().joined(separator: " · ")
@@ -122,7 +139,7 @@ import BreezyKit
 
   func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
     guard let row = item as? Row else { return nil }
-    let cell = NSTableCellView()
+    let cell = BoardCell()
     let field = NSTextField(string: row.board?.title ?? row.group.name)
     field.isBordered = false
     field.drawsBackground = false
@@ -132,14 +149,8 @@ import BreezyKit
     field.translatesAutoresizingMaskIntoConstraints = false
     cell.addSubview(field)
     cell.textField = field
-    let people = NSTextField(labelWithString: "")
-    if let b = row.board {
-      let s = NSMutableAttributedString()
-      for p in row.group.live?.people(on: b.id) ?? [] {
-        s.append(NSAttributedString(string: p.initials + " ", attributes: [.foregroundColor: p.nsColour, .font: NSFont.systemFont(ofSize: 11, weight: .semibold)]))
-      }
-      people.attributedStringValue = s
-    }
+    let people = cell.people
+    if let b = row.board { people.attributedStringValue = self.people(on: b.id, in: row.group) }
     people.translatesAutoresizingMaskIntoConstraints = false
     people.setContentCompressionResistancePriority(.required, for: .horizontal)
     cell.addSubview(people)
@@ -222,4 +233,9 @@ import BreezyKit
   override func keyDown(with event: NSEvent) {
     if event.keyCode == 51 || event.keyCode == 117 { delete(nil) } else { super.keyDown(with: event) }
   }
+}
+
+/// A row of the Boards window: its title and, for a board, the initials of whoever is on it.
+private final class BoardCell: NSTableCellView {
+  let people = NSTextField(labelWithString: "")
 }

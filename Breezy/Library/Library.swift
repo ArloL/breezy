@@ -16,8 +16,8 @@ extension Notification.Name {
   private var peopleSeen = ""
   /// Boards whose windows are closing, so that the close's own flush can't close them again.
   private var closing: Set<String> = []
-  /// The latest gesture finish per space, so only the last one's sync lets go.
-  private var finishes: [ObjectIdentifier: Int] = [:]
+  /// When what gestures hold is let go.
+  private let holds = GestureHolds()
 
   init(directory: URL) throws {
     spaces = try Spaces(directory: directory, me: Self.me())
@@ -32,7 +32,11 @@ extension Notification.Name {
     liveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
-        for g in self.spaces.spaces { g.live?.tick() }
+        for g in self.spaces.spaces {
+          guard let live = g.live, let space = g.space else { continue }
+          live.tick()
+          self.holds.sweep(space, holding: !live.mine.isEmpty, busy: self.inGesture(g), release: live.release)
+        }
         self.updateLive()
       }
     }
@@ -148,19 +152,18 @@ extension Notification.Name {
       live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),
                     caret: doc.windowController?.canvas.caret())
     }
-    // at a gesture's end: push at once, then let go, unless another gesture began meanwhile
-    doc.binding.afterGesture = { [weak self, weak doc] in
-      guard let self, let doc, let g = spaces.group(of: id), let live = g.live, !live.mine.isEmpty else { return }
-      doc.binding.flush()
-      let key = ObjectIdentifier(g)
-      let n = (finishes[key] ?? 0) + 1
-      finishes[key] = n
-      Task {
-        await g.engine.sync()
-        let busy = self.documents.contains { g.store.title(of: $0.boardID) != nil && $0.model.inGesture }
-        if self.finishes[key] == n && !busy { live.release() }
-      }
+    // at a gesture's end, even when its window closed meanwhile: push at once, then let go
+    doc.binding.afterGesture = { [weak self, weak binding = doc.binding] in
+      guard let self, let binding, let g = spaces.group(of: id), let space = g.space, let live = g.live, !live.mine.isEmpty else { return }
+      holds.finish(
+        space, flush: binding.flush, sync: { await g.engine.sync() }, busy: { [weak self] in self?.inGesture(g) ?? false },
+        release: { [weak g] in g?.live?.release() })
     }
+  }
+
+  /// Whether a board of `g` is in a gesture.
+  private func inGesture(_ g: Spaces.Group) -> Bool {
+    documents.contains { g.store.title(of: $0.boardID) != nil && $0.model.inGesture }
   }
 
   /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front.
@@ -185,9 +188,10 @@ extension Notification.Name {
       d.windowController?.canvas.presence = CanvasPresence(g.live, board: d.boardID)
       d.windowController?.showPeople(g.live?.people(on: d.boardID) ?? [])
     }
-    // the list reloads only when who is on which board changes, not with every cursor
-    let seen = spaces.spaces.flatMap { g in g.store.boards.map { b in b.id + ":" + (g.live?.people(on: b.id) ?? []).map(\.device).joined(separator: ",") } }
-      .joined(separator: ";")
+    // the list follows only when who is on which board changes, not with every cursor
+    let seen = spaces.spaces.flatMap { g in
+      (g.live.map { Array($0.peers.values) } ?? []).compactMap { p in p.person.map { "\(p.board ?? "") \($0.device) \($0.name)" } }
+    }.sorted().joined(separator: "\n")
     if seen != peopleSeen {
       peopleSeen = seen
       NotificationCenter.default.post(name: .peopleChanged, object: nil)
