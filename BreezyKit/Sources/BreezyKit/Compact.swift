@@ -204,7 +204,7 @@ public final class LiveEncoder {
 
   private static func group(_ ids: [(String, Data)], _ body: LiveBody) -> Group? {
     let members = ids.filter { body.items[$0.0]!["pos"] != nil && body.starts[$0.0] != nil }
-    guard members.count >= 2 else { return nil }
+    guard !members.isEmpty else { return nil }
     func off(_ id: String) -> [Double] {
       let p = Compact.numbers(body.items[id]!["pos"], 2)!, s = body.starts[id]!
       return [p[0] - s[0], p[1] - s[1]]

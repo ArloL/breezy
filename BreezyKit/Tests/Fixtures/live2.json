@@ -85,7 +85,7 @@
             "caret": null,
             "cursor": null
           },
-          "hex": "980201cd03e8c410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810092ca41200000ca41a00000c0c0",
+          "hex": "980201cd03e8c410606162636465666768696a6b6c6d6e6fc0809392ca41200000ca41a0000091c410010101010101010101010101010101019192ca00000000ca00000000c0",
           "decoded": {
             "t": "live",
             "seq": 1,
@@ -107,7 +107,7 @@
             "caret": null,
             "cursor": null
           },
-          "hex": "980202cd05dcc0c081c41001010101010101010101010101010101810092ca41480000ca41a00000c0c0",
+          "hex": "980202cd05dcc0c0809192ca41480000ca41a00000c0",
           "decoded": {
             "t": "live",
             "seq": 2,
@@ -145,15 +145,92 @@
             "caret": null,
             "cursor": null
           },
-          "hex": "980204cd0a8cc0c081c41001010101010101010101010101010101810092ca41480000ca41a00000c0c0",
+          "hex": "980204cd0a8cc0c080c0c0",
+          "decoded": {"t":"live","seq":4,"at":270,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
+        }
+      ]
+    },
+    {
+      "name": "one card dragged",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 100,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[120,48]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[96,48]},
+            "caret": null,
+            "cursor": [130.5,60]
+          },
+          "hex": "980201cd03e8c410606162636465666768696a6b6c6d6e6fc0809392ca41c00000ca0000000091c410010101010101010101010101010101019192ca42c00000ca4240000092ca43028000ca42700000",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 100,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[120,48]}},
+            "caret": null,
+            "cursor": [130.5,60]
+          }
+        },
+        {
+          "now": 30,
+          "seq": 2,
+          "at": 130,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[120,48]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[96,48]},
+            "caret": null,
+            "cursor": [135,61]
+          },
+          "hex": "980202cd0514c0c080c092ca43070000ca42740000",
+          "decoded": {"t":"live","seq":2,"at":130,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":[135,61]}
+        },
+        {
+          "now": 60,
+          "seq": 3,
+          "at": 160,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[144,72]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[96,48]},
+            "caret": null,
+            "cursor": [150.25,75]
+          },
+          "hex": "980203cd0640c0c0809192ca42400000ca41c0000092ca43164000ca42960000",
+          "decoded": {
+            "t": "live",
+            "seq": 3,
+            "at": 160,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[144,72]}},
+            "caret": null,
+            "cursor": [150.25,75]
+          }
+        },
+        {
+          "now": 1000,
+          "seq": 4,
+          "at": 1100,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[168,72]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[96,48]},
+            "caret": null,
+            "cursor": [170,80]
+          },
+          "hex": "980204cd2af8c410606162636465666768696a6b6c6d6e6fc0809392ca42900000ca41c0000091c410010101010101010101010101010101019192ca42c00000ca4240000092ca432a0000ca42a00000",
           "decoded": {
             "t": "live",
             "seq": 4,
-            "at": 270,
+            "at": 1100,
             "board": "YGFiY2RlZmdoaWprbG1ubw",
-            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[12.5,20]}},
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[168,72]}},
             "caret": null,
-            "cursor": null
+            "cursor": [170,80]
           }
         }
       ]

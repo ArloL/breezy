@@ -948,7 +948,7 @@ test("during a gesture over a channel, one body a frame carries the live edit an
   assert.ok(ts[0].sent.at(-1).data.length <= 24, `${ts[0].sent.at(-1).data.length} B`);
 });
 
-test("dragging a card on the grid, as the apps call it, sends one body a move: the card when it reaches a grid line, else the cursor alone", async () => {
+test("dragging a card on the grid, as the apps call it, sends one body a move: its offset when it reaches a grid line, else the cursor alone", async () => {
   const { relay, clock, ts, ls, open } = await direct();
   open(0, 1);
   const deliver = async () => {
@@ -974,8 +974,9 @@ test("dragging a card on the grid, as the apps call it, sends one body a move: t
     const v = unpack(sent[0].data);
     assert.equal(v[0], 2);
     assert.deepEqual(v[7], [100 + i * 13, 50]);
-    kinds.push(v[5].size ? "card" : "cursor");
-    if (!v[5].size) assert.ok(sent[0].data.length <= 24, `${sent[0].data.length} B`);
+    assert.equal(v[5].size, 0);
+    kinds.push(v[6] ? "card" : "cursor");
+    if (i > 1) assert.ok(sent[0].data.length <= (v[6] ? 32 : 24), `${sent[0].data.length} B`);
   }
   assert.deepEqual(kinds, ["card", "cursor", "card", "cursor", "card", "cursor"]);
   clock.advance(200);
@@ -1037,6 +1038,44 @@ test("dragging three cards sends the offset only, and the receiver puts all thre
   assert.ok(sizes.slice(1).every((n) => n <= 40), `${sizes}`);
   clock.advance(200);
   assert.deepEqual(Object.fromEntries([...ls[1].overlay(B1)].map(([id, f]) => [id, f.pos])), { [C1]: [50, 0], [C2]: [50, 100], [C3]: [50, 200] });
+});
+
+test("dragging one card sends its offset only: at most 32 B on a channel and 64 B from the relay", async () => {
+  const d = await direct();
+  d.open(0, 1);
+  d.ls[0].hold([C1]);
+  d.ls[0].sendCursor(B1, 0, 0);
+  await d.relay.run();
+  d.ts[0].sent.splice(0);
+  const sizes = [];
+  for (let i = 1; i <= 10; i++) {
+    d.clock.advance(8);
+    d.ls[0].sendCursor(B1, i * 5, 10);
+    d.ls[0].sendLive(B1, { [C1]: { pos: [i * 5, 0] } }, null, { [C1]: [0, 0] });
+    await d.relay.run();
+    const [body] = d.ts[0].sent.splice(0);
+    sizes.push(body.data.length);
+    assert.equal(unpack(body.data)[5].size, 0);
+    d.ts[1].onMessage(d.ls[0].id, body.data);
+    await d.relay.run();
+  }
+  assert.ok(sizes.slice(1).every((n) => n <= 32), `${sizes}`);
+  d.clock.advance(200);
+  assert.deepEqual(d.ls[1].overlay(B1).get(C1), { pos: [50, 0] });
+
+  const { relay, clock, a, b } = await two();
+  a.hold([C1]);
+  for (let i = 1; i <= 10; i++) {
+    clock.advance(50);
+    a.sendCursor(B1, i * 5, 10);
+    a.sendLive(B1, { [C1]: { pos: [i * 5, 0] } }, null, { [C1]: [0, 0] });
+    await relay.run();
+  }
+  const bodies = fast(await sentBy(relay, a.id)).filter((s) => s.body.t === "live");
+  assert.equal(bodies.length, 10);
+  assert.ok(bodies.slice(1).every((s) => s.size <= 64), `${bodies.map((s) => s.size)}`);
+  clock.advance(200);
+  assert.deepEqual(b.overlay(B1).get(C1), { pos: [50, 0] });
 });
 
 test("a body that cannot be put compactly is not sent", async () => {
