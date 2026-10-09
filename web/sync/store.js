@@ -1,13 +1,13 @@
 // The boards of one space as this device has them, as BreezyKit's Store. Records are never changed in place: a
 // change makes a new object, so a record sent to the server can serve as the base afterwards.
 import { newID } from "../rules.js";
-import { boardFrom, boardRecord, changes, deletedRecord } from "./records.js";
+import { boardFrom, boardRecord, changes, deletedRecord, spaceRecord } from "./records.js";
 import { mergeRecord, equalRecords } from "./merge.js";
 import { encode } from "./base64.js";
 import { randomBytes } from "./crypto.js";
 
 export const emptyState = () => ({
-  server: null, space: null, secret: null, cursor: 0, records: {}, held: {}, unreadable: 0, epoch: null, resync: false,
+  server: null, space: null, secret: null, cursor: 0, records: {}, held: {}, unreadable: 0, epoch: null, resync: false, invitedName: null,
 });
 
 export const withFreshIDs = (board) => ({
@@ -33,7 +33,21 @@ export class Store {
 
   get invite() {
     const { server, space, secret } = this.state;
-    return this.syncing ? { server, space, secret } : null;
+    const name = this.name;
+    return this.syncing ? { server, space, secret, ...(name ? { name } : {}) } : null;
+  }
+
+  /** The space's name: its name record's, else the invite's; null without either or when not syncing. */
+  get name() {
+    const s = this.state;
+    if (!s.space) return null;
+    const r = s.records[s.space]?.current;
+    if (r?.kind === "space" && typeof r.name === "string") return r.name;
+    return s.invitedName ?? null;
+  }
+
+  rename(name) {
+    if (this.state.space) this.apply({ [this.state.space]: { fields: spaceRecord(name) } });
   }
 
   current() {
@@ -146,7 +160,7 @@ export class Store {
         if (m.copy) this.state.records[newID()] = { base: null, version: 0, current: m.copy };
       }
       for (const b of [old?.current.board, current.board, record.board]) if (b) boards.add(b);
-      if (record.kind === "board") boards.add(id);
+      if (record.kind === "board" || record.kind === "space") boards.add(id);
       this.state.records[id] = { base: record, version, current };
     }
     this.onDirty();
@@ -200,9 +214,9 @@ export class Store {
   }
 
   /** This device's boards give way to the space `invite` names. */
-  join({ server, space, secret }) {
+  join({ server, space, secret, name }) {
     const boards = new Set(this.boards().map((b) => b.id));
-    this.state = { ...emptyState(), server, space, secret };
+    this.state = { ...emptyState(), server, space, secret, invitedName: name ?? null };
     this.onDirty();
     this.onChange(boards, true);
   }
