@@ -11,6 +11,13 @@ const fromJSON = (v) => {
   if (v !== null && typeof v === "object") {
     if ("f32" in v) return new Float32(v.f32);
     if ("bin" in v) return decode(v.bin);
+    if ("mapRange" in v) return new Map(Array.from({ length: v.mapRange }, (_, i) => [i, i]));
+    if ("repeat" in v) {
+      const [unit, n] = v.repeat;
+      if (typeof unit === "string") return unit.repeat(n);
+      if (unit !== null && typeof unit === "object" && "bin" in unit) return new Uint8Array(n * decode(unit.bin).length).fill(decode(unit.bin)[0]);
+      return Array.from({ length: n }, () => fromJSON(unit));
+    }
     return new Map(v.map.map(([k, x]) => [fromJSON(k), fromJSON(x)]));
   }
   return v;
@@ -33,14 +40,23 @@ const plain = (v) => {
 const bytes = (hex) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
 const hex = (b) => Buffer.from(b).toString("hex");
 
+const exact = cases.filter((c) => c.hex !== undefined);
+const sized = cases.filter((c) => c.hexPrefix !== undefined);
+
 test("pack matches the shared hex", () => {
-  for (const c of cases) assert.equal(hex(pack(fromJSON(c.value))), c.hex, c.hex);
+  for (const c of exact) assert.equal(hex(pack(fromJSON(c.value))), c.hex, c.hex);
+  for (const c of sized) {
+    const b = pack(fromJSON(c.value));
+    assert.equal(b.length, c.bytes, c.hexPrefix);
+    assert.equal(hex(b.subarray(0, c.hexPrefix.length / 2)), c.hexPrefix);
+  }
 });
 
 test("unpack matches the shared values", () => {
-  for (const c of cases) {
+  for (const c of exact) {
     assert.deepEqual(toJSON(unpack(bytes(c.hex))), toJSON(plain(fromJSON(c.value))), c.hex);
   }
+  for (const c of sized) assert.deepEqual(unpack(pack(fromJSON(c.value))), fromJSON(c.value), c.hexPrefix);
 });
 
 test("unpack rejects malformed input", () => {
