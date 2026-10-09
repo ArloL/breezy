@@ -1,0 +1,276 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { Live, initials, colourOf, PALETTE } from "../sync/live.js";
+import { SpaceKeys, randomBytes } from "../sync/crypto.js";
+import { encode, decode } from "../sync/base64.js";
+import { FakeRelay, Clock } from "./helpers/fake-relay.js";
+
+const SPACE = "QEFCQ0RFRkdISUpLTE1OTw";
+const keys = await SpaceKeys.create(decode(SPACE), decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"));
+const device = () => encode(randomBytes(16));
+const moved = { c1: { pos: [48, 0] } };
+
+function live(relay, clock, { name = "Ana", dev = device(), k = keys } = {}) {
+  return new Live({ relay: "wss://relay.example/", space: SPACE, keys: k, me: { device: dev, name }, socket: () => relay.connect(), now: clock.now, schedule: clock.schedule });
+}
+
+/** Two connected devices, both showing board B1. */
+async function two() {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock, { name: "Ana Lima" }), b = live(relay, clock, { name: "Bo" });
+  a.connect();
+  await relay.run();
+  b.connect();
+  await relay.run();
+  a.setPresence({ board: "B1", selection: [] });
+  b.setPresence({ board: "B1", selection: [] });
+  await relay.run();
+  return { relay, clock, a, b };
+}
+
+test("people see each other and what they have selected", async () => {
+  const { relay, a, b } = await two();
+  assert.ok(a.connected && b.connected);
+  a.setPresence({ board: "B1", selection: ["c1"] });
+  await relay.run();
+  assert.deepEqual(b.people("B1").map((p) => p.name), ["Ana Lima"]);
+  assert.equal(initials(b.people("B1")[0].name), "AL");
+  assert.equal(b.people("B1")[0].colour, colourOf(a.me.device));
+  assert.equal(b.selections("B1").get("c1").name, "Ana Lima");
+  assert.deepEqual(a.people("B1").map((p) => p.name), ["Bo"]);
+  assert.deepEqual(a.people("B2"), []);
+  assert.equal(initials(" "), "?");
+  assert.ok(PALETTE.includes(colourOf(device())));
+});
+
+test("cursors go at most twenty times a second", async () => {
+  const { relay, clock, a, b } = await two();
+  const before = relay.frames.length;
+  a.sendCursor("B1", 1, 1);
+  a.sendCursor("B1", 2, 2);
+  a.sendCursor("B1", 3, 3);
+  await relay.run();
+  assert.equal(relay.frames.length, before + 1);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [1]);
+  clock.advance(50);
+  await relay.run();
+  assert.equal(relay.frames.length, before + 2);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [3]);
+  a.sendCursor("B1", null, null);
+  clock.advance(50);
+  await relay.run();
+  assert.deepEqual(b.cursors("B1"), []);
+});
+
+test("a still cursor fades after a minute", async () => {
+  const { relay, clock, a, b } = await two();
+  a.sendCursor("B1", 1, 1);
+  await relay.run();
+  for (let i = 0; i < 2; i++) {
+    clock.advance(29_000);
+    a.tick();
+    await relay.run();
+  }
+  b.tick();
+  assert.equal(b.cursors("B1").length, 1);
+  clock.advance(3000);
+  b.tick();
+  assert.deepEqual(b.cursors("B1"), []);
+  assert.equal(b.people("B1").length, 1);
+});
+
+test("holds are all or none and show who holds", async () => {
+  const { relay, a, b } = await two();
+  let refused = null;
+  b.onRefused = (ids) => (refused = ids);
+  a.hold(["x", "y"]);
+  await relay.run();
+  assert.deepEqual([...b.taken()].sort(), ["x", "y"]);
+  assert.equal(b.holderOf("x").name, "Ana Lima");
+  assert.equal(a.taken().size, 0);
+  b.hold(["y", "z"]);
+  await relay.run();
+  assert.deepEqual([...refused], ["y"]);
+  b.release();
+  a.release();
+  await relay.run();
+  assert.equal(b.taken().size, 0);
+  assert.equal(a.mine.size, 0);
+});
+
+test("live edits show as an overlay", async () => {
+  const { relay, a, b } = await two();
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, { id: "c1", back: false, at: 3 });
+  await relay.run();
+  assert.deepEqual(Object.fromEntries(b.overlay("B1")), moved);
+  assert.equal(b.overlay("B2").size, 0);
+  assert.deepEqual(b.carets("B1").map(({ id, back, at }) => ({ id, back, at })), [{ id: "c1", back: false, at: 3 }]);
+});
+
+test("the overlay stays until the pull reaches the pushed version", async () => {
+  const { relay, a, b } = await two();
+  const pushes = [];
+  b.onPushed = (v) => pushes.push(v);
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, null);
+  await relay.run();
+  a.sendPushed(7);
+  a.release();
+  await relay.run();
+  assert.deepEqual(pushes, [7]);
+  assert.deepEqual(Object.fromEntries(b.overlay("B1")), moved);
+  b.noteCursor(6);
+  assert.equal(b.overlay("B1").size, 1);
+  b.noteCursor(7);
+  assert.equal(b.overlay("B1").size, 0);
+});
+
+test("a hold that ends without a push drops the overlay", async () => {
+  const { relay, a, b } = await two();
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, { id: "c1", back: false, at: 0 });
+  await relay.run();
+  relay.lapse(relay.sockets[0]);
+  await relay.run();
+  assert.equal(b.taken().size, 0);
+  assert.equal(b.overlay("B1").size, 0);
+  assert.deepEqual(b.carets("B1"), []);
+});
+
+test("another connection of the same device still holds", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const dev = device();
+  const a = live(relay, clock, { dev }), a2 = live(relay, clock, { dev });
+  a.connect();
+  a2.connect();
+  await relay.run();
+  a.setPresence({ board: "B1", selection: [] });
+  a.hold(["c1"]);
+  await relay.run();
+  assert.deepEqual([...a2.taken()], ["c1"]);
+  assert.deepEqual(a2.people("B1"), []);
+});
+
+test("a peer that leaves or falls silent is gone", async () => {
+  const { relay, clock, a, b } = await two();
+  a.hold(["c1"]);
+  await relay.run();
+  a.close();
+  await relay.run();
+  assert.deepEqual(b.people("B1"), []);
+  assert.equal(b.taken().size, 0);
+  const c = live(relay, clock, { name: "Cy" });
+  c.connect();
+  await relay.run();
+  c.setPresence({ board: "B1", selection: [] });
+  await relay.run();
+  assert.deepEqual(b.people("B1").map((p) => p.name), ["Cy"]);
+  clock.advance(31_000);
+  b.tick();
+  assert.deepEqual(b.people("B1"), []);
+});
+
+test("presence repeats and a holder keeps sending live", async () => {
+  const { relay, clock, a } = await two();
+  const me = relay.sockets[0].id;
+  const bodies = () => relay.frames.filter((f) => f.from === me && f.text.includes('"body"')).length;
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, null);
+  await relay.run();
+  const start = bodies();
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.equal(bodies(), start + 1);
+  clock.advance(10_000);
+  a.tick();
+  await relay.run();
+  assert.equal(bodies(), start + 3);
+  a.release();
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.equal(bodies(), start + 3);
+});
+
+test("a reconnect asks for its holds again", async () => {
+  const { relay, clock, a, b } = await two();
+  let refused = null;
+  a.onRefused = (ids) => (refused = ids);
+  a.hold(["c1"]);
+  await relay.run();
+  relay.kick(relay.sockets[0], 1006);
+  await relay.run();
+  assert.ok(!a.connected);
+  assert.equal(b.taken().size, 0);
+  assert.deepEqual([...a.mine], ["c1"]);
+  b.hold(["c1"]);
+  await relay.run();
+  clock.advance(1000);
+  await relay.run();
+  assert.ok(a.connected);
+  assert.deepEqual([...refused], ["c1"]);
+});
+
+test("reconnects back off and stop for a wrong token", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock);
+  a.connect();
+  await relay.run();
+  relay.kick(relay.sockets[0], 1006);
+  await relay.run();
+  clock.advance(1000);
+  relay.kick(relay.sockets[0], 1006);
+  await relay.run();
+  clock.advance(1900);
+  await relay.run();
+  assert.equal(relay.sockets.length, 0);
+  clock.advance(100);
+  await relay.run();
+  assert.ok(a.connected);
+
+  const wrong = new FakeRelay();
+  wrong.token = "someone else's";
+  let unauthorized = false;
+  const b = live(wrong, clock);
+  b.onUnauthorized = () => (unauthorized = true);
+  b.connect();
+  await wrong.run();
+  clock.advance(60_000);
+  await wrong.run();
+  assert.ok(unauthorized && !b.connected);
+  assert.equal(wrong.sockets.length, 0);
+});
+
+test("bodies sealed for another space are dropped", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  // the same secret, so the same token and key, but another space: its bodies do not open here
+  const stranger = live(relay, clock, { k: await SpaceKeys.create(randomBytes(16), decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")) });
+  const b = live(relay, clock);
+  stranger.connect();
+  b.connect();
+  await relay.run();
+  stranger.setPresence({ board: "B1", selection: [] });
+  await relay.run();
+  assert.ok(stranger.connected && b.connected);
+  assert.deepEqual(b.people("B1"), []);
+});
+
+test("a holder with nothing live yet still keeps its hold", async () => {
+  const { relay, clock, a } = await two();
+  const me = relay.sockets[0].id;
+  const bodies = () => relay.frames.filter((f) => f.from === me && f.text.includes('"body"')).length;
+  a.hold(["c1"]);
+  await relay.run();
+  const start = bodies();
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.equal(bodies(), start + 1);
+  a.release();
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.equal(bodies(), start + 1);
+});
