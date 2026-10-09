@@ -453,3 +453,14 @@ test("big requests go deflated and small ones plain", async () => {
     globalThis.fetch = real;
   }
 });
+
+test("a full page that held this push's own write goes on pulling", async () => {
+  const { server, a, id } = await pair(newID);
+  server.afterWrites = () => {
+    server.afterWrites = () => {};
+    for (let i = 0; i < 500; i++) server.put(encode(Uint8Array.from({ length: 16 }, (_, j) => (j ? i >> ((j - 1) * 8) : 7))), "AAAA");
+  };
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  await a.engine.sync();
+  assert.equal(a.store.state.cursor, server.version);
+});

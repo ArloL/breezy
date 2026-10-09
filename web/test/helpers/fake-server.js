@@ -15,6 +15,8 @@ export class FakeServer {
     this.epoch = null;
     /** The relay the server names, if any. */
     this.relay = null;
+    /** Runs after a push's writes and before it reads, as another device's write might land. */
+    this.afterWrites = () => {};
   }
 
   marked(r) {
@@ -39,6 +41,7 @@ export class FakeServer {
       accepted.push({ id: w.id, version: this.version });
     }
     const out = { accepted, refused, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
+    this.afterWrites();
     if (since === undefined) return out;
     const own = new Set(accepted.map((a) => a.version));
     const rows = [...this.records.values()].filter((r) => r.version > since).sort((a, b) => a.version - b.version).slice(0, PAGE_SIZE);
