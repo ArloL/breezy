@@ -26,5 +26,13 @@
 	<string>public.app-category.productivity</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>$(BREEZY_UPDATE_FEED)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(BREEZY_UPDATE_KEY)</string>
 </dict>
 </plist>

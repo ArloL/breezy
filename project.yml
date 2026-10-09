@@ -7,6 +7,9 @@ options:
 packages:
   BreezyKit:
     path: BreezyKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
 targets:
   Breezy:
     type: application
@@ -14,6 +17,7 @@ targets:
     sources: [Breezy]
     dependencies:
       - package: BreezyKit
+      - package: Sparkle
     info:
       path: Breezy/Info.plist
       properties:
@@ -23,6 +27,11 @@ targets:
         CFBundleIconFile: Breezy
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
+        # empty off main, where the updater stays off
+        SUFeedURL: $(BREEZY_UPDATE_FEED)
+        SUPublicEDKey: $(BREEZY_UPDATE_KEY)
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: local.breezy.app
@@ -32,6 +41,8 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: NO
         GENERATE_INFOPLIST_FILE: NO
+        BREEZY_UPDATE_FEED: ""
+        BREEZY_UPDATE_KEY: MQp6FNCCHOb2mPuFpT8eF4xdSooNG5WHq0n9hwVVOQE=
   BreezyUITests:
     type: bundle.ui-testing
     platform: macOS

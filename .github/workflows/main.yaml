@@ -91,7 +91,11 @@ jobs:
         set -o xtrace
         VERSION_SETTINGS=()
         if [ -n "${NEW_VERSION}" ]; then
-          VERSION_SETTINGS=(MARKETING_VERSION="${NEW_VERSION}" CURRENT_PROJECT_VERSION="${NEW_VERSION}")
+          VERSION_SETTINGS=(
+            MARKETING_VERSION="${NEW_VERSION}"
+            CURRENT_PROJECT_VERSION="${NEW_VERSION}"
+            BREEZY_UPDATE_FEED=https://github.com/ArloL/breezy/releases/latest/download/appcast.xml
+          )
         fi
         xcodebuild \
           -project Breezy.xcodeproj \
@@ -110,6 +114,12 @@ jobs:
       with:
         name: ${{ env.ARTIFACT }}-${{ github.job }}
         path: artifacts
+    # for the appcast job: this one runs on pull requests too, so it must not hold the signing key
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ needs.version.outputs.new_version != '' }}
+      with:
+        name: sparkle-tools
+        path: build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast
     - name: Make sure build did not change anything
       run: git diff --exit-code
   web:
@@ -141,10 +151,46 @@ jobs:
         include-hidden-files: true
     - name: Make sure build did not change anything
       run: git diff --exit-code
+  # Sparkle reads the feed from the latest release, so each release carries its own; only main
+  # can read the update-signing environment's key
+  appcast:
+    needs:
+    - version
+    - macos
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: macos-latest
+    environment: update-signing
+    steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: ${{ env.ARTIFACT }}-macos
+        path: archives
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: sparkle-tools
+        path: sparkle
+    # artifacts lose the executable bit
+    - name: Sign the update feed
+      env:
+        NEW_VERSION: ${{ needs.version.outputs.new_version }}
+        SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      run: |
+        chmod +x sparkle/generate_appcast
+        sparkle/generate_appcast \
+          --ed-key-file - \
+          --download-url-prefix "https://github.com/ArloL/breezy/releases/download/v${NEW_VERSION}/" \
+          archives <<< "${SPARKLE_PRIVATE_KEY}"
+        mkdir feed
+        mv archives/appcast.xml feed/
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ env.ARTIFACT }}-${{ github.job }}
+        path: feed
   release:
     needs:
     - version
     - macos
+    - appcast
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
