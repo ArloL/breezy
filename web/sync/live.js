@@ -335,12 +335,14 @@ export class Live {
     const repeat = pipe.repeat;
     pipe.live = pipe.cursor = pipe.repeat = false;
     if (cursor) pipe.everyone = false;
-    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+    // the channels never resend, so the last cursor, maybe a hide, goes once more, to the same people, when the
+    // pointer is still
     if (cursor && pipe.direct && !repeat) {
       const n = ++this.cursorSends;
       this.schedule(CURSOR_REPEAT_MS, () => {
         if (n !== this.cursorSends || pipe.cursor) return;
         [pipe.cursor, pipe.repeat] = [true, true];
+        if (everyone) pipe.everyone = true;
         pipe.gate.run();
       });
     }

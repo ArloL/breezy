@@ -527,13 +527,15 @@ public struct Peer: Equatable, Sendable {
     let live = pipe.live ? lastLive : nil, cursor = pipe.cursor, everyone = cursor && pipe.everyone, resend = pipe.resend
     (pipe.live, pipe.cursor, pipe.resend) = (false, false, false)
     if cursor { pipe.everyone = false }
-    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+    // the channels never resend, so the last cursor, maybe a hide, goes once more, to the same people, when the
+    // pointer is still
     if cursor && pipe.direct && !resend {
       cursorSends += 1
       let n = cursorSends
       schedule(Self.cursorRepeat) { [weak self, weak pipe] in
         guard let self, let pipe, n == cursorSends, !pipe.cursor else { return }
         (pipe.cursor, pipe.resend) = (true, true)
+        if everyone { pipe.everyone = true }
         run(pipe)
       }
     }

@@ -1312,3 +1312,23 @@ test("holding again, as when dragging the card just edited before the edit's pus
   await relay.run();
   assert.ok((await last())[3] instanceof Uint8Array);
 });
+
+test("the channels' repeat of the first cursor on another board goes to everyone too", async () => {
+  const { relay, clock, ts, ls, open } = await direct(3);
+  for (const j of [1, 2]) open(0, j);
+  ls[2].setPresence({ board: B2, selection: [] });
+  await relay.run();
+  ls[0].sendCursor(B1, 1, 1);
+  await relay.run();
+  clock.advance(200);
+  await relay.run();
+  ts[0].sent.splice(0);
+  ls[0].sendCursor(B2, 1, 1);
+  clock.advance(8);
+  await relay.run();
+  const everyone = [ls[1].id, ls[2].id].sort();
+  assert.deepEqual(ts[0].sent.splice(0).map((s) => s.id).sort(), everyone);
+  clock.advance(100);
+  await relay.run();
+  assert.deepEqual(ts[0].sent.splice(0).map((s) => s.id).sort(), everyone);
+});
