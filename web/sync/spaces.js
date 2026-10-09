@@ -48,10 +48,11 @@ export class Spaces {
     return spaces;
   }
 
-  constructor(storage, states = {}, { transport, readOnly = false, socket, now } = {}) {
+  constructor(storage, states = {}, { transport, readOnly = false, socket, now, peerTransport } = {}) {
     this.storage = storage;
     this.transport = transport;
     this.socket = socket;
+    this.peerTransport = peerTransport;
     this.now = now;
     this.readOnly = readOnly;
     this.fresh = false;
@@ -104,7 +105,7 @@ export class Spaces {
     if (relay && g.space) {
       const keys = await g.engine.keysOf(g.store.state);
       if (g.engine.relay !== relay || g.live || !this.spaces.includes(g)) return;
-      const live = new Live({ relay, space: g.space, keys, me: this.me, ...(this.socket ? { socket: this.socket } : {}) });
+      const live = new Live({ relay, space: g.space, keys, me: this.me, ...(this.socket ? { socket: this.socket } : {}), ...(this.peerTransport !== undefined ? { peerTransport: this.peerTransport } : {}) });
       live.onPushed = () => g.engine.sync();
       live.onChange = () => this.onLive(g);
       live.onRefused = (ids) => this.onRefused(g, ids);
