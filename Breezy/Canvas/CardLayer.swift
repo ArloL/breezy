@@ -4,7 +4,7 @@ import CoreVideo
 import IOSurface
 
 /// A card on the canvas. The sheet, its folded corner and the text are drawn at `contentsScale`,
-/// which the canvas sets from the zoom; shadow and selection ring are layer properties. The canvas
+/// which the canvas sets from the zoom; shadow and ring (selection, others' holds and selections) are layer properties. The canvas
 /// puts the layer on whole pixels, with bounds of whole pixels: the bitmap then shows unscaled,
 /// as sharp as the card's editor.
 final class CardLayer: CALayer {
@@ -60,7 +60,7 @@ final class CardLayer: CALayer {
   private(set) var refining = false
   /// Raised by a drag: a little larger, with a deeper shadow.
   private(set) var lifted = false
-  /// The selection ring, only while selected: most cards never are, and a layer each is a layer
+  /// The ring, only while selected, held or selected by someone else: most cards never are, and a layer each is a layer
   /// more to commit and keep.
   private var ring: CALayer?
 
