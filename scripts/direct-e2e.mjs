@@ -135,7 +135,7 @@ console.log("open:", await a.status());
 
 /** Broadcast body frames (no `to`) that a sends to the relay while its mouse crosses the board from x0 to x1. */
 async function framesWhileMoving(x0, x1) {
-  let frames = 0;
+  let frames = 0, x = x0;
   const count = (m) => {
     if (m.method !== "Network.webSocketFrameSent") return;
     try {
@@ -145,12 +145,13 @@ async function framesWhileMoving(x0, x1) {
   };
   a.listeners.push(count);
   for (let i = 0; i <= 40; i++) {
-    await a.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x0 + ((x1 - x0) * i) / 40, y: 400 });
+    x = x0 + ((x1 - x0) * i) / 40;
+    await a.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y: 400 });
     await sleep(16);
   }
   await sleep(300);
   a.listeners.splice(a.listeners.indexOf(count), 1);
-  return frames;
+  return { frames, x };
 }
 
 const cursorX = () => b.run(`(() => { const m = document.querySelector(".presence .cursor")?.style.transform.match(/translate\\((-?[\\d.]+)px/); return m ? +m[1] : null; })()`);
@@ -166,17 +167,18 @@ async function settledCursor(what, before, ms = 10_000) {
 }
 
 const start = await cursorX();
-const direct = await framesWhileMoving(300, 690);
+const { frames: direct, x: aDirect } = await framesWhileMoving(300, 690);
 if (direct > 2) throw new Error(`${direct} body frames reached the relay with the channel open`);
 const first = await settledCursor("a's cursor moving on b over the channel", start);
+if (Math.abs(first - aDirect) > 60) throw new Error(`b shows a at x ${first} over the channel, a's mouse is at ${aDirect}`);
 console.log("direct: relay body frames while moving:", direct, "| b sees a at x", first);
 
 await b.run("__pcs.forEach((pc) => pc.close())");
 await waitFor("the fall back", async () => (await a.status()).includes("Direct with 0 of 1 person"));
-const relayed = await framesWhileMoving(690, 300);
+const { frames: relayed, x: aRelayed } = await framesWhileMoving(aDirect, 300);
 if (relayed < 5) throw new Error(`only ${relayed} body frames reached the relay after the channel closed`);
 const second = await settledCursor("a's cursor moving on b over the relay", first);
-if (Math.abs(second - first + 390) > 60) throw new Error(`b's cursor moved ${second - first}px after a moved -390px`);
+if (Math.abs(second - aRelayed) > 60) throw new Error(`b shows a at x ${second} over the relay, a's mouse is at ${aRelayed}`);
 console.log("fallback: relay body frames while moving:", relayed, "| b sees a at x", second);
 console.log("ok");
 done = true;
