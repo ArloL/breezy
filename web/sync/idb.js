@@ -1,4 +1,4 @@
-// The store's state in IndexedDB, under one key.
+// The groups' states in IndexedDB, a key each.
 
 let opened = null, connection = null;
 
@@ -37,29 +37,42 @@ async function attempt(request) {
   }
 }
 
-export function loadState() {
+/** Every key's value: `local`, `space:<id>`, `server`, and `space` from before spaces. */
+export function loadAll() {
   return attempt((d) => new Promise((resolve, reject) => {
-    const q = d.transaction("state").objectStore("state").get("space");
-    q.onsuccess = () => resolve(q.result ?? null);
+    const out = {};
+    const q = d.transaction("state").objectStore("state").openCursor();
+    q.onsuccess = () => {
+      const c = q.result;
+      if (!c) return resolve(out);
+      out[c.key] = c.value;
+      c.continue();
+    };
     q.onerror = () => reject(q.error);
   }));
 }
 
-function put(d, state) {
+function change(d, apply) {
   return new Promise((resolve, reject) => {
     const t = d.transaction("state", "readwrite");
-    t.objectStore("state").put(state, "space");
+    apply(t.objectStore("state"));
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error ?? new Error("transaction aborted"));
   });
 }
 
-/** Saves `state`, trying once more on a reopened database. */
-export async function saveState(state) {
+/** Saves `value` under `key`, trying once more on a reopened database. */
+export async function saveState(key, value) {
   try {
-    return await attempt((d) => put(d, state));
+    return await attempt((d) => change(d, (s) => s.put(value, key)));
   } catch {
-    return attempt((d) => put(d, state));
+    return attempt((d) => change(d, (s) => s.put(value, key)));
   }
 }
+
+export function removeState(key) {
+  return attempt((d) => change(d, (s) => s.delete(key)));
+}
+
+export const storage = { loadAll, save: saveState, remove: removeState };
