@@ -272,13 +272,14 @@ public struct Peer: Equatable, Sendable {
   }
 
   /// A sealed body to everyone else, or to connection `to`.
-  private func send(_ body: [String: JSONValue], to: String? = nil) {
-    guard connected, let plain = try? Self.encoder.encode(JSONValue.object(body)), let sealed = try? keys.sealLive(plain) else { return }
+  @discardableResult private func send(_ body: [String: JSONValue], to: String? = nil) -> Bool {
+    guard connected, let plain = try? Self.encoder.encode(JSONValue.object(body)), let sealed = try? keys.sealLive(plain) else { return false }
     let b = Base64URL.encode(sealed)
-    guard b.count <= Self.maxFrame - 100 else { return }
+    guard b.count <= Self.maxFrame - 100 else { return false }
     var f: [String: JSONValue] = ["body": .string(b)]
     if let to { f["to"] = .string(to) }
     frame(f)
+    return true
   }
 
   // MARK: receiving
@@ -406,9 +407,11 @@ public struct Peer: Equatable, Sendable {
       }
     }
     if connected && t.timeIntervalSince(presenceSent) >= Self.presenceInterval { sendPresence() }
-    if connected && !mine.isEmpty, let l = lastLive, t.timeIntervalSince(liveSent) >= Self.heartbeat {
+    if connected && !mine.isEmpty && t.timeIntervalSince(liveSent) >= Self.heartbeat {
       liveSent = t
-      send(l)
+      if lastLive == nil || !send(lastLive!) {
+        send(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null])
+      }
     }
     if changed { onChange?() }
   }
