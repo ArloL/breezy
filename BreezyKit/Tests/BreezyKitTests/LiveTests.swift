@@ -489,6 +489,38 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   }
 }
 
+/// `body` from `from` through the relay, as any client may send it.
+@MainActor private func inject(_ relay: FakeRelay, from: Live, _ body: [String: JSONValue]) throws {
+  let sealed = try keys().sealLive(JSONEncoder().encode(JSONValue.object(body)))
+  let frame = try JSONEncoder().encode(["body": Base64URL.encode(sealed)])
+  relay.received(relay.sockets.first { $0.id == from.id }!, String(decoding: frame, as: UTF8.self))
+  relay.run()
+}
+
+@MainActor @Test func numbersAPeerSendsThatCannotBePlayedBackOrReadExactlyAreIgnored() throws {
+  let (relay, clock, a, b) = two()
+  var pushes: [Int] = []
+  b.onPushed = { pushes.append($0) }
+  a.hold(["c1", "c2"])
+  relay.run()
+  let bad: JSONValue = .object(["id": .string("c1"), "back": .bool(false), "at": .number(1e300)])
+  try inject(relay, from: a, [
+    "t": .string("live"), "board": .string("B1"), "caret": bad,
+    "items": .object(["c1": .object(["w": .number(100), "pos": .array([.number(0), .number(0)])]), "c2": .object(["w": .array([])])]),
+  ])
+  clock.advance(0.05)
+  try inject(relay, from: a, [
+    "t": .string("live"), "board": .string("B1"), "caret": .null,
+    "items": .object(["c1": .object(["w": .array([]), "pos": .array([.number(10), .number(0), .number(5)])])]),
+  ])
+  clock.advance(0.2)
+  #expect(b.overlay(on: "B1") == ["c1": ["w": .number(100), "pos": .array([.number(0), .number(0)])], "c2": ["w": .array([])]])
+  try inject(relay, from: a, ["t": .string("live"), "board": .string("B1"), "items": .object([:]), "caret": bad])
+  #expect(b.carets(on: "B1").isEmpty)
+  try inject(relay, from: a, ["t": .string("pushed"), "version": .number(1e300)])
+  #expect(pushes.isEmpty)
+}
+
 /// `n` devices with fake transports, all on board B1, the last one the newcomer.
 @MainActor private func direct(_ n: Int = 2) -> (FakeRelay, Clock, [FakePeerTransport], [Live]) {
   let relay = FakeRelay(), clock = Clock()

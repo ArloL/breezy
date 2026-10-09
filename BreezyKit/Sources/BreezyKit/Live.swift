@@ -369,21 +369,26 @@ public struct Peer: Equatable, Sendable {
     if let n = v?.number, n.isFinite { return [n] }
     guard let a = v?.array else { return nil }
     let ns = a.compactMap(\.number)
-    return ns.count == a.count && ns.allSatisfy(\.isFinite) ? ns : nil
+    return !a.isEmpty && ns.count == a.count && ns.allSatisfy(\.isFinite) ? ns : nil
+  }
+
+  /// `v` as an Int when it is a whole number within ±2^53.
+  private static func integral(_ v: Double?) -> Int? {
+    guard let v, v == v.rounded(), abs(v) <= 9_007_199_254_740_992 else { return nil }
+    return Int(v)
   }
 
   /// Whether `b` is newer than the last body of its kind from this peer, over either pipe; one without `seq` is.
   private static func fresh(_ p: inout Peer, _ b: [String: JSONValue]) -> Bool {
-    guard let t = b["t"]?.string, let n = b["seq"]?.number, n == n.rounded(), abs(n) <= 9_007_199_254_740_992 else { return true }
-    guard Int(n) > p.seqs[t] ?? 0 else { return false }
-    p.seqs[t] = Int(n)
+    guard let t = b["t"]?.string, let n = integral(b["seq"]?.number) else { return true }
+    guard n > p.seqs[t] ?? 0 else { return false }
+    p.seqs[t] = n
     return true
   }
 
   private static func caret(_ v: JSONValue?) -> Caret? {
-    guard let o = v?.object, let id = o["id"]?.string, let back = o["back"]?.bool, let at = o["at"]?.number, at >= 0, at == at.rounded()
-    else { return nil }
-    return Caret(id: id, back: back, at: Int(at))
+    guard let o = v?.object, let id = o["id"]?.string, let back = o["back"]?.bool, let at = integral(o["at"]?.number), at >= 0 else { return nil }
+    return Caret(id: id, back: back, at: at)
   }
 
   private func received(_ text: String) {
@@ -477,15 +482,17 @@ public struct Peer: Equatable, Sendable {
         p.overlay[id, default: [:]].merge(f.filter { Records.liveFieldNames.contains($0.key) || $0.key == "kind" }) { $1 }
         for k in Self.moving {
           guard let v = Self.numbers(f[k]) else { continue }
+          // a value of another length than the track's cannot be played back with it
+          if let last = p.motion["\(id) \(k)"]?.samples.last, last.value.count != v.count { continue }
           p.motion["\(id) \(k)", default: Track()].push(at: at, arrival: arrival, value: v)
         }
       }
       p.caret = Self.caret(b["caret"])
     case "pushed":
-      guard let v = b["version"]?.number, v >= 0, v == v.rounded() else { return }
-      p.awaiting = max(p.awaiting, Int(v))
+      guard let v = Self.integral(b["version"]?.number), v >= 0 else { return }
+      p.awaiting = max(p.awaiting, v)
       peers[from] = p
-      onPushed?(Int(v))
+      onPushed?(v)
       dropReleased()
       onChange?()
       return
