@@ -132,12 +132,12 @@ export class Spaces {
 
   /**
    * Board `id` copied into `target` with new ids, then deleted where it was once the copy is saved. Null when the copy
-   * can't be saved: the board stays where it was, and the copy too.
+   * can't be saved, as when read-only: the board stays where it was, and the copy too.
    */
   async move(id, target) {
     const source = this.groupOf(id);
     const title = source?.store.title(id);
-    if (!source || source === target || title == null) return null;
+    if (this.readOnly || !source || source === target || title == null) return null;
     const created = target.store.createBoard(title, withFreshIDs(source.store.board(id)));
     await target.saver.flush();
     if (target.saver.failed) return null;
