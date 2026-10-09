@@ -98,7 +98,7 @@ async function browser(name) {
   await send("Page.enable");
   await send("Network.enable");
   // every peer connection the page makes, so that the test can close them
-  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size, kind: typeof d === 'string' ? null : new Uint8Array(d)[1] }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
   const go = async (url) => {
     const loaded = new Promise((r) => listeners.push(function l(m) { if (m.method === "Page.loadEventFired") { listeners.splice(listeners.indexOf(l), 1); r(); } }));
     await send("Page.navigate", { url });
@@ -212,13 +212,14 @@ async function liveSizes(y) {
     }
     return {};
   });
-  const card = await a.run(`(() => { const r = document.querySelector("[contenteditable]")?.getBoundingClientRect(); return r && { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  const card = await a.run(`(() => { const r = document.activeElement.closest("[contenteditable]")?.getBoundingClientRect(); return r && { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
   await a.run(`document.activeElement.blur()`);
   const dragged = await sentDuring(async () => {
     await mouse("mousePressed", card.x, card.y, { clickCount: 1 });
     for (let i = 1; i <= 20; i++) { await mouse("mouseMoved", card.x + i * 10, card.y + i * 4, { buttons: 1 }); await sleep(30); }
+    const held = await a.run("__ch.length");
     await mouse("mouseReleased", card.x + 200, card.y + 80);
-    return {};
+    return { held };
   });
   return { typed, dragged };
 }
@@ -227,6 +228,11 @@ const over = await liveSizes(200);
 for (const [what, r] of [["typing", over.typed], ["dragging a card", over.dragged]]) {
   if (r.channel.length < 3) throw new Error(`no live bodies went over the channel while ${what}`);
   if (r.channel.some((m) => !m.bin)) throw new Error(`a channel message was text while ${what}`);
+  if (r.held !== undefined) {
+    const moves = r.channel.slice(0, r.held);
+    // a cursor body of its own only as the channels' resend, when a move comes late
+    if (moves.length > 22 || moves.filter((m) => m.kind !== 2).length > 2) throw new Error(`not one live body a move while dragging: ${moves.map((m) => `${m.kind}:${m.n}`)}`);
+  }
   console.log(`${what}, channel: ${r.channel.length} binary messages, median ${median(r.channel.map((m) => m.n))} B (${list(r)}); relay body frames: ${bodies(r).length}`);
 }
 
