@@ -300,6 +300,7 @@ null
 {"value":{"mapRange":65535},"hexPrefix":"deffff00000101","bytes":392445},
 {"value":{"mapRange":65536},"hexPrefix":"df0001000000000101","bytes":392453},
 {"value":{"repeat":[{"bin":"AA"},65535]},"hexPrefix":"c5ffff0000","bytes":65538},
-{"value":{"repeat":[{"bin":"AA"},65536]},"hexPrefix":"c6000100000000","bytes":65541}
+{"value":{"repeat":[{"bin":"AA"},65536]},"hexPrefix":"c6000100000000","bytes":65541},
+{"value":"\ufeffa","hex":"a4efbbbf61"}
 ]
 }

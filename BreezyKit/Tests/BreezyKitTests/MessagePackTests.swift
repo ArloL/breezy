@@ -9,34 +9,33 @@ private struct Case {
   let bytes: Int?
 }
 
-private func pack(_ j: Any) throws -> Pack {
+private func pack(_ j: JSONValue) throws -> Pack {
   switch j {
-  case is NSNull: return .null
-  case let n as NSNumber:
-    if CFGetTypeID(n) == CFBooleanGetTypeID() { return .bool(n.boolValue) }
-    return CFNumberIsFloatType(n) ? .float64(n.doubleValue) : .int(n.int64Value)
-  case let s as String: return .string(s)
-  case let a as [Any]: return .array(try a.map(pack))
-  case let o as [String: Any]:
-    if let v = o["f32"] as? NSNumber { return .float32(v.floatValue) }
-    if let v = o["bin"] as? String { return .bin(Base64URL.decode(v)!) }
-    if let n = o["mapRange"] as? Int { return .map((0..<n).map { (.int(Int64($0)), .int(Int64($0))) }) }
-    if let r = o["repeat"] as? [Any], let n = r[1] as? Int {
+  case .null: return .null
+  case .bool(let b): return .bool(b)
+  case .number(let n): return n == n.rounded() ? .int(Int64(n)) : .float64(n)
+  case .string(let s): return .string(s)
+  case .array(let a): return .array(try a.map(pack))
+  case .object(let o):
+    if let v = o["f32"]?.number { return .float32(Float(v)) }
+    if let v = o["bin"]?.string { return .bin(Base64URL.decode(v)!) }
+    if let n = o["mapRange"]?.number { return .map((0..<Int(n)).map { (.int(Int64($0)), .int(Int64($0))) }) }
+    if let r = o["repeat"]?.array, let n = r[1].number.map(Int.init) {
       switch try pack(r[0]) {
       case .string(let s): return .string(String(repeating: s, count: n))
       case .bin(let b): return .bin(Data(repeating: b[0], count: n * b.count))
       case let u: return .array(Array(repeating: u, count: n))
       }
     }
-    return .map(try (o["map"] as! [[Any]]).map { (try pack($0[0]), try pack($0[1])) })
-  default: fatalError("fixture")
+    return .map(try o["map"]!.array!.map { (try pack($0.array![0]), try pack($0.array![1])) })
   }
 }
 
 private func cases() throws -> [Case] {
-  let root = try JSONSerialization.jsonObject(with: fixture("msgpack.json")) as! [String: Any]
-  return try (root["cases"] as! [[String: Any]]).map {
-    Case(value: try pack($0["value"]!), hex: $0["hex"] as? String, prefix: $0["hexPrefix"] as? String, bytes: $0["bytes"] as? Int)
+  let root = try JSONDecoder().decode(JSONValue.self, from: fixture("msgpack.json"))
+  return try root.object!["cases"]!.array!.map {
+    let o = $0.object!
+    return Case(value: try pack(o["value"]!), hex: o["hex"]?.string, prefix: o["hexPrefix"]?.string, bytes: o["bytes"]?.number.map(Int.init))
   }
 }
 
@@ -49,7 +48,7 @@ private func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joi
 @Suite struct MessagePackTests {
   @Test func packMatchesTheSharedHex() throws {
     for c in try cases() {
-      let p = c.value.packed()
+      let p = try c.value.packed()
       if let h = c.hex { #expect(hex(p) == h, Comment(rawValue: h)) }
       if let prefix = c.prefix {
         #expect(p.count == c.bytes, Comment(rawValue: prefix))
@@ -60,7 +59,7 @@ private func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joi
 
   @Test func unpackMatchesTheSharedValues() throws {
     for c in try cases() {
-      let source = c.hex.map(bytes) ?? c.value.packed()
+      let source = try c.hex.map(bytes) ?? c.value.packed()
       #expect(try Pack.unpack(source) == c.value, Comment(rawValue: c.hex ?? c.prefix ?? ""))
     }
   }
@@ -82,6 +81,14 @@ private func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joi
       #expect(throws: Pack.Failure.self, Comment(rawValue: h)) { try Pack.unpack(bytes(h)) }
     }
     #expect(try Pack.unpack(bytes("cf001fffffffffffff")) == .int(1 << 53 - 1))
+  }
+
+  @Test func packRejectsIntegersBeyondTheSafeRange() throws {
+    for v in [Int64(1) << 53, -(Int64(1) << 53), Int64.max, Int64.min] {
+      #expect(throws: Pack.Failure.self) { try Pack.int(v).packed() }
+      #expect(throws: Pack.Failure.self) { try Pack.array([.int(v)]).packed() }
+    }
+    #expect(try Pack.int(1 << 53 - 1).packed() == bytes("cf001fffffffffffff"))
   }
 
   @Test func float32SurvivesARoundTrip() throws {

@@ -8,7 +8,7 @@ export class Float32 {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 class Writer {
   constructor() {
