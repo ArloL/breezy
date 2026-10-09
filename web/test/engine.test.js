@@ -386,13 +386,13 @@ test("an edit syncs in one request", async () => {
 
 test("a device never pulls back what it pushed", async () => {
   const { a, b, id } = await pair(newID);
-  const wrote = new Set(), got = [];
+  const mine = new Set(), got = [];
   for (const m of ["pull", "push"]) {
     const f = a.transport[m].bind(a.transport);
     a.transport[m] = async (...args) => {
-      if (m === "push") for (const w of args[0]) wrote.add(w.id);
       const r = await f(...args);
-      for (const p of r.records ?? []) got.push(p.id);
+      for (const x of r.accepted ?? []) mine.add(x.version);
+      for (const p of r.records ?? []) got.push(p.version);
       return r;
     };
   }
@@ -403,10 +403,56 @@ test("a device never pulls back what it pushed", async () => {
   a.edit(id, (x) => (x.cards[0].color = 4));
   await a.engine.sync();
   await a.engine.sync();
-  assert.ok(wrote.size > 0);
+  assert.ok(mine.size > 0);
   assert.ok(got.length > 0);
-  assert.deepEqual(got.filter((g) => wrote.has(g) && a.store.state.records[g].base === null), []);
-  assert.equal(a.store.board(id).cards[0].text, "y");
+  assert.deepEqual(got.filter((v) => mine.has(v)), []);
+});
+
+test("what becomes pending during the pull is pushed in the same sync", async () => {
+  const { server, a, b, id } = await pair(newID);
+  b.edit(id, (x) => (x.cards[0].text = "y"));
+  await b.engine.sync();
+  let pulled = false, edited = false;
+  const pull = a.transport.pull.bind(a.transport);
+  a.transport.pull = async (since) => {
+    pulled = true;
+    return pull(since);
+  };
+  a.engine.flushLocal = () => {
+    if (!pulled || edited) return;
+    edited = true;
+    a.edit(id, (x) => (x.cards[0].color = 3));
+  };
+  await a.engine.sync();
+  assert.ok(edited);
+  assert.deepEqual(a.store.pending(), []);
+  a.engine.flushLocal = () => {};
+  await b.engine.sync();
+  assert.equal(b.store.board(id).cards[0].color, 3);
+});
+
+test("a device with an edit pending writes nothing to a restored server", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const backup = server.snapshot();
+  b.edit(id, (x) => (x.cards[0].text = "later"));
+  await b.engine.sync();
+  server.restore(backup);
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  const before = server.version;
+  const push = a.transport.push.bind(a.transport);
+  let first = true;
+  a.transport.push = async (...args) => {
+    const r = await push(...args);
+    if (first) assert.equal(server.version, before);
+    first = false;
+    return r;
+  };
+  await a.engine.sync();
+  for (const x of [b, a, b, a]) await x.engine.sync();
+  for (const x of [a, b]) {
+    assert.equal(x.store.board(id).cards[0].color, 3);
+    assert.deepEqual(x.store.pending(), []);
+  }
 });
 
 test("a combined push that brings a full page goes on pulling", async () => {
@@ -427,8 +473,12 @@ test("a resync does not combine", async () => {
   server.restore(backup);
   a.edit(id, (x) => (x.cards[0].color = 2));
   a.transport.log = [];
+  const sinces = [];
+  const push = a.transport.push.bind(a.transport);
+  a.transport.push = (w, since, epoch) => (sinces.push(since), push(w, since, epoch));
   await a.engine.sync();
   assert.deepEqual(a.transport.log.slice(0, 2), ["push", "pull"]);
+  assert.equal(sinces[1], undefined);
   assert.deepEqual(a.store.pending(), []);
 });
 

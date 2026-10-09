@@ -28,7 +28,8 @@ export class FakeServer {
     return { records: records.map((r) => this.marked(r)), cursor: records.at(-1)?.version ?? since, epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
   }
 
-  push(writes, since) {
+  push(writes, since, epoch) {
+    if (epoch !== undefined && epoch !== this.epoch) return { accepted: [], refused: [], epoch: this.epoch, ...(this.relay ? { relay: this.relay } : {}) };
     const accepted = [], refused = [];
     this.epoch ??= newID();
     for (const w of writes) {
@@ -96,10 +97,10 @@ export class FakeTransport {
     return structuredClone(this.server.pull(since));
   }
 
-  async push(writes, since) {
+  async push(writes, since, epoch) {
     await this.beforePush();
     this.check("push");
-    return structuredClone(this.server.push(writes, since));
+    return structuredClone(this.server.push(writes, since, epoch));
   }
 }
 
