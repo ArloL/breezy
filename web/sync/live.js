@@ -1,10 +1,13 @@
 // A space's live layer over its relay: who is here and where, what they hold, and their edits as they happen, as
-// BreezyKit's Live; see the multiplayer design. Bodies are sealed with the space key, so the relay reads none of them.
+// BreezyKit's Live; see the multiplayer and lean sync designs. Bodies are sealed with the space key, so the relay reads
+// none of them; a version 2 channel carries compact bodies unsealed.
 import { encode, decode } from "./base64.js";
 import { LIVE_FIELDS } from "./overlay.js";
 import { Track } from "./track.js";
 import { Direct } from "./direct.js";
 import { RTCTransport } from "./rtc.js";
+import { CursorEncoder, LiveEncoder, LiveDecoder, isCompact } from "./compact.js";
+import { relayFrame, parseRelayFrame } from "./frames.js";
 
 export const PALETTE = ["#e5484d", "#f76b15", "#12a594", "#8e4ec6", "#3e63dd", "#e93d82", "#ad7f58", "#00a2c7"];
 export const SEND_MS = 50;
@@ -27,6 +30,20 @@ const MOVING = ["pos", "size", "w"];
 /** Coordinates kept this close to 0, so that playing back between two stays finite. */
 const LIMIT = 1e7;
 const clamp = (v) => Math.min(LIMIT, Math.max(-LIMIT, v));
+const round = (v, by) => Math.round(v * by) / by;
+/** `items` with their moving fields clamped, and rounded to `by` when given. */
+const trimmed = (items, by) => Object.fromEntries(Object.entries(items).map(([id, f]) => {
+  const out = { ...f };
+  for (const k of MOVING) {
+    const fit = (v) => (Number.isFinite(v) ? (by ? round(clamp(v), by) : clamp(v)) : v);
+    if (k in f) out[k] = Array.isArray(f[k]) ? f[k].map(fit) : fit(f[k]);
+  }
+  return [id, out];
+}));
+/** The relay's number for connection `id`; null for one it does not name with digits. */
+const connNumber = (id) => (/^\d{1,10}$/.test(id) ? Number(id) : null);
+/** How long `bytes` are as base64url. */
+const b64Length = (bytes) => Math.ceil((bytes.length * 4) / 3);
 const numbers = (v) => (Number.isFinite(v) ? [clamp(v)] : Array.isArray(v) && v.length && v.every(Number.isFinite) ? v.map(clamp) : null);
 /** Whether `v` is a whole number that BreezyKit reads exactly, within ±2^53. */
 const integral = (v) => Number.isInteger(v) && Math.abs(v) <= 2 ** 53;
@@ -45,36 +62,66 @@ const caretOf = (c) =>
 const pick = (f) => Object.fromEntries(Object.entries(f).filter(([k]) => k === "kind" || LIVE_FIELDS.includes(k)));
 const holdsFrom = (h) => new Map(Object.entries(h ?? {}).filter(([, ids]) => Array.isArray(ids)).map(([k, ids]) => [k, new Set(ids)]));
 
-/** Runs the latest `go` at most every SEND_MS: at once when it may, else once when it may again. */
+/** Runs `go` at most every `ms`: once the calls made meanwhile are done when it may, else once when it may again. */
 class Gate {
-  constructor(live) {
-    this.live = live;
+  constructor(live, ms, go) {
+    Object.assign(this, { live, ms, go });
     this.sent = -Infinity;
     this.queued = false;
-    this.go = null;
   }
 
-  run(go) {
-    this.go = go;
-    const wait = this.live.sendMs - (this.live.now() - this.sent);
-    if (wait <= 0) return this.fire();
+  run() {
     if (this.queued) return;
     this.queued = true;
-    this.live.schedule(wait, () => {
+    const fire = () => {
       this.queued = false;
-      this.fire();
-    });
+      this.sent = this.live.now();
+      this.go();
+    };
+    const wait = this.ms - (this.live.now() - this.sent);
+    // a cursor and a live edit from one event go as one body
+    if (wait <= 0) queueMicrotask(fire);
+    else this.live.schedule(wait, fire);
+  }
+}
+
+/** One way out, the open channels or the relay: its gate, its compact encoders, and what waits to go. */
+class Pipe {
+  constructor(live, direct, ms) {
+    Object.assign(this, { direct, encoders: { cursor: new CursorEncoder(), live: new LiveEncoder() } });
+    this.gate = new Gate(live, ms, () => live.flush(this));
+    /** Who each encoder last sent to; another set starts from a keyframe. */
+    this.to = { cursor: null, live: null };
+    this.cursor = false;
+    this.live = false;
+    /** The next cursor goes to everyone: this device's cursor moved to another board. */
+    this.everyone = false;
   }
 
-  fire() {
-    this.sent = this.live.now();
-    this.go();
+  /** `body` as compact bytes for `ids`, null when it cannot be put so. */
+  compact(kind, ids, body, stamp) {
+    const key = ids.join(" ");
+    if (key !== this.to[kind]) this.encoders[kind].reset();
+    this.to[kind] = key;
+    try {
+      return this.encoders[kind].encode(body, stamp);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The next live body starts a gesture. */
+  restart() {
+    this.encoders.live.reset();
+    this.to.live = null;
   }
 }
 
 export class Live {
   constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = () => Date.now(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms), peerTransport = typeof RTCPeerConnection === "function" ? () => new RTCTransport() : null }) {
     Object.assign(this, { relay, space, keys, me, makeSocket: socket, now, clock, schedule });
+    /** What `at` in this device's bodies counts from. */
+    this.started = clock();
     this.seq = 0;
     this.ws = null;
     this.id = null;
@@ -87,22 +134,24 @@ export class Live {
     this.pingSent = -Infinity;
     /** When a ping went out that nothing has answered yet. */
     this.pingWaiting = null;
-    /** Connection id → { person, board, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret, awaiting,
-     * unheld: Map of overlay id → when its live body last came while its sender did not hold it }. */
+    /** Connection id → { person, v, board, boards, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret,
+     * awaiting, unheld: Map of overlay id → when its live body last came while its sender did not hold it }. */
     this.peers = new Map();
+    /** Connection id → its compact bodies' decoders, one per pipe. */
+    this.decoders = new Map();
     /** Connection id → the ids it holds. */
     this.holds = new Map();
     /** What this connection holds, or has asked to. */
     this.mine = new Set();
-    this.presence = { board: null, selection: [] };
+    this.presence = { board: null, boards: [], selection: [] };
     this.cursor = null;
     this.cursorBoard = "";
     this.presenceSent = -Infinity;
-    this.cursorGate = new Gate(this);
-    /** Cursors the gate has sent. */
+    /** Cursors asked for so far. */
     this.cursorSends = 0;
-    this.liveGate = new Gate(this);
     this.lastLive = null;
+    this.channels = new Pipe(this, true, DIRECT_SEND_MS);
+    this.relayPipe = new Pipe(this, false, SEND_MS);
     /** When a frame last reached the relay, which keeps this connection's holds there while it hears from it. */
     this.relaySent = -Infinity;
     this.storeCursor = 0;
@@ -117,8 +166,7 @@ export class Live {
     this.direct = peerTransport && new Direct(peerTransport(), {
       now,
       relay: (to, body) => this.send(body, to),
-      // a version 2 link carries the sealed body's bytes
-      message: (from, data) => (this.in = this.in.then(() => this.opened(from, typeof data === "string" ? data : encode(data), true)).catch(() => {})),
+      message: (from, data) => (this.in = this.in.then(() => (typeof data === "string" ? this.opened(from, decode(data), "direct") : this.take(from, data, "direct", true))).catch(() => {})),
       change: () => this.onChange(),
     });
   }
@@ -138,6 +186,7 @@ export class Live {
     this.wanted = false;
     this.mine.clear();
     this.lastLive = null;
+    for (const p of this.pipes) p.restart();
     const ws = this.ws;
     this.ws = null;
     ws?.close();
@@ -148,13 +197,14 @@ export class Live {
     const url = new URL(this.relay);
     url.searchParams.set("space", this.space);
     const ws = this.makeSocket(url.href);
+    ws.binaryType = "arraybuffer";
     this.ws = ws;
-    ws.onopen = () => ws === this.ws && this.frame({ t: "auth", token: encode(this.keys.relayToken) });
-    ws.onmessage = (e) => {
+    ws.onopen = () => ws === this.ws && this.frame({ t: "auth", token: encode(this.keys.relayToken), v: 2 });
+    ws.onmessage = ({ data }) => {
       if (ws !== this.ws) return;
       // anything from the relay shows the socket is alive
       this.pingWaiting = null;
-      this.in = this.in.then(() => this.received(String(e.data))).catch(() => {});
+      this.in = this.in.then(() => (typeof data === "string" ? this.received(data) : this.receivedFrame(new Uint8Array(data)))).catch(() => {});
     };
     ws.onclose = (e) => ws === this.ws && this.dropped(e.code);
   }
@@ -181,6 +231,7 @@ export class Live {
     this.id = null;
     this.pingWaiting = null;
     this.peers.clear();
+    this.decoders.clear();
     this.holds.clear();
     this.roster.clear();
     this.direct?.reset();
@@ -197,22 +248,28 @@ export class Live {
     });
   }
 
-  /** `body` sealed, as base64url; null when too big to send. */
-  async seal(body) {
-    const sealed = encode(await this.keys.sealLive(enc.encode(JSON.stringify(body))));
-    return sealed.length > MAX_FRAME - 100 ? null : sealed;
+  get pipes() {
+    return [this.channels, this.relayPipe];
   }
 
-  /** A sealed body to everyone else, or to connection `to`, or `fallback` instead if that is over MAX_PUSHED; resolves to
-   * whether it went out. */
-  send(body, to, fallback) {
+  /** `plain` sealed; null when too big to send. */
+  async seal(plain) {
+    const sealed = await this.keys.sealLive(plain);
+    return b64Length(sealed) > MAX_FRAME - 100 ? null : sealed;
+  }
+
+  /** Sealed `plain` through the relay to connection `to`, or to everyone else when null, after everything sent before it;
+   * resolves to whether it went out. */
+  post(plain, to, fallback) {
     if (!this.connected) return Promise.resolve(false);
     const ws = this.ws;
+    const conn = to === null ? null : connNumber(to);
+    if (to !== null && conn === null) return Promise.resolve(false);
     const sent = this.out.then(async () => {
-      let sealed = await this.seal(body);
-      if (fallback && (!sealed || sealed.length > MAX_PUSHED)) sealed = await this.seal(fallback);
+      let sealed = await this.seal(plain);
+      if (fallback && (!sealed || b64Length(sealed) > MAX_PUSHED)) sealed = await this.seal(fallback);
       if (!sealed || ws !== this.ws || ws.readyState !== 1) return false;
-      ws.send(JSON.stringify(to ? { to, body: sealed } : { body: sealed }));
+      ws.send(relayFrame(conn, sealed));
       this.relaySent = this.now();
       return true;
     }).catch(() => false);
@@ -220,36 +277,74 @@ export class Live {
     return sent;
   }
 
-  /** Whether every other connection has an open channel. */
-  get allDirect() {
-    return this.roster.size > 0 && [...this.roster.keys()].every((id) => this.direct?.isOpen(id));
+  /** A JSON body to everyone else, or to connection `to`, or `fallback` instead if that is over MAX_PUSHED. */
+  send(body, to, fallback) {
+    const json = (b) => enc.encode(JSON.stringify(b));
+    return this.post(json(body), to ?? null, fallback && json(fallback));
   }
 
-  get sendMs() {
-    return this.allDirect ? DIRECT_SEND_MS : SEND_MS;
+  /** Roster connections that see `board`, or all of them for null: by their `boards`, else their `board`, and any not
+   * heard from yet. */
+  recipients(board) {
+    return [...this.roster.keys()].filter((id) => {
+      const p = this.peers.get(id);
+      return board === null || !p?.person || (p.boards ? p.boards.includes(board) : p.board === board);
+    });
   }
 
-  /** A cursor or live body, stamped with this device's time and the next sequence number: over every open channel, and
-   * to the relay unless all are open; `relayOnly` for the holder's heartbeat, which keeps the holds there. */
-  sendFast(body, { relayOnly = false } = {}) {
-    if (!this.connected) return Promise.resolve(false);
-    const stamped = { ...body, at: this.clock(), seq: ++this.seq };
-    const ws = this.ws;
-    const sent = this.out.then(async () => {
-      const sealed = await this.seal(stamped);
-      if (!sealed || ws !== this.ws) return false;
-      if (!relayOnly && this.direct) {
-        const bytes = decode(sealed);
-        for (const id of this.roster.keys()) this.direct.version(id) === 2 ? this.direct.sendBytes(id, bytes) : this.direct.send(id, sealed);
+  stamp() {
+    return { seq: ++this.seq, at: this.clock() - this.started, now: this.now() };
+  }
+
+  /** What waits on `pipe`: the latest live body for its board, with the cursor inside for compact recipients during a
+   * gesture, then the latest cursor for whom that did not reach. */
+  flush(pipe) {
+    if (!this.connected) return;
+    const live = pipe.live ? this.lastLive : null, cursor = pipe.cursor, everyone = cursor && pipe.everyone;
+    pipe.live = pipe.cursor = false;
+    if (cursor) pipe.everyone = false;
+    const c = this.cursor;
+    const fold = cursor && !everyone && live && this.mine.size && c?.board === live.board ? [c.x, c.y] : null;
+    let folded = [];
+    if (live) {
+      const json = { t: "live", board: live.board, items: trimmed(live.items, 100), caret: live.caret };
+      folded = this.emit(pipe, "live", this.recipients(live.board), { ...live, cursor: fold }, json);
+    }
+    if (!cursor) return;
+    const ids = this.recipients(everyone ? null : this.cursorBoard).filter((id) => !fold || !folded.includes(id));
+    const json = { t: "cursor", board: this.cursorBoard, x: c ? round(c.x, 100) : null, y: c ? round(c.y, 100) : null };
+    this.emit(pipe, "cursor", ids, { board: this.cursorBoard, x: c?.x ?? null, y: c?.y ?? null }, json);
+  }
+
+  /** A cursor or live body to those of `ids` on `pipe`: compact where they read it, else JSON; → who got it compact. */
+  emit(pipe, kind, ids, body, json) {
+    ids = ids.filter((id) => (this.direct?.isOpen(id) ?? false) === pipe.direct);
+    if (!ids.length) return [];
+    const stamp = this.stamp();
+    const plain = () => enc.encode(JSON.stringify({ ...json, at: round(stamp.at, 10), seq: stamp.seq }));
+    if (pipe.direct) {
+      const v2 = ids.filter((id) => this.direct.version(id) === 2), v1 = ids.filter((id) => !v2.includes(id));
+      const bytes = v2.length ? pipe.compact(kind, v2, body, stamp) : null;
+      if (bytes) for (const id of v2) this.direct.sendBytes(id, bytes);
+      if (v1.length) {
+        const text = plain();
+        this.out = this.out.then(async () => {
+          const sealed = await this.seal(text);
+          if (sealed) for (const id of v1) this.direct.send(id, encode(sealed));
+        }).catch(() => {});
       }
-      if ((relayOnly || !this.allDirect) && ws.readyState === 1) {
-        ws.send(JSON.stringify({ body: sealed }));
-        this.relaySent = this.now();
-      }
-      return true;
-    }).catch(() => false);
-    this.out = sent;
-    return sent;
+      return bytes ? v2 : [];
+    }
+    const to = ids.length === 1 ? ids[0] : null;
+    if (ids.every((id) => this.peers.get(id)?.v === 2)) {
+      const bytes = pipe.compact(kind, ids, body, stamp);
+      if (bytes) this.post(bytes, to);
+      return bytes ? ids : [];
+    }
+    // its compact encoder's last body did not reach these
+    pipe.to[kind] = null;
+    this.post(plain(), to);
+    return [];
   }
 
   async received(text) {
@@ -276,6 +371,7 @@ export class Live {
         return this.sendPresence(m.id);
       case "leave":
         this.peers.delete(m.id);
+        this.decoders.delete(m.id);
         this.holds.delete(m.id);
         this.roster.delete(m.id);
         this.direct?.leave(m.id);
@@ -288,22 +384,43 @@ export class Live {
         if (Array.isArray(m.ids) && m.ids.length) this.onRefused(new Set(m.ids));
         return;
     }
-    if (typeof m?.from === "string" && typeof m.body === "string") await this.opened(m.from, m.body, false);
+    if (typeof m?.from === "string" && typeof m.body === "string") await this.opened(m.from, decode(m.body), "relay");
   }
 
-  /** A sealed body from connection `from`, through the relay or, `direct`, over its channel, which carries only
-   * cursors and live edits. */
-  async opened(from, body, direct) {
-    let b;
+  /** A binary frame from the relay: the sender's number, then the sealed body. */
+  async receivedFrame(bytes) {
+    const f = parseRelayFrame(bytes);
+    if (f) await this.opened(String(f.from), f.body, "relay");
+  }
+
+  /** A sealed body from connection `from`, through `pipe`. */
+  async opened(from, sealed, pipe) {
+    let plain;
     try {
-      b = JSON.parse(dec.decode(await this.keys.openLive(decode(body))));
+      plain = await this.keys.openLive(sealed);
     } catch {
       return;
     }
+    this.take(from, plain, pipe);
+  }
+
+  /** A body from connection `from`, compact or JSON; a channel carries only cursors and live edits, and a version 2
+   * channel only compact ones. */
+  take(from, plain, pipe, compactOnly = false) {
     if (!this.connected) return;
+    let b = null;
+    if (isCompact(plain)) {
+      if (!this.decoders.has(from)) this.decoders.set(from, { direct: new LiveDecoder(), relay: new LiveDecoder() });
+      b = this.decoders.get(from)[pipe].decode(plain, this.peers.get(from)?.overlay);
+    } else if (!compactOnly) {
+      try {
+        b = JSON.parse(dec.decode(plain));
+      } catch {}
+    }
+    if (!b) return;
     this.roster.set(from, this.now());
-    if (["offer", "answer", "ice"].includes(b?.t)) return direct || this.direct?.heard(from, b);
-    if (direct && b?.t !== "cursor" && b?.t !== "live") return;
+    if (["offer", "answer", "ice"].includes(b.t)) return pipe === "direct" || this.direct?.heard(from, b);
+    if (pipe === "direct" && b.t !== "cursor" && b.t !== "live") return;
     this.heard(from, b);
   }
 
@@ -322,18 +439,16 @@ export class Live {
       case "presence":
         if (decode(b.device)?.length !== 16) return;
         p.person = personOf(b.device, String(b.name ?? "").slice(0, 100));
+        p.v = typeof b.v === "number" && b.v >= 2 ? 2 : 1;
         p.board = typeof b.board === "string" ? b.board : null;
+        p.boards = Array.isArray(b.boards) ? b.boards.filter((x) => typeof x === "string") : null;
         p.selection = Array.isArray(b.selection) ? b.selection.filter((x) => typeof x === "string") : [];
         // a cursor not heard yet, as a newcomer gets it; later ones come as cursor messages, so a faded one stays faded
         if ("cursor" in b && !p.cursorAt) [p.cursor, p.cursorAt] = [pointOf(b.cursor), now];
         break;
-      case "cursor": {
-        const c = pointOf(b);
-        if (!c || c.board !== p.cursor?.board) p.cursorTrack = null;
-        if (c) (p.cursorTrack ??= new Track()).push(at, arrival, [c.x, c.y]);
-        [p.cursor, p.cursorAt] = [c, now];
+      case "cursor":
+        this.moved(p, pointOf(b), at, arrival);
         break;
-      }
       case "live": {
         const board = typeof b.board === "string" ? b.board : null;
         if (board !== p.overlayBoard) p.motion.clear();
@@ -355,6 +470,12 @@ export class Live {
           }
         }
         p.caret = caretOf(b.caret);
+        // a cursor inside a live body counts as a cursor body with its seq
+        const c = Array.isArray(b.cursor) && pointOf({ board, x: b.cursor[0], y: b.cursor[1] });
+        if (c && integral(b.seq) && b.seq > (p.seqs.cursor ?? 0)) {
+          p.seqs.cursor = b.seq;
+          this.moved(p, c, at, arrival);
+        }
         break;
       }
       case "pushed":
@@ -371,6 +492,13 @@ export class Live {
     }
     this.dropReleased();
     this.onChange();
+  }
+
+  /** Peer `p`'s cursor is at `c`, or hidden for null, as of its sender's `at`. */
+  moved(p, c, at, arrival) {
+    if (!c || c.board !== p.cursor?.board) p.cursorTrack = null;
+    if (c) (p.cursorTrack ??= new Track()).push(at, arrival, [c.x, c.y]);
+    [p.cursor, p.cursorAt] = [c, this.now()];
   }
 
   /** Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
@@ -401,8 +529,8 @@ export class Live {
     this.onChange();
   }
 
-  /** About once a second: forgets the silent, fades still cursors, repeats presence and a holder's live fields, and checks
-   * that the relay still answers. */
+  /** About once a second: forgets the silent, fades still cursors, repeats presence, tells the relay a holder is still
+   * here, and checks that the relay still answers. */
   tick() {
     const now = this.now();
     if (this.connected && this.pingWaiting !== null && now - this.pingWaiting >= PONG_TIMEOUT_MS) {
@@ -427,17 +555,17 @@ export class Live {
     for (const [conn, p] of this.peers) {
       if (now - p.heard > GONE_MS) {
         this.peers.delete(conn);
+        this.decoders.delete(conn);
         changed = true;
       } else if (p.cursor && now - p.cursorAt > IDLE_CURSOR_MS) {
         p.cursor = null;
         changed = true;
       }
     }
-    // a holder the relay has not heard from lately: live edits that go only direct do not reach it
+    // a holder the relay has not heard from lately, as live edits may go only direct, keeps its holds there
     if (this.connected && this.mine.size && now - this.relaySent >= HEARTBEAT_MS) {
       this.relaySent = now;
-      const minimal = { t: "live", board: this.presence.board ?? this.cursorBoard, items: {}, caret: null };
-      (this.lastLive ? this.sendFast(this.lastLive, { relayOnly: true }) : Promise.resolve(false)).then((ok) => ok || this.sendFast(minimal, { relayOnly: true }));
+      this.frame({ t: "alive" });
     }
     if ([...this.peers.values()].some((p) => p.unheld.size)) {
       this.dropReleased();
@@ -453,9 +581,11 @@ export class Live {
     this.sendPresence();
   }
 
-  setPresence({ board, selection }) {
-    if (board === this.presence.board && JSON.stringify(selection) === JSON.stringify(this.presence.selection)) return;
-    this.presence = { board, selection };
+  /** Where this device is: `board`, every board it shows (`boards`, `board` alone by default), and what it selected. */
+  setPresence({ board, boards = board ? [board] : [], selection }) {
+    const next = { board, boards, selection };
+    if (JSON.stringify(next) === JSON.stringify(this.presence)) return;
+    this.presence = next;
     this.sendPresence();
   }
 
@@ -463,25 +593,28 @@ export class Live {
     if (!this.connected) return;
     if (!to) this.presenceSent = this.now();
     const { device, name } = this.me;
-    this.send({ t: "presence", device, name, colour: colourOf(device), board: this.presence.board, selection: this.presence.selection, cursor: this.cursor }, to);
+    const c = this.cursor && { board: this.cursor.board, x: round(this.cursor.x, 100), y: round(this.cursor.y, 100) };
+    this.send({ t: "presence", v: 2, device, name, ...this.presence, cursor: c }, to);
   }
 
-  /** This device's pointer on `board`; null x and y hide it. At most every 50 ms, and the last one always goes; none while
+  /** This device's pointer on `board`; null x and y hide it. Each pipe sends the latest when its gate lets it; none while
    * nobody else is here, as a newcomer gets it with the presence sent when it joins. */
   sendCursor(board, x, y) {
-    this.cursor = Number.isFinite(x) && Number.isFinite(y) ? { board, x, y } : null;
+    this.cursor = Number.isFinite(x) && Number.isFinite(y) ? { board, x: clamp(x), y: clamp(y) } : null;
+    if (board !== this.cursorBoard) for (const p of this.pipes) p.everyone = true;
     this.cursorBoard = board;
-    if (!this.peers.size) return;
-    this.cursorGate.run(() => {
-      this.flushCursor();
-      // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
-      const n = ++this.cursorSends;
-      this.schedule(CURSOR_REPEAT_MS, () => n === this.cursorSends && this.allDirect && this.peers.size && this.flushCursor());
+    if (!this.roster.size) return;
+    for (const p of this.pipes) {
+      p.cursor = true;
+      p.gate.run();
+    }
+    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+    const n = ++this.cursorSends;
+    this.schedule(CURSOR_REPEAT_MS, () => {
+      if (n !== this.cursorSends) return;
+      this.channels.cursor = true;
+      this.channels.gate.run();
     });
-  }
-
-  flushCursor() {
-    this.sendFast({ t: "cursor", board: this.cursorBoard, x: this.cursor?.x ?? null, y: this.cursor?.y ?? null });
   }
 
   /** Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. */
@@ -496,15 +629,19 @@ export class Live {
     if (!this.mine.size) return;
     this.mine.clear();
     this.lastLive = null;
+    for (const p of this.pipes) p.restart();
     if (this.connected) this.frame({ t: "release" });
   }
 
-  /** What the gesture under way changed of what it holds; at most every 50 ms, and repeated every 5 s while held, which
-   * keeps the holds even while nobody else is here to be sent the rest. */
-  sendLive(board, items, caret = null) {
-    this.lastLive = { t: "live", board, items, caret };
-    if (!this.peers.size) return;
-    this.liveGate.run(() => this.lastLive && this.sendFast(this.lastLive));
+  /** What the gesture under way changed of what it holds, and where the held items were when it began (`starts`, as
+   * `{id: [x, y]}`); each pipe sends the latest when its gate lets it. */
+  sendLive(board, items, caret = null, starts = {}) {
+    this.lastLive = { board, items: trimmed(items), caret, starts };
+    if (!this.roster.size) return;
+    for (const p of this.pipes) {
+      p.live = true;
+      p.gate.run();
+    }
   }
 
   /** "Direct with 1 of 2 people", for the status lines, while anyone else is here. */

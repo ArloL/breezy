@@ -5,7 +5,7 @@ import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
 import { chip } from "./presence.js";
-import { liveFields, overlaid } from "./sync/overlay.js";
+import { liveFields, overlaid, startPositions } from "./sync/overlay.js";
 import { statusLines } from "./sync/engine.js";
 import { GestureHolds } from "./sync/gesture-holds.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
@@ -198,7 +198,8 @@ export class Library {
       if (!document.hidden && (!this.id || this.group === g)) g.live.connect();
       else g.live.close();
       const here = this.group === g;
-      g.live.setPresence({ board: here ? this.id : null, selection: here ? [...this.app.state.selection].sort() : [] });
+      const board = here ? this.id : null;
+      g.live.setPresence({ board, boards: board ? [board] : [], selection: here ? [...this.app.state.selection].sort() : [] });
     }
   }
 
@@ -260,7 +261,7 @@ export class Library {
     const { live, id, group } = this;
     const model = this.app.model;
     if (model.inGesture) {
-      if (live?.mine.size && id) live.sendLive(id, liveFields(model.start, model.board, live.mine, id), this.app.caret());
+      if (live?.mine.size && id) live.sendLive(id, liveFields(model.start, model.board, live.mine, id), this.app.caret(), startPositions(model.start, live.mine));
       return;
     }
     if (!this.unfinished) return;
