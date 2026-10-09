@@ -27,6 +27,13 @@ export function liveFields(start, now, ids, board) {
   return out;
 }
 
+/** Where items `ids` were when the gesture began, as `{id: [x, y]}`. */
+export function startPositions(start, ids) {
+  const out = {};
+  for (const x of start ? [...start.cards, ...start.lanes] : []) if (ids.has(x.id)) out[x.id] = [x.x, x.y];
+  return out;
+}
+
 const pair = (v) => (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite) ? v : null);
 const colour = (v) => Math.trunc(Math.min(5, Math.max(1, v)));
 

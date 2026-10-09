@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { liveFields, overlaid } from "../sync/overlay.js";
+import { liveFields, overlaid, startPositions } from "../sync/overlay.js";
 
 const card = (id, x, y, text = "t") => ({ id, x, y, w: 240, text, color: 1 });
 const lane = (id, x, y) => ({ id, x, y, w: 480, h: 720, title: "Lane" });
@@ -19,6 +19,12 @@ test("live fields are what a gesture changed of its items", () => {
   assert.equal(f.n.kind, "card");
   assert.equal(f.n.text, "new");
   assert.equal(f.n.order, undefined);
+});
+
+test("start positions are where the held cards and lanes were when the gesture began", () => {
+  const start = { cards: [card("a", 1, 2), card("b", 3, 4)], lanes: [lane("l", 5, 6)] };
+  assert.deepEqual(startPositions(start, new Set(["a", "l", "new"])), { a: [1, 2], l: [5, 6] });
+  assert.deepEqual(startPositions(null, new Set(["a"])), {});
 });
 
 test("an overlay is drawn over the board", () => {
