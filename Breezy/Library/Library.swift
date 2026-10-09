@@ -16,6 +16,8 @@ extension Notification.Name {
   private var peopleSeen = ""
   /// Boards whose windows are closing, so that the close's own flush can't close them again.
   private var closing: Set<String> = []
+  /// The latest gesture finish per space, so only the last one's sync lets go.
+  private var finishes: [ObjectIdentifier: Int] = [:]
 
   init(directory: URL) throws {
     spaces = try Spaces(directory: directory, me: Self.me())
@@ -24,8 +26,8 @@ extension Notification.Name {
     spaces.onError = { NSApp.presentError($0) }
     spaces.flushLocal = { [weak self] in self?.documents.forEach { $0.binding.flush() } }
     spaces.onLive = { [weak self] g in self?.liveChanged(g) }
-    spaces.onRefused = { [weak self] g, _ in
-      for d in self?.documents ?? [] where g.store.title(of: d.boardID) != nil { d.windowController?.canvas.refused() }
+    spaces.onRefused = { [weak self] g, ids in
+      for d in self?.documents ?? [] where g.store.title(of: d.boardID) != nil { d.windowController?.canvas.refused(ids) }
     }
     liveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
@@ -150,9 +152,13 @@ extension Notification.Name {
     doc.binding.afterGesture = { [weak self, weak doc] in
       guard let self, let doc, let g = spaces.group(of: id), let live = g.live, !live.mine.isEmpty else { return }
       doc.binding.flush()
+      let key = ObjectIdentifier(g)
+      let n = (finishes[key] ?? 0) + 1
+      finishes[key] = n
       Task {
         await g.engine.sync()
-        if !doc.model.inGesture { live.release() }
+        let busy = self.documents.contains { g.store.title(of: $0.boardID) != nil && $0.model.inGesture }
+        if self.finishes[key] == n && !busy { live.release() }
       }
     }
   }
