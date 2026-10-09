@@ -33,7 +33,9 @@ A gesture's end reaches the others after three HTTP round trips in a row: the ho
 
 Without `since`, as older devices send it, the response is as before.
 
-A cycle sends one `POST` with `since` when there is something to push and the store is not resyncing. It merges `refused`, then `records`, and advances the cursor. When `records` is full it continues with `GET`s as now. Otherwise a cycle is as before: pull, then push.
+The `POST` may also carry the device's `epoch`. When it does, and the space is missing or has another epoch, nothing is written and the answer is `{accepted: [], refused: [], epoch}`. Without this, a push that goes before the pull after a restore could be taken on a base whose number now means other contents.
+
+A cycle sends one `POST` with `since` and `epoch` when there is something to push, the store has an epoch and the store is not resyncing. It merges `refused`, then `records`, and advances the cursor. When `records` is full it continues with `GET`s as now. Otherwise a cycle is as before: pull, then push.
 
 Because `records` leaves out the request's own writes and `cursor` covers them, a device no longer pulls back what it pushed.
 
