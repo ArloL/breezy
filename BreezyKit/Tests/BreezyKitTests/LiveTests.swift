@@ -661,6 +661,28 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(ls[0].directStatus == "Direct with 1 of 1 person")
 }
 
+@MainActor @Test func withEveryChannelOpenTheLastCursorGoesOnceMore100msLater() throws {
+  let (relay, clock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  let seq = { (text: String) throws -> Double? in
+    try JSONDecoder().decode([String: JSONValue].self, from: keys().openLive(Base64URL.decode(text)!))["seq"]?.number
+  }
+  ls[0].sendCursor(board: "B1", x: 1, y: 1)
+  clock.advance(Live.directSendInterval)
+  ls[0].sendCursor(board: "B1", x: nil, y: nil)
+  relay.run()
+  ts[1].onMessage?(ls[0].id!, ts[0].sent[0].text)
+  clock.advance(0.099)
+  #expect(ts[0].sent.count == 2)
+  clock.advance(0.001)
+  #expect(ts[0].sent.count == 3)
+  #expect(try seq(ts[0].sent[2].text)! > seq(ts[0].sent[1].text)!)
+  ts[1].onMessage?(ls[0].id!, ts[0].sent[2].text)
+  #expect(ls[1].cursors(on: "B1").isEmpty)
+  clock.advance(1)
+  #expect(ts[0].sent.count == 3)
+}
+
 @MainActor @Test func onlyCursorsAndLiveEditsAreTakenFromAChannel() throws {
   let (relay, _, ts, ls) = direct()
   open(ts, ls, 0, 1)

@@ -161,6 +161,7 @@ public struct Peer: Equatable, Sendable {
   public static let sendInterval: TimeInterval = 0.05
   public static let directSendInterval: TimeInterval = 0.008
   public static let heartbeat: TimeInterval = 5
+  public static let cursorRepeat: TimeInterval = 0.1
   public static let presenceInterval: TimeInterval = 15
   public static let gone: TimeInterval = 30
   public static let holdGrace: TimeInterval = 1
@@ -210,6 +211,8 @@ public struct Peer: Equatable, Sendable {
   private var cursorBoard = ""
   private var presenceSent = Date.distantPast
   private var cursorSent = Date.distantPast, cursorQueued = false
+  /// Cursors the gate has sent.
+  private var cursorSends = 0
   private var liveSent = Date.distantPast, liveQueued = false
   private var lastLive: [String: JSONValue]?
   /// When a frame last reached the relay, which keeps this connection's holds there while it hears from it.
@@ -625,6 +628,17 @@ public struct Peer: Equatable, Sendable {
 
   private func flushCursor() {
     cursorSent = now()
+    sendCursorBody()
+    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+    cursorSends += 1
+    let n = cursorSends
+    schedule(Self.cursorRepeat) { [weak self] in
+      guard let self, n == cursorSends, allDirect, !peers.isEmpty else { return }
+      sendCursorBody()
+    }
+  }
+
+  private func sendCursorBody() {
     sendFast(["t": .string("cursor"), "board": .string(cursorBoard), "x": cursor.map { .number($0.x) } ?? .null, "y": cursor.map { .number($0.y) } ?? .null])
   }
 
