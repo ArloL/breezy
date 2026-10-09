@@ -253,3 +253,21 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(stranger.connected && b.connected)
   #expect(b.people(on: "B1").isEmpty)
 }
+
+@MainActor @Test func aHolderWithNothingLiveYetStillKeepsItsHold() {
+  let (relay, clock, a, _) = two()
+  let me = relay.sockets[0].id
+  func bodies() -> Int { relay.frames.filter { $0.from == me && $0.text.contains("\"body\"") }.count }
+  a.hold(["c1"])
+  relay.run()
+  let start = bodies()
+  clock.advance(5)
+  a.tick()
+  relay.run()
+  #expect(bodies() == start + 1)
+  a.release()
+  clock.advance(5)
+  a.tick()
+  relay.run()
+  #expect(bodies() == start + 1)
+}
