@@ -343,3 +343,22 @@ test("a failure in the old space leaves the new one free to sync", async () => {
   await a.engine.sync();
   assert.ok(pulled);
 });
+
+test("the engine learns the relay and reports pushes and pulls", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const relays = [], pushed = [], pulled = [];
+  a.engine.onRelay = (r) => relays.push(r);
+  a.engine.onPushed = (v) => pushed.push(v);
+  a.engine.onPulled = (c) => pulled.push(c);
+  server.relay = "wss://relay.example/";
+  a.edit(id, (x) => (x.cards[0].color = 2));
+  await a.engine.sync();
+  assert.equal(a.engine.relay, "wss://relay.example/");
+  assert.deepEqual(relays, ["wss://relay.example/"]);
+  assert.deepEqual(pushed, [server.version]);
+  assert.deepEqual(pulled, [server.version - 1]);
+  assert.ok(a.engine.lastCycle > 0);
+  server.relay = "http://not-a-relay";
+  await b.engine.sync();
+  assert.equal(b.engine.relay, null);
+});

@@ -16,6 +16,8 @@ export class Binding {
     this.seen = structuredClone(model.board);
     this.waiting = false;
     this.timer = null;
+    /** Items someone else holds: local changes to them are not written, as the holder's are the ones that count. */
+    this.taken = () => new Set();
   }
 
   /** After every change to the model: a merge that waited comes in now, else the change is flushed shortly. */
@@ -27,7 +29,9 @@ export class Binding {
 
   flush() {
     clearTimeout(this.timer);
+    const held = this.taken();
     const c = changes(this.seen, this.model.board, this.id, this.store.orders(this.id));
+    for (const id of held) delete c[id];
     this.seen = structuredClone(this.model.board);
     if (Object.keys(c).length) this.store.apply(c);
   }
