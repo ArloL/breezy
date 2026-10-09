@@ -31,6 +31,7 @@ export class View {
     this.ready = false;
     this.area = () => ({ top: 0, bottom: innerHeight, left: 0, right: innerWidth });
     this.onCamera = () => {};
+    this.onRender = () => {};
     this.heightOf = (id) => {
       const c = R.card(this.model.board, id);
       return c ? this.frontHeight(c.text, c.w) : 0;
@@ -172,6 +173,7 @@ export class View {
     this.marqueeEl.hidden = !m;
     if (m) Object.assign(this.marqueeEl.style, { transform: `translate(${m.x}px, ${m.y}px)`, width: `${m.w}px`, height: `${m.h}px` });
     this.ready = true;
+    this.onRender();
   }
 
   /**
@@ -231,15 +233,19 @@ export class View {
     const editing = s.editing?.id === c.id ? s.editing : null;
     const turned = s.turned === c.id;
     const r = this.rectOf(c);
+    const who = s.taken.get(c.id);
+    const mark = who?.colour ?? s.seen.get(c.id) ?? "";
     const flags = ["card", c.notes && "notes", turned && "turned", s.selection.has(c.id) && "selected", s.held.has(c.id) && "held",
-      s.lifted.has(c.id) && "lifted", s.found === c.id && "found", editing && "editing"].filter(Boolean).join(" ");
+      s.lifted.has(c.id) && "lifted", s.found === c.id && "found", editing && "editing", who && "taken", !who && mark && "seen"].filter(Boolean).join(" ");
     const f = s.held.has(c.id) && s.float?.x !== undefined ? s.float : { x: 0, y: 0 };
     const e = this.element(c.id, this.cardsEl, SHEET);
-    const key = JSON.stringify([flags, c.x + f.x, c.y + f.y, r.w, r.h, c.color, c.text, c.notes, i]);
+    const key = JSON.stringify([flags, c.x + f.x, c.y + f.y, r.w, r.h, c.color, c.text, c.notes, i, mark, who?.name]);
     if (e.key === key) return;
     e.key = key;
     const el = e.el;
     el.className = flags;
+    el.style.setProperty("--who", mark);
+    el.dataset.who = who?.name ?? "";
     this.place(e, c.x + f.x, c.y + f.y, s.held.has(c.id), s.lifted.has(c.id) ? 1.05 : 1);
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
@@ -259,15 +265,19 @@ export class View {
   renderLane(l) {
     const s = this.state;
     const renaming = s.renaming === l.id;
+    const who = s.taken.get(l.id);
+    const mark = who?.colour ?? s.seen.get(l.id) ?? "";
     const flags = ["lane", s.selection.has(l.id) && "selected", s.held.has(l.id) && "held", s.found === l.id && "found",
-      renaming && "renaming"].filter(Boolean).join(" ");
+      renaming && "renaming", who && "taken", !who && mark && "seen"].filter(Boolean).join(" ");
     const f = { x: 0, y: 0, w: 0, h: 0, ...(s.held.has(l.id) && s.float) };
     const e = this.element(l.id, this.lanesEl, '<div class="header"><div class="title"></div></div><div class="grip"></div>');
-    const key = JSON.stringify([flags, l.x + f.x, l.y + f.y, l.w + f.w, l.h + f.h, l.title]);
+    const key = JSON.stringify([flags, l.x + f.x, l.y + f.y, l.w + f.w, l.h + f.h, l.title, mark, who?.name]);
     if (e.key === key) return;
     e.key = key;
     const el = e.el;
     el.className = flags;
+    el.style.setProperty("--who", mark);
+    el.dataset.who = who?.name ?? "";
     this.place(e, l.x + f.x, l.y + f.y, s.held.has(l.id));
     el.style.width = `${l.w + f.w}px`;
     el.style.height = `${l.h + f.h}px`;

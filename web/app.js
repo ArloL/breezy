@@ -32,15 +32,20 @@ function newlineForBreak(el) {
 export class App {
   constructor(board) {
     this.touching = true;
-    this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), float: null, marquee: null, found: null };
+    this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), float: null, marquee: null, found: null, taken: new Map(), seen: new Map() };
     this.model = new Model(board);
     this.view = new View(document.getElementById("board"), this.model, this.state);
+    this.presence = new Presence(this.view);
+    this.view.onRender = () => this.presence.place();
+    /** After the selection changes, for others to see. */
+    this.onSelect = () => {};
     R.gravity(this.model.board, this.view.heightOf);
     this.ui = new UI(this);
     this.input = new Input(this);
     this.view.area = () => this.ui.area();
     this.view.onCamera = () => {
       this.ui.updateZoom();
+      this.presence.place();
       if (this.state.turned) this.view.invalidate();
     };
     this.model.onChange = () => {
@@ -72,10 +77,12 @@ export class App {
     return this.model.board.lanes.filter((l) => this.state.selection.has(l.id));
   }
 
+  /** Selects `ids`, leaving out what someone else holds. */
   select(ids) {
-    this.state.selection = new Set(ids);
+    this.state.selection = new Set([...ids].filter((id) => !this.state.taken.has(id)));
     this.view.invalidate();
     this.ui.update();
+    this.onSelect();
   }
 
   toggle(id) {

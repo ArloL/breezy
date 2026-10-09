@@ -22,6 +22,7 @@ const editor = (e) => e.target.closest?.('[contenteditable="plaintext-only"]');
 board.addEventListener("pointerdown", (e) => {
   if (editor(e)) return;
   app.touching = e.pointerType !== "mouse";
+  app.library?.pointerAt({ x: e.clientX, y: e.clientY });
   if (e.pointerType === "mouse") {
     if (e.button !== 0) return;
     // a click on the board takes the keyboard from the find field, as clicking the canvas does on the Mac
@@ -38,15 +39,21 @@ board.addEventListener("mousedown", (e) => editor(e) || e.preventDefault());
 // Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
 board.addEventListener("touchstart", (e) => editor(e) || e.preventDefault(), { passive: false });
 addEventListener("pointermove", (e) => {
+  app.library?.pointerAt({ x: e.clientX, y: e.clientY });
   if (e.pointerType === "mouse") return mouse.move({ x: e.clientX, y: e.clientY, buttons: e.buttons });
   gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp);
 });
 addEventListener("pointerup", (e) => {
+  if (e.pointerType !== "mouse") app.library?.touchEnded();
   if (e.pointerType === "mouse") return e.button === 0 && mouse.up({ x: e.clientX, y: e.clientY });
   gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp);
 });
 addEventListener("pointercancel", (e) => (e.pointerType === "mouse" ? mouse.cancel() : gestures.cancel(e.pointerId)));
-addEventListener("pointerout", (e) => e.pointerType === "mouse" && !e.relatedTarget && mouse.leave());
+addEventListener("pointerout", (e) => {
+  if (e.pointerType !== "mouse" || e.relatedTarget) return;
+  mouse.leave();
+  app.library?.pointerAt(null);
+});
 board.addEventListener("contextmenu", (e) => editor(e) || e.preventDefault());
 
 addEventListener("wheel", (e) => {
