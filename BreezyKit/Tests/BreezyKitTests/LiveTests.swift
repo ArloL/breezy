@@ -461,7 +461,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(b.overlay(on: "B1")["c1"] == ["pos": .array([.number(15), .number(0)]), "text": .string("abc")])
 }
 
-@MainActor @Test func duplicatesAndLateBodiesAreDroppedAndUnstampedOnesTaken() {
+@MainActor @Test func duplicatesAndLateBodiesAreDropped() {
   let (relay, clock, a, b) = two()
   a.sendCursor(board: "B1", x: 5, y: 5)
   relay.run()
@@ -473,4 +473,18 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   relay.run()
   clock.advance(0.2)
   #expect(b.cursors(on: "B1").map { $0.cursor.x } == [9])
+}
+
+@MainActor @Test func aSeqThatIsNotAnIntegerInRangeIsTreatedAsAbsent() throws {
+  let (relay, clock, a, b) = two()
+  let s = relay.sockets.first { $0.id == a.id }!
+  for (i, seq) in [1e30, 1.5].enumerated() {
+    let body: [String: JSONValue] = ["t": .string("cursor"), "board": .string("B1"), "x": .number(Double(i + 1)), "y": .number(0), "seq": .number(seq)]
+    let sealed = try keys().sealLive(JSONEncoder().encode(JSONValue.object(body)))
+    let frame = try JSONEncoder().encode(["body": Base64URL.encode(sealed)])
+    relay.received(s, String(decoding: frame, as: UTF8.self))
+    relay.run()
+    clock.advance(0.2)
+    #expect(b.cursors(on: "B1").map { $0.cursor.x } == [Double(i + 1)])
+  }
 }
