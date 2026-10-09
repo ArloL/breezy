@@ -24,6 +24,9 @@ extension Notification.Name {
     spaces.onError = { NSApp.presentError($0) }
     spaces.flushLocal = { [weak self] in self?.documents.forEach { $0.binding.flush() } }
     spaces.onLive = { [weak self] g in self?.liveChanged(g) }
+    spaces.onRefused = { [weak self] g, _ in
+      for d in self?.documents ?? [] where g.store.title(of: d.boardID) != nil { d.windowController?.canvas.refused() }
+    }
     liveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
@@ -136,6 +139,22 @@ extension Notification.Name {
       self?.spaces.group(of: id)?.live?.sendCursor(board: id, x: p.map { Double($0.x) }, y: p.map { Double($0.y) })
     }
     canvas.onSelection = { [weak self] in self?.updateLive() }
+    canvas.hold = { [weak self] ids in self?.spaces.group(of: id)?.live?.hold(ids) }
+    doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
+    doc.binding.afterEdit = { [weak self, weak doc] in
+      guard let self, let doc, let live = spaces.group(of: id)?.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
+      live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),
+                    caret: doc.windowController?.canvas.caret())
+    }
+    // at a gesture's end: push at once, then let go, unless another gesture began meanwhile
+    doc.binding.afterGesture = { [weak self, weak doc] in
+      guard let self, let doc, let g = spaces.group(of: id), let live = g.live, !live.mine.isEmpty else { return }
+      doc.binding.flush()
+      Task {
+        await g.engine.sync()
+        if !doc.model.inGesture { live.release() }
+      }
+    }
   }
 
   /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front.

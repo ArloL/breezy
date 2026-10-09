@@ -62,10 +62,16 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// What others do on this board.
   var presence = CanvasPresence() { didSet { if presence != oldValue { presenceChanged(from: oldValue) } } }
   let presenceView = PresenceView()
+  /// Heights of cards whose text others are typing, as drawn.
+  var overlayHeights: [String: Double] = [:]
+  /// What the canvas draws: the board, with others' live edits over it.
+  var shown: Board { board.overlaid(presence.overlay) }
   /// This Mac's pointer over the board, in world points; nil when it left.
   var onPointer: ((NSPoint?) -> Void)?
   /// After the selection changes, for others to see.
   var onSelection: (() -> Void)?
+  /// Asks the space to hold these ids for the gesture starting.
+  var hold: ((Set<String>) -> Void)?
 
   init(model: BoardModel) {
     self.model = model
@@ -128,7 +134,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     b.gravity { h[$0] ?? 2 * Metrics.grid }
   }
 
-  func frontRect(_ c: Card) -> Rect { c.rect(height: height(c.id)) }
+  func frontRect(_ c: Card) -> Rect { c.rect(height: overlayHeights[c.id] ?? height(c.id)) }
 
   /// Where card `c` is drawn: a turned card widens and grows to its back.
   func drawnRect(_ c: Card) -> Rect {
@@ -182,7 +188,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   func placeLanes(appearing: Bool = false) {
     let animate = !Spring.reduced
     var live = Set<String>()
-    for l in board.lanes {
+    for l in shown.lanes {
       live.insert(l.id)
       let isNew = laneViews[l.id] == nil
       let v = laneViews[l.id] ?? makeLaneView(l)
@@ -193,7 +199,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       guard animate, let layer = v.layer else { continue }
       if isNew {
         if appearing { layer.appear() }
-      } else if held.ids.contains(l.id) {
+      } else if held.ids.contains(l.id) || presence.taken[l.id] != nil {
         layer.stopMoving()
       } else {
         // in the layer's coordinates, which AppKit may flip
@@ -254,7 +260,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     CATransaction.begin()
     var live = Set<String>()
     var lagging = false
-    for (i, c) in board.cards.enumerated() {
+    for (i, c) in shown.cards.enumerated() {
       var r = doc(drawnRect(c))
       let isHeld = held.ids.contains(c.id)
       if isHeld { r = r.offsetBy(dx: held.offset.width, dy: held.offset.height) }
@@ -274,7 +280,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       // not the frame, which a lift's scale would distort
       l.bounds = CGRect(origin: .zero, size: f.size)
       l.position = CGPoint(x: f.midX, y: f.midY)
-      if isHeld {
+      if isHeld || presence.taken[c.id] != nil {
         l.stopMoving()
       } else if animate, !isNew, let old {
         l.springMove(from: CGSize(width: old.minX - r.minX, height: old.minY - r.minY))
@@ -312,7 +318,11 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   private func presenceChanged(from old: CanvasPresence) {
     let taken = Set(presence.taken.keys)
     if !selection.isDisjoint(with: taken) { selection.subtract(taken) }
-    if presence.taken != old.taken || presence.seen != old.seen {
+    if presence.overlay != old.overlay || presence.taken != old.taken || presence.seen != old.seen {
+      overlayHeights = [:]
+      for c in shown.cards where presence.overlay[c.id]?["text"] != nil || board.card(c.id) == nil {
+        overlayHeights[c.id] = Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w)))
+      }
       placeLanes()
       layoutCards()
     } else {
@@ -326,9 +336,20 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       PresenceView.Mark(key: "cursor " + $0.key, kind: .cursor, person: $0.person, rect: NSRect(x: $0.x + Self.origin, y: $0.y + Self.origin, width: 0, height: 0))
     }
     for (id, person) in presence.taken {
-      guard let r = board.card(id).map(drawnRect) ?? board.lane(id)?.rect else { continue }
+      guard let r = shown.card(id).map(drawnRect) ?? shown.lane(id)?.rect else { continue }
       let d = doc(r)
       marks.append(PresenceView.Mark(key: "label " + id, kind: .label, person: person, rect: NSRect(x: d.minX - 4, y: d.minY - 6, width: 0, height: 0)))
+    }
+    for t in presence.carets {
+      guard let c = shown.card(t.caret.id), t.caret.back == (turned == c.id) else { continue }
+      let r = doc(drawnRect(c))
+      let back = t.caret.back
+      let s = back ? Typo.back(text: c.text, notes: c.notes ?? "", placeholder: false) : Typo.front(c.text)
+      let inset = back ? NSSize(width: Typo.backPad, height: Typo.backPad) : NSSize(width: Typo.padX, height: Typo.padY)
+      // on the back the notes follow the heading line
+      let at = back ? (String(c.text.prefix { $0 != "\n" }) as NSString).length + 1 + t.caret.at : t.caret.at
+      let k = TextMetrics.caret(s, width: r.width - 2 * inset.width, at: at)
+      marks.append(PresenceView.Mark(key: "caret " + t.key, kind: .caret, person: t.person, rect: k.offsetBy(dx: r.minX + inset.width, dy: r.minY + inset.height)))
     }
     presenceView.show(marks, zoom: zoom)
   }
