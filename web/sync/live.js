@@ -12,6 +12,7 @@ export const DIRECT_SEND_MS = 8;
 export const HEARTBEAT_MS = 5_000;
 export const PRESENCE_MS = 15_000;
 export const GONE_MS = 30_000;
+export const HOLD_GRACE_MS = 1_000;
 export const IDLE_CURSOR_MS = 60_000;
 export const MAX_BACKOFF_MS = 30_000;
 export const PING_MS = 20_000;
@@ -81,7 +82,8 @@ export class Live {
     this.pingSent = -Infinity;
     /** When a ping went out that nothing has answered yet. */
     this.pingWaiting = null;
-    /** Connection id → { person, board, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret, awaiting }. */
+    /** Connection id → { person, board, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret, awaiting,
+     * unheld: Map of overlay id → when its live body last came while its sender did not hold it }. */
     this.peers = new Map();
     /** Connection id → the ids it holds. */
     this.holds = new Map();
@@ -293,7 +295,7 @@ export class Live {
 
   heard(from, b) {
     const now = this.now();
-    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, cursorTrack: null, motion: new Map(), seqs: {} };
+    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
     p.heard = now;
     const arrival = this.clock();
     const at = Number.isFinite(b?.at) ? b.at : arrival;
@@ -325,6 +327,8 @@ export class Live {
         for (const [id, f] of Object.entries(b.items ?? {})) {
           if (!f || typeof f !== "object") continue;
           p.overlay.set(id, { ...p.overlay.get(id), ...pick(f) });
+          if (this.holds.get(from)?.has(id)) p.unheld.delete(id);
+          else p.unheld.set(id, now);
           for (const k of MOVING) {
             const v = numbers(f[k]);
             if (!v) continue;
@@ -352,15 +356,24 @@ export class Live {
     this.onChange();
   }
 
-  /** Overlays of items no longer held go, unless their holder pushed a version not pulled yet. */
+  /** Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
+   * HOLD_GRACE_MS after its last live body, as that may come direct before the relay says it is held. */
   dropReleased() {
+    const now = this.now();
     for (const [conn, p] of this.peers) {
       if (p.awaiting > this.storeCursor) continue;
       p.awaiting = 0;
       const held = this.holds.get(conn) ?? new Set();
-      for (const id of [...p.overlay.keys()]) if (!held.has(id)) p.overlay.delete(id);
+      for (const id of [...p.overlay.keys()]) {
+        const since = p.unheld.get(id);
+        if (held.has(id)) p.unheld.delete(id);
+        else if (since === undefined || now - since >= HOLD_GRACE_MS) {
+          p.overlay.delete(id);
+          p.unheld.delete(id);
+        }
+      }
       for (const key of [...p.motion.keys()]) if (!p.overlay.has(key.slice(0, key.indexOf(" ")))) p.motion.delete(key);
-      if (!held.size) p.caret = null;
+      if (!held.size && !p.unheld.size) p.caret = null;
     }
   }
 
@@ -400,6 +413,10 @@ export class Live {
       this.relaySent = now;
       const minimal = { t: "live", board: this.presence.board ?? this.cursorBoard, items: {}, caret: null };
       (this.lastLive ? this.sendFast(this.lastLive, { relayOnly: true }) : Promise.resolve(false)).then((ok) => ok || this.sendFast(minimal, { relayOnly: true }));
+    }
+    if ([...this.peers.values()].some((p) => p.unheld.size)) {
+      this.dropReleased();
+      changed = true;
     }
     if (this.connected && now - this.presenceSent >= PRESENCE_MS) this.sendPresence();
     if (changed) this.onChange();
