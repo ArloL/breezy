@@ -462,6 +462,23 @@ test("dragged positions play back; text shows on arrival", async () => {
   assert.deepEqual(b.overlay("B1").get("c1"), { pos: [15, 0], text: "abc" });
 });
 
+test("coordinates far out are clamped, so that playing back between them stays finite", async () => {
+  const { relay, clock, a, b } = await two();
+  a.hold(["c1"]);
+  a.sendCursor("B1", 1e308, 0);
+  a.sendLive("B1", { c1: { pos: [1e308, -1e308] } }, null);
+  await relay.run();
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [1e7]);
+  assert.deepEqual(b.overlay("B1").get("c1").pos, [1e7, -1e7]);
+  clock.advance(50);
+  a.sendCursor("B1", -1e308, 0);
+  a.sendLive("B1", { c1: { pos: [-1e308, 1e308] } }, null);
+  await relay.run();
+  clock.advance(25);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [0]);
+  assert.deepEqual(b.overlay("B1").get("c1").pos, [0, 0]);
+});
+
 test("duplicates and late bodies are dropped; bodies without seq or at are taken", async () => {
   const { relay, clock, a, b } = await two();
   a.sendCursor("B1", 5, 5);

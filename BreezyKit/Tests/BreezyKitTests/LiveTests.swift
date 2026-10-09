@@ -462,6 +462,24 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(b.overlay(on: "B1")["c1"] == ["pos": .array([.number(15), .number(0)]), "text": .string("abc")])
 }
 
+@MainActor @Test func coordinatesFarOutAreClampedSoThatPlayingBackStaysFinite() {
+  let (relay, clock, a, b) = two()
+  let pos = { (x: Double, y: Double) -> JSONValue in .array([.number(x), .number(y)]) }
+  a.hold(["c1"])
+  a.sendCursor(board: "B1", x: 1e308, y: 0)
+  a.sendLive(board: "B1", items: ["c1": ["pos": pos(1e308, -1e308)]], caret: nil)
+  relay.run()
+  #expect(b.cursors(on: "B1").map { $0.cursor.x } == [1e7])
+  #expect(b.overlay(on: "B1")["c1"] == ["pos": pos(1e7, -1e7)])
+  clock.advance(0.05)
+  a.sendCursor(board: "B1", x: -1e308, y: 0)
+  a.sendLive(board: "B1", items: ["c1": ["pos": pos(-1e308, 1e308)]], caret: nil)
+  relay.run()
+  clock.advance(0.025)
+  #expect(b.cursors(on: "B1").map { $0.cursor.x } == [0])
+  #expect(b.overlay(on: "B1")["c1"] == ["pos": pos(0, 0)])
+}
+
 @MainActor @Test func duplicatesAndLateBodiesAreDropped() {
   let (relay, clock, a, b) = two()
   a.sendCursor(board: "B1", x: 5, y: 5)

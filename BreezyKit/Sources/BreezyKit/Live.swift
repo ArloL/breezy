@@ -171,6 +171,8 @@ public struct Peer: Equatable, Sendable {
   public static let pongTimeout: TimeInterval = 10
   static let maxFrame = 65_536
   static let moving = ["pos", "size", "w"]
+  /// Coordinates are kept this close to 0, so that playing back between two stays finite.
+  static let limit = 1e7
   static let encoder: JSONEncoder = {
     let e = JSONEncoder()
     e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -368,14 +370,16 @@ public struct Peer: Equatable, Sendable {
   private static func cursor(_ v: JSONValue?) -> Cursor? {
     guard let o = v?.object, let board = o["board"]?.string, let x = o["x"]?.number, let y = o["y"]?.number, x.isFinite, y.isFinite
     else { return nil }
-    return Cursor(board: board, x: x, y: y)
+    return Cursor(board: board, x: clamped(x), y: clamped(y))
   }
 
+  private static func clamped(_ v: Double) -> Double { min(limit, max(-limit, v)) }
+
   private static func numbers(_ v: JSONValue?) -> [Double]? {
-    if let n = v?.number, n.isFinite { return [n] }
+    if let n = v?.number, n.isFinite { return [clamped(n)] }
     guard let a = v?.array else { return nil }
     let ns = a.compactMap(\.number)
-    return !a.isEmpty && ns.count == a.count && ns.allSatisfy(\.isFinite) ? ns : nil
+    return !a.isEmpty && ns.count == a.count && ns.allSatisfy(\.isFinite) ? ns.map(clamped) : nil
   }
 
   /// `v` as an Int when it is a whole number within ±2^53.
