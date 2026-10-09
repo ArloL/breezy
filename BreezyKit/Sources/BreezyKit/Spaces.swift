@@ -131,7 +131,8 @@ import Foundation
   /// by space id.
   public var groups: [Group] {
     [local] + spaces.sorted { a, b in
-      let order = a.name.compare(b.name, options: [.caseInsensitive, .numeric, .widthInsensitive], locale: .current)
+      let fold = { (g: Group) in g.name.folding(options: [.caseInsensitive, .widthInsensitive], locale: .current) }
+      let order = fold(a).compare(fold(b), options: .numeric, locale: .current)
       return order == .orderedSame ? a.space! < b.space! : order == .orderedAscending
     }
   }
