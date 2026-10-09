@@ -136,3 +136,53 @@ import Foundation
     if let code { queue.append { s.onClose?(code) } }
   }
 }
+
+/// A PeerTransport that records what Direct asks of it. Answers and accepts complete at once, or on `release()` while
+/// `deferred`; `onOffer` candidates are gathered while an offer is made, as a browser may.
+@MainActor final class FakePeerTransport: PeerTransport {
+  var onCandidate: ((String, IceCandidate?) -> Void)?
+  var onState: ((String, PeerState) -> Void)?
+  var onMessage: ((String, String) -> Void)?
+  var log: [String] = []
+  var sent: [(id: String, text: String)] = []
+  var deferred = false
+  var waiting: [() -> Void] = []
+  var onOffer: [IceCandidate] = []
+  /// Steps ("offer", "answer", "accept") that fail.
+  var fail: Set<String> = []
+
+  func create(_ peer: String) { log.append("create \(peer)") }
+
+  func offer(_ peer: String, restart: Bool, _ done: @escaping @MainActor (String?) -> Void) {
+    log.append("offer \(peer)\(restart ? " restart" : "")")
+    for c in onOffer { onCandidate?(peer, c) }
+    done(fail.contains("offer") ? nil : "offer-sdp \(peer)")
+  }
+
+  func answer(_ peer: String, offer: String, _ done: @escaping @MainActor (String?) -> Void) {
+    log.append("answer \(peer) \(offer)")
+    later { [self] in done(fail.contains("answer") ? nil : "answer-sdp \(peer)") }
+  }
+
+  func accept(_ peer: String, answer: String, _ done: @escaping @MainActor (Bool) -> Void) {
+    log.append("accept \(peer) \(answer)")
+    later { [self] in done(!fail.contains("accept")) }
+  }
+
+  func add(_ peer: String, candidate: IceCandidate) { log.append("add \(peer) \(candidate.candidate)") }
+
+  func send(_ peer: String, _ text: String) -> Bool {
+    sent.append((peer, text))
+    return true
+  }
+
+  func close(_ peer: String) { log.append("close \(peer)") }
+
+  private func later(_ work: @escaping () -> Void) { if deferred { waiting.append(work) } else { work() } }
+
+  func release() {
+    let w = waiting
+    waiting = []
+    w.forEach { $0() }
+  }
+}
