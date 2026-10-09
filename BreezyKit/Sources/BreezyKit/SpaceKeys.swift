@@ -33,11 +33,14 @@ public struct Invite: Codable, Equatable, Sendable {
   public var server: String
   public var space: String
   public var secret: String
+  /// The space's name when the invite was made; for showing before the first pull.
+  public var name: String?
 
-  public init(server: String, space: String, secret: String) {
+  public init(server: String, space: String, secret: String, name: String? = nil) {
     self.server = server
     self.space = space
     self.secret = secret
+    self.name = name
   }
 
   public var link: String {

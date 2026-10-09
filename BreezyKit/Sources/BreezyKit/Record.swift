@@ -60,6 +60,11 @@ public enum Records {
     Record(["format": .number(Double(Record.format)), "kind": .string("board"), "title": .string(title)])
   }
 
+  /// A space's name, kept in the record whose id is the space's.
+  public static func space(name: String) -> Record {
+    Record(["format": .number(Double(Record.format)), "kind": .string("space"), "name": .string(name)])
+  }
+
   /// Board `id` as `records` describe it: cards by order key, then id; lanes by id.
   public static func board(_ id: String, from records: [String: Record]) -> Board {
     var cards: [(order: String, card: Card)] = []

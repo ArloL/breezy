@@ -30,6 +30,8 @@ public struct SpaceState: Codable, Equatable, Sendable {
   public var epoch: String?
   /// Pulling everything again after the epoch changed.
   public var resync = false
+  /// The name the invite gave, until the space's name record arrives.
+  public var invitedName: String?
 
   public init() {}
 
@@ -52,6 +54,7 @@ extension SpaceState {
     unreadable = try c.decode(Int.self, forKey: .unreadable)
     epoch = try c.decodeIfPresent(String.self, forKey: .epoch)
     resync = try c.decodeIfPresent(Bool.self, forKey: .resync) ?? false
+    invitedName = try c.decodeIfPresent(String.self, forKey: .invitedName)
   }
 }
 
@@ -78,6 +81,25 @@ public final class Store {
     state.records.compactMap { id, s in
       s.current.kind == "board" && !s.current.deleted ? (id, s.current["title"]?.string ?? "") : nil
     }.sorted { $0.title == $1.title ? $0.id < $1.id : $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+  }
+
+  /// The space's name: its name record's, else the invite's; nil without either or when not syncing.
+  public var name: String? {
+    guard let space = state.space else { return nil }
+    if let r = state.records[space]?.current, r.kind == "space", let n = r["name"]?.string { return n }
+    return state.invitedName
+  }
+
+  public func rename(_ name: String) {
+    guard let space = state.space else { return }
+    apply([space: .fields(Records.space(name: name).fields)])
+  }
+
+  /// The invite to this space, named as it is now.
+  public var invite: Invite? {
+    guard var i = state.invite else { return nil }
+    i.name = name
+    return i
   }
 
   public func title(of id: String) -> String? {
@@ -174,7 +196,7 @@ public final class Store {
         if let copy = m.copy { state.records[newID()] = StoredRecord(base: nil, version: 0, current: copy) }
       }
       boards.formUnion([old?.current.board, current.board, item.record.board].compactMap { $0 })
-      if item.record.kind == "board" { boards.insert(item.id) }
+      if item.record.kind == "board" || item.record.kind == "space" { boards.insert(item.id) }
       state.records[item.id] = StoredRecord(base: item.record, version: item.version, current: current)
     }
     onDirty?()
@@ -240,6 +262,7 @@ public final class Store {
     state.server = invite.server
     state.space = invite.space
     state.secret = invite.secret
+    state.invitedName = invite.name
     onDirty?()
     onChange?(boards, true)
   }
