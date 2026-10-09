@@ -101,6 +101,8 @@ export class Input {
     const app = this.app;
     const s = app.state;
     const b = app.model.board;
+    // what someone else holds stays where it is
+    if (["move", "lane", "resize"].includes(action) && s.taken.has(h.id)) return;
     if (action !== "pan") {
       app.endEditing();
       if (s.turned && h.id !== s.turned) app.turn(null);
@@ -116,19 +118,27 @@ export class Input {
       s.held = new Set(ids);
       s.lifted = new Set(ids);
       app.model.begin();
+      app.hold(ids);
     } else if (action === "lane") {
       app.select([h.id]);
       const l = R.lane(b, h.id);
       d.laneOrigin = { id: l.id, x: l.x, y: l.y };
       d.origins = R.cardsInLane(b, h.id, app.heightOf).map((c) => ({ id: c.id, x: c.x, y: c.y }));
       s.held = new Set([h.id, ...d.origins.map((o) => o.id)]);
+      if ([...s.held].some((id) => s.taken.has(id))) {
+        s.held = new Set();
+        this.drag = null;
+        return;
+      }
       app.model.begin();
+      app.hold(s.held);
     } else if (action === "resize") {
       app.select([h.id]);
       const l = R.lane(b, h.id);
       d.size = { w: l.w, h: l.h };
       s.held = new Set([h.id]);
       app.model.begin();
+      app.hold([h.id]);
     } else if (action === "marquee") {
       d.base = base;
       app.select(base);

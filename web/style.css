@@ -293,6 +293,7 @@ body[data-screen="board"] #boards { display: none; }
   padding: 0 6px; border-radius: 6px; background: var(--who); color: #fff; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;
 }
 .presence .cursor span { position: absolute; left: 14px; top: 16px; }
+.presence .caret { position: absolute; left: 0; top: 0; width: 2px; background: var(--who); }
 .people { display: flex; gap: 4px; }
 .person {
   width: 28px; height: 28px; border-radius: 14px; background: var(--who); color: #fff;
