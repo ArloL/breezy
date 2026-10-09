@@ -57,6 +57,18 @@ public final class BoardModel {
     record(start, name)
   }
 
+  /// Ends the gesture, putting the board back as it began, without an undo step.
+  public func cancel() {
+    guard let start = gestureStart else { return }
+    let before = board
+    board = start
+    cancelGesture()
+    if board != before { notify(before) }
+  }
+
+  /// The board as the gesture under way began, if one is.
+  public var gestureStartBoard: Board? { gestureStart }
+
   /// Puts a board read from disk in place, with an empty history.
   public func replace(_ board: Board) {
     let before = self.board

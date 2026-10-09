@@ -13,6 +13,8 @@ public struct Page: Codable, Equatable, Sendable {
   public var cursor: Int
   /// Nil for a space the server doesn't have.
   public var epoch: String?
+  /// The live layer's relay, when the server names one.
+  public var relay: String? = nil
 }
 
 public struct Write: Codable, Equatable, Sendable {
@@ -30,6 +32,8 @@ public struct PushResult: Codable, Equatable, Sendable {
   public var accepted: [Accepted]
   public var refused: [Pulled]
   public var epoch: String?
+  /// The live layer's relay, when the server names one.
+  public var relay: String? = nil
 }
 
 public enum TransportError: Error, Equatable {
@@ -139,6 +143,15 @@ public struct SyncStatus: Equatable, Sendable {
   public var onStatus: ((SyncStatus) -> Void)?
   /// Called before merging, so that edits not yet in the store get there first.
   public var flushLocal: (() -> Void)?
+  /// The relay the server last named; nil until it names one.
+  public private(set) var relay: String?
+  public var onRelay: ((String?) -> Void)?
+  /// After a push the server took, with the highest version it gave.
+  public var onPushed: ((Int) -> Void)?
+  /// After the pulls of a cycle, with the store's cursor.
+  public var onPulled: ((Int) -> Void)?
+  /// When a cycle last ended synced.
+  public private(set) var lastSynced: Date?
   private let makeTransport: (SpaceState, SpaceKeys) -> Transport?
   private let now: () -> Date
   private var running = false, again = false, stopped = false, heldTried = false
@@ -205,6 +218,7 @@ public struct SyncStatus: Equatable, Sendable {
       while true {
         let page = try await transport.pull(since: store.state.cursor)
         guard same() else { return }
+        note(relay: page.relay)
         if store.note(epoch: page.epoch) { continue }
         flushLocal?()
         store.merge(page.records.compactMap { decode($0, keys) })
@@ -214,6 +228,7 @@ public struct SyncStatus: Equatable, Sendable {
           break
         }
       }
+      onPulled?(store.state.cursor)
       var refusals = 0
       for _ in 0..<10 {
         flushLocal?()
@@ -226,6 +241,8 @@ public struct SyncStatus: Equatable, Sendable {
           return
         }
         for a in result.accepted { if let r = sent[a.id] { store.accepted(a.id, version: a.version, record: r) } }
+        note(relay: result.relay)
+        if let top = result.accepted.map(\.version).max() { onPushed?(top) }
         if result.refused.isEmpty { continue }
         flushLocal?()
         var mergeable = false
@@ -244,6 +261,7 @@ public struct SyncStatus: Equatable, Sendable {
       }
       failures = 0
       retryAt = nil
+      lastSynced = now()
       update(.synced)
     } catch TransportError.unauthorized {
       guard same() else { return }
@@ -255,6 +273,13 @@ public struct SyncStatus: Equatable, Sendable {
       retryAt = now().addingTimeInterval(min(60, 5 * pow(2, Double(failures - 1))))
       update(error as? TransportError == .offline ? .offline : .unreachable)
     }
+  }
+
+  private func note(relay r: String?) {
+    let valid = r.flatMap { $0.hasPrefix("wss://") || $0.hasPrefix("ws://") ? $0 : nil }
+    guard valid != relay else { return }
+    relay = valid
+    onRelay?(valid)
   }
 
   private func decode(_ p: Pulled, _ keys: SpaceKeys) -> Incoming? {

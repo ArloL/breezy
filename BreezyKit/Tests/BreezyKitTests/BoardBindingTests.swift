@@ -49,3 +49,28 @@ import Testing
   let c = store.board(id).card("a")!
   #expect(c.text == "theirs" && c.color == 3)
 }
+
+@MainActor @Test func changesToItemsOthersHoldAreNotWritten() {
+  let (store, id, model, binding) = opened(board([card("a", 0, 0), card("b", 0, 96)]))
+  binding.taken = { ["b"] }
+  model.perform("Move") {
+    $0.cards[0].x = 48
+    $0.cards[1].x = 480
+  }
+  binding.flush()
+  #expect(store.board(id).card("a")?.x == 48)
+  #expect(store.board(id).card("b")?.x == 0)
+}
+
+@MainActor @Test func theBindingTellsOfEditsAndOfGestureEnds() async throws {
+  let (_, _, model, binding) = opened(board([card("a", 0, 0)]))
+  var edits = 0, ends = 0
+  binding.afterEdit = { edits += 1 }
+  binding.afterGesture = { ends += 1 }
+  model.begin()
+  model.update { $0.setText("a", "y") }
+  model.end("Edit Card")
+  try await Task.sleep(for: .milliseconds(50))
+  #expect(edits == 1)
+  #expect(ends == 1)
+}

@@ -339,3 +339,23 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
     }
   }
 }
+
+@MainActor @Test func theEngineLearnsTheRelayAndReportsPushesAndPulls() async {
+  let (server, a, b, id) = await pair()
+  var relays: [String?] = [], pushed: [Int] = [], pulled: [Int] = []
+  a.engine.onRelay = { relays.append($0) }
+  a.engine.onPushed = { pushed.append($0) }
+  a.engine.onPulled = { pulled.append($0) }
+  server.relay = "wss://relay.example/"
+  let c = a.store.board(id).cards[0].id
+  a.edit(id) { $0.setColor([c], 2) }
+  await a.engine.sync()
+  #expect(a.engine.relay == "wss://relay.example/")
+  #expect(relays == ["wss://relay.example/"])
+  #expect(pushed == [server.version])
+  #expect(pulled == [server.version - 1])
+  #expect(a.engine.lastSynced != nil)
+  server.relay = "http://not-a-relay"
+  await b.engine.sync()
+  #expect(b.engine.relay == nil)
+}
