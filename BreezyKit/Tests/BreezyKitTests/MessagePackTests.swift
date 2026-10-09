@@ -39,12 +39,6 @@ private func cases() throws -> [Case] {
   }
 }
 
-private func bytes(_ hex: String) -> Data {
-  Data(stride(from: 0, to: hex.count, by: 2).map { UInt8(hex.dropFirst($0).prefix(2), radix: 16)! })
-}
-
-private func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
-
 @Suite struct MessagePackTests {
   @Test func packMatchesTheSharedHex() throws {
     for c in try cases() {
