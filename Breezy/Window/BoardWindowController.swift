@@ -16,6 +16,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   private var shownZoom: Int?
   private let grid = GridView()
   private let people = NSStackView()
+  private var shownPeople: [Person]?
   private var restored = false
   private let finder = NSTextFinder()
   private lazy var finderClient = BoardFinderClient(canvas: canvas)
@@ -206,6 +207,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
 
   /// The initials of the others on this board, in their colours.
   func showPeople(_ list: [Person]) {
+    guard list != shownPeople else { return }
+    shownPeople = list
     people.setViews(list.map { p in
       let f = NSTextField(labelWithString: p.initials)
       f.font = .systemFont(ofSize: 11, weight: .semibold)

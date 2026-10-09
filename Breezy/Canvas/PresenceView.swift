@@ -52,7 +52,8 @@ final class PresenceView: NSView {
     var rect: NSRect
   }
 
-  private var marks: [String: CALayer] = [:]
+  /// Each mark's layer, with the person it was made for: a new name or colour makes it again.
+  private var marks: [String: (person: Person, layer: CALayer)] = [:]
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -68,9 +69,14 @@ final class PresenceView: NSView {
     var live = Set<String>()
     for m in shown {
       live.insert(m.key)
-      let isNew = marks[m.key] == nil
-      let l = marks[m.key] ?? make(m)
-      marks[m.key] = l
+      var isNew = marks[m.key] == nil
+      if let old = marks[m.key], old.person != m.person {
+        old.layer.removeFromSuperlayer()
+        marks[m.key] = nil
+        isNew = true
+      }
+      let l = marks[m.key]?.layer ?? make(m)
+      marks[m.key] = (m.person, l)
       CATransaction.begin()
       // a cursor glides between updates; everything else jumps
       CATransaction.setDisableActions(isNew || m.kind != .cursor)
@@ -85,8 +91,8 @@ final class PresenceView: NSView {
       }
       CATransaction.commit()
     }
-    for (k, l) in marks where !live.contains(k) {
-      l.removeFromSuperlayer()
+    for (k, v) in marks where !live.contains(k) {
+      v.layer.removeFromSuperlayer()
       marks[k] = nil
     }
   }
