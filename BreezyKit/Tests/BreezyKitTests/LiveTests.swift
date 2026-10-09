@@ -638,6 +638,28 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   #expect(Array(ls[1].overlay(on: "B1").keys) == ["c1"])
 }
 
+@MainActor @Test func aConnectionThatNeverSpeaksLeavesTheRosterAfter30s() {
+  let (relay, clock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  let other = SpaceKeys(space: randomBytes(16), secret: Base64URL.decode("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")!)
+  let stranger = live(relay, clock, keys: other)
+  stranger.connect()
+  relay.run()
+  #expect(!ls[0].allDirect)
+  #expect(ls[0].directStatus == "Direct with 1 of 2 people")
+  for _ in 0..<29 {
+    clock.advance(1)
+    for l in ls + [stranger] { l.tick() }
+    relay.run()
+  }
+  #expect(!ls[0].allDirect)
+  clock.advance(1)
+  for l in ls + [stranger] { l.tick() }
+  relay.run()
+  #expect(ls[0].allDirect)
+  #expect(ls[0].directStatus == "Direct with 1 of 1 person")
+}
+
 @MainActor @Test func onlyCursorsAndLiveEditsAreTakenFromAChannel() throws {
   let (relay, _, ts, ls) = direct()
   open(ts, ls, 0, 1)

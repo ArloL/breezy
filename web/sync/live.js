@@ -105,8 +105,8 @@ export class Live {
     this.onPushed = () => {};
     this.onRefused = () => {};
     this.onUnauthorized = () => {};
-    /** The other connections in the space, as the relay names them. */
-    this.roster = new Set();
+    /** The other connections in the space, as the relay names them → when each joined or was last heard. */
+    this.roster = new Map();
     this.direct = peerTransport && new Direct(peerTransport(), {
       now,
       relay: (to, body) => this.send(body, to),
@@ -212,7 +212,7 @@ export class Live {
 
   /** Whether every other connection has an open channel. */
   get allDirect() {
-    return this.roster.size > 0 && [...this.roster].every((id) => this.direct?.isOpen(id));
+    return this.roster.size > 0 && [...this.roster.keys()].every((id) => this.direct?.isOpen(id));
   }
 
   get sendMs() {
@@ -228,7 +228,7 @@ export class Live {
     const sent = this.out.then(async () => {
       const sealed = await this.seal(stamped);
       if (!sealed || ws !== this.ws) return false;
-      if (!relayOnly) for (const id of this.roster) this.direct?.send(id, sealed);
+      if (!relayOnly) for (const id of this.roster.keys()) this.direct?.send(id, sealed);
       if ((relayOnly || !this.allDirect) && ws.readyState === 1) {
         ws.send(JSON.stringify({ body: sealed }));
         this.relaySent = this.now();
@@ -253,13 +253,13 @@ export class Live {
         this.failures = 0;
         this.pingSent = this.now();
         this.holds = holdsFrom(m.holds);
-        this.roster = new Set(Array.isArray(m.peers) ? m.peers.filter((p) => typeof p === "string") : []);
-        this.direct?.welcome([...this.roster]);
+        this.roster = new Map((Array.isArray(m.peers) ? m.peers.filter((p) => typeof p === "string") : []).map((p) => [p, this.now()]));
+        this.direct?.welcome([...this.roster.keys()]);
         this.sendPresence();
         if (this.mine.size) this.frame({ t: "hold", ids: [...this.mine].sort() });
         return this.onChange();
       case "join":
-        this.roster.add(m.id);
+        this.roster.set(m.id, this.now());
         return this.sendPresence(m.id);
       case "leave":
         this.peers.delete(m.id);
@@ -288,6 +288,7 @@ export class Live {
       return;
     }
     if (!this.connected) return;
+    this.roster.set(from, this.now());
     if (["offer", "answer", "ice"].includes(b?.t)) return direct || this.direct?.heard(from, b);
     if (direct && b?.t !== "cursor" && b?.t !== "live") return;
     this.heard(from, b);
@@ -399,6 +400,14 @@ export class Live {
     }
     this.direct?.tick();
     let changed = false;
+    // a connection that never speaks, such as one in another space with this one's token, would keep every cursor on
+    // the relay
+    for (const [id, heard] of this.roster) {
+      if (now - heard < GONE_MS) continue;
+      this.roster.delete(id);
+      this.direct?.leave(id);
+      changed = true;
+    }
     for (const [conn, p] of this.peers) {
       if (now - p.heard > GONE_MS) {
         this.peers.delete(conn);
@@ -475,7 +484,7 @@ export class Live {
 
   /** "Direct with 1 of 2 people", for the status lines, while anyone else is here. */
   directStatus() {
-    const people = [...this.roster].filter((id) => this.peers.get(id)?.person);
+    const people = [...this.roster.keys()];
     if (!people.length) return null;
     const open = people.filter((id) => this.direct?.isOpen(id)).length;
     return `Direct with ${open} of ${people.length} ${people.length === 1 ? "person" : "people"}`;
