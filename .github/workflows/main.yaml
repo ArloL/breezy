@@ -127,6 +127,8 @@ jobs:
         package-manager-cache: false
     - name: Test the touch prototype
       run: node --test web/test/*.test.js
+    - name: Test the relay's hold rules
+      run: node --test relay/test/holds.test.mjs
     # Off main there is no tag, so the page's own placeholder version stays.
     - name: Build the site
       env:
