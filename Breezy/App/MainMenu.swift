@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 
 /// The menu bar, built in code.
 enum MainMenu {
@@ -6,6 +7,7 @@ enum MainMenu {
     let main = NSMenu()
     let app = submenu("Breezy", [
       item("About Breezy", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+      updates(),
       .separator(),
       item("Your Name…", #selector(AppDelegate.yourName(_:))),
       item("New Space…", #selector(AppDelegate.newSpace(_:))),
@@ -63,6 +65,13 @@ enum MainMenu {
     main.addItem(window)
     NSApp.windowsMenu = window.submenu
     return main
+  }
+
+  private static func updates() -> NSMenuItem {
+    let i = item("Check for Updates…", #selector(SPUStandardUpdaterController.checkForUpdates(_:)))
+    i.target = Updates.controller
+    i.isHidden = !Updates.enabled
+    return i
   }
 
   private static func item(_ title: String, _ action: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {

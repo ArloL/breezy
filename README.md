@@ -13,6 +13,8 @@ open build/Build/Products/Release/Breezy.app
 
 Boards live in `~/Library/Application Support/Breezy/Spaces/` and reopen where they were left after a relaunch.
 
+Releases update themselves with [Sparkle](https://sparkle-project.org): they download a new version in the background and install it on quit. Each release carries an `appcast.xml` that CI signs with the `update-signing` environment's `SPARKLE_PRIVATE_KEY`, which only `main` can read; the app reads it from `releases/latest/download/` and checks it against `BREEZY_UPDATE_KEY` in `project.yml`. Builds without `BREEZY_UPDATE_FEED`, which CI sets only on `main`, never update.
+
 ## Use
 
 | Do | How |
