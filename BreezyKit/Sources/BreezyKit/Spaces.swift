@@ -43,16 +43,18 @@ import Foundation
   public var onRefused: ((Group, Set<String>) -> Void)?
   private let transport: ((SpaceState, SpaceKeys) -> Transport?)?
   private let socket: (@MainActor (URL) -> LiveSocket)?
+  private let peerTransport: (@MainActor () -> PeerTransport)?
 
   /// The groups in `directory`/Spaces, after moving a store from before spaces, `directory`/space.json, among them.
   public init(
     directory: URL, me: Person = Person(device: newID(), name: ""), transport: ((SpaceState, SpaceKeys) -> Transport?)? = nil,
-    socket: (@MainActor (URL) -> LiveSocket)? = nil
+    socket: (@MainActor (URL) -> LiveSocket)? = nil, peerTransport: (@MainActor () -> PeerTransport)? = nil
   ) throws {
     self.directory = directory.appendingPathComponent("Spaces")
     self.me = me
     self.transport = transport
     self.socket = socket
+    self.peerTransport = peerTransport
     let old = StoreFile(url: directory.appendingPathComponent("space.json"))
     if let state = try old.load() {
       let target = file(for: state.space)
@@ -104,7 +106,9 @@ import Foundation
     g.live?.close()
     g.live = nil
     if let relay, let space = g.space, let keys = try? SpaceKeys(state: g.store.state) {
-      let live = socket.map { Live(relay: relay, space: space, keys: keys, me: me, socket: $0) } ?? Live(relay: relay, space: space, keys: keys, me: me)
+      let transport = peerTransport?()
+      let live = socket.map { Live(relay: relay, space: space, keys: keys, me: me, socket: $0, transport: transport) }
+        ?? Live(relay: relay, space: space, keys: keys, me: me, transport: transport)
       live.onPushed = { [weak g] _ in
         guard let g else { return }
         Task { await g.engine.sync() }

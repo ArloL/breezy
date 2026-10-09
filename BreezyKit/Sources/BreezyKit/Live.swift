@@ -157,6 +157,7 @@ public struct Peer: Equatable, Sendable {
 /// the multiplayer design. Bodies are sealed with the space key, so the relay reads none of them.
 @MainActor public final class Live {
   public static let sendInterval: TimeInterval = 0.05
+  public static let directSendInterval: TimeInterval = 0.008
   public static let heartbeat: TimeInterval = 5
   public static let presenceInterval: TimeInterval = 15
   public static let gone: TimeInterval = 30
@@ -210,6 +211,9 @@ public struct Peer: Equatable, Sendable {
   private var lastLive: [String: JSONValue]?
   private var storeCursor = 0
   private var seq = 0
+  /// The other connections in the space, as the relay names them.
+  private var roster: Set<String> = []
+  private var direct: Direct?
 
   public init(
     relay: String, space: String, keys: SpaceKeys, me: Person,
@@ -218,7 +222,8 @@ public struct Peer: Equatable, Sendable {
     uptime: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime * 1000 },
     schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Void = { delay, work in
       DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated(work) }
-    }
+    },
+    transport: PeerTransport? = nil
   ) {
     self.relay = relay
     self.space = space
@@ -228,6 +233,11 @@ public struct Peer: Equatable, Sendable {
     self.now = now
     self.uptime = uptime
     self.schedule = schedule
+    if let transport {
+      direct = Direct(
+        transport: transport, now: now, relay: { [weak self] to, b in self?.send(b, to: to) },
+        message: { [weak self] from, text in self?.opened(from, text, direct: true) }, change: { [weak self] in self?.onChange?() })
+    }
   }
 
   // MARK: connection
@@ -296,6 +306,8 @@ public struct Peer: Equatable, Sendable {
     pingWaiting = nil
     peers = [:]
     holds = [:]
+    roster = []
+    direct?.reset()
     if had { onChange?() }
   }
 
@@ -304,24 +316,38 @@ public struct Peer: Equatable, Sendable {
     socket?.send(String(decoding: data, as: UTF8.self))
   }
 
+  /// `body` sealed, as base64url; nil when too big to send.
+  private func seal(_ body: [String: JSONValue]) -> String? {
+    guard let plain = try? Self.encoder.encode(JSONValue.object(body)), let sealed = try? keys.sealLive(plain) else { return nil }
+    let b = Base64URL.encode(sealed)
+    return b.count <= Self.maxFrame - 100 ? b : nil
+  }
+
   /// A sealed body to everyone else, or to connection `to`.
   @discardableResult private func send(_ body: [String: JSONValue], to: String? = nil) -> Bool {
-    guard connected, let plain = try? Self.encoder.encode(JSONValue.object(body)), let sealed = try? keys.sealLive(plain) else { return false }
-    let b = Base64URL.encode(sealed)
-    guard b.count <= Self.maxFrame - 100 else { return false }
+    guard connected, let b = seal(body) else { return false }
     var f: [String: JSONValue] = ["body": .string(b)]
     if let to { f["to"] = .string(to) }
     frame(f)
     return true
   }
 
-  /// A cursor or live body, stamped with this device's time and the next sequence number.
-  @discardableResult private func sendFast(_ body: [String: JSONValue]) -> Bool {
+  /// Whether every other connection has an open channel.
+  private var allDirect: Bool { !roster.isEmpty && roster.allSatisfy { direct?.isOpen($0) == true } }
+  private var gateInterval: TimeInterval { allDirect ? Self.directSendInterval : Self.sendInterval }
+
+  /// A cursor or live body, stamped with this device's time and the next sequence number: over every open channel, and
+  /// to the relay unless all are open; `relayOnly` for the holder's heartbeat, which keeps the holds there.
+  @discardableResult private func sendFast(_ body: [String: JSONValue], relayOnly: Bool = false) -> Bool {
+    guard connected else { return false }
     var b = body
     seq += 1
     b["at"] = .number(uptime())
     b["seq"] = .number(Double(seq))
-    return send(b)
+    guard let sealed = seal(b) else { return false }
+    if !relayOnly { for id in roster.sorted() { direct?.send(id, sealed) } }
+    if relayOnly || !allDirect { frame(["body": .string(sealed)]) }
+    return true
   }
 
   // MARK: receiving
@@ -367,15 +393,21 @@ public struct Peer: Equatable, Sendable {
       failures = 0
       pingSent = now()
       holds = Self.holds(m["holds"])
+      roster = Set((m["peers"]?.array ?? []).compactMap(\.string))
+      direct?.welcome(roster.sorted())
       sendPresence()
       if !mine.isEmpty { frame(["t": .string("hold"), "ids": .array(mine.sorted().map(JSONValue.string))]) }
       onChange?()
     case "join":
-      if let who = m["id"]?.string { sendPresence(to: who) }
+      guard let who = m["id"]?.string else { return }
+      roster.insert(who)
+      sendPresence(to: who)
     case "leave":
       guard let who = m["id"]?.string else { return }
       peers[who] = nil
       holds[who] = nil
+      roster.remove(who)
+      direct?.leave(who)
       onChange?()
     case "holds":
       holds = Self.holds(m["holds"])
@@ -385,10 +417,21 @@ public struct Peer: Equatable, Sendable {
       let ids = Set((m["ids"]?.array ?? []).compactMap(\.string))
       if !ids.isEmpty { onRefused?(ids) }
     default:
-      guard connected, let from = m["from"]?.string, let body = m["body"]?.string, let sealed = Base64URL.decode(body),
-            let plain = try? keys.openLive(sealed), let b = try? JSONDecoder().decode([String: JSONValue].self, from: plain)
-      else { return }
-      heard(from, b)
+      guard let from = m["from"]?.string, let body = m["body"]?.string else { return }
+      opened(from, body, direct: false)
+    }
+  }
+
+  /// A sealed body from connection `from`, through the relay or, `direct`, over its channel, which carries only cursors
+  /// and live edits.
+  private func opened(_ from: String, _ body: String, direct isDirect: Bool) {
+    guard connected, let sealed = Base64URL.decode(body), let plain = try? keys.openLive(sealed),
+          let b = try? JSONDecoder().decode([String: JSONValue].self, from: plain)
+    else { return }
+    switch b["t"]?.string {
+    case "offer", "answer", "ice": if !isDirect { direct?.heard(from, b) }
+    case "cursor", "live": heard(from, b)
+    default: if !isDirect { heard(from, b) }
     }
   }
 
@@ -500,10 +543,11 @@ public struct Peer: Equatable, Sendable {
     if connected && t.timeIntervalSince(presenceSent) >= Self.presenceInterval { sendPresence() }
     if connected && !mine.isEmpty && t.timeIntervalSince(liveSent) >= Self.heartbeat {
       liveSent = t
-      if lastLive == nil || !sendFast(lastLive!) {
-        sendFast(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null])
+      if lastLive == nil || !sendFast(lastLive!, relayOnly: true) {
+        sendFast(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null], relayOnly: true)
       }
     }
+    direct?.tick()
     if changed { onChange?() }
   }
 
@@ -531,7 +575,7 @@ public struct Peer: Equatable, Sendable {
     cursor = x.flatMap { x in y.map { Cursor(board: board, x: x, y: $0) } }
     cursorBoard = board
     guard !peers.isEmpty else { return }
-    let wait = Self.sendInterval - now().timeIntervalSince(cursorSent)
+    let wait = gateInterval - now().timeIntervalSince(cursorSent)
     if wait <= 0 { return flushCursor() }
     guard !cursorQueued else { return }
     cursorQueued = true
@@ -569,7 +613,7 @@ public struct Peer: Equatable, Sendable {
       "caret": caret.map { .object(["id": .string($0.id), "back": .bool($0.back), "at": .number(Double($0.at))]) } ?? .null,
     ]
     guard !peers.isEmpty else { return }
-    let wait = Self.sendInterval - now().timeIntervalSince(liveSent)
+    let wait = gateInterval - now().timeIntervalSince(liveSent)
     if wait <= 0 { return flushLive() }
     guard !liveQueued else { return }
     liveQueued = true
@@ -588,6 +632,14 @@ public struct Peer: Equatable, Sendable {
   public func sendPushed(_ version: Int) { send(["t": .string("pushed"), "version": .number(Double(version))]) }
 
   // MARK: what others do
+
+  /// "Direct with 1 of 2 people", for the status lines, while anyone else is here.
+  public var directStatus: String? {
+    let people = roster.filter { peers[$0]?.person != nil }
+    guard !people.isEmpty else { return nil }
+    let open = people.filter { direct?.isOpen($0) == true }.count
+    return "Direct with \(open) of \(people.count) \(people.count == 1 ? "person" : "people")"
+  }
 
   /// Ids another connection holds.
   public var taken: Set<String> { Set(holds.filter { $0.key != id }.values.joined()) }

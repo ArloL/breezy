@@ -488,3 +488,96 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
     #expect(b.cursors(on: "B1").map { $0.cursor.x } == [Double(i + 1)])
   }
 }
+
+/// `n` devices with fake transports, all on board B1, the last one the newcomer.
+@MainActor private func direct(_ n: Int = 2) -> (FakeRelay, Clock, [FakePeerTransport], [Live]) {
+  let relay = FakeRelay(), clock = Clock()
+  var ts: [FakePeerTransport] = [], ls: [Live] = []
+  for i in 0..<n {
+    let t = FakePeerTransport()
+    let l = Live(relay: "wss://relay.example/", space: space, keys: keys(), me: Person(device: newID(), name: "P\(i)"),
+                 socket: { relay.connect($0) }, now: { clock.now }, uptime: { clock.now.timeIntervalSince1970 * 1000 },
+                 schedule: { clock.schedule($0, $1) }, transport: t)
+    l.connect()
+    relay.run()
+    l.setPresence(board: "B1", selection: [])
+    relay.run()
+    ts.append(t)
+    ls.append(l)
+  }
+  return (relay, clock, ts, ls)
+}
+
+@MainActor private func open(_ ts: [FakePeerTransport], _ ls: [Live], _ i: Int, _ j: Int) {
+  ts[i].onState?(ls[j].id!, .open)
+  ts[j].onState?(ls[i].id!, .open)
+}
+
+@MainActor private func broadcasts(_ relay: FakeRelay) -> Int { relay.frames.filter { $0.text.contains("\"body\"") && !$0.text.contains("\"to\"") }.count }
+
+@MainActor @Test func theNewcomerOffersThroughTheRelay() {
+  let (_, _, ts, ls) = direct()
+  #expect(Array(ts[1].log.prefix(2)) == ["create \(ls[0].id!)", "offer \(ls[0].id!)"])
+  #expect(Array(ts[0].log.prefix(2)) == ["create \(ls[1].id!)", "answer \(ls[1].id!) offer-sdp \(ls[0].id!)"])
+}
+
+@MainActor @Test func withEveryChannelOpenCursorsGoOnlyDirect() {
+  let (relay, clock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  let before = broadcasts(relay)
+  ls[0].sendCursor(board: "B1", x: 1, y: 1)
+  clock.advance(Live.directSendInterval)
+  ls[0].sendCursor(board: "B1", x: 2, y: 2)
+  relay.run()
+  #expect(broadcasts(relay) == before)
+  #expect(ts[0].sent.count == 2)
+  for s in ts[0].sent { ts[1].onMessage?(ls[0].id!, s.text) }
+  clock.advance(0.2)
+  #expect(ls[1].cursors(on: "B1").map { $0.cursor.x } == [2])
+}
+
+@MainActor @Test func withAChannelShortCursorsGoToTheRelayToo() {
+  let (relay, _, ts, ls) = direct(3)
+  open(ts, ls, 0, 1)
+  let before = broadcasts(relay)
+  ls[0].sendCursor(board: "B1", x: 1, y: 1)
+  relay.run()
+  #expect(broadcasts(relay) == before + 1)
+  #expect(ts[0].sent.map(\.id) == [ls[1].id!])
+}
+
+@MainActor @Test func theHeartbeatGoesToTheRelayEvenWithEveryChannelOpen() {
+  let (relay, clock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  ls[0].hold(["c1"])
+  ls[0].sendLive(board: "B1", items: moved, caret: nil)
+  relay.run()
+  let before = broadcasts(relay)
+  clock.advance(5)
+  ls[0].tick()
+  relay.run()
+  #expect(broadcasts(relay) == before + 1)
+}
+
+@MainActor @Test func onlyCursorsAndLiveEditsAreTakenFromAChannel() throws {
+  let (relay, _, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  var pushes: [Int] = []
+  ls[1].onPushed = { pushes.append($0) }
+  let sealed = Base64URL.encode(try keys().sealLive(Data(#"{"t":"pushed","version":9}"#.utf8)))
+  ts[1].onMessage?(ls[0].id!, sealed)
+  relay.run()
+  #expect(pushes.isEmpty)
+}
+
+@MainActor @Test func aPeerLeavingClosesItsConnectionAndTheStatusCountsOpenChannels() {
+  let (relay, _, ts, ls) = direct()
+  #expect(ls[0].directStatus == "Direct with 0 of 1 person")
+  open(ts, ls, 0, 1)
+  #expect(ls[0].directStatus == "Direct with 1 of 1 person")
+  let gone = ls[1].id!
+  ls[1].close()
+  relay.run()
+  #expect(ts[0].log.contains("close \(gone)"))
+  #expect(ls[0].directStatus == nil)
+}
