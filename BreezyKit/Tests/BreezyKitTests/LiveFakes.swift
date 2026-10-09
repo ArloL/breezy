@@ -32,6 +32,8 @@ import Foundation
     weak var relay: FakeRelay?
     var authed = false
     var holds: [String] = []
+    /// Its network is gone without a close: nothing it sends arrives, and nothing reaches it.
+    var halfOpen = false
 
     init(relay: FakeRelay) { self.relay = relay }
 
@@ -45,10 +47,14 @@ import Foundation
   var token: String?
   /// Every frame received, in order.
   var frames: [(from: String, text: String)] = []
+  var pings = 0
+  /// Sockets opened so far.
+  var opened = 0
 
   func connect(_ url: URL) -> LiveSocket {
     let s = Socket(relay: self)
     sockets.append(s)
+    opened += 1
     queue.append { s.onOpen?() }
     return s
   }
@@ -68,7 +74,7 @@ import Foundation
 
   private func deliver(_ s: Socket, _ m: [String: Any]) {
     let text = String(decoding: try! JSONSerialization.data(withJSONObject: m), as: UTF8.self)
-    queue.append { [weak s] in s?.onMessage?(text) }
+    queue.append { [weak s] in if let s, !s.halfOpen { s.onMessage?(text) } }
   }
 
   private var holds: [String: [String]] {
@@ -78,8 +84,13 @@ import Foundation
   private func announce() { for s in sockets where s.authed { deliver(s, ["t": "holds", "holds": holds]) } }
 
   func received(_ s: Socket, _ text: String) {
-    guard sockets.contains(where: { $0 === s }),
-          let m = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
+    guard sockets.contains(where: { $0 === s }), !s.halfOpen else { return }
+    if text == "ping" {
+      pings += 1
+      queue.append { [weak s] in if let s, !s.halfOpen { s.onMessage?("pong") } }
+      return
+    }
+    guard let m = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
     frames.append((s.id, text))
     guard s.authed else {
       guard m["t"] as? String == "auth", let t = m["token"] as? String, token == nil || token == t else { return drop(s, code: 4001) }

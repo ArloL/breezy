@@ -157,6 +157,8 @@ public struct Peer: Equatable, Sendable {
   public static let gone: TimeInterval = 30
   public static let idleCursor: TimeInterval = 60
   public static let maxBackoff: TimeInterval = 30
+  public static let pingInterval: TimeInterval = 20
+  public static let pongTimeout: TimeInterval = 10
   static let maxFrame = 65_536
   static let encoder: JSONEncoder = {
     let e = JSONEncoder()
@@ -185,6 +187,13 @@ public struct Peer: Equatable, Sendable {
   private var socket: LiveSocket?
   private var wanted = false
   private var failures = 0
+  private var retrying = false
+  /// After the relay refused the token: this layer stays closed. A new one comes when the server names another relay,
+  /// or at the next launch.
+  private var stopped = false
+  private var pingSent = Date.distantPast
+  /// When a ping went out that nothing has answered yet.
+  private var pingWaiting: Date?
   private var presence: (board: String?, selection: [String]) = (nil, [])
   private var cursor: Cursor?
   private var cursorBoard = ""
@@ -213,13 +222,17 @@ public struct Peer: Equatable, Sendable {
 
   // MARK: connection
 
+  /// Opens unless open already, waiting to retry, or refused for good.
   public func connect() {
     wanted = true
-    if socket == nil { open() }
+    if socket == nil && !retrying && !stopped { open() }
   }
 
+  /// Closes, holding nothing: the relay drops a closed connection's holds.
   public func close() {
     wanted = false
+    mine = []
+    lastLive = nil
     let s = socket
     socket = nil
     s?.close()
@@ -234,7 +247,7 @@ public struct Peer: Equatable, Sendable {
     socket = s
     s.onOpen = { [weak self, weak s] in
       guard let self, let s, s === socket else { return }
-      frame(["t": .string("auth"), "token": .string(Base64URL.encode(keys.token))])
+      frame(["t": .string("auth"), "token": .string(Base64URL.encode(keys.relayToken))])
     }
     s.onMessage = { [weak self, weak s] text in
       guard let self, let s, s === socket else { return }
@@ -242,25 +255,35 @@ public struct Peer: Equatable, Sendable {
     }
     s.onClose = { [weak self, weak s] code in
       guard let self, let s, s === socket else { return }
-      socket = nil
-      reset()
-      if code == 4001 {
-        onUnauthorized?()
-        return
-      }
-      guard wanted else { return }
-      let delay = min(Self.maxBackoff, pow(2, Double(failures)))
-      failures += 1
-      schedule(delay) { [weak self] in
-        guard let self, wanted, socket == nil else { return }
-        open()
-      }
+      dropped(code)
+    }
+  }
+
+  /// The socket closed with `code`, or was given up on: reconnects after a back-off, unless the token was refused.
+  private func dropped(_ code: Int) {
+    socket = nil
+    reset()
+    if code == 4001 {
+      stopped = true
+      onUnauthorized?()
+      return
+    }
+    guard wanted else { return }
+    let delay = min(Self.maxBackoff, pow(2, Double(failures)))
+    failures += 1
+    retrying = true
+    schedule(delay) { [weak self] in
+      guard let self else { return }
+      retrying = false
+      guard wanted, socket == nil, !stopped else { return }
+      open()
     }
   }
 
   private func reset() {
     let had = connected || !peers.isEmpty || !holds.isEmpty
     id = nil
+    pingWaiting = nil
     peers = [:]
     holds = [:]
     if had { onChange?() }
@@ -301,11 +324,14 @@ public struct Peer: Equatable, Sendable {
   }
 
   private func received(_ text: String) {
-    guard let m = try? JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8)) else { return }
+    // anything from the relay shows the socket is alive
+    pingWaiting = nil
+    guard text != "pong", let m = try? JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8)) else { return }
     switch m["t"]?.string {
     case "welcome":
       id = m["id"]?.string
       failures = 0
+      pingSent = now()
       holds = Self.holds(m["holds"])
       sendPresence()
       if !mine.isEmpty { frame(["t": .string("hold"), "ids": .array(mine.sorted().map(JSONValue.string))]) }
@@ -392,9 +418,21 @@ public struct Peer: Equatable, Sendable {
     onChange?()
   }
 
-  /// About once a second: forgets the silent, fades still cursors, repeats presence and a holder's live fields.
+  /// About once a second: forgets the silent, fades still cursors, repeats presence and a holder's live fields, and
+  /// checks that the relay still answers.
   public func tick() {
     let t = now()
+    if connected, let p = pingWaiting, t.timeIntervalSince(p) >= Self.pongTimeout {
+      let s = socket
+      dropped(1006)
+      s?.close()
+      return
+    }
+    if connected && pingWaiting == nil && t.timeIntervalSince(pingSent) >= Self.pingInterval {
+      pingSent = t
+      pingWaiting = t
+      socket?.send("ping")
+    }
     var changed = false
     for (conn, var p) in peers {
       if t.timeIntervalSince(p.heard) > Self.gone {
@@ -434,10 +472,12 @@ public struct Peer: Equatable, Sendable {
     ], to: to)
   }
 
-  /// This device's pointer on `board`; nil hides it. At most every 50 ms, and the last one always goes.
+  /// This device's pointer on `board`; nil hides it. At most every 50 ms, and the last one always goes; none while
+  /// nobody else is here, as a newcomer gets it with the presence sent when it joins.
   public func sendCursor(board: String, x: Double?, y: Double?) {
     cursor = x.flatMap { x in y.map { Cursor(board: board, x: x, y: $0) } }
     cursorBoard = board
+    guard !peers.isEmpty else { return }
     let wait = Self.sendInterval - now().timeIntervalSince(cursorSent)
     if wait <= 0 { return flushCursor() }
     guard !cursorQueued else { return }
@@ -468,12 +508,14 @@ public struct Peer: Equatable, Sendable {
     if connected { frame(["t": .string("release")]) }
   }
 
-  /// What the gesture under way changed of what it holds; at most every 50 ms, and repeated every 5 s while held.
+  /// What the gesture under way changed of what it holds; at most every 50 ms, and repeated every 5 s while held, which
+  /// keeps the holds even while nobody else is here to be sent the rest.
   public func sendLive(board: String, items: [String: LiveFields], caret: Caret?) {
     lastLive = [
       "t": .string("live"), "board": .string(board), "items": .object(items.mapValues(JSONValue.object)),
       "caret": caret.map { .object(["id": .string($0.id), "back": .bool($0.back), "at": .number(Double($0.at))]) } ?? .null,
     ]
+    guard !peers.isEmpty else { return }
     let wait = Self.sendInterval - now().timeIntervalSince(liveSent)
     if wait <= 0 { return flushLive() }
     guard !liveQueued else { return }
@@ -503,9 +545,10 @@ public struct Peer: Equatable, Sendable {
     return peers[conn]?.person ?? Person(device: "", name: "")
   }
 
+  /// Others' live fields on `board`, leaving out what this device holds: its own gesture draws from its model.
   public func overlay(on board: String) -> [String: LiveFields] {
     var out: [String: LiveFields] = [:]
-    for p in peers.values where p.overlayBoard == board { out.merge(p.overlay) { $1 } }
+    for p in peers.values where p.overlayBoard == board { out.merge(p.overlay.filter { !mine.contains($0.key) }) { $1 } }
     return out
   }
 

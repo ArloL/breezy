@@ -1,10 +1,12 @@
 import CryptoKit
 import Foundation
 
-/// What a space's secret gives: the key that seals records and the token the server checks.
+/// What a space's secret gives: the key that seals records, the token the server checks, and one for the relay, so
+/// that the relay never learns a token it could use on the server.
 public struct SpaceKeys {
   public let space: Data
   public let token: Data
+  public let relayToken: Data
   let key: SymmetricKey
 
   public init(space: Data, secret: Data) {
@@ -15,6 +17,7 @@ public struct SpaceKeys {
     self.space = space
     key = derive("breezy key")
     token = derive("breezy token").withUnsafeBytes { Data($0) }
+    relayToken = derive("breezy relay").withUnsafeBytes { Data($0) }
   }
 
   /// Nonce, ciphertext and tag; the space and record ids are bound in, so the blob opens nowhere else.

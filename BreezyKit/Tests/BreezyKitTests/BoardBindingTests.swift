@@ -74,3 +74,15 @@ import Testing
   #expect(edits == 1)
   #expect(ends == 1)
 }
+
+@MainActor @Test func aGestureEndingAsItsBindingGoesIsStillTold() async throws {
+  var (_, _, model, binding): (Store, String, BoardModel, BoardBinding?) = opened(board([card("a", 0, 0)]))
+  var ends = 0
+  binding?.afterGesture = { ends += 1 }
+  model.begin()
+  model.update { $0.setText("a", "y") }
+  model.end("Edit Card")
+  binding = nil
+  try await Task.sleep(for: .milliseconds(50))
+  #expect(ends == 1)
+}

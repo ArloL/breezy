@@ -70,7 +70,7 @@ private func vector() throws -> Vector { try JSONDecoder().decode(Vector.self, f
   #expect(Invite(link: v.invite)?.name == nil)
 }
 
-private struct LiveVector: Decodable { var secret, space, nonce, plaintext, body: String }
+private struct LiveVector: Decodable { var secret, space, relayToken, nonce, plaintext, body: String }
 
 @Test func liveMessagesMatchTheSharedVector() throws {
   let v = try JSONDecoder().decode(LiveVector.self, from: fixture("live.json"))
@@ -78,6 +78,13 @@ private struct LiveVector: Decodable { var secret, space, nonce, plaintext, body
   let sealed = try keys.sealLive(Data(v.plaintext.utf8), nonce: AES.GCM.Nonce(data: Base64URL.decode(v.nonce)!))
   #expect(Base64URL.encode(sealed) == v.body)
   #expect(try keys.openLive(Base64URL.decode(v.body)!) == Data(v.plaintext.utf8))
+}
+
+@Test func theRelayGetsATokenOfItsOwn() throws {
+  let v = try JSONDecoder().decode(LiveVector.self, from: fixture("live.json"))
+  let keys = SpaceKeys(space: Base64URL.decode(v.space)!, secret: Base64URL.decode(v.secret)!)
+  #expect(Base64URL.encode(keys.relayToken) == v.relayToken)
+  #expect(keys.relayToken != keys.token)
 }
 
 @Test func liveMessagesAndRecordsNeverPassForEachOther() throws {

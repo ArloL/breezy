@@ -154,7 +154,8 @@ public struct SyncStatus: Equatable, Sendable {
   public private(set) var lastSynced: Date?
   private let makeTransport: (SpaceState, SpaceKeys) -> Transport?
   private let now: () -> Date
-  private var running = false, again = false, stopped = false, heldTried = false
+  private var running: Task<Void, Never>?
+  private var again = false, stopped = false, heldTried = false
   private var failures = 0, tooLong = 0
   /// Ids whose newer server record cannot be decoded; their local edits wait instead of being resent.
   private var blocked: Set<String> = []
@@ -170,18 +171,22 @@ public struct SyncStatus: Equatable, Sendable {
     makeTransport = transport
   }
 
-  /// One cycle; a call during a cycle runs another after it.
+  /// One cycle; a call during a cycle runs another after it, and returns when that one ends.
   public func sync() async {
-    if running {
+    if let running {
       again = true
-      return
+      return await running.value
     }
-    running = true
-    defer { running = false }
-    repeat {
-      again = false
-      await cycle()
-    } while again
+    let task = Task {
+      repeat {
+        again = false
+        await cycle()
+      } while again
+      // in the same turn as the last check of `again`, so that a call either repeats this loop or starts a new one
+      running = nil
+    }
+    running = task
+    await task.value
   }
 
   /// A cycle a second from now, once however many changes come meanwhile.
@@ -275,8 +280,15 @@ public struct SyncStatus: Equatable, Sendable {
     }
   }
 
+  /// A WebSocket over TLS, or plain to this computer for trying the relay out, as `Invite.validServer` has it.
+  static func validRelay(_ s: String) -> Bool {
+    guard let u = URL(string: s), let host = u.host?.lowercased(), !host.isEmpty else { return false }
+    let scheme = u.scheme?.lowercased()
+    return scheme == "wss" || (scheme == "ws" && ["localhost", "127.0.0.1"].contains(host))
+  }
+
   private func note(relay r: String?) {
-    let valid = r.flatMap { $0.hasPrefix("wss://") || $0.hasPrefix("ws://") ? $0 : nil }
+    let valid = r.flatMap { Self.validRelay($0) ? $0 : nil }
     guard valid != relay else { return }
     relay = valid
     onRelay?(valid)

@@ -1,6 +1,7 @@
 {
   "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
   "space": "QEFCQ0RFRkdISUpLTE1OTw",
+  "relayToken": "2BwilG0m7AIQwyn0LXmvU63HkZuUvCkjo3cdFkOtWLQ",
   "nonce": "gIGCg4SFhoeIiYqL",
   "plaintext": "{\"board\":\"YGFiY2RlZmdoaWprbG1ubw\",\"t\":\"cursor\",\"x\":120,\"y\":-48}",
   "body": "gIGCg4SFhoeIiYqLCD5JiEQgnZvGpv6SLgfViV8k0FR262YQLdRVkGnCqFr0Xmgun8p_xZYc7WCCD2HQmYd7nEWzCLTkapN_cU2B_JkX47hB8v94xbVl6TCneg"
