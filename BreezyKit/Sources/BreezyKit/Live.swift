@@ -345,7 +345,7 @@ public struct Peer: Equatable, Sendable {
 
   /// Whether `b` is newer than the last body of its kind from this peer, over either pipe; one without `seq` is.
   private static func fresh(_ p: inout Peer, _ b: [String: JSONValue]) -> Bool {
-    guard let t = b["t"]?.string, let n = b["seq"]?.number else { return true }
+    guard let t = b["t"]?.string, let n = b["seq"]?.number, n == n.rounded(), abs(n) <= 9_007_199_254_740_992 else { return true }
     guard Int(n) > p.seqs[t] ?? 0 else { return false }
     p.seqs[t] = Int(n)
     return true
