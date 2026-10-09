@@ -142,15 +142,17 @@ extension CanvasView {
       e.view.removeFromSuperview()
     }
     model.cancel()
+    window?.makeFirstResponder(self)
     layoutCards()
   }
 
-  /// Someone else got there first: the drag or edit under way goes back as it began.
-  func refused() {
+  /// Someone else got there first with `ids`: the drag or edit under way on any of them goes back as it began.
+  func refused(_ ids: Set<String>) {
     guard let d = drag, d.kind != .marquee else {
-      if drag == nil, editing != nil || renaming != nil { cancelEditing() }
+      if drag == nil, let id = editing?.id ?? renaming?.id, ids.contains(id) { cancelEditing() }
       return
     }
+    guard !ids.isDisjoint(with: held.ids.union(d.origins.map(\.id)).union([d.id].compactMap { $0 })) else { return }
     drag = nil
     dragPoint = nil
     stopEdgeScroll()

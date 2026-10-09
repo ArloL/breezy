@@ -23,6 +23,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   var selection: Set<String> = [] {
     didSet {
+      // what someone else holds can't be selected
+      if !selection.isDisjoint(with: presence.taken.keys) { selection.subtract(presence.taken.keys) }
       guard selection != oldValue else { return }
       for (id, v) in laneViews { v.selected = selection.contains(id) }
       layoutCards()
@@ -125,10 +127,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   /// Stacks `b` as this canvas would, measuring only cards whose text or width changed.
   func restack(_ b: inout Board) {
-    let shown = Dictionary(board.cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let was = Dictionary(board.cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     var h: [String: Double] = [:]
     for c in b.cards {
-      let old = shown[c.id]
+      let old = was[c.id]
       h[c.id] = old?.text == c.text && old?.w == c.w ? height(c.id) : Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w)))
     }
     b.gravity { h[$0] ?? 2 * Metrics.grid }
@@ -320,7 +322,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     if !selection.isDisjoint(with: taken) { selection.subtract(taken) }
     if presence.overlay != old.overlay || presence.taken != old.taken || presence.seen != old.seen {
       overlayHeights = [:]
-      for c in shown.cards where presence.overlay[c.id]?["text"] != nil || board.card(c.id) == nil {
+      for c in shown.cards where presence.overlay[c.id]?["text"] != nil || presence.overlay[c.id]?["w"] != nil || board.card(c.id) == nil {
         overlayHeights[c.id] = Double(TextMetrics.frontHeight(c.text, width: CGFloat(c.w)))
       }
       placeLanes()
@@ -335,20 +337,21 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     var marks = presence.cursors.map {
       PresenceView.Mark(key: "cursor " + $0.key, kind: .cursor, person: $0.person, rect: NSRect(x: $0.x + Self.origin, y: $0.y + Self.origin, width: 0, height: 0))
     }
+    let s = shown
     for (id, person) in presence.taken {
-      guard let r = shown.card(id).map(drawnRect) ?? shown.lane(id)?.rect else { continue }
+      guard let r = s.card(id).map(drawnRect) ?? s.lane(id)?.rect else { continue }
       let d = doc(r)
       marks.append(PresenceView.Mark(key: "label " + id, kind: .label, person: person, rect: NSRect(x: d.minX - 4, y: d.minY - 6, width: 0, height: 0)))
     }
     for t in presence.carets {
-      guard let c = shown.card(t.caret.id), t.caret.back == (turned == c.id) else { continue }
+      guard let c = s.card(t.caret.id), t.caret.back == (turned == c.id) else { continue }
       let r = doc(drawnRect(c))
       let back = t.caret.back
-      let s = back ? Typo.back(text: c.text, notes: c.notes ?? "", placeholder: false) : Typo.front(c.text)
+      let styled = back ? Typo.back(text: c.text, notes: c.notes ?? "", placeholder: false) : Typo.front(c.text)
       let inset = back ? NSSize(width: Typo.backPad, height: Typo.backPad) : NSSize(width: Typo.padX, height: Typo.padY)
       // on the back the notes follow the heading line
       let at = back ? (String(c.text.prefix { $0 != "\n" }) as NSString).length + 1 + t.caret.at : t.caret.at
-      let k = TextMetrics.caret(s, width: r.width - 2 * inset.width, at: at)
+      let k = TextMetrics.caret(styled, width: r.width - 2 * inset.width, at: at)
       marks.append(PresenceView.Mark(key: "caret " + t.key, kind: .caret, person: t.person, rect: k.offsetBy(dx: r.minX + inset.width, dy: r.minY + inset.height)))
     }
     presenceView.show(marks, zoom: zoom)
