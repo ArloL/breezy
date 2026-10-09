@@ -941,6 +941,11 @@ test("during a gesture over a channel, one body a frame carries the live edit an
   clock.advance(200);
   assert.deepEqual(ls[1].cursors(B1).map((c) => [c.x, c.y]), [[150, 50]]);
   assert.deepEqual(ls[1].overlay(B1).get(C1), { pos: [50, 0] });
+  // the folded cursors left the cursor stream as it was: the next cursor body is no keyframe
+  ls[0].release();
+  ls[0].sendCursor(B1, 1, 1);
+  await relay.run();
+  assert.ok(ts[0].sent.at(-1).data.length <= 24, `${ts[0].sent.at(-1).data.length} B`);
 });
 
 test("typing into a long card sends splices; one lost leaves the text as it was until the next keyframe", async () => {
@@ -1132,4 +1137,30 @@ test("a cursor inside a live body that is not newer than the last cursor is igno
   await relay.run();
   clock.advance(200);
   assert.deepEqual(ls[1].cursors(B1).map((c) => [c.x, c.y]), [[3, 3]]);
+});
+
+test("a channel that opens and closes between two relay bodies starts the relay over on a keyframe", async () => {
+  const { relay, clock, ts, ls, open } = await direct();
+  ls[0].hold([C1]);
+  await relay.run();
+  let text = "x".repeat(100);
+  const type = async () => {
+    text += "y";
+    ls[0].sendLive(B1, { [C1]: { text } }, null);
+    await relay.run();
+  };
+  await type();
+  clock.advance(50);
+  await type();
+  open(0, 1);
+  clock.advance(8);
+  await type();
+  for (const { data } of ts[0].sent.splice(0)) ts[1].onMessage(ls[0].id, data);
+  await relay.run();
+  ts[0].onState(ls[1].id, "closed");
+  ts[1].onState(ls[0].id, "closed");
+  await type();
+  clock.advance(50);
+  await relay.run();
+  assert.equal(ls[1].overlay(B1).get(C1).text, text);
 });

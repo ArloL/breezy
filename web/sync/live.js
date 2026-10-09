@@ -172,7 +172,11 @@ export class Live {
       now,
       relay: (to, body) => this.send(body, to),
       message: (from, data) => (this.in = this.in.then(() => (typeof data === "string" ? this.opened(from, decode(data), "direct") : this.take(from, data, "direct", true))).catch(() => {})),
-      change: () => this.onChange(),
+      change: () => {
+        // a channel opened or closed: a peer moved between pipes, so each pipe's next body is a keyframe
+        for (const p of this.pipes) p.to = { cursor: null, live: null };
+        this.onChange();
+      },
     });
   }
 
@@ -305,8 +309,9 @@ export class Live {
     };
   }
 
-  /** Peer `p` came to see this device's cursor or gesture, which `was` says it did not: they go again as they are now,
-   * to it a keyframe, as its pipe's recipients changed. */
+  /** Peer `p` came to see this device's cursor or gesture, which `was` says it did not: they go again as they are now.
+   * A keyframe when it was not among its pipe's last recipients; a peer without presence was, so it gets a delta on
+   * what it was sent before. */
   caughtUp(p, was) {
     const now = this.watches(p);
     for (const pipe of this.pipes) {
@@ -345,24 +350,23 @@ export class Live {
       folded = this.emit(pipe, "live", this.recipients(live.board), { ...live, cursor: fold }, json);
     }
     if (!cursor) return;
-    const ids = this.recipients(everyone ? null : this.cursorBoard).filter((id) => !fold || !folded.includes(id));
+    const ids = this.recipients(everyone ? null : this.cursorBoard);
     const json = { t: "cursor", board: this.cursorBoard, x: c ? round(c.x, 100) : null, y: c ? round(c.y, 100) : null };
-    this.emit(pipe, "cursor", ids, { board: this.cursorBoard, x: c?.x ?? null, y: c?.y ?? null }, json);
+    this.emit(pipe, "cursor", ids, { board: this.cursorBoard, x: c?.x ?? null, y: c?.y ?? null }, json, fold ? folded : []);
   }
 
-  /** A cursor or live body to those of `ids` on `pipe`: compact where they read it, else JSON; → who got it compact. */
-  emit(pipe, kind, ids, body, json) {
-    ids = ids.filter((id) => (this.direct?.isOpen(id) ?? false) === pipe.direct);
-    if (!ids.length) {
-      // whoever this pipe's encoder last sent to missed this body
-      pipe.to[kind] = null;
-      return [];
-    }
+  /** A cursor or live body to those of `ids` on `pipe`, but `folded`, which had it inside the live body: compact where
+   * they read it, else JSON; → who got it compact. */
+  emit(pipe, kind, ids, body, json, folded = []) {
+    ids = ids.filter((id) => (this.direct?.isOpen(id) ?? false) === pipe.direct && !folded.includes(id));
+    // whoever this pipe's encoder last sent to missed this body, unless it came inside the live body
+    if (!ids.length && !folded.length) pipe.to[kind] = null;
+    if (!ids.length) return [];
     const stamp = this.stamp();
     const plain = () => enc.encode(JSON.stringify({ ...json, at: round(stamp.at, 10), seq: stamp.seq }));
     if (pipe.direct) {
       const v2 = ids.filter((id) => this.direct.version(id) === 2), v1 = ids.filter((id) => !v2.includes(id));
-      if (!v2.length) pipe.to[kind] = null;
+      if (!v2.length && !folded.length) pipe.to[kind] = null;
       const bytes = v2.length ? pipe.compact(kind, v2, body, stamp) : null;
       if (bytes) for (const id of v2) this.direct.sendBytes(id, bytes);
       if (v1.length) {
