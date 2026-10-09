@@ -40,6 +40,8 @@ const trimmed = (items, by) => Object.fromEntries(Object.entries(items).map(([id
   }
   return [id, out];
 }));
+/** Whether peer `p`'s presence shows `board`. */
+const shows = (p, board) => (p.boards ? p.boards.includes(board) : p.board === board);
 /** The relay's number for connection `id`; null for one it does not name with digits. */
 const connNumber = (id) => (/^\d{1,10}$/.test(id) ? Number(id) : null);
 /** How long `bytes` are as base64url. */
@@ -93,6 +95,8 @@ class Pipe {
     /** Who each encoder last sent to; another set starts from a keyframe. */
     this.to = { cursor: null, live: null };
     this.cursor = false;
+    /** The cursor waiting is the channels' resend of the last one. */
+    this.repeat = false;
     this.live = false;
     /** The next cursor goes to everyone: this device's cursor moved to another board. */
     this.everyone = false;
@@ -105,8 +109,9 @@ class Pipe {
     this.to[kind] = key;
     try {
       return this.encoders[kind].encode(body, stamp);
-    } catch {
-      return null;
+    } catch (e) {
+      if (e instanceof RangeError) return null;
+      throw e;
     }
   }
 
@@ -147,7 +152,7 @@ export class Live {
     this.cursor = null;
     this.cursorBoard = "";
     this.presenceSent = -Infinity;
-    /** Cursors asked for so far. */
+    /** Cursors the channels have sent, which a later one keeps from being sent again. */
     this.cursorSends = 0;
     this.lastLive = null;
     this.channels = new Pipe(this, true, DIRECT_SEND_MS);
@@ -288,8 +293,27 @@ export class Live {
   recipients(board) {
     return [...this.roster.keys()].filter((id) => {
       const p = this.peers.get(id);
-      return board === null || !p?.person || (p.boards ? p.boards.includes(board) : p.board === board);
+      return board === null || !p?.person || shows(p, board);
     });
+  }
+
+  /** Whether peer `p` sees this device's cursor board, and the board of its gesture under way. */
+  watches(p) {
+    return {
+      cursor: Boolean(p.person && this.cursorBoard && shows(p, this.cursorBoard)),
+      live: Boolean(p.person && this.mine.size && this.lastLive && shows(p, this.lastLive.board)),
+    };
+  }
+
+  /** Peer `p` came to see this device's cursor or gesture, which `was` says it did not: they go again as they are now,
+   * to it a keyframe, as its pipe's recipients changed. */
+  caughtUp(p, was) {
+    const now = this.watches(p);
+    for (const pipe of this.pipes) {
+      if (now.cursor && !was.cursor) pipe.cursor = true;
+      if (now.live && !was.live) pipe.live = true;
+      if (pipe.cursor || pipe.live) pipe.gate.run();
+    }
   }
 
   stamp() {
@@ -301,8 +325,18 @@ export class Live {
   flush(pipe) {
     if (!this.connected) return;
     const live = pipe.live ? this.lastLive : null, cursor = pipe.cursor, everyone = cursor && pipe.everyone;
-    pipe.live = pipe.cursor = false;
+    const repeat = pipe.repeat;
+    pipe.live = pipe.cursor = pipe.repeat = false;
     if (cursor) pipe.everyone = false;
+    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
+    if (cursor && pipe.direct && !repeat) {
+      const n = ++this.cursorSends;
+      this.schedule(CURSOR_REPEAT_MS, () => {
+        if (n !== this.cursorSends || pipe.cursor) return;
+        [pipe.cursor, pipe.repeat] = [true, true];
+        pipe.gate.run();
+      });
+    }
     const c = this.cursor;
     const fold = cursor && !everyone && live && this.mine.size && c?.board === live.board ? [c.x, c.y] : null;
     let folded = [];
@@ -319,11 +353,16 @@ export class Live {
   /** A cursor or live body to those of `ids` on `pipe`: compact where they read it, else JSON; → who got it compact. */
   emit(pipe, kind, ids, body, json) {
     ids = ids.filter((id) => (this.direct?.isOpen(id) ?? false) === pipe.direct);
-    if (!ids.length) return [];
+    if (!ids.length) {
+      // whoever this pipe's encoder last sent to missed this body
+      pipe.to[kind] = null;
+      return [];
+    }
     const stamp = this.stamp();
     const plain = () => enc.encode(JSON.stringify({ ...json, at: round(stamp.at, 10), seq: stamp.seq }));
     if (pipe.direct) {
       const v2 = ids.filter((id) => this.direct.version(id) === 2), v1 = ids.filter((id) => !v2.includes(id));
+      if (!v2.length) pipe.to[kind] = null;
       const bytes = v2.length ? pipe.compact(kind, v2, body, stamp) : null;
       if (bytes) for (const id of v2) this.direct.sendBytes(id, bytes);
       if (v1.length) {
@@ -436,8 +475,9 @@ export class Live {
       p.seqs[b.t] = b.seq;
     }
     switch (b?.t) {
-      case "presence":
+      case "presence": {
         if (decode(b.device)?.length !== 16) return;
+        const was = this.watches(p);
         p.person = personOf(b.device, String(b.name ?? "").slice(0, 100));
         p.v = typeof b.v === "number" && b.v >= 2 ? 2 : 1;
         p.board = typeof b.board === "string" ? b.board : null;
@@ -445,7 +485,9 @@ export class Live {
         p.selection = Array.isArray(b.selection) ? b.selection.filter((x) => typeof x === "string") : [];
         // a cursor not heard yet, as a newcomer gets it; later ones come as cursor messages, so a faded one stays faded
         if ("cursor" in b && !p.cursorAt) [p.cursor, p.cursorAt] = [pointOf(b.cursor), now];
+        this.caughtUp(p, was);
         break;
+      }
       case "cursor":
         this.moved(p, pointOf(b), at, arrival);
         break;
@@ -605,16 +647,9 @@ export class Live {
     this.cursorBoard = board;
     if (!this.roster.size) return;
     for (const p of this.pipes) {
-      p.cursor = true;
+      [p.cursor, p.repeat] = [true, false];
       p.gate.run();
     }
-    // the channels never resend, so the last cursor, maybe a hide, goes once more when the pointer is still
-    const n = ++this.cursorSends;
-    this.schedule(CURSOR_REPEAT_MS, () => {
-      if (n !== this.cursorSends) return;
-      this.channels.cursor = true;
-      this.channels.gate.run();
-    });
   }
 
   /** Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. */
