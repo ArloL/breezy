@@ -11,7 +11,7 @@ const device = () => encode(randomBytes(16));
 const moved = { c1: { pos: [48, 0] } };
 
 function live(relay, clock, { name = "Ana", dev = device(), k = keys } = {}) {
-  return new Live({ relay: "wss://relay.example/", space: SPACE, keys: k, me: { device: dev, name }, socket: () => relay.connect(), now: clock.now, schedule: clock.schedule });
+  return new Live({ relay: "wss://relay.example/", space: SPACE, keys: k, me: { device: dev, name }, socket: () => relay.connect(), now: clock.now, clock: clock.now, schedule: clock.schedule });
 }
 
 /** Two connected devices, both showing board B1. */
@@ -55,6 +55,7 @@ test("cursors go at most twenty times a second", async () => {
   clock.advance(50);
   await relay.run();
   assert.equal(relay.frames.length, before + 2);
+  clock.advance(200);
   assert.deepEqual(b.cursors("B1").map((c) => c.x), [3]);
   a.sendCursor("B1", null, null);
   clock.advance(50);
@@ -402,4 +403,79 @@ test("cursors and live fields go only when someone is there", async () => {
   a.tick();
   await relay.run();
   assert.deepEqual(Object.fromEntries(b.overlay("B1")), moved);
+});
+
+const opened = async (text) => JSON.parse(new TextDecoder().decode(await keys.openLive(decode(JSON.parse(text).body))));
+
+test("cursors and live edits carry the sender's time and a sequence number", async () => {
+  const { relay, clock, a } = await two();
+  a.sendCursor("B1", 1, 1);
+  await relay.run();
+  clock.advance(50);
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, null);
+  await relay.run();
+  const bodies = await Promise.all(relay.frames.filter((f) => f.text.includes('"body"')).slice(-2).map((f) => opened(f.text)));
+  assert.deepEqual(bodies.map((b) => [b.t, b.seq]), [["cursor", 1], ["live", 2]]);
+  assert.equal(bodies[1].at - bodies[0].at, 50);
+});
+
+test("cursors play back smoothly between updates", async () => {
+  const { relay, clock, a, b } = await two();
+  for (const x of [0, 10, 20]) {
+    a.sendCursor("B1", x, 0);
+    await relay.run();
+    clock.advance(50);
+  }
+  // the buffer is one 50 ms interval: 50 ms after the last arrived, playback is halfway between the last two
+  clock.advance(-25);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [15]);
+  assert.ok(b.animating());
+  clock.advance(100);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [20]);
+  assert.ok(!b.animating());
+});
+
+test("a cursor on another board jumps there", async () => {
+  const { relay, clock, a, b } = await two();
+  for (const x of [0, 10]) {
+    a.sendCursor("B1", x, 0);
+    await relay.run();
+    clock.advance(50);
+  }
+  a.sendCursor("B2", 500, 500);
+  await relay.run();
+  assert.deepEqual(b.cursors("B2").map((c) => [c.x, c.y]), [[500, 500]]);
+});
+
+test("dragged positions play back; text shows on arrival", async () => {
+  const { relay, clock, a, b } = await two();
+  a.hold(["c1"]);
+  for (const [x, text] of [[0, "a"], [10, "ab"], [20, "abc"]]) {
+    a.sendLive("B1", { c1: { pos: [x, 0], text } }, null);
+    await relay.run();
+    clock.advance(50);
+  }
+  clock.advance(-25);
+  assert.deepEqual(b.overlay("B1").get("c1"), { pos: [15, 0], text: "abc" });
+});
+
+test("duplicates and late bodies are dropped; bodies without seq or at are taken", async () => {
+  const { relay, clock, a, b } = await two();
+  a.sendCursor("B1", 5, 5);
+  await relay.run();
+  const late = relay.frames.at(-1);
+  clock.advance(200);
+  a.sendCursor("B1", 9, 9);
+  await relay.run();
+  // the first cursor again, as an unordered channel may deliver it late
+  relay.received(relay.sockets.find((s) => s.id === late.from), late.text);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [9]);
+  // as a client from before this design sends it
+  await a.send({ t: "cursor", board: "B1", x: 3, y: 3 });
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [3]);
 });
