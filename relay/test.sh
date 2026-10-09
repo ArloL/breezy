@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Runs the hold rules' tests, then the relay under wrangler dev with test/relay.test.mjs against it: relay/test.sh
+# Runs the hold rules' and frame tests, then the relay under wrangler dev with test/relay.test.mjs against it: relay/test.sh
 set -e
 cd ${0:A:h}
 npm install --silent
-node --test test/holds.test.mjs
+node --test test/holds.test.mjs test/frames.test.mjs
 dir=$(mktemp -d)
 npx wrangler dev --port 58568 --persist-to $dir >$dir/dev.log 2>&1 &
 trap 'pkill -f "wrangler dev --port 58568"; rm -rf $dir' EXIT
