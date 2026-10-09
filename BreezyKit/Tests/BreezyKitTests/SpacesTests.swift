@@ -193,3 +193,86 @@ final class Servers {
     for board in g.store.boards { #expect(g.store.board(board.id) == d.store.board(board.id)) }
   }
 }
+
+@MainActor private func liveSpaces(_ servers: Servers, _ relay: FakeRelay, dir: URL = tempDirectory()) throws -> Spaces {
+  try Spaces(directory: dir, me: Person(device: newID(), name: "Ana"), transport: servers.transport, socket: { relay.connect($0) })
+}
+
+@MainActor @Test func aRelayGivesTheSpaceALiveLayer() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let spaces = try liveSpaces(servers, relay)
+  var heard = 0
+  spaces.onLive = { _ in heard += 1 }
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  servers.server(g.space!).relay = "wss://relay.example/"
+  await g.engine.sync()
+  #expect(g.live?.relay == "wss://relay.example/")
+  #expect(g.live?.space == g.space)
+  #expect(heard >= 1)
+  spaces.me = Person(device: spaces.me.device, name: "Ana Lima")
+  #expect(g.live?.me.name == "Ana Lima")
+  servers.server(g.space!).relay = nil
+  await g.engine.sync()
+  #expect(g.live == nil)
+}
+
+@MainActor @Test func withoutARelayThereIsNoLiveLayer() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let spaces = try liveSpaces(servers, relay)
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  await g.engine.sync()
+  #expect(g.live == nil)
+  let before = g.engine.lastSynced!
+  spaces.syncAll(polling: true, now: before.addingTimeInterval(5))
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(g.engine.lastSynced! > before)
+}
+
+@MainActor @Test func whileLiveIsConnectedPollingWaitsThirtySeconds() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let spaces = try liveSpaces(servers, relay)
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  servers.server(g.space!).relay = "wss://relay.example/"
+  await g.engine.sync()
+  g.live!.connect()
+  relay.run()
+  #expect(g.live!.connected)
+  let before = g.engine.lastSynced!
+  spaces.syncAll(polling: true, now: before.addingTimeInterval(10))
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(g.engine.lastSynced == before)
+  spaces.syncAll(polling: true, now: before.addingTimeInterval(31))
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(g.engine.lastSynced! > before)
+}
+
+@MainActor @Test func aPushIsAnnouncedAndAnnouncedPushesArePulledAtOnce() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let a = try liveSpaces(servers, relay), b = try liveSpaces(servers, relay)
+  let ga = a.newSpace(server: testServer, name: "Work")
+  servers.server(ga.space!).relay = "wss://relay.example/"
+  await ga.engine.sync()
+  let gb = b.join(ga.store.invite!)
+  await gb.engine.sync()
+  ga.live!.connect()
+  gb.live!.connect()
+  relay.run()
+  let id = ga.store.createBoard(title: "Plans")
+  await ga.engine.sync()
+  relay.run()
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(gb.store.title(of: id) == "Plans")
+}
+
+@MainActor @Test func leavingASpaceClosesItsLiveLayer() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let spaces = try liveSpaces(servers, relay)
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  servers.server(g.space!).relay = "wss://relay.example/"
+  await g.engine.sync()
+  g.live!.connect()
+  relay.run()
+  spaces.leave(g)
+  relay.run()
+  #expect(relay.sockets.isEmpty)
+}
