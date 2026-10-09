@@ -90,6 +90,7 @@ export class UI {
       case "rename-space": this.closeMenu(); return app.library?.renameSpace();
       case "leave-space": this.closeMenu(); return app.library?.leaveSpace();
       case "join": this.closeMenu(); return app.library?.join();
+      case "your-name": this.closeMenu(); return app.library?.askName();
       case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();

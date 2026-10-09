@@ -74,6 +74,8 @@ body {
   background: var(--lane); border: 1px solid var(--hairline); border-radius: 6px;
   transition: width 0.2s var(--ease), height 0.2s var(--ease);
 }
+.lane.taken { border: 2px solid var(--who); }
+.lane.seen { border-color: var(--who); }
 .lane.selected { border: 2px solid var(--accent); }
 .lane.held { transition: none; }
 .lane .header { height: 47px; margin: 0 16px; border-bottom: 1px solid var(--hairline); display: flex; align-items: center; }
@@ -96,6 +98,11 @@ body {
 .card.held { transition: filter 0.2s var(--ease); }
 .card.turned, .card.lifted { filter: drop-shadow(0 5px 9px rgb(0 0 0 / 0.24)); }
 .card.lifted { filter: drop-shadow(0 10px 18px rgb(0 0 0 / 0.26)); }
+.card.taken::after, .card.seen::after {
+  content: ""; position: absolute; inset: -4px; border: 2px solid var(--who); border-radius: 4px; pointer-events: none;
+}
+.card.seen::after { border-width: 1px; }
+.card.taken::before, .lane.taken::before { content: attr(data-who); position: absolute; left: -4px; bottom: calc(100% + 6px); z-index: 1; pointer-events: none; }
 .card.selected::after, .card.found::after {
   content: ""; position: absolute; inset: -4px; border: 2px solid var(--accent); border-radius: 4px; pointer-events: none;
 }
@@ -239,7 +246,7 @@ button .strong, button.strong { font-weight: 600; color: var(--accent); }
 .measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus, #keys { transition: none !important; }
+  .card, .lane, .sheet, button, .menu, .pill, .selection, #find, .plus, #keys, .presence .cursor { transition: none !important; }
 }
 body[data-screen="boards"] :is(#board, #top, #bottom, #zoom-level, #find, #keys) { display: none !important; }
 #boards {
@@ -278,3 +285,18 @@ body[data-screen="board"] #boards { display: none; }
 .sheet-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .sheet-choices button { height: 44px; border-radius: 999px; background: var(--press); color: var(--ink); }
 .menu .status { margin: 0; padding: 8px 14px; color: var(--ink2); font-size: 15px; line-height: 20px; white-space: pre-line; }
+
+#board .presence { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.presence .cursor { position: absolute; left: 0; top: 0; transition: transform 60ms linear; }
+.presence .cursor svg { display: block; width: 18px; height: 18px; fill: var(--who); stroke: #fff; stroke-width: 1.2; stroke-linejoin: round; }
+.presence .cursor span, .card.taken::before, .lane.taken::before {
+  padding: 0 6px; border-radius: 6px; background: var(--who); color: #fff; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;
+}
+.presence .cursor span { position: absolute; left: 14px; top: 16px; }
+.people { display: flex; gap: 4px; }
+.person {
+  width: 28px; height: 28px; border-radius: 14px; background: var(--who); color: #fff;
+  font-size: 12px; line-height: 28px; font-weight: 600; text-align: center; box-shadow: 0 0 0 2px var(--paper);
+}
+.boards-list .people { gap: 2px; }
+.boards-list .person { width: 22px; height: 22px; border-radius: 11px; font-size: 10px; line-height: 22px; }

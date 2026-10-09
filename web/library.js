@@ -4,6 +4,7 @@ import { storage } from "./sync/idb.js";
 import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
+import { chip } from "./presence.js";
 import { statusLines } from "./sync/engine.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
 import * as R from "./rules.js";
@@ -50,7 +51,11 @@ export class Library {
       app.ui.updateSync();
     };
     spaces.flushLocal = () => this.binding?.flush();
-    setInterval(() => !document.hidden && spaces.syncAll(), 5000);
+    setInterval(() => !document.hidden && spaces.syncAll({ polling: true }), 5000);
+    setInterval(() => this.spaces.spaces.forEach((g) => g.live?.tick()), 1000);
+    spaces.onLive = (g) => this.liveChanged(g);
+    app.onSelect = () => this.updateLive();
+    document.addEventListener("visibilitychange", () => this.updateLive());
     document.addEventListener("visibilitychange", () => document.hidden || spaces.syncAll());
     const change = app.model.onChange;
     app.model.onChange = () => {
@@ -93,6 +98,8 @@ export class Library {
     this.binding = new Binding(group.store, this.app.model, id, this.restack);
     this.app.ui.updateSync();
     group.engine.sync();
+    this.updateLive();
+    this.showPresence();
   }
 
   showList() {
@@ -104,6 +111,8 @@ export class Library {
     document.body.dataset.screen = "boards";
     this.renderList();
     this.app.ui.updateSync();
+    this.updateLive();
+    this.showPresence();
   }
 
   /** A section per group; On this device only when it has boards or the device is in no space. */
@@ -112,6 +121,7 @@ export class Library {
     const shown = spaces.groups().filter((g) => g.space || !spaces.spaces.length || g.store.boards().length);
     document.querySelector(".boards-groups").replaceChildren(...shown.map((g) => this.renderGroup(g)));
     this.renderStatus();
+    this.renderPeople();
   }
 
   renderGroup(g) {
@@ -160,8 +170,81 @@ export class Library {
     edit.setAttribute("aria-label", `Rename, move or delete ${title || "Untitled"}`);
     edit.innerHTML = MORE;
     edit.addEventListener("click", () => this.edit(id));
-    li.append(open, edit);
+    li.dataset.board = id;
+    const people = document.createElement("span");
+    people.className = "people";
+    li.append(open, people, edit);
     return li;
+  }
+
+  /** The live layer of the open board's space, if it has one. */
+  get live() {
+    return this.group?.live ?? null;
+  }
+
+  /** Connects each space's live layer while the app shows it, its board or the list, and says what is open. */
+  updateLive() {
+    for (const g of this.spaces.spaces) {
+      if (!g.live) continue;
+      if (!document.hidden && (!this.id || this.group === g)) g.live.connect();
+      else g.live.close();
+      const here = this.group === g;
+      g.live.setPresence({ board: here ? this.id : null, selection: here ? [...this.app.state.selection].sort() : [] });
+    }
+  }
+
+  liveChanged(g) {
+    this.updateLive();
+    if (g === this.group) this.showPresence();
+    if (!this.id) this.renderPeople();
+  }
+
+  /** Others on the open board: what they hold and have selected, their cursors, and their initials. */
+  showPresence() {
+    const { live, id } = this;
+    const s = this.app.state;
+    s.taken = new Map();
+    s.seen = new Map();
+    if (live && id) {
+      for (const [item, p] of live.selections(id)) s.seen.set(item, p.colour);
+      for (const item of live.taken()) s.taken.set(item, live.holderOf(item));
+    }
+    if ([...s.selection].some((x) => s.taken.has(x))) this.app.select(s.selection);
+    this.app.view.invalidate();
+    this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], people: live && id ? live.people(id) : [] });
+  }
+
+  /** Each board row's initials of whoever is on it, in place. */
+  renderPeople() {
+    for (const g of this.spaces.spaces) {
+      for (const { id } of g.store.boards()) {
+        const span = document.querySelector(`.boards-list li[data-board="${id}"] .people`);
+        span?.replaceChildren(...(g.live?.people(id) ?? []).map(chip));
+      }
+    }
+  }
+
+  /** This device's pointer or last touch, in screen points, for the open board's cursor; null when it left. */
+  pointerAt(p) {
+    clearTimeout(this.touchTimer);
+    if (!this.live || !this.id) return;
+    if (!p) return this.live.sendCursor(this.id, null, null);
+    const w = this.app.view.toWorld(p);
+    this.live.sendCursor(this.id, w.x, w.y);
+  }
+
+  /** A phone's cursor is its last touch, hidden 3 s after the finger lifts. */
+  touchEnded() {
+    clearTimeout(this.touchTimer);
+    this.touchTimer = setTimeout(() => this.pointerAt(null), 3000);
+  }
+
+  /** Asks for this device's name; true once it has one. */
+  async askName() {
+    const r = await ask({ title: "Your Name", message: "Others in your spaces see it beside your cursor.", value: this.spaces.me.name, placeholder: "Name", ok: "OK" });
+    const name = r?.value?.trim();
+    if (name) await this.spaces.setName(name);
+    return !!this.spaces.me.name;
   }
 
   /** Each space's first status line under its name, in place, so a tap under way isn't lost to a new list. */
@@ -228,6 +311,7 @@ export class Library {
   }
 
   async newSpace() {
+    if (!this.spaces.me.name && !(await this.askName())) return;
     const named = await ask({ title: "New Space", message: "Its boards are shared with whoever you send its invite.", value: "", placeholder: "Name", ok: "Next" });
     const name = named?.value?.trim();
     if (!name) return;
@@ -247,6 +331,7 @@ export class Library {
 
   /** Joins the space in `text`, a link opened or pasted, or asks for one; a link opened asks first. */
   async join(text) {
+    if (!this.spaces.me.name && !(await this.askName())) return;
     const opened = text !== undefined;
     if (!opened) {
       const r = await ask({ title: "Join Space", message: "Paste the invite link from another device.", value: "", placeholder: "Invite link", ok: "Join" });
