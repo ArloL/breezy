@@ -11,6 +11,8 @@ import Foundation
     public let store: Store
     public let engine: SyncEngine
     let file: StoreFile
+    /// The space's live layer, once its server names a relay.
+    public internal(set) var live: Live?
 
     init(store: Store, engine: SyncEngine, file: StoreFile) {
       self.store = store
@@ -33,12 +35,24 @@ import Foundation
   public var onError: ((Error) -> Void)?
   /// Called before merging, so that edits not yet in a store get there first.
   public var flushLocal: (() -> Void)?
+  /// This device as others in its spaces see it.
+  public var me: Person { didSet { for g in spaces { g.live?.me = me } } }
+  /// After a group's live layer appears, goes, or hears something.
+  public var onLive: ((Group) -> Void)?
+  /// The relay refused holds the group's live layer asked for.
+  public var onRefused: ((Group, Set<String>) -> Void)?
   private let transport: ((SpaceState, SpaceKeys) -> Transport?)?
+  private let socket: (@MainActor (URL) -> LiveSocket)?
 
   /// The groups in `directory`/Spaces, after moving a store from before spaces, `directory`/space.json, among them.
-  public init(directory: URL, transport: ((SpaceState, SpaceKeys) -> Transport?)? = nil) throws {
+  public init(
+    directory: URL, me: Person = Person(device: newID(), name: ""), transport: ((SpaceState, SpaceKeys) -> Transport?)? = nil,
+    socket: (@MainActor (URL) -> LiveSocket)? = nil
+  ) throws {
     self.directory = directory.appendingPathComponent("Spaces")
+    self.me = me
     self.transport = transport
+    self.socket = socket
     let old = StoreFile(url: directory.appendingPathComponent("space.json"))
     if let state = try old.load() {
       let target = file(for: state.space)
@@ -74,8 +88,43 @@ import Foundation
       onStatus?(g)
     }
     engine.flushLocal = { [weak self] in self?.flushLocal?() }
+    engine.onRelay = { [weak self, weak g] relay in
+      guard let self, let g else { return }
+      setRelay(relay, for: g)
+    }
+    engine.onPushed = { [weak g] in g?.live?.sendPushed($0) }
+    engine.onPulled = { [weak g] in g?.live?.noteCursor($0) }
     file.onError = { [weak self] in self?.onError?($0) }
     return g
+  }
+
+  /// Replaces the group's live layer with one on `relay`, or none.
+  private func setRelay(_ relay: String?, for g: Group) {
+    guard relay != g.live?.relay else { return }
+    g.live?.close()
+    g.live = nil
+    if let relay, let space = g.space, let keys = try? SpaceKeys(state: g.store.state) {
+      let live = socket.map { Live(relay: relay, space: space, keys: keys, me: me, socket: $0) } ?? Live(relay: relay, space: space, keys: keys, me: me)
+      live.onPushed = { [weak g] _ in
+        guard let g else { return }
+        Task { await g.engine.sync() }
+      }
+      live.onChange = { [weak self, weak g] in
+        guard let self, let g else { return }
+        onLive?(g)
+      }
+      live.onRefused = { [weak self, weak g] ids in
+        guard let self, let g else { return }
+        onRefused?(g, ids)
+      }
+      // a refused token is the server's to report: its 401 shows "Not in this space any more"
+      live.onUnauthorized = { [weak g] in
+        guard let g else { return }
+        Task { await g.engine.sync() }
+      }
+      g.live = live
+    }
+    onLive?(g)
   }
 
   /// On this device first, then the spaces by name.
@@ -121,6 +170,8 @@ import Foundation
     group.store.onDirty = nil
     group.store.onChange = nil
     group.engine.onStatus = nil
+    group.live?.close()
+    group.live = nil
     group.file.remove()
   }
 
@@ -142,9 +193,13 @@ import Foundation
     return new
   }
 
-  /// A cycle for every space, each on its own.
-  public func syncAll() {
-    for g in spaces { Task { await g.engine.sync() } }
+  /// A cycle for every space, each on its own. When `polling`, a space whose live layer is connected waits 30 s
+  /// between cycles: its relay announces what others push.
+  public func syncAll(polling: Bool = false, now: Date = Date()) {
+    for g in spaces {
+      if polling, g.live?.connected == true, let last = g.engine.lastSynced, now.timeIntervalSince(last) < 30 { continue }
+      Task { await g.engine.sync() }
+    }
   }
 
   /// Writes every group's file before returning.
