@@ -20,7 +20,7 @@ extension Notification.Name {
   private let holds = GestureHolds()
 
   init(directory: URL) throws {
-    spaces = try Spaces(directory: directory, me: Self.me())
+    spaces = try Spaces(directory: directory, me: Self.me(), peerTransport: { WebPeerTransport() })
     spaces.onChange = { [weak self] group, boards, remote in self?.changed(group, boards, remote: remote) }
     spaces.onStatus = { _ in NotificationCenter.default.post(name: .syncStatusChanged, object: nil) }
     spaces.onError = { NSApp.presentError($0) }

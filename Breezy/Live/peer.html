@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Breezy peers</title>
+<script>
+// Direct channels for the Mac app, which has no RTCPeerConnection of its own: WebPeerTransport calls these functions
+// and hears back through the "peer" message handler. web/sync/rtc.js is its twin; see the WebRTC design.
+const ICE_SERVERS = [{ urls: "stun:stun.cloudflare.com:3478" }];
+const peers = new Map();
+const post = (m) => webkit.messageHandlers.peer.postMessage(m);
+
+function create(id) {
+  close(id);
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const ch = pc.createDataChannel("live", { negotiated: true, id: 0, ordered: false, maxRetransmits: 0 });
+  const mine = () => peers.get(id)?.pc === pc;
+  const report = () => mine() && post({ id, kind: "state", state: pc.connectionState === "failed" ? "failed" : pc.connectionState === "connected" && ch.readyState === "open" ? "open" : "closed" });
+  pc.onicecandidate = (e) => mine() && post({ id, kind: "candidate", candidate: e.candidate && { candidate: e.candidate.candidate, mid: e.candidate.sdpMid, index: e.candidate.sdpMLineIndex } });
+  pc.onconnectionstatechange = report;
+  ch.onopen = report;
+  ch.onclose = report;
+  ch.onmessage = (e) => mine() && post({ id, kind: "message", text: String(e.data) });
+  peers.set(id, { pc, ch });
+}
+
+async function offer(id, restart) {
+  const { pc } = peers.get(id);
+  if (restart) pc.restartIce();
+  await pc.setLocalDescription();
+  return pc.localDescription.sdp;
+}
+
+async function answer(id, sdp) {
+  const { pc } = peers.get(id);
+  await pc.setRemoteDescription({ type: "offer", sdp });
+  await pc.setLocalDescription();
+  return pc.localDescription.sdp;
+}
+
+async function accept(id, sdp) {
+  await peers.get(id).pc.setRemoteDescription({ type: "answer", sdp });
+  return true;
+}
+
+function add(id, c) {
+  peers.get(id)?.pc.addIceCandidate({ candidate: c.candidate, sdpMid: c.mid, sdpMLineIndex: c.index }).catch(() => {});
+}
+
+function send(id, text) {
+  const p = peers.get(id);
+  if (p?.pc.connectionState !== "connected" || p.ch.readyState !== "open") return false;
+  p.ch.send(text);
+  return true;
+}
+
+function close(id) {
+  const p = peers.get(id);
+  peers.delete(id);
+  p?.pc.close();
+}
+</script>
