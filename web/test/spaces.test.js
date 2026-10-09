@@ -70,6 +70,14 @@ test("spaces number-aware sort by name", async () => {
   assert.deepEqual(spaces.groups().map((g) => g.name), ["On this device", "Space 2", "Space 10"]);
 });
 
+test("spaces named alike but for case go by space id", async () => {
+  for (let i = 0; i < 20; i++) {
+    const spaces = await Spaces.open(new MemoryStorage());
+    const a = spaces.newSpace(SERVER, "abe"), b = spaces.newSpace(SERVER, "Abe");
+    assert.deepEqual(spaces.groups().slice(1).map((g) => g.space), [a.space, b.space].sort());
+  }
+});
+
 test("a device with nothing stored is fresh", async () => {
   assert.equal((await Spaces.open(new MemoryStorage())).fresh, true);
 });

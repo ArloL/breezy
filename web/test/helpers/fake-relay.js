@@ -31,6 +31,8 @@ class Socket {
     this.authed = false;
     this.holds = [];
     this.readyState = 0;
+    /** Its network is gone without a close: nothing it sends arrives, and nothing reaches it. */
+    this.halfOpen = false;
   }
 
   send(text) {
@@ -50,11 +52,15 @@ export class FakeRelay {
     this.token = null;
     /** Every frame received, in order: { from, text }. */
     this.frames = [];
+    this.pings = 0;
+    /** Sockets opened so far. */
+    this.opened = 0;
   }
 
   connect() {
     const s = new Socket(this);
     this.sockets.push(s);
+    this.opened++;
     this.queue.push(() => {
       s.readyState = 1;
       s.onopen?.();
@@ -85,7 +91,7 @@ export class FakeRelay {
 
   deliver(s, m) {
     const data = JSON.stringify(m);
-    this.queue.push(() => s.onmessage?.({ data }));
+    this.queue.push(() => s.halfOpen || s.onmessage?.({ data }));
   }
 
   announce() {
@@ -93,7 +99,11 @@ export class FakeRelay {
   }
 
   received(s, text) {
-    if (!this.sockets.includes(s)) return;
+    if (!this.sockets.includes(s) || s.halfOpen) return;
+    if (text === "ping") {
+      this.pings++;
+      return this.queue.push(() => s.halfOpen || s.onmessage?.({ data: "pong" }));
+    }
     const m = JSON.parse(text);
     this.frames.push({ from: s.id, text });
     if (!s.authed) {

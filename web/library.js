@@ -7,6 +7,7 @@ import { ask } from "./sheet.js";
 import { chip } from "./presence.js";
 import { liveFields, overlaid } from "./sync/overlay.js";
 import { statusLines } from "./sync/engine.js";
+import { GestureHolds } from "./sync/gesture-holds.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
 import * as R from "./rules.js";
 
@@ -41,6 +42,9 @@ export class Library {
     this.binding = null;
     /** The space whose menu was opened last. */
     this.menuGroup = null;
+    this.holds = new GestureHolds();
+    /** A gesture asked for holds and has not finished yet. */
+    this.unfinished = false;
     app.library = this;
     spaces.onChange = (group, boards, remote) => this.changed(group, boards, remote);
     spaces.onStatus = () => {
@@ -53,7 +57,7 @@ export class Library {
     };
     spaces.flushLocal = () => this.binding?.flush();
     setInterval(() => !document.hidden && spaces.syncAll({ polling: true }), 5000);
-    setInterval(() => this.spaces.spaces.forEach((g) => g.live?.tick()), 1000);
+    setInterval(() => this.tick(), 1000);
     spaces.onLive = (g) => this.liveChanged(g);
     app.onSelect = () => this.updateLive();
     document.addEventListener("visibilitychange", () => this.updateLive());
@@ -65,7 +69,7 @@ export class Library {
       this.gestured();
     };
     app.view.shown = () => (this.live && this.id ? overlaid(app.model.board, this.live.overlay(this.id)) : app.model.board);
-    spaces.onRefused = (g) => g === this.group && this.app.refused();
+    spaces.onRefused = (g, ids) => g === this.group && this.app.refused(ids);
     this.restack = (b) => R.gravity(b, (id) => {
       const c = R.card(b, id);
       return c ? app.view.frontHeight(c.text, c.w) : 0;
@@ -219,36 +223,57 @@ export class Library {
     this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], carets: live && id ? live.carets(id) : [], people: live && id ? live.people(id) : [] });
   }
 
+  /** Asks the open board's space to hold `ids` for the gesture starting. */
+  hold(ids) {
+    if (!this.live) return;
+    this.unfinished = true;
+    this.live.hold(ids);
+  }
+
   /** While a gesture holds items, sends what it changed of them; when it ends, pushes at once, then lets go. */
   gestured() {
-    const { live, id } = this;
+    const { live, id, group } = this;
     const model = this.app.model;
     if (model.inGesture) {
       if (live?.mine.size && id) live.sendLive(id, liveFields(model.start, model.board, live.mine, id), this.app.caret());
       return;
     }
-    if (live?.mine.size && !this.finishing) this.finishGesture();
+    if (!this.unfinished) return;
+    this.unfinished = false;
+    if (!group?.space) return;
+    this.holds.finish(group.space, {
+      flush: () => this.binding?.flush(),
+      sync: () => group.engine.sync(),
+      busy: () => this.busy(group),
+      release: () => group.live?.release(),
+    });
   }
 
-  async finishGesture() {
-    const g = this.group;
-    this.finishing = true;
-    try {
-      this.binding?.flush();
-      await g.engine.sync();
-      // a gesture begun meanwhile keeps the holds until it ends
-      if (!this.app.model.inGesture) g.live?.release();
-    } finally {
-      this.finishing = false;
+  /** Whether a board of `g` is in a gesture. */
+  busy(g) {
+    return this.group === g && this.app.model.inGesture;
+  }
+
+  /** About once a second: each live layer's tick, and holds let go that no gesture or finish explains. */
+  tick() {
+    for (const g of this.spaces.spaces) {
+      const live = g.live;
+      if (!live) continue;
+      live.tick();
+      this.holds.sweep(g.space, { holding: live.mine.size > 0, busy: this.busy(g), release: () => live.release() });
     }
   }
 
-  /** Each board row's initials of whoever is on it, in place. */
+  /** Each board row's initials of whoever is on it, in place, and only where they changed. */
   renderPeople() {
     for (const g of this.spaces.spaces) {
       for (const { id } of g.store.boards()) {
         const span = document.querySelector(`.boards-list li[data-board="${id}"] .people`);
-        span?.replaceChildren(...(g.live?.people(id) ?? []).map(chip));
+        const people = g.live?.people(id) ?? [];
+        const key = people.map((p) => `${p.device} ${p.name}`).join("\n");
+        if (!span || span.dataset.people === key) continue;
+        span.dataset.people = key;
+        span.replaceChildren(...people.map(chip));
       }
     }
   }

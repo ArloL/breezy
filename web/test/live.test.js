@@ -274,3 +274,132 @@ test("a holder with nothing live yet still keeps its hold", async () => {
   await relay.run();
   assert.equal(bodies(), start + 1);
 });
+
+test("the relay gets a token made for it", async () => {
+  const { relay } = await two();
+  assert.equal(relay.token, encode(keys.relayToken));
+});
+
+test("connecting again waits for the back-off", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock);
+  a.connect();
+  await relay.run();
+  relay.kick(relay.sockets[0], 1006);
+  await relay.run();
+  for (let i = 0; i < 3; i++) {
+    a.connect();
+    await relay.run();
+  }
+  clock.advance(900);
+  a.connect();
+  await relay.run();
+  assert.equal(relay.opened, 1);
+  clock.advance(100);
+  await relay.run();
+  assert.ok(relay.opened === 2 && a.connected);
+});
+
+test("a refused token keeps the layer closed", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  relay.token = "someone else's";
+  const a = live(relay, clock);
+  a.connect();
+  await relay.run();
+  for (let i = 0; i < 3; i++) {
+    a.close();
+    a.connect();
+    clock.advance(60_000);
+    await relay.run();
+  }
+  assert.ok(relay.opened === 1 && !a.connected);
+});
+
+test("a socket that stops answering is closed and opened again", async () => {
+  const { relay, clock, a } = await two();
+  const first = relay.sockets[0];
+  clock.advance(20_000);
+  a.tick();
+  await relay.run();
+  assert.equal(relay.pings, 1);
+  clock.advance(10_000);
+  a.tick();
+  assert.ok(a.connected);
+  clock.advance(10_000);
+  a.tick();
+  await relay.run();
+  assert.equal(relay.pings, 2);
+  first.halfOpen = true;
+  clock.advance(20_000);
+  a.tick();
+  await relay.run();
+  clock.advance(9000);
+  a.tick();
+  assert.ok(a.connected);
+  clock.advance(1000);
+  a.tick();
+  assert.ok(!a.connected);
+  await relay.run();
+  assert.ok(!relay.sockets.includes(first));
+  clock.advance(1000);
+  await relay.run();
+  assert.ok(a.connected && relay.opened === 3);
+});
+
+test("a closed layer holds nothing", async () => {
+  const { relay, clock, a, b } = await two();
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, null);
+  await relay.run();
+  a.close();
+  await relay.run();
+  assert.equal(a.mine.size, 0);
+  a.connect();
+  await relay.run();
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.ok(a.connected);
+  assert.equal(b.taken().size, 0);
+  assert.equal(b.overlay("B1").size, 0);
+});
+
+test("what this device holds is not overlaid", async () => {
+  const { relay, a, b } = await two();
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, null);
+  await relay.run();
+  a.sendPushed(7);
+  a.release();
+  await relay.run();
+  assert.deepEqual(Object.fromEntries(b.overlay("B1")), moved);
+  b.hold(["c1"]);
+  await relay.run();
+  assert.equal(b.overlay("B1").size, 0);
+});
+
+test("cursors and live fields go only when someone is there", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock);
+  a.connect();
+  await relay.run();
+  a.setPresence({ board: "B1", selection: [] });
+  await relay.run();
+  const me = relay.sockets[0].id;
+  const bodies = () => relay.frames.filter((f) => f.from === me && f.text.includes('"body"')).length;
+  const start = bodies();
+  a.sendCursor("B1", 1, 1);
+  a.hold(["c1"]);
+  a.sendLive("B1", moved, null);
+  clock.advance(1000);
+  await relay.run();
+  assert.equal(bodies(), start);
+  const b = live(relay, clock, { name: "Bo" });
+  b.connect();
+  await relay.run();
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [1]);
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.deepEqual(Object.fromEntries(b.overlay("B1")), moved);
+});

@@ -142,13 +142,18 @@ export class App {
 
   /** Asks the open board's space to hold `ids` for the gesture starting. */
   hold(ids) {
-    this.library?.live?.hold(ids);
+    this.library?.hold(ids);
   }
 
-  /** Someone else got there first: the gesture under way goes back as it began. */
-  refused() {
-    if (["move", "lane", "resize"].includes(this.input.drag?.action)) return this.input.dragCancel();
-    this.cancelEditing();
+  /** Someone else got there first with `ids`: the drag, edit or rename under way on any of them goes back as it began. */
+  refused(ids) {
+    const s = this.state;
+    if (["move", "lane", "resize"].includes(this.input.drag?.action)) {
+      if ([...s.held].some((id) => ids.has(id))) this.input.dragCancel();
+      return;
+    }
+    const id = s.editing?.id ?? s.renaming;
+    if (id && ids.has(id)) this.cancelEditing();
   }
 
   /** Ends the card edit or lane rename in progress, putting the board back as it began. */

@@ -10,6 +10,8 @@ export const PRESENCE_MS = 15_000;
 export const GONE_MS = 30_000;
 export const IDLE_CURSOR_MS = 60_000;
 export const MAX_BACKOFF_MS = 30_000;
+export const PING_MS = 20_000;
+export const PONG_TIMEOUT_MS = 10_000;
 const MAX_FRAME = 65_536;
 const enc = new TextEncoder(), dec = new TextDecoder();
 
@@ -61,6 +63,13 @@ export class Live {
     this.id = null;
     this.wanted = false;
     this.failures = 0;
+    this.retrying = false;
+    /** After the relay refused the token: this layer stays closed. A new one comes when the server names another relay,
+     * or at the next launch. */
+    this.stopped = false;
+    this.pingSent = -Infinity;
+    /** When a ping went out that nothing has answered yet. */
+    this.pingWaiting = null;
     /** Connection id → { person, board, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret, awaiting }. */
     this.peers = new Map();
     /** Connection id → the ids it holds. */
@@ -87,13 +96,17 @@ export class Live {
     return this.id !== null;
   }
 
+  /** Opens unless open already, waiting to retry, or refused for good. */
   connect() {
     this.wanted = true;
-    if (!this.ws) this.open();
+    if (!this.ws && !this.retrying && !this.stopped) this.open();
   }
 
+  /** Closes, holding nothing: the relay drops a closed connection's holds. */
   close() {
     this.wanted = false;
+    this.mine.clear();
+    this.lastLive = null;
     const ws = this.ws;
     this.ws = null;
     ws?.close();
@@ -105,24 +118,37 @@ export class Live {
     url.searchParams.set("space", this.space);
     const ws = this.makeSocket(url.href);
     this.ws = ws;
-    ws.onopen = () => ws === this.ws && this.frame({ t: "auth", token: encode(this.keys.token) });
+    ws.onopen = () => ws === this.ws && this.frame({ t: "auth", token: encode(this.keys.relayToken) });
     ws.onmessage = (e) => {
-      if (ws === this.ws) this.in = this.in.then(() => this.received(String(e.data))).catch(() => {});
-    };
-    ws.onclose = (e) => {
       if (ws !== this.ws) return;
-      this.ws = null;
-      this.reset();
-      if (e.code === 4001) return this.onUnauthorized();
-      if (!this.wanted) return;
-      const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.failures++);
-      this.schedule(delay, () => this.wanted && !this.ws && this.open());
+      // anything from the relay shows the socket is alive
+      this.pingWaiting = null;
+      this.in = this.in.then(() => this.received(String(e.data))).catch(() => {});
     };
+    ws.onclose = (e) => ws === this.ws && this.dropped(e.code);
+  }
+
+  /** The socket closed with `code`, or was given up on: reconnects after a back-off, unless the token was refused. */
+  dropped(code) {
+    this.ws = null;
+    this.reset();
+    if (code === 4001) {
+      this.stopped = true;
+      return this.onUnauthorized();
+    }
+    if (!this.wanted) return;
+    const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.failures++);
+    this.retrying = true;
+    this.schedule(delay, () => {
+      this.retrying = false;
+      if (this.wanted && !this.ws && !this.stopped) this.open();
+    });
   }
 
   reset() {
     const had = this.connected || this.peers.size || this.holds.size;
     this.id = null;
+    this.pingWaiting = null;
     this.peers.clear();
     this.holds.clear();
     if (had) this.onChange();
@@ -151,6 +177,7 @@ export class Live {
   }
 
   async received(text) {
+    if (text === "pong") return;
     let m;
     try {
       m = JSON.parse(text);
@@ -161,6 +188,7 @@ export class Live {
       case "welcome":
         this.id = m.id;
         this.failures = 0;
+        this.pingSent = this.now();
         this.holds = holdsFrom(m.holds);
         this.sendPresence();
         if (this.mine.size) this.frame({ t: "hold", ids: [...this.mine].sort() });
@@ -241,9 +269,19 @@ export class Live {
     this.onChange();
   }
 
-  /** About once a second: forgets the silent, fades still cursors, repeats presence and a holder's live fields. */
+  /** About once a second: forgets the silent, fades still cursors, repeats presence and a holder's live fields, and checks
+   * that the relay still answers. */
   tick() {
     const now = this.now();
+    if (this.connected && this.pingWaiting !== null && now - this.pingWaiting >= PONG_TIMEOUT_MS) {
+      const ws = this.ws;
+      this.dropped(1006);
+      return ws?.close();
+    }
+    if (this.connected && this.pingWaiting === null && now - this.pingSent >= PING_MS) {
+      this.pingSent = this.pingWaiting = now;
+      if (this.ws.readyState === 1) this.ws.send("ping");
+    }
     let changed = false;
     for (const [conn, p] of this.peers) {
       if (now - p.heard > GONE_MS) {
@@ -282,10 +320,12 @@ export class Live {
     this.send({ t: "presence", device, name, colour: colourOf(device), board: this.presence.board, selection: this.presence.selection, cursor: this.cursor }, to);
   }
 
-  /** This device's pointer on `board`; null x and y hide it. At most every 50 ms, and the last one always goes. */
+  /** This device's pointer on `board`; null x and y hide it. At most every 50 ms, and the last one always goes; none while
+   * nobody else is here, as a newcomer gets it with the presence sent when it joins. */
   sendCursor(board, x, y) {
     this.cursor = Number.isFinite(x) && Number.isFinite(y) ? { board, x, y } : null;
     this.cursorBoard = board;
+    if (!this.peers.size) return;
     this.cursorGate.run(() => this.send({ t: "cursor", board: this.cursorBoard, x: this.cursor?.x ?? null, y: this.cursor?.y ?? null }));
   }
 
@@ -304,9 +344,11 @@ export class Live {
     if (this.connected) this.frame({ t: "release" });
   }
 
-  /** What the gesture under way changed of what it holds; at most every 50 ms, and repeated every 5 s while held. */
+  /** What the gesture under way changed of what it holds; at most every 50 ms, and repeated every 5 s while held, which
+   * keeps the holds even while nobody else is here to be sent the rest. */
   sendLive(board, items, caret = null) {
     this.lastLive = { t: "live", board, items, caret };
+    if (!this.peers.size) return;
     this.liveGate.run(() => this.lastLive && this.send(this.lastLive));
   }
 
@@ -327,9 +369,10 @@ export class Live {
     return null;
   }
 
+  /** Others' live fields on `board`, leaving out what this device holds: its own gesture draws from its model. */
   overlay(board) {
     const out = new Map();
-    for (const p of this.peers.values()) if (p.overlayBoard === board) for (const [id, f] of p.overlay) out.set(id, f);
+    for (const p of this.peers.values()) if (p.overlayBoard === board) for (const [id, f] of p.overlay) if (!this.mine.has(id)) out.set(id, f);
     return out;
   }
 
