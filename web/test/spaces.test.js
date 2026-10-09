@@ -4,6 +4,7 @@ import { Spaces } from "../sync/spaces.js";
 import { Store } from "../sync/store.js";
 import { MemoryStorage } from "./helpers/storage.js";
 import { FakeServer, FakeTransport, SERVER, device, mulberry } from "./helpers/fake-server.js";
+import { FakeRelay } from "./helpers/fake-relay.js";
 import { newID } from "../rules.js";
 import * as R from "../rules.js";
 
@@ -185,4 +186,110 @@ test("a move while read-only leaves the board where it was", async () => {
   assert.equal(await spaces.move(id, work), null);
   assert.equal(spaces.local.store.title(id), "Plans");
   assert.deepEqual(work.store.boards(), []);
+});
+
+async function liveSpaces(srv, relay, storage = new MemoryStorage()) {
+  return Spaces.open(storage, { transport: srv.transport, socket: () => relay.connect() });
+}
+
+/** Lets the live layer appear: it needs the space's keys, which take a moment. */
+const settleLive = () => new Promise((r) => setTimeout(r, 20));
+
+test("a device has a name and an id, kept", async () => {
+  const storage = new MemoryStorage();
+  const spaces = await Spaces.open(storage);
+  assert.equal(spaces.me.name, "");
+  assert.equal(storage.data.get("me").device, spaces.me.device);
+  await spaces.setName("Ana");
+  const again = await Spaces.open(storage);
+  assert.deepEqual(again.me, { device: spaces.me.device, name: "Ana" });
+});
+
+test("a relay gives the space a live layer", async () => {
+  const srv = servers(), relay = new FakeRelay();
+  const spaces = await liveSpaces(srv, relay);
+  await spaces.setName("Ana");
+  let heard = 0;
+  spaces.onLive = () => heard++;
+  const g = spaces.newSpace(SERVER, "Work");
+  srv.server(g.space).relay = "wss://relay.example/";
+  await g.engine.sync();
+  await settleLive();
+  assert.equal(g.live.relay, "wss://relay.example/");
+  assert.equal(g.live.me.name, "Ana");
+  assert.ok(heard >= 1);
+  await spaces.setName("Ana Lima");
+  assert.equal(g.live.me.name, "Ana Lima");
+  srv.server(g.space).relay = null;
+  await g.engine.sync();
+  await settleLive();
+  assert.equal(g.live, null);
+});
+
+test("without a relay there is no live layer", async () => {
+  const srv = servers(), relay = new FakeRelay();
+  const spaces = await liveSpaces(srv, relay);
+  const g = spaces.newSpace(SERVER, "Work");
+  await g.engine.sync();
+  await settleLive();
+  assert.equal(g.live, null);
+  const before = g.engine.lastCycle;
+  await new Promise((r) => setTimeout(r, 5));
+  spaces.syncAll({ polling: true });
+  await g.engine.running;
+  assert.ok(g.engine.lastCycle > before);
+});
+
+test("while live is connected, polling waits 30 s", async () => {
+  const srv = servers(), relay = new FakeRelay();
+  let now = 1_000_000;
+  const spaces = await Spaces.open(new MemoryStorage(), { transport: srv.transport, socket: () => relay.connect(), now: () => now });
+  const g = spaces.newSpace(SERVER, "Work");
+  srv.server(g.space).relay = "wss://relay.example/";
+  await g.engine.sync();
+  await settleLive();
+  g.live.connect();
+  await relay.run();
+  assert.ok(g.live.connected);
+  const before = g.engine.lastCycle;
+  now += 10_000;
+  spaces.syncAll({ polling: true });
+  assert.equal(g.engine.running, null);
+  now += 21_000;
+  spaces.syncAll({ polling: true });
+  await g.engine.running;
+  assert.ok(g.engine.lastCycle > before);
+});
+
+test("a push is announced, and an announced push is pulled at once", async () => {
+  const srv = servers(), relay = new FakeRelay();
+  const a = await liveSpaces(srv, relay), b = await liveSpaces(srv, relay);
+  const ga = a.newSpace(SERVER, "Work");
+  srv.server(ga.space).relay = "wss://relay.example/";
+  await ga.engine.sync();
+  const gb = b.join(ga.store.invite);
+  await gb.engine.sync();
+  await settleLive();
+  ga.live.connect();
+  gb.live.connect();
+  await relay.run();
+  const id = ga.store.createBoard("Plans");
+  await ga.engine.sync();
+  await relay.run();
+  await gb.engine.running;
+  assert.equal(gb.store.title(id), "Plans");
+});
+
+test("leaving a space closes its live layer", async () => {
+  const srv = servers(), relay = new FakeRelay();
+  const spaces = await liveSpaces(srv, relay);
+  const g = spaces.newSpace(SERVER, "Work");
+  srv.server(g.space).relay = "wss://relay.example/";
+  await g.engine.sync();
+  await settleLive();
+  g.live.connect();
+  await relay.run();
+  await spaces.leave(g);
+  await relay.run();
+  assert.equal(relay.sockets.length, 0);
 });
