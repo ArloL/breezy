@@ -359,3 +359,36 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   await b.engine.sync()
   #expect(b.engine.relay == nil)
 }
+
+@MainActor @Test func onlyWebSocketsOverTLSOrToThisComputerAreRelays() async {
+  let (server, a, _, id) = await pair()
+  for (relay, valid) in [
+    ("wss://relay.example/", true), ("ws://127.0.0.1:58568/", true), ("ws://localhost:58568/", true),
+    ("ws://relay.example/", false), ("https://relay.example/", false),
+  ] {
+    server.relay = relay
+    a.edit(id) { $0.addCard(x: 0, y: 0) }
+    await a.engine.sync()
+    #expect(a.engine.relay == (valid ? relay : nil), "\(relay)")
+  }
+}
+
+@MainActor @Test func aSyncCalledDuringACycleReturnsOnceItsChangesArePushed() async {
+  let (server, a, _, id) = await pair()
+  var second: Task<Void, Never>?
+  var pendingAtReturn: Int?
+  a.transport.beforePush = {
+    guard second == nil else { return }
+    second = Task {
+      a.edit(id) { $0.addCard(x: 0, y: 200) }
+      await a.engine.sync()
+      pendingAtReturn = a.store.pending.count
+    }
+    for _ in 0..<3 { await Task.yield() }
+  }
+  a.edit(id) { $0.addCard(x: 0, y: 0) }
+  await a.engine.sync()
+  await second?.value
+  #expect(pendingAtReturn == 0)
+  #expect(server.records.count == 4)
+}

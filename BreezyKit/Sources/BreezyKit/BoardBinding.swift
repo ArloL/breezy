@@ -13,7 +13,8 @@ public final class BoardBinding {
   public var taken: () -> Set<String> = { [] }
   /// After every change to the model, after the binding's own handling.
   public var afterEdit: (() -> Void)?
-  /// After a gesture ends or is cancelled.
+  /// After a gesture ends or is cancelled, even when the binding's owner let go of it meanwhile, as a window closed
+  /// mid-edit does: the gesture's holds are released from here.
   public var afterGesture: (() -> Void)?
   /// The board as last given to or taken from the store, stacked as shown.
   private var seen: Board
@@ -30,10 +31,11 @@ public final class BoardBinding {
       self?.afterEdit?()
     }
     model.onGestureEnd = { [weak self] in
+      guard let self else { return }
       // after the gesture's undo step is registered, so that the step holds only local changes
       DispatchQueue.main.async {
-        if self?.waiting == true { self?.pull() }
-        self?.afterGesture?()
+        if self.waiting { self.pull() }
+        self.afterGesture?()
       }
     }
   }

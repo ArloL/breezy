@@ -271,3 +271,130 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   relay.run()
   #expect(bodies() == start + 1)
 }
+
+@MainActor @Test func theRelayGetsATokenMadeForIt() {
+  let (relay, _, _, _) = two()
+  #expect(relay.token == Base64URL.encode(keys().relayToken))
+}
+
+@MainActor @Test func connectingAgainWaitsForTheBackOff() {
+  let relay = FakeRelay(), clock = Clock()
+  let a = live(relay, clock)
+  a.connect()
+  relay.run()
+  relay.kick(relay.sockets[0], code: 1006)
+  relay.run()
+  for _ in 0..<3 {
+    a.connect()
+    relay.run()
+  }
+  clock.advance(0.9)
+  a.connect()
+  relay.run()
+  #expect(relay.opened == 1)
+  clock.advance(0.1)
+  relay.run()
+  #expect(relay.opened == 2 && a.connected)
+}
+
+@MainActor @Test func aRefusedTokenKeepsTheLayerClosed() {
+  let relay = FakeRelay(), clock = Clock()
+  relay.token = "someone else's"
+  let a = live(relay, clock)
+  a.connect()
+  relay.run()
+  for _ in 0..<3 {
+    a.close()
+    a.connect()
+    clock.advance(60)
+    relay.run()
+  }
+  #expect(relay.opened == 1 && !a.connected)
+}
+
+@MainActor @Test func aSocketThatStopsAnsweringIsClosedAndOpenedAgain() {
+  let (relay, clock, a, _) = two()
+  let first = relay.sockets[0]
+  clock.advance(20)
+  a.tick()
+  relay.run()
+  #expect(relay.pings == 1)
+  clock.advance(10)
+  a.tick()
+  #expect(a.connected)
+  clock.advance(10)
+  a.tick()
+  relay.run()
+  #expect(relay.pings == 2)
+  first.halfOpen = true
+  clock.advance(20)
+  a.tick()
+  relay.run()
+  clock.advance(9)
+  a.tick()
+  #expect(a.connected)
+  clock.advance(1)
+  a.tick()
+  #expect(!a.connected)
+  relay.run()
+  #expect(!relay.sockets.contains { $0 === first })
+  clock.advance(1)
+  relay.run()
+  #expect(a.connected && relay.opened == 3)
+}
+
+@MainActor @Test func aClosedLayerHoldsNothing() {
+  let (relay, clock, a, b) = two()
+  a.hold(["c1"])
+  a.sendLive(board: "B1", items: moved, caret: nil)
+  relay.run()
+  a.close()
+  relay.run()
+  #expect(a.mine.isEmpty)
+  a.connect()
+  relay.run()
+  clock.advance(5)
+  a.tick()
+  relay.run()
+  #expect(a.connected && b.taken.isEmpty && b.overlay(on: "B1").isEmpty)
+}
+
+@MainActor @Test func whatThisDeviceHoldsIsNotOverlaid() {
+  let (relay, _, a, b) = two()
+  a.hold(["c1"])
+  a.sendLive(board: "B1", items: moved, caret: nil)
+  relay.run()
+  a.sendPushed(7)
+  a.release()
+  relay.run()
+  #expect(b.overlay(on: "B1") == moved)
+  b.hold(["c1"])
+  relay.run()
+  #expect(b.overlay(on: "B1").isEmpty)
+}
+
+@MainActor @Test func cursorsAndLiveFieldsGoOnlyWhenSomeoneIsThere() {
+  let relay = FakeRelay(), clock = Clock()
+  let a = live(relay, clock)
+  a.connect()
+  relay.run()
+  a.setPresence(board: "B1", selection: [])
+  relay.run()
+  let me = relay.sockets[0].id
+  func bodies() -> Int { relay.frames.filter { $0.from == me && $0.text.contains("\"body\"") }.count }
+  let start = bodies()
+  a.sendCursor(board: "B1", x: 1, y: 1)
+  a.hold(["c1"])
+  a.sendLive(board: "B1", items: moved, caret: nil)
+  clock.advance(1)
+  relay.run()
+  #expect(bodies() == start)
+  let b = live(relay, clock, name: "Bo")
+  b.connect()
+  relay.run()
+  #expect(b.cursors(on: "B1").map { $0.cursor.x } == [1])
+  clock.advance(5)
+  a.tick()
+  relay.run()
+  #expect(b.overlay(on: "B1") == moved)
+}

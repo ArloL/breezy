@@ -18,7 +18,7 @@ One way is half: the relay takes about 26 ms on Wi-Fi and 45 ms on mobile data, 
 A Cloudflare Worker with one Durable Object per space (`idFromName(space id)`), using WebSocket hibernation. It forwards sealed messages between a space's connections and keeps the holds. It stores no record and cannot read a message.
 
 - `sync.php` names it: every response gains `relay`, a `wss://` URL from `config.php`'s `relay` key, omitted when the key is absent. Existing invites keep working, and moving the relay to a VPS changes one line of config. Without `relay`, the apps work as today.
-- A connection's first message is `{"t": "auth", "token": …}`; browsers cannot set headers on a WebSocket, and a URL could end up in logs. The first connection to a space stores the token's SHA-256, as `sync.php` does when a space is created; a later token that does not match closes the socket with code 4001, as does no `auth` within 5 s.
+- A connection's first message is `{"t": "auth", "token": …}`; browsers cannot set headers on a WebSocket, and a URL could end up in logs. The token is derived from the space secret for the relay (HKDF-SHA256, info `breezy relay`), not `sync.php`'s, so the relay can't act on `sync.php`. The first connection to a space stores the token's SHA-256, as `sync.php` does when a space is created; a later token that does not match closes the socket with code 4001, as does no `auth` within 5 s.
 - The relay sees who connects and when, message sizes and timing, and the record ids of held items: no more than `sync.php` sees.
 
 ### Messages
@@ -32,9 +32,10 @@ JSON text frames, at most 64 KB; the relay drops bigger ones.
 | relay | `{t: "join", id}`, `{t: "leave", id}` | a connection opened or closed |
 | device | `{to?, body}` | relays `body`, sealed, to connection `to` or to everyone else, as `{from, body}` |
 | device | `{t: "hold", ids}` | asks for ids, all or none |
-| relay | `{t: "refused", ids}` | to the asker, when someone else holds any of them: those ids; none are granted |
+| relay | `{t: "refused", ids}` | to the asker, when someone else holds any of them: those ids; when the ids are malformed or the connection would hold more than 500: all it asked for; none are granted |
 | device | `{t: "release"}` | lets go of every id this connection holds |
 | relay | `{t: "holds", holds}` | to everyone, after any change: `{connection id: [ids]}` |
+| device | `ping` | plain text, every 20 s while connected; the relay answers `pong` without waking |
 
 ### Sealed bodies
 
@@ -85,7 +86,7 @@ A body is a blob as in sync: a 12-byte nonce and the AES-GCM ciphertext of JSON,
 ## Connection
 
 - `Live`, one per space beside its `SyncEngine`: `web/sync/live.js`, and `Live.swift` in BreezyKit on `URLSessionWebSocketTask`. It connects while the app is visible and a board of that space or the board list is open, and closes otherwise.
-- It reconnects after a drop or a network change, after 1 s doubling to 30 s; on reconnecting it sends `presence` again, and any gesture under way asks for its holds again.
+- It reconnects after a drop or a network change, after 1 s doubling to 30 s; on reconnecting it sends `presence` again, and any gesture under way asks for its holds again. A socket that sends nothing within 10 s of a `ping` counts as dropped. After 4001 it stays closed until the server names another relay or the app starts again.
 
 ## Errors
 

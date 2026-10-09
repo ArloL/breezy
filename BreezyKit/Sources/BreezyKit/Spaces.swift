@@ -127,10 +127,11 @@ import Foundation
     onLive?(g)
   }
 
-  /// On this device first, then the spaces by name.
+  /// On this device first, then the spaces by name, as Finder orders them but with names alike but for case tied, then
+  /// by space id.
   public var groups: [Group] {
     [local] + spaces.sorted { a, b in
-      let order = a.name.localizedStandardCompare(b.name)
+      let order = a.name.compare(b.name, options: [.caseInsensitive, .numeric, .widthInsensitive], locale: .current)
       return order == .orderedSame ? a.space! < b.space! : order == .orderedAscending
     }
   }
