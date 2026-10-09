@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Two headless Chromiums in one space on this Mac, against server/dev.sh and the relay under wrangler dev: their direct
-// channel opens, cursors stop reaching the relay, and closing the channel falls back to it. Needs real Chromium (not
+// channel opens and carries compact binary bodies, cursors stop reaching the relay, and closing the channel falls back
+// to binary relay frames. Prints the sizes it measures. Needs real Chromium (not
 // ungoogled-chromium); BREEZY_CHROMIUM names one, else Playwright's is used: node scripts/direct-e2e.mjs
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
@@ -97,7 +98,7 @@ async function browser(name) {
   await send("Page.enable");
   await send("Network.enable");
   // every peer connection the page makes, so that the test can close them
-  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
   const go = async (url) => {
     const loaded = new Promise((r) => listeners.push(function l(m) { if (m.method === "Page.loadEventFired") { listeners.splice(listeners.indexOf(l), 1); r(); } }));
     await send("Page.navigate", { url });
@@ -133,26 +134,40 @@ await waitFor("the board on b", () => b.click(".boards-group[data-group^=\"space
 await waitFor("a channel", async () => (await a.status()).includes("Direct with 1 of 1 person"), 20_000);
 console.log("open:", await a.status());
 
-/** Broadcast body frames (no `to`) that a sends to the relay while its mouse crosses the board from x0 to x1. */
-async function framesWhileMoving(x0, x1) {
-  let frames = 0, x = x0;
+/** What a sends while `act` runs: channel messages by kind, and the relay's body frames by kind and size. */
+async function sentDuring(act) {
+  const relay = { binary: [], text: [] };
   const count = (m) => {
     if (m.method !== "Network.webSocketFrameSent") return;
-    try {
-      const f = JSON.parse(m.params.response.payloadData);
-      if (typeof f.body === "string" && f.to === undefined) frames++;
-    } catch {}
+    const { opcode, payloadData } = m.params.response;
+    if (opcode === 2) {
+      const f = Buffer.from(payloadData, "base64");
+      if (f[0] === 0 || f[0] === 1) relay.binary.push({ to: f[0] === 1, n: f.length });
+    } else if (payloadData !== "ping") {
+      try { if (typeof JSON.parse(payloadData).body === "string") relay.text.push(payloadData.length); } catch {}
+    }
   };
   a.listeners.push(count);
+  await a.run("__ch.length = 0");
+  const result = await act();
+  await sleep(300);
+  a.listeners.splice(a.listeners.indexOf(count), 1);
+  return { ...result, relay, channel: await a.run("__ch.slice()") };
+}
+
+const sizes = (list) => (list.length ? `${Math.min(...list)}..${Math.max(...list)} B` : "none");
+const bodies = (r) => r.relay.binary.map((f) => f.n);
+
+/** a's mouse crosses the board from x0 to x1. */
+const moving = (x0, x1) => sentDuring(async () => {
+  let x = x0;
   for (let i = 0; i <= 40; i++) {
     x = x0 + ((x1 - x0) * i) / 40;
     await a.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y: 400 });
     await sleep(16);
   }
-  await sleep(300);
-  a.listeners.splice(a.listeners.indexOf(count), 1);
-  return { frames, x };
-}
+  return { x };
+});
 
 const cursorX = () => b.run(`(() => { const m = document.querySelector(".presence .cursor")?.style.transform.match(/translate\\((-?[\\d.]+)px/); return m ? +m[1] : null; })()`);
 /** b's cursor for a once it stops moving. */
@@ -167,19 +182,68 @@ async function settledCursor(what, before, ms = 10_000) {
 }
 
 const start = await cursorX();
-const { frames: direct, x: aDirect } = await framesWhileMoving(300, 690);
+const d = await moving(300, 690);
+const direct = bodies(d).length + d.relay.text.length;
 if (direct > 2) throw new Error(`${direct} body frames reached the relay with the channel open`);
+if (!d.channel.length) throw new Error("nothing went over the channel while the mouse moved");
+if (d.channel.some((m) => !m.bin)) throw new Error("a channel message was text");
+const keyframes = d.channel.filter((m) => m.n > 24);
+if (keyframes.length > 3 || keyframes.some((m) => m.n > 40)) throw new Error(`cursor bodies on the channel: ${d.channel.map((m) => m.n)}`);
 const first = await settledCursor("a's cursor moving on b over the channel", start);
-if (Math.abs(first - aDirect) > 60) throw new Error(`b shows a at x ${first} over the channel, a's mouse is at ${aDirect}`);
-console.log("direct: relay body frames while moving:", direct, "| b sees a at x", first);
+if (Math.abs(first - d.x) > 60) throw new Error(`b shows a at x ${first} over the channel, a's mouse is at ${d.x}`);
+console.log(`direct: ${d.channel.length} channel messages, all binary, cursor ${sizes(d.channel.map((m) => m.n))} (${keyframes.length} keyframes above 24 B); relay body frames while moving: ${direct} | b sees a at x ${first}`);
+
+const mouse = (type, x, y, extra = {}) => a.send("Input.dispatchMouseEvent", { type, x, y, button: "left", ...extra });
+const list = (r) => r.channel.map((m) => m.n).join(" ");
+const median = (xs) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
+
+/** a types into a new card at height y, then drags it; returns what each sent. */
+async function liveSizes(y) {
+  const typed = await sentDuring(async () => {
+    await mouse("mouseMoved", 300, y);
+    for (const clickCount of [1, 2]) {
+      await mouse("mousePressed", 300, y, { clickCount });
+      await mouse("mouseReleased", 300, y, { clickCount });
+    }
+    await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
+    for (const ch of "hello world") {
+      await a.send("Input.dispatchKeyEvent", { type: "char", text: ch });
+      await sleep(120);
+    }
+    return {};
+  });
+  const card = await a.run(`(() => { const r = document.querySelector("[contenteditable]")?.getBoundingClientRect(); return r && { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  await a.run(`document.activeElement.blur()`);
+  const dragged = await sentDuring(async () => {
+    await mouse("mousePressed", card.x, card.y, { clickCount: 1 });
+    for (let i = 1; i <= 20; i++) { await mouse("mouseMoved", card.x + i * 10, card.y + i * 4, { buttons: 1 }); await sleep(30); }
+    await mouse("mouseReleased", card.x + 200, card.y + 80);
+    return {};
+  });
+  return { typed, dragged };
+}
+
+const over = await liveSizes(200);
+for (const [what, r] of [["typing", over.typed], ["dragging a card", over.dragged]]) {
+  if (r.channel.length < 3) throw new Error(`no live bodies went over the channel while ${what}`);
+  if (r.channel.some((m) => !m.bin)) throw new Error(`a channel message was text while ${what}`);
+  console.log(`${what}, channel: ${r.channel.length} binary messages, median ${median(r.channel.map((m) => m.n))} B (${list(r)}); relay body frames: ${bodies(r).length}`);
+}
 
 await b.run("__pcs.forEach((pc) => pc.close())");
 await waitFor("the fall back", async () => (await a.status()).includes("Direct with 0 of 1 person"));
-const { frames: relayed, x: aRelayed } = await framesWhileMoving(aDirect, 300);
-if (relayed < 5) throw new Error(`only ${relayed} body frames reached the relay after the channel closed`);
+const r = await moving(d.x, 300);
+const relayed = bodies(r);
+if (relayed.length < 5) throw new Error(`only ${relayed.length} body frames reached the relay after the channel closed`);
+if (r.relay.text.length) throw new Error(`${r.relay.text.length} text body frames reached the relay`);
 const second = await settledCursor("a's cursor moving on b over the relay", first);
-if (Math.abs(second - aRelayed) > 60) throw new Error(`b shows a at x ${second} over the relay, a's mouse is at ${aRelayed}`);
-console.log("fallback: relay body frames while moving:", relayed, "| b sees a at x", second);
+if (Math.abs(second - r.x) > 60) throw new Error(`b shows a at x ${second} over the relay, a's mouse is at ${r.x}`);
+const via = await liveSizes(600);
+for (const [what, r] of [["typing", via.typed], ["dragging a card", via.dragged]]) {
+  if (bodies(r).length < 3) throw new Error(`no live bodies reached the relay while ${what}`);
+  console.log(`${what}, relay: ${bodies(r).length} binary body frames, median ${median(bodies(r))} B (${bodies(r).join(" ")})`);
+}
+console.log(`fallback: ${relayed.length} binary relay body frames, cursor ${sizes(relayed)} | b sees a at x ${second}`);
 console.log("ok");
 done = true;
 process.exit(0);
