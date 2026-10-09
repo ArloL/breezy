@@ -4,7 +4,7 @@ import Testing
 @testable import BreezyKit
 
 private struct Vector: Decodable {
-  var secret, space, id, nonce, plaintext, token, tokenHash, blob, server, invite: String
+  var secret, space, id, nonce, plaintext, token, tokenHash, blob, server, invite, namedInvite: String
 }
 
 private func vector() throws -> Vector { try JSONDecoder().decode(Vector.self, from: fixture("crypto.json")) }
@@ -60,4 +60,12 @@ private func vector() throws -> Vector { try JSONDecoder().decode(Vector.self, f
   #expect(!Invite.validServer("http://example.com/sync.php"))
   #expect(!Invite.validServer("example.com"))
   #expect(!Invite.validServer(""))
+}
+
+@Test func anInviteMayNameItsSpace() throws {
+  let v = try vector()
+  let named = Invite(server: v.server, space: v.space, secret: v.secret, name: "Home & Work")
+  #expect(named.link == v.namedInvite)
+  #expect(Invite(link: v.namedInvite) == named)
+  #expect(Invite(link: v.invite)?.name == nil)
 }

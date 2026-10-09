@@ -212,3 +212,36 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(s.state.records.values.allSatisfy { $0.prior == nil })
   #expect(!s.pending.contains { $0.id == "c" })
 }
+
+@Test func aSpaceIsNamedByItsRecordElseItsInvite() {
+  let s = Store()
+  #expect(s.name == nil)
+  let invite = Invite(server: "https://example.com/sync.php", space: newID(), secret: Base64URL.encode(randomBytes(32)), name: "Ours")
+  s.join(invite)
+  #expect(s.name == "Ours")
+  #expect(s.pending.isEmpty)
+  s.rename("Home")
+  #expect(s.name == "Home")
+  #expect(s.invite?.name == "Home")
+  #expect(s.boards.isEmpty)
+  #expect(s.pending.map(\.id) == [invite.space])
+  #expect(s.pending[0].record == Records.space(name: "Home"))
+}
+
+@Test func aMergedNameIsReported() {
+  let s = Store()
+  s.startSyncing(server: "https://example.com/sync.php")
+  let space = s.state.space!
+  var heard: Set<String> = []
+  s.onChange = { boards, _ in heard = boards }
+  s.merge([Incoming(id: space, version: 1, record: Records.space(name: "Work"))])
+  #expect(s.name == "Work")
+  #expect(heard == [space])
+}
+
+@Test func aStoreNotSyncingHasNoNameToChange() {
+  let s = Store()
+  s.rename("Home")
+  #expect(s.name == nil)
+  #expect(s.state.records.isEmpty)
+}
