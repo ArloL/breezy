@@ -57,7 +57,7 @@ extension Notification.Name {
 
   /// Each space's status, prefixed by its name, for the Breezy menu.
   var statusLines: [String] {
-    spaces.groups.filter { $0.space != nil }.flatMap { g in g.engine.status.lines().map { "\(g.name) — \($0)" } }
+    spaces.groups.filter { $0.space != nil }.flatMap { g in (g.engine.status.lines() + [g.live?.directStatus].compactMap { $0 }).map { "\(g.name) — \($0)" } }
   }
 
   /// The group of the key board window, else of the Boards window's selection, else On this device.
