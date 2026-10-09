@@ -17,6 +17,12 @@ struct Drag {
 extension CanvasView {
   override func mouseMoved(with event: NSEvent) {
     hovered = card(at: world(event))?.id
+    onPointer?(world(event))
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    hovered = nil
+    onPointer?(nil)
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -73,6 +79,7 @@ extension CanvasView {
   }
 
   override func mouseDragged(with event: NSEvent) {
+    onPointer?(world(event))
     guard drag != nil else { return }
     dragPoint = event.locationInWindow
     dragged()

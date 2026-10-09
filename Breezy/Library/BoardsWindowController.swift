@@ -69,6 +69,9 @@ import BreezyKit
     NotificationCenter.default.addObserver(forName: .syncStatusChanged, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated { self?.updateStatus() }
     }
+    NotificationCenter.default.addObserver(forName: .peopleChanged, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.reload() }
+    }
     reload()
   }
 
@@ -129,10 +132,23 @@ import BreezyKit
     field.translatesAutoresizingMaskIntoConstraints = false
     cell.addSubview(field)
     cell.textField = field
+    let people = NSTextField(labelWithString: "")
+    if let b = row.board {
+      let s = NSMutableAttributedString()
+      for p in row.group.live?.people(on: b.id) ?? [] {
+        s.append(NSAttributedString(string: p.initials + " ", attributes: [.foregroundColor: p.nsColour, .font: NSFont.systemFont(ofSize: 11, weight: .semibold)]))
+      }
+      people.attributedStringValue = s
+    }
+    people.translatesAutoresizingMaskIntoConstraints = false
+    people.setContentCompressionResistancePriority(.required, for: .horizontal)
+    cell.addSubview(people)
     NSLayoutConstraint.activate([
       field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-      field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+      field.trailingAnchor.constraint(equalTo: people.leadingAnchor, constant: -4),
+      people.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
       field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+      people.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
     ])
     return cell
   }
