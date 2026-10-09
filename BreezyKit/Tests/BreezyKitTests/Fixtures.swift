@@ -14,3 +14,9 @@ func fixture(_ name: String) throws -> Data {
   let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
   return try Data(contentsOf: tests.appendingPathComponent("Fixtures").appendingPathComponent(name))
 }
+
+func bytes(_ hex: String) -> Data {
+  Data(stride(from: 0, to: hex.count, by: 2).map { UInt8(hex.dropFirst($0).prefix(2), radix: 16)! })
+}
+
+func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
