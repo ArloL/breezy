@@ -41,9 +41,9 @@ private func fast(_ sent: [Sent]) -> [Sent] { sent.filter { ["cursor", "live"].c
 
 private func colour(_ device: String) -> UInt32 { Person(device: device, name: "").colour }
 
-/// Two connected devices, both showing board B1.
-@MainActor private func two() -> (FakeRelay, Clock, Live, Live) {
-  let clock = Clock(), relay = FakeRelay(clock: clock)
+/// Two connected devices, both showing board B1; through a relay from before the lean sync design when `old`.
+@MainActor private func two(old: Bool = false) -> (FakeRelay, Clock, Live, Live) {
+  let clock = Clock(), relay = FakeRelay(clock: clock, old: old)
   let a = live(relay, clock, name: "Ana Lima"), b = live(relay, clock, name: "Bo")
   a.connect()
   relay.run()
@@ -566,9 +566,10 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(b.cursors(on: B1).map { $0.cursor.x } == [2])
 }
 
-/// `n` devices with fake transports, all on board B1, the last one the newcomer.
-@MainActor private func direct(_ n: Int = 2) -> (FakeRelay, Clock, [FakePeerTransport], [Live]) {
-  let clock = Clock(), relay = FakeRelay(clock: clock)
+/// `n` devices with fake transports, all on board B1, the last one the newcomer; through a relay from before the lean
+/// sync design when `oldRelay`.
+@MainActor private func direct(_ n: Int = 2, oldRelay: Bool = false) -> (FakeRelay, Clock, [FakePeerTransport], [Live]) {
+  let clock = Clock(), relay = FakeRelay(clock: clock, old: oldRelay)
   var ts: [FakePeerTransport] = [], ls: [Live] = []
   for i in 0..<n {
     let t = FakePeerTransport()
@@ -1283,4 +1284,61 @@ private func firstItem(_ v: [Pack], _ key: Int64) -> Pack? { v[5].map?.first?.1.
   clock.advance(0.05)
   relay.run()
   #expect(ls[1].overlay(on: B1)[C1]?["text"]?.string == text)
+}
+
+@MainActor @Test func onARelayFromBeforeTheLeanSyncDesignCurrentDevicesSendJSONFramesAndSeePresenceCursorsLiveEditsAndPushes() {
+  let (relay, clock, a, b) = two(old: true)
+  #expect(a.id?.allSatisfy(\.isNumber) == false)
+  #expect(b.people(on: B1).map(\.name) == ["Ana Lima"])
+  a.sendCursor(board: B1, x: 1, y: 1)
+  relay.run()
+  clock.advance(0.2)
+  #expect(b.cursors(on: B1).map { $0.cursor.x } == [1])
+  a.hold([C1])
+  a.sendLive(board: B1, items: moved, caret: nil)
+  relay.run()
+  #expect(b.overlay(on: B1) == moved)
+  var got: [(Int, Pushed?)] = []
+  b.onPushed = { got.append(($0, $1)) }
+  let records = [Pulled(id: "AAAA", version: 5, blob: "BBBB")]
+  a.sendPushed(Pushed(version: 5, epoch: "e", records: records))
+  relay.run()
+  #expect(got.map(\.0) == [5])
+  #expect(got.first?.1 == Pushed(version: 5, epoch: "e", records: records))
+  #expect(relay.frames.allSatisfy { $0.bytes == nil })
+}
+
+@MainActor @Test func onARelayFromBeforeTheLeanSyncDesignAHoldersHoldsLastThroughALongGestureToOthersThere() {
+  let (relay, clock, a, b) = two(old: true)
+  let c = live(relay, clock, name: "Cy")
+  c.connect()
+  relay.run()
+  c.setPresence(board: B1, selection: [])
+  a.hold([C1])
+  relay.run()
+  for t in stride(from: 0, to: 12_000, by: 50) {
+    a.sendLive(board: B1, items: [C1: ["pos": pos(Double(t), 0)]], caret: nil)
+    relay.run()
+    clock.advance(Live.sendInterval)
+    if t % 1000 == 0 {
+      a.tick()
+      relay.sweep()
+      relay.run()
+    }
+  }
+  #expect(b.taken == [C1])
+  #expect(c.overlay(on: B1)[C1] == ["pos": pos(11_950, 0)])
+}
+
+@MainActor @Test func onARelayFromBeforeTheLeanSyncDesignCurrentDevicesOpenADirectChannel() {
+  let (relay, clock, ts, ls) = direct(oldRelay: true)
+  #expect(ts[1].log.contains("accept \(ls[0].id!) answer-sdp \(ls[1].id!)"))
+  open(ts, ls, 0, 1)
+  ls[0].sendCursor(board: B1, x: 1, y: 1)
+  relay.run()
+  #expect(!ts[0].sent.isEmpty && ts[0].sent.allSatisfy { $0.id == ls[1].id! && data($0.message) != nil })
+  _ = deliver(ts, ls)
+  relay.run()
+  clock.advance(0.2)
+  #expect(ls[1].cursors(on: B1).map { $0.cursor.x } == [1])
 }

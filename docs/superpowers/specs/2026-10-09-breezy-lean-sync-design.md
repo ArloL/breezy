@@ -120,6 +120,7 @@ A compact body is a MessagePack array. Integers take their shortest encoding, co
   - `0x01`, a LEB128 connection number, then the sealed body, to one connection.
 - To a `v: 2` device (its `auth` carries `v: 2`), the relay forwards a body as a binary frame: the sender's LEB128 connection number, then the body. To an older device it goes as `{from, body}`, with the body in base64url. A JSON `{to?, body}` from a device reaches `v: 2` devices as binary too.
 - Everything else (auth, holds, refusals, join, leave, ping) stays JSON text.
+- A device whose `welcome` id is not decimal is on a relay from before this design, which drops binary frames: it sends every body there as JSON `{to?, body}`, addressing connections by their ids as they are.
 
 ## Not done
 

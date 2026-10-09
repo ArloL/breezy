@@ -1,5 +1,5 @@
 // The relay's rules in memory, with the real hold rules and frames, and a clock for the timers of Live.
-import { conflicts, holdsOf } from "../../../relay/src/holds.js";
+import { conflicts, holdsOf, lapsed } from "../../../relay/src/holds.js";
 import { outFrame, parseFrame } from "../../../relay/src/frames.js";
 import { encode, decode } from "../../sync/base64.js";
 
@@ -34,6 +34,8 @@ class Socket {
     /** 2 when its auth said so: bodies reach it as binary frames, else as JSON. */
     this.v = 1;
     this.holds = [];
+    /** When the relay last read a frame from it, which keeps its holds. */
+    this.last = relay.now();
     this.readyState = 0;
     /** Its network is gone without a close: nothing it sends arrives, and nothing reaches it. */
     this.halfOpen = false;
@@ -48,9 +50,11 @@ class Socket {
   }
 }
 
-/** What sockets send is delivered when `run` is called. */
+/** What sockets send is delivered when `run` is called. `old` acts as the relay before the lean sync design: UUID ids,
+ * JSON only, binary frames dropped unread. */
 export class FakeRelay {
-  constructor() {
+  constructor({ old = false, now = () => 0 } = {}) {
+    Object.assign(this, { old, now });
     this.sockets = [];
     this.queue = [];
     this.token = null;
@@ -62,7 +66,8 @@ export class FakeRelay {
   }
 
   connect() {
-    const s = new Socket(this, String(++this.opened));
+    const n = ++this.opened;
+    const s = new Socket(this, this.old ? crypto.randomUUID() : String(n));
     this.sockets.push(s);
     this.queue.push(() => {
       s.readyState = 1;
@@ -88,6 +93,11 @@ export class FakeRelay {
     this.announce();
   }
 
+  /** Lets the holds of those silent for over 10 s lapse, as the relay's alarm does. */
+  sweep() {
+    for (const s of lapsed(this.conns(), this.now())) this.lapse(s);
+  }
+
   conns() {
     return this.sockets.filter((s) => s.authed);
   }
@@ -106,6 +116,8 @@ export class FakeRelay {
     if (typeof data !== "string") {
       const bytes = new Uint8Array(data);
       this.frames.push({ from: s.id, bytes });
+      if (this.old) return;
+      s.last = this.now();
       if (!s.authed) return this.drop(s, 4001);
       const f = parseFrame(bytes);
       return f && this.forward(s, { bytes: f.body }, f.to === null ? null : String(f.to));
@@ -116,11 +128,12 @@ export class FakeRelay {
     }
     const m = JSON.parse(data);
     this.frames.push({ from: s.id, text: data });
+    s.last = this.now();
     if (!s.authed) {
       if (m.t !== "auth" || (this.token !== null && this.token !== m.token)) return this.drop(s, 4001);
       this.token = m.token;
       s.authed = true;
-      s.v = m.v === 2 ? 2 : 1;
+      s.v = m.v === 2 && !this.old ? 2 : 1;
       const others = this.conns().filter((x) => x !== s);
       this.deliver(s, { t: "welcome", id: s.id, peers: others.map((x) => x.id), holds: holdsOf(others) });
       for (const x of others) this.deliver(x, { t: "join", id: s.id });

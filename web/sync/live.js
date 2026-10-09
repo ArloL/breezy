@@ -268,17 +268,19 @@ export class Live {
   }
 
   /** Sealed `plain` through the relay to connection `to`, or to everyone else when null, after everything sent before it;
-   * resolves to whether it went out. */
+   * resolves to whether it went out. A relay that names connections without digits predates binary frames, so it gets
+   * `{to?, body}` as JSON. */
   post(plain, to, fallback) {
     if (!this.connected) return Promise.resolve(false);
     const ws = this.ws;
+    const binary = connNumber(this.id) !== null;
     const conn = to === null ? null : connNumber(to);
-    if (to !== null && conn === null) return Promise.resolve(false);
+    if (binary && to !== null && conn === null) return Promise.resolve(false);
     const sent = this.out.then(async () => {
       let sealed = await this.seal(plain);
       if (fallback && (!sealed || b64Length(sealed) > MAX_PUSHED)) sealed = await this.seal(fallback);
       if (!sealed || ws !== this.ws || ws.readyState !== 1) return false;
-      ws.send(relayFrame(conn, sealed));
+      ws.send(binary ? relayFrame(conn, sealed) : JSON.stringify(to === null ? { body: encode(sealed) } : { to, body: encode(sealed) }));
       this.relaySent = this.now();
       return true;
     }).catch(() => false);
