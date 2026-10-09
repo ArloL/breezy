@@ -144,7 +144,7 @@ extension SelfTest {
   /// Closing while a card is being edited keeps its text in the store's file.
   fileprivate static func closeWhileEditing(_ d: Driver) {
     let name = "close-while-editing"
-    let file = StoreFile(url: DebugLaunch.storeDirectory.appendingPathComponent("space.json"))
+    let file = StoreFile(url: DebugLaunch.storeDirectory.appendingPathComponent("Spaces/local.json"))
     d.doubleClick(d.canvas.visibleWorldCentre)
     d.type("Kept")
     d.window.performClose(nil)
@@ -164,7 +164,7 @@ extension SelfTest {
   /// Closing right after creating a card leaves no blank card in the store.
   fileprivate static func closeBlankCard(_ d: Driver) {
     let name = "close-blank-card"
-    let file = StoreFile(url: DebugLaunch.storeDirectory.appendingPathComponent("space.json"))
+    let file = StoreFile(url: DebugLaunch.storeDirectory.appendingPathComponent("Spaces/local.json"))
     d.doubleClick(d.canvas.visibleWorldCentre)
     d.type(" ")
     d.window.performClose(nil)

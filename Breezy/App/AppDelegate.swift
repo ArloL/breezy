@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     } catch {
       let alert = NSAlert()
       alert.messageText = "Breezy can’t read its boards"
-      alert.informativeText = "\(error.localizedDescription)\n\nThe file is left as it is: \(dir.appendingPathComponent("space.json").path)"
+      alert.informativeText = "\(error.localizedDescription)\n\nThe files are left as they are: \(dir.appendingPathComponent("Spaces").path)"
       alert.runModal()
       exit(1)
     }
@@ -35,16 +35,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   func applicationWillTerminate(_ notification: Notification) { Library.shared.saveNow() }
 
   @objc func newBoard(_ sender: Any?) {
-    MainActor.assumeIsolated { _ = Library.shared.open(Library.shared.store.createBoard(title: "New Board")) }
+    MainActor.assumeIsolated { _ = Library.shared.open(Library.shared.currentGroup.store.createBoard(title: "New Board")) }
   }
 
   @objc func showBoards(_ sender: Any?) { MainActor.assumeIsolated { BoardsWindowController.shared.showWindow(nil) } }
 
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
-    let syncing = Library.shared.store.state.invite != nil
     switch item.action {
-    case #selector(startSyncing(_:)): return !syncing
-    case #selector(shareInvite(_:)): return syncing
+    case #selector(shareInvite(_:)), #selector(renameSpace(_:)), #selector(leaveSpace(_:)):
+      return MainActor.assumeIsolated { Library.shared.currentGroup.space != nil }
     default: return true
     }
   }
@@ -62,21 +61,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     alert.runModal()
   }
 
-  @MainActor @objc func startSyncing(_ sender: Any?) {
-    let input = field("https://example.com/breezy/sync.php")
+  @MainActor private func confirm(_ message: String, _ info: String, _ button: String, destructive: Bool = false) -> Bool {
     let alert = NSAlert()
-    alert.messageText = "Start Syncing"
-    alert.informativeText = "The address of your Breezy server. Boards are encrypted on this Mac; the server can’t read them."
-    alert.accessoryView = input
-    alert.addButton(withTitle: "Start Syncing")
+    alert.messageText = message
+    alert.informativeText = info
+    alert.addButton(withTitle: button).hasDestructiveAction = destructive
     alert.addButton(withTitle: "Cancel")
-    alert.window.initialFirstResponder = input
+    return alert.runModal() == .alertFirstButtonReturn
+  }
+
+  @MainActor private func show(_ group: Spaces.Group) {
+    BoardsWindowController.shared.showWindow(nil)
+    BoardsWindowController.shared.select(group)
+  }
+
+  @MainActor @objc func newSpace(_ sender: Any?) {
+    let name = field("Name"), server = field("https://example.com/breezy/sync.php")
+    server.stringValue = UserDefaults.standard.string(forKey: "BreezyLastServer") ?? ""
+    for f in [name, server] { f.widthAnchor.constraint(equalToConstant: 320).isActive = true }
+    let stack = NSStackView(views: [name, server])
+    stack.orientation = .vertical
+    stack.spacing = 8
+    stack.frame = NSRect(x: 0, y: 0, width: 320, height: 56)
+    let alert = NSAlert()
+    alert.messageText = "New Space"
+    alert.informativeText = "A name for the space and the address of your Breezy server. Boards are encrypted on this Mac; the server can’t read them."
+    alert.accessoryView = stack
+    alert.addButton(withTitle: "Create")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = name
     guard alert.runModal() == .alertFirstButtonReturn else { return }
-    let server = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard Invite.validServer(server) else { return tell("That isn’t a server address", "Use an https:// address ending in sync.php.") }
-    Library.shared.store.startSyncing(server: server)
-    Library.shared.engine.reset()
+    let title = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let url = server.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else { return }
+    guard Invite.validServer(url) else { return tell("That isn’t a server address", "Use an https:// address ending in sync.php.") }
+    UserDefaults.standard.set(url, forKey: "BreezyLastServer")
+    let g = Library.shared.spaces.newSpace(server: url, name: title)
     Library.shared.syncNow()
+    show(g)
   }
 
   @MainActor @objc func joinSpace(_ sender: Any?) {
@@ -92,30 +114,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     guard let invite = Invite(link: input.stringValue) else {
       return tell("That isn’t an invite link", "Copy the whole link from Share Invite on the other device.")
     }
-    let lib = Library.shared!
-    let n = lib.store.boards.count
-    if n > 0 {
-      let sure = NSAlert()
-      sure.messageText = "Replace the boards on this Mac?"
-      let host = URL(string: invite.server)?.host ?? invite.server
-      sure.informativeText = "Joining the space on \(host) shows its boards instead of the \(n == 1 ? "board" : "\(n) boards") here, which are deleted from this Mac."
-      sure.addButton(withTitle: "Join").hasDestructiveAction = true
-      sure.addButton(withTitle: "Cancel")
-      guard sure.runModal() == .alertFirstButtonReturn else { return }
-    }
-    lib.documents.forEach { $0.close() }
-    lib.store.join(invite)
-    lib.engine.reset()
-    lib.syncNow()
-    BoardsWindowController.shared.showWindow(nil)
+    let g = Library.shared.spaces.join(invite)
+    Library.shared.syncNow()
+    show(g)
+  }
+
+  @MainActor @objc func renameSpace(_ sender: Any?) {
+    let g = Library.shared.currentGroup
+    guard g.space != nil else { return }
+    let input = field("Name")
+    input.stringValue = g.name
+    let alert = NSAlert()
+    alert.messageText = "Rename Space"
+    alert.informativeText = "The new name shows on every device in the space."
+    alert.accessoryView = input
+    alert.addButton(withTitle: "Rename")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = input
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+    let name = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !name.isEmpty && name != g.name { g.store.rename(name) }
   }
 
   @MainActor @objc func shareInvite(_ sender: Any?) {
-    guard let link = Library.shared.store.state.invite?.link else { return }
+    guard let link = Library.shared.currentGroup.store.invite?.link else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(link, forType: .string)
     // clipboard managers leave out what is marked concealed
     NSPasteboard.general.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
     tell("Invite link copied", "Paste it into Join Space on the other device. Anyone with the link can read and change every board in this space.")
+  }
+
+  @MainActor @objc func leaveSpace(_ sender: Any?) {
+    let g = Library.shared.currentGroup
+    guard g.space != nil,
+          confirm("Leave “\(g.name)”?", "Its boards are removed from this device. Others in the space keep them.", "Leave", destructive: true)
+    else { return }
+    Library.shared.leave(g)
+  }
+
+  @MainActor @objc func moveBoard(_ sender: NSMenuItem) {
+    guard let m = sender.representedObject as? Move, let source = Library.shared.spaces.group(of: m.board),
+          let title = source.store.title(of: m.board) else { return }
+    if source.space != nil {
+      guard confirm("Move “\(title)” to “\(m.group.name)”?", "It is removed from “\(source.name)” on every device.", "Move") else { return }
+    }
+    Library.shared.move(m.board, to: m.group)
+  }
+}
+
+/// A board and the group a menu item moves it to.
+final class Move: NSObject {
+  let board: String
+  let group: Spaces.Group
+
+  init(board: String, group: Spaces.Group) {
+    self.board = board
+    self.group = group
   }
 }

@@ -33,7 +33,7 @@ enum DebugLaunch {
       print("cannot open \(board): \(error.localizedDescription)")
       exit(1)
     }
-    let id = MainActor.assumeIsolated { Library.shared.store.createBoard(title: url.deletingPathExtension().lastPathComponent, contents: loaded) }
+    let id = MainActor.assumeIsolated { Library.shared.spaces.local.store.createBoard(title: url.deletingPathExtension().lastPathComponent, contents: loaded) }
     guard let wc = MainActor.assumeIsolated({ Library.shared.open(id) }), let window = wc.window else { exit(1) }
     if appearance == "switch" {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { NSApp.appearance = NSAppearance(named: .darkAqua) }

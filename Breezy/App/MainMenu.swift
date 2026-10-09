@@ -7,9 +7,11 @@ enum MainMenu {
     let app = submenu("Breezy", [
       item("About Breezy", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
       .separator(),
-      item("Start Syncing…", #selector(AppDelegate.startSyncing(_:))),
+      item("New Space…", #selector(AppDelegate.newSpace(_:))),
       item("Join Space…", #selector(AppDelegate.joinSpace(_:))),
       item("Share Invite", #selector(AppDelegate.shareInvite(_:))),
+      item("Rename Space…", #selector(AppDelegate.renameSpace(_:))),
+      item("Leave Space…", #selector(AppDelegate.leaveSpace(_:))),
       .separator(),
       item("Hide Breezy", #selector(NSApplication.hide(_:)), "h"),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),

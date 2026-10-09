@@ -18,7 +18,7 @@ final class BreezyUITests: XCTestCase {
     app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-BreezyBoard", url.path, "-BreezyStore", store.path]
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5))
-    return (url, store.appendingPathComponent("space.json"))
+    return (url, store.appendingPathComponent("Spaces/local.json"))
   }
 
   func testOpensABoard() {
