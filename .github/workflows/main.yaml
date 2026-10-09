@@ -71,6 +71,17 @@ jobs:
       run: xcodegen generate
     - name: Test BreezyKit
       run: swift test --package-path BreezyKit
+    # without this, XCUITest times out waiting for an authorization prompt nobody can answer
+    - name: Enable automation mode
+      run: sudo automationmodetool enable-automationmode-without-authentication
+    - name: Test the app
+      run: |
+        xcodebuild \
+          -project Breezy.xcodeproj \
+          -scheme Breezy \
+          -destination platform=macOS \
+          -derivedDataPath build \
+          test
     # Off main there is no tag, so the project's own placeholder version stays.
     # CFBundleVersion only takes dotted integers, which the CalVer tag already is.
     - name: Build
