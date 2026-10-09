@@ -23,6 +23,7 @@ for (const c of data.cases) {
       const at = `${c.name} step ${i}`;
       let wire;
       if ("redeliver" in s) wire = bytes(c.steps[s.redeliver].hex);
+      else if ("receive" in s) wire = bytes(s.receive);
       else {
         const enc = s.cursor ? cursor : live;
         if (s.reset) enc.reset();
@@ -41,6 +42,28 @@ for (const c of data.cases) {
 
 test("malformed bodies decode to null", () => {
   for (const m of data.malformed) assert.equal(new LiveDecoder().decode(bytes(m.hex), new Map()), null, m.name);
+});
+
+const B1 = "YGFiY2RlZmdoaWprbG1ubw", A = "AQEBAQEBAQEBAQEBAQEBAQ";
+const valid = (now) => ({ board: B1, items: { [A]: { pos: [now, 0], kind: "card" } }, starts: {}, caret: { id: A, back: false, at: 0 }, cursor: null });
+
+test("an encoder that throws on a bad input is left as it was", () => {
+  const bad = [
+    { ...valid(1), board: "short" },
+    { ...valid(1), items: { short: { pos: [1, 0] } } },
+    { ...valid(1), items: { [A]: { kind: "note" } } },
+    { ...valid(1), caret: { id: "short", back: false, at: 0 } },
+  ];
+  for (const b of bad) {
+    const enc = new LiveEncoder(), ref = new LiveEncoder();
+    for (const e of [enc, ref]) e.encode(valid(0), { seq: 1, at: 0, now: 0 });
+    assert.throws(() => enc.encode(b, { seq: 2, at: 1, now: 1000 }), RangeError);
+    assert.equal(hex(enc.encode(valid(1), { seq: 2, at: 1, now: 1000 })), hex(ref.encode(valid(1), { seq: 2, at: 1, now: 1000 })));
+  }
+  const enc = new CursorEncoder(), ref = new CursorEncoder();
+  for (const e of [enc, ref]) e.encode({ x: 1, y: 1, board: B1 }, { seq: 1, at: 0, now: 0 });
+  assert.throws(() => enc.encode({ x: 1, y: 1, board: "short" }, { seq: 2, at: 1, now: 1000 }), RangeError);
+  assert.equal(hex(enc.encode({ x: 1, y: 1, board: B1 }, { seq: 2, at: 1, now: 1000 })), hex(ref.encode({ x: 1, y: 1, board: B1 }, { seq: 2, at: 1, now: 1000 })));
 });
 
 test("isCompact tells arrays from other bytes", () => {

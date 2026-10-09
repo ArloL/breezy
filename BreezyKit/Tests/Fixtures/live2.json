@@ -2,7 +2,7 @@
   "about": [
     "Compact cursor and live bodies (web/sync/compact.js, BreezyKit's port). Each case runs fresh: one CursorEncoder, one LiveEncoder and one LiveDecoder.",
     "A step encodes its cursor or live input with seq, at and now, after reset() when reset is true, and must give hex.",
-    "Unless lost, the decoder then reads those bytes with the receiver's overlay and must give decoded. redeliver feeds an earlier step's hex again instead.",
+    "Unless lost, the decoder then reads those bytes with the receiver's overlay and must give decoded. redeliver feeds an earlier step's hex again instead; receive feeds its own hex, with no encoder.",
     "The overlay starts empty; overlay replaces it before decoding; after each decode each item's fields merge into it.",
     "malformed: each hex decodes to null in a fresh decoder."
   ],
@@ -133,7 +133,29 @@
           "decoded": {"t":"live","seq":3,"at":220,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
         },
         {"redeliver":0,"decoded":null},
-        {"redeliver":2,"decoded":null}
+        {"redeliver":2,"decoded":null},
+        {
+          "now": 150,
+          "seq": 4,
+          "at": 270,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[12.500000001,20]}},
+            "starts": {"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "980204cd0a8cc0c081c41001010101010101010101010101010101810092ca41480000ca41a00000c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 4,
+            "at": 270,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[12.5,20]}},
+            "caret": null,
+            "cursor": null
+          }
+        }
       ]
     },
     {
@@ -781,6 +803,36 @@
       ]
     },
     {
+      "name": "group offset from the first id",
+      "steps": [
+        {
+          "now": 0,
+          "seq": 1,
+          "at": 10,
+          "live": {
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"-vr6-vr6-vr6-vr6-vr6-g":{"pos":[1,100]},"AQEBAQEBAQEBAQEBAQEBAQ":{"pos":[1.0000005,0]}},
+            "starts": {"-vr6-vr6-vr6-vr6-vr6-g":[0,100],"AQEBAQEBAQEBAQEBAQEBAQ":[0,0]},
+            "caret": null,
+            "cursor": null
+          },
+          "hex": "98020164c410606162636465666768696a6b6c6d6e6fc0809392ca3f800004ca0000000092c41001010101010101010101010101010101c410fafafafafafafafafafafafafafafafa9292ca00000000ca0000000092ca00000000ca42c80000c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 10,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {
+              "AQEBAQEBAQEBAQEBAQEBAQ": {"pos":[1.0000004768371582,0]},
+              "-vr6-vr6-vr6-vr6-vr6-g": {"pos":[1.0000004768371582,100]}
+            },
+            "caret": null,
+            "cursor": null
+          }
+        }
+      ]
+    },
+    {
       "name": "reset",
       "steps": [
         {
@@ -843,6 +895,23 @@
           "decoded": {"t":"live","seq":3,"at":110,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{},"caret":null,"cursor":null}
         }
       ]
+    },
+    {
+      "name": "unknown field keys",
+      "steps": [
+        {
+          "receive": "9802010ac410606162636465666768696a6b6c6d6e6fc082c4100101010101010101010101010101010183050308a178099101c41002020202020202020202020202020202810801c0c0",
+          "decoded": {
+            "t": "live",
+            "seq": 1,
+            "at": 1,
+            "board": "YGFiY2RlZmdoaWprbG1ubw",
+            "items": {"AQEBAQEBAQEBAQEBAQEBAQ":{"color":3}},
+            "caret": null,
+            "cursor": null
+          }
+        }
+      ]
     }
   ],
   "malformed": [
@@ -867,8 +936,16 @@
       "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c40f010101010101010101010101010101810501c0c0"
     },
     {
-      "name": "unknown field key",
-      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c41001010101010101010101010101010101810801c0c0"
+      "name": "field key not an integer",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c4100101010101010101010101010101010181a13092ca3f800000ca40000000c0c0"
+    },
+    {
+      "name": "kind as a string",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018107a130c0c0"
+    },
+    {
+      "name": "kind length",
+      "hex": "9802010ac410606162636465666768696a6b6c6d6e6fc081c410010101010101010101010101010101018107a66c656e677468c0c0"
     },
     {
       "name": "kind 2",
