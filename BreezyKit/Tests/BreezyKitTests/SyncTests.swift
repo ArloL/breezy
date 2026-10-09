@@ -636,3 +636,30 @@ private final class RecordingProtocol: URLProtocol, @unchecked Sendable {
   #expect(second.encoding == nil)
   #expect(try JSONDecoder().decode([String: JSONValue].self, from: second.body).keys.sorted() == ["writes"])
 }
+
+@MainActor @Test func pushedRecordsThisDeviceAlreadyHasStillReportItsCursor() async {
+  let (_, a, b, id) = await pair()
+  let p = await pushedBy(a, id)
+  await b.engine.sync()
+  var pulled: [Int] = []
+  b.engine.onPulled = { pulled.append($0) }
+  #expect(await b.engine.receivePushed(p))
+  #expect(pulled == [b.store.state.cursor])
+}
+
+@MainActor @Test func aCombinedCycleReportsTheCursorOfThePageItTookBeforeALaterRoundFails() async {
+  let (server, a, _, id) = await pair()
+  var pulled: [Int] = []
+  a.engine.onPulled = { pulled.append($0) }
+  let c = a.store.board(id).cards[0].id
+  a.transport.afterPush = {
+    a.transport.afterPush = nil
+    a.transport.failure = .unreachable
+    a.edit(id) { $0.setColor([c], 5) }
+  }
+  a.edit(id) { $0.setColor([c], 3) }
+  await a.engine.sync()
+  #expect(Array(a.transport.log.suffix(2)) == ["push", "push"])
+  #expect(a.engine.status.state == .unreachable)
+  #expect(pulled == [server.version])
+}

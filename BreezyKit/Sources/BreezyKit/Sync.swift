@@ -176,7 +176,7 @@ public struct SyncStatus: Equatable, Sendable {
   public var onRelay: ((String?) -> Void)?
   /// After a push the server took, with the highest version it gave and the accepted writes.
   public var onPushed: ((Pushed) -> Void)?
-  /// After the pulls of a cycle, with the store's cursor.
+  /// With the store's cursor once the records up to it are in: after each page taken, and after pushed records.
   public var onPulled: ((Int) -> Void)?
   /// When a cycle last ended synced.
   public private(set) var lastSynced: Date?
@@ -251,10 +251,7 @@ public struct SyncStatus: Equatable, Sendable {
       let ready = state.resync || state.epoch == nil ? nil : outgoing(keys)
       let combined = ready?.writes.isEmpty == false
       var first = combined ? ready : nil
-      if !combined {
-        guard try await pullAll(transport, keys, same) else { return }
-        onPulled?(store.state.cursor)
-      }
+      if !combined { guard try await pullAll(transport, keys, same) else { return } }
       var refusals = 0
       for _ in 0..<10 {
         flushLocal?()
@@ -299,12 +296,13 @@ public struct SyncStatus: Equatable, Sendable {
           case .again:
             again = true
             return
-          case .more: guard try await pullAll(transport, keys, same) else { return }
-          case .done: break
+          case .more:
+            onPulled?(store.state.cursor)
+            guard try await pullAll(transport, keys, same) else { return }
+          case .done: onPulled?(store.state.cursor)
           }
         }
       }
-      if combined { onPulled?(store.state.cursor) }
       failures = 0
       retryAt = nil
       lastSynced = now()
@@ -341,9 +339,11 @@ public struct SyncStatus: Equatable, Sendable {
       switch takePage(try await transport.pull(since: store.state.cursor), keys, same) {
       case .stop: return false
       case .done:
+        onPulled?(store.state.cursor)
         store.resynced()
         return true
-      case .again, .more: continue
+      case .more: onPulled?(store.state.cursor)
+      case .again: continue
       }
     }
   }
@@ -358,7 +358,10 @@ public struct SyncStatus: Equatable, Sendable {
     let page = p.records.sorted { $0.version < $1.version }
     guard zip(page, page.dropFirst()).allSatisfy({ $1.version == $0.version + 1 }), state.cursor >= page[0].version - 1 else { return false }
     let last = page[page.count - 1].version
-    if state.cursor >= last { return true }
+    if state.cursor >= last {
+      onPulled?(state.cursor)
+      return true
+    }
     flushLocal?()
     store.merge(page.compactMap { decode($0, keys) })
     store.advance(to: last)

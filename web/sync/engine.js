@@ -106,7 +106,7 @@ export class SyncEngine {
     /** After a push the server took: `{version, epoch, records}`, the highest version it gave and the accepted writes as
      * `{id, version, blob}`. */
     this.onPushed = () => {};
-    /** After the pulls of a cycle, with the store's cursor. */
+    /** With the store's cursor once the records up to it are in: after each page taken, and after pushed records. */
     this.onPulled = () => {};
     /** When a cycle last ended synced, in ms. */
     this.lastCycle = 0;
@@ -191,10 +191,7 @@ export class SyncEngine {
       const ready = this.store.state.resync || this.store.state.epoch == null ? null : await this.outgoing(keys);
       const combined = ready?.writes.length > 0;
       let first = combined ? ready : null;
-      if (!combined) {
-        if (!(await this.pullAll(transport, keys, same))) return;
-        this.onPulled(this.store.state.cursor);
-      }
+      if (!combined && !(await this.pullAll(transport, keys, same))) return;
       let refusals = 0;
       for (let round = 0; round < 10; round++) {
         this.flushLocal();
@@ -230,10 +227,10 @@ export class SyncEngine {
             this.again = true;
             return;
           }
+          this.onPulled(this.store.state.cursor);
           if (taken === "more" && !(await this.pullAll(transport, keys, same))) return;
         }
       }
-      if (combined) this.onPulled(this.store.state.cursor);
       this.failures = 0;
       this.retryAt = 0;
       this.lastCycle = this.now();
@@ -263,7 +260,10 @@ export class SyncEngine {
     page.sort((x, y) => x.version - y.version);
     if (page.some((r, i) => i && r.version !== page[i - 1].version + 1) || state.cursor < page[0].version - 1) return false;
     const last = page.at(-1).version;
-    if (state.cursor >= last) return true;
+    if (state.cursor >= last) {
+      this.onPulled(state.cursor);
+      return true;
+    }
     let ok = false;
     this.running = (async () => {
       try {
@@ -312,6 +312,7 @@ export class SyncEngine {
     for (;;) {
       const taken = await this.takePage(await transport.pull(this.store.state.cursor), keys, same);
       if (taken === "stop") return false;
+      if (taken !== "again") this.onPulled(this.store.state.cursor);
       if (taken === "done") {
         this.store.resynced();
         return true;
