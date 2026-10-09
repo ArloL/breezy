@@ -86,10 +86,10 @@ export class CursorEncoder extends Encoder {
   }
 }
 
-/** Items whose `pos` moved from their start by one offset, at least two, as `{ ids, starts, offset }`. */
+/** Items whose `pos` moved from their start by one offset, as `{ ids, starts, offset }`; null when there are none. */
 function groupOf(ids, items, starts) {
   const members = ids.filter(([id]) => items[id].pos && starts[id]);
-  if (members.length < 2) return null;
+  if (!members.length) return null;
   const off = ([id]) => [items[id].pos[0] - starts[id][0], items[id].pos[1] - starts[id][1]];
   const o = off(members[0]);
   const near = (m) => off(m).every((d, i) => Math.abs(d - o[i]) <= EPSILON);

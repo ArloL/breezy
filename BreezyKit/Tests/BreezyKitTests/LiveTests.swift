@@ -1078,6 +1078,46 @@ private func unpack(_ m: PeerMessage?) -> [Pack] { data(m).flatMap { try? Pack.u
   #expect(ls[1].overlay(on: B1).mapValues { $0["pos"] } == [C1: pos(50, 0), C2: pos(50, 100), C3: pos(50, 200)])
 }
 
+@MainActor @Test func draggingOneCardSendsItsOffsetOnlyAtMost32BOnAChannelAnd64BFromTheRelay() {
+  let (drelay, dclock, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  ls[0].hold([C1])
+  ls[0].sendCursor(board: B1, x: 0, y: 0)
+  drelay.run()
+  ts[0].sent = []
+  var sizes: [Int] = []
+  for i in 1...10 {
+    dclock.advance(Live.directSendInterval)
+    let x = Double(i) * 5
+    ls[0].sendCursor(board: B1, x: x, y: 10)
+    ls[0].sendLive(board: B1, items: [C1: ["pos": pos(x, 0)]], caret: nil, starts: [C1: [0, 0]])
+    drelay.run()
+    let sent = deliver(ts, ls)
+    drelay.run()
+    #expect(sent.count == 1)
+    sizes.append(data(sent.first)?.count ?? .max)
+    #expect(unpack(sent.first)[5].map?.isEmpty == true)
+  }
+  #expect(sizes.dropFirst().allSatisfy { $0 <= 32 }, "\(sizes)")
+  dclock.advance(0.2)
+  #expect(ls[1].overlay(on: B1)[C1] == ["pos": pos(50, 0)])
+
+  let (relay, clock, a, b) = two()
+  a.hold([C1])
+  for i in 1...10 {
+    clock.advance(0.05)
+    let x = Double(i) * 5
+    a.sendCursor(board: B1, x: x, y: 10)
+    a.sendLive(board: B1, items: [C1: ["pos": pos(x, 0)]], caret: nil, starts: [C1: [0, 0]])
+    relay.run()
+  }
+  let bodies = fast(sentBy(relay, a.id)).filter { $0.body["t"]?.string == "live" }.map(\.size)
+  #expect(bodies.count == 10)
+  #expect(bodies.dropFirst().allSatisfy { $0 <= 64 }, "\(bodies)")
+  clock.advance(0.2)
+  #expect(b.overlay(on: B1)[C1] == ["pos": pos(50, 0)])
+}
+
 @MainActor @Test func aBodyThatCannotBePutCompactlyIsNotSent() {
   let (relay, _, ts, ls) = direct(3)
   open(ts, ls, 0, 1)

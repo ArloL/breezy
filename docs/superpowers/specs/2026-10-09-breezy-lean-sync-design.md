@@ -4,16 +4,16 @@ Fewer round trips between a gesture ending and everyone having it, and fewer byt
 
 ## Where it stands
 
-Sizes in bytes, of the messages one web app sent while `scripts/direct-e2e.mjs` drove two headless Chromiums: channel messages as handed to `RTCDataChannel.send`, relay frames as seen on the WebSocket (frame byte, sealing and all). Before is the JSON text protocol with the apps' own sealing.
+Sizes in bytes. Now is what one web app sent while `scripts/direct-e2e.mjs` drove two headless Chromiums: channel messages as handed to `RTCDataChannel.send`, relay frames as seen on the WebSocket (frame byte, sealing and all). Before are earlier measurements, not from this run, of the JSON text protocol with the apps' own sealing; their typing was on a 560-character card.
 
 | Message | Before, channel | Before, relay | Now, channel | Now, relay |
 |---|---|---|---|---|
 | cursor, a mouse crossing the board | 203 | 260 | 16 | 46 |
 | cursor, first body and one a second later (keyframe) | 203 | 260 | 34 | 64 |
-| live, dragging 1 card (per mouse move) | 266 | 323 | 52 as the card reaches a grid line, else 21 | 84, else 53 |
+| live, dragging 1 card (per mouse move) | 266 | 323 | 32 as the card reaches a grid line, else 21 | 64, else 53 |
 | live, a key typed in a new card, first to eleventh | 1027 (560-character card) | 1084 (560-character card) | 37 to 44, 103 for a keyframe | 69 to 76, 135 for a keyframe |
 
-A drag sends one body per move with the cursor inside. The card snaps to the 24-point grid, so its `pos` changes, and goes with its 16-byte id, only on about every other move, as a `group` takes two items or more. On the relay a `pushed` notice of 374 B follows each durable push, such as a gesture's end, and a `presence` of 250 to 270 B follows a press that changes the selection. A typed key's body grows by a byte per key between keyframes, as the text goes whole until a splice is shorter. The unit tests measure a three-card drag with a folded cursor at 32 B direct and 62 B from the relay.
+A drag sends one body per move with the cursor inside. The card snaps to the 24-point grid, so its `pos` changes only on about every other move, and then goes as its `group`'s offset. On the relay a `pushed` notice of 374 B follows each durable push, such as a gesture's end, and a `presence` of 250 to 270 B follows a press that changes the selection. A typed key's body grows by a byte per key between keyframes, as the text goes whole until a splice is shorter. The unit tests measure a drag of one card or three with a folded cursor at 32 B direct, and of one card at 62 B from the relay: past a keyframe, a group's body does not grow with its members.
 
 A gesture's end reaches the others after three HTTP round trips in a row: the holder's pull and push, then each receiver's pull. After: one push, then the relay.
 
@@ -99,7 +99,7 @@ A compact body is a MessagePack array. Integers take their shortest encoding, co
 
 **Splices.** A text field that changed since the last body is a splice `[hash, at, del, ins]`: at UTF-16 offset `at`, remove `del` code units and insert `ins`. It is sent when the splice is shorter than the text. `hash` is FNV-1a 32 over the UTF-16 code units of the text the splice applies to. A receiver applies a splice only when its overlay text for that field hashes to `hash`, and otherwise keeps what it has until the next keyframe.
 
-**`group`.** When every held item whose `pos` changed moved by the same offset, and there are at least two, their `pos` goes as one offset. `group` is nil or `[[dx, dy], ids?, starts?]`:
+**`group`.** When every held item whose `pos` changed moved by the same offset, and there is at least one, their `pos` goes as one offset; a single dragged card goes as a group of one. `group` is nil or `[[dx, dy], ids?, starts?]`:
 
 - `ids` and `starts` (each item's `pos` at the gesture's start, as `[x, y]`) come in keyframes and whenever the set changes.
 - A receiver keeps the last `ids` and `starts` per sender and sets each item's `pos` to its start plus the offset. Each item's track plays back as now.

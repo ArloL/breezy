@@ -166,7 +166,7 @@ const moving = (x0, x1) => sentDuring(async () => {
     await a.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y: 400 });
     await sleep(16);
   }
-  return { x };
+  return { x, moves: 41 };
 });
 
 const cursorX = () => b.run(`(() => { const m = document.querySelector(".presence .cursor")?.style.transform.match(/translate\\((-?[\\d.]+)px/); return m ? +m[1] : null; })()`);
@@ -186,6 +186,7 @@ const d = await moving(300, 690);
 const direct = bodies(d).length + d.relay.text.length;
 if (direct > 2) throw new Error(`${direct} body frames reached the relay with the channel open`);
 if (!d.channel.length) throw new Error("nothing went over the channel while the mouse moved");
+if (d.channel.length > d.moves + 4) throw new Error(`${d.channel.length} channel messages for ${d.moves} moves`);
 if (d.channel.some((m) => !m.bin)) throw new Error("a channel message was text");
 const keyframes = d.channel.filter((m) => m.n > 24);
 if (keyframes.length > 3 || keyframes.some((m) => m.n > 40)) throw new Error(`cursor bodies on the channel: ${d.channel.map((m) => m.n)}`);
@@ -206,34 +207,39 @@ async function liveSizes(y) {
       await mouse("mouseReleased", 300, y, { clickCount });
     }
     await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
-    for (const ch of "hello world") {
+    const keys = "hello world";
+    for (const ch of keys) {
       await a.send("Input.dispatchKeyEvent", { type: "char", text: ch });
       await sleep(120);
     }
-    return {};
+    return { moves: keys.length };
   });
   const card = await a.run(`(() => { const r = document.activeElement.closest("[contenteditable]")?.getBoundingClientRect(); return r && { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
   await a.run(`document.activeElement.blur()`);
   const dragged = await sentDuring(async () => {
     await mouse("mousePressed", card.x, card.y, { clickCount: 1 });
-    for (let i = 1; i <= 20; i++) { await mouse("mouseMoved", card.x + i * 10, card.y + i * 4, { buttons: 1 }); await sleep(30); }
+    const moves = 20, t0 = Date.now();
+    for (let i = 1; i <= moves; i++) { await mouse("mouseMoved", card.x + i * 10, card.y + i * 4, { buttons: 1 }); await sleep(30); }
     const held = await a.run("__ch.length");
     await mouse("mouseReleased", card.x + 200, card.y + 80);
-    return { held };
+    return { held, moves, ms: Date.now() - t0 };
   });
   return { typed, dragged };
 }
 
 const over = await liveSizes(200);
-for (const [what, r] of [["typing", over.typed], ["dragging a card", over.dragged]]) {
-  if (r.channel.length < 3) throw new Error(`no live bodies went over the channel while ${what}`);
-  if (r.channel.some((m) => !m.bin)) throw new Error(`a channel message was text while ${what}`);
-  if (r.held !== undefined) {
-    const moves = r.channel.slice(0, r.held);
-    // a cursor body of its own only as the channels' resend, when a move comes late
-    if (moves.length > 22 || moves.filter((m) => m.kind !== 2).length > 2) throw new Error(`not one live body a move while dragging: ${moves.map((m) => `${m.kind}:${m.n}`)}`);
+for (const [what, sent] of [["typing", over.typed], ["dragging a card", over.dragged]]) {
+  if (sent.channel.length < 3) throw new Error(`no live bodies went over the channel while ${what}`);
+  if (sent.channel.some((m) => !m.bin)) throw new Error(`a channel message was text while ${what}`);
+  if (sent.held !== undefined) {
+    const moves = sent.channel.slice(0, sent.held);
+    // a cursor body of its own only as the channel's resend, when a move comes late
+    if (moves.length > sent.moves + 2 || moves.filter((m) => m.kind !== 2).length > 2) throw new Error(`not one live body a move while dragging: ${moves.map((m) => `${m.kind}:${m.n}`)}`);
+    // the card goes as its group's offset; above 32 B only the keyframes, one at the press and one a second
+    const big = moves.filter((m) => m.kind === 2 && m.n > 32);
+    if (big.length > 1 + Math.ceil(sent.ms / 1000)) throw new Error(`live bodies above 32 B while dragging: ${moves.map((m) => `${m.kind}:${m.n}`)}`);
   }
-  console.log(`${what}, channel: ${r.channel.length} binary messages, median ${median(r.channel.map((m) => m.n))} B (${list(r)}); relay body frames: ${bodies(r).length}`);
+  console.log(`${what}, channel: ${sent.channel.length} binary messages, median ${median(sent.channel.map((m) => m.n))} B (${list(sent)}); relay body frames: ${bodies(sent).length}`);
 }
 
 await b.run("__pcs.forEach((pc) => pc.close())");
@@ -245,9 +251,12 @@ if (r.relay.text.length) throw new Error(`${r.relay.text.length} text body frame
 const second = await settledCursor("a's cursor moving on b over the relay", first);
 if (Math.abs(second - r.x) > 60) throw new Error(`b shows a at x ${second} over the relay, a's mouse is at ${r.x}`);
 const via = await liveSizes(600);
-for (const [what, r] of [["typing", via.typed], ["dragging a card", via.dragged]]) {
-  if (bodies(r).length < 3) throw new Error(`no live bodies reached the relay while ${what}`);
-  console.log(`${what}, relay: ${bodies(r).length} binary body frames, median ${median(bodies(r))} B (${bodies(r).join(" ")})`);
+for (const [what, sent] of [["typing", via.typed], ["dragging a card", via.dragged]]) {
+  const n = bodies(sent).length;
+  if (n < 3) throw new Error(`no live bodies reached the relay while ${what}`);
+  // a body a move at most, and the presence and pushed notices
+  if (n > sent.moves + 6) throw new Error(`${n} body frames reached the relay for ${sent.moves} moves while ${what}`);
+  console.log(`${what}, relay: ${n} binary body frames, median ${median(bodies(sent))} B (${bodies(sent).join(" ")})`);
 }
 console.log(`fallback: ${relayed.length} binary relay body frames, cursor ${sizes(relayed)} | b sees a at x ${second}`);
 console.log("ok");
