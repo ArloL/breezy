@@ -21,7 +21,9 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 
 /** The live fields that move, played back through a track. */
 const MOVING = ["pos", "size", "w"];
-const numbers = (v) => (Number.isFinite(v) ? [v] : Array.isArray(v) && v.every(Number.isFinite) ? v : null);
+const numbers = (v) => (Number.isFinite(v) ? [v] : Array.isArray(v) && v.length && v.every(Number.isFinite) ? v : null);
+/** Whether `v` is a whole number that BreezyKit reads exactly, within ±2^53. */
+const integral = (v) => Number.isInteger(v) && Math.abs(v) <= 2 ** 53;
 
 export const colourOf = (device) => PALETTE[(decode(device)?.[0] ?? 0) % PALETTE.length];
 
@@ -33,7 +35,7 @@ export function initials(name) {
 const personOf = (device, name) => ({ device, name, colour: colourOf(device) });
 const pointOf = (c) => (c && typeof c.board === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) ? { board: c.board, x: c.x, y: c.y } : null);
 const caretOf = (c) =>
-  c && typeof c.id === "string" && typeof c.back === "boolean" && Number.isInteger(c.at) && c.at >= 0 ? { id: c.id, back: c.back, at: c.at } : null;
+  c && typeof c.id === "string" && typeof c.back === "boolean" && integral(c.at) && c.at >= 0 ? { id: c.id, back: c.back, at: c.at } : null;
 const pick = (f) => Object.fromEntries(Object.entries(f).filter(([k]) => k === "kind" || LIVE_FIELDS.includes(k)));
 const holdsFrom = (h) => new Map(Object.entries(h ?? {}).filter(([, ids]) => Array.isArray(ids)).map(([k, ids]) => [k, new Set(ids)]));
 
@@ -296,7 +298,7 @@ export class Live {
     const arrival = this.clock();
     const at = Number.isFinite(b?.at) ? b.at : arrival;
     // a body older than one already taken from this connection, over either pipe, is dropped
-    if ((b?.t === "cursor" || b?.t === "live") && Number.isInteger(b.seq)) {
+    if ((b?.t === "cursor" || b?.t === "live") && integral(b.seq)) {
       if (b.seq <= (p.seqs[b.t] ?? 0)) return;
       p.seqs[b.t] = b.seq;
     }
@@ -328,14 +330,17 @@ export class Live {
             if (!v) continue;
             const key = `${id} ${k}`;
             if (!p.motion.has(key)) p.motion.set(key, new Track());
-            p.motion.get(key).push(at, arrival, v);
+            const t = p.motion.get(key);
+            // a value of another length than the track's cannot be played back with it
+            if (t.samples.length && t.samples.at(-1).value.length !== v.length) continue;
+            t.push(at, arrival, v);
           }
         }
         p.caret = caretOf(b.caret);
         break;
       }
       case "pushed":
-        if (!Number.isInteger(b.version) || b.version < 0) return;
+        if (!integral(b.version) || b.version < 0) return;
         p.awaiting = Math.max(p.awaiting, b.version);
         break;
       default:

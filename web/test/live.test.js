@@ -481,6 +481,36 @@ test("duplicates and late bodies are dropped; bodies without seq or at are taken
   assert.deepEqual(b.cursors("B1").map((c) => c.x), [3]);
 });
 
+test("numbers a peer sends that cannot be played back or read exactly are ignored", async () => {
+  const { relay, clock, a, b } = await two();
+  const pushes = [];
+  b.onPushed = (v) => pushes.push(v);
+  a.hold(["c1", "c2"]);
+  await relay.run();
+  await a.send({ t: "live", board: "B1", items: { c1: { w: 100, pos: [0, 0] }, c2: { w: [] } }, caret: { id: "c1", back: false, at: 1e300 } });
+  await relay.run();
+  clock.advance(50);
+  await a.send({ t: "live", board: "B1", items: { c1: { w: [], pos: [10, 0, 5] } }, caret: null });
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(Object.fromEntries(b.overlay("B1")), { c1: { w: 100, pos: [0, 0] }, c2: { w: [] } });
+  assert.deepEqual(b.carets("B1"), []);
+  await a.send({ t: "live", board: "B1", items: {}, caret: { id: "c1", back: false, at: 1e300 } });
+  await relay.run();
+  assert.deepEqual(b.carets("B1"), []);
+  await a.send({ t: "pushed", version: 1e300 });
+  await relay.run();
+  assert.deepEqual(pushes, []);
+  // a seq too big to read exactly is no seq at all, so later bodies still arrive
+  await a.send({ t: "cursor", board: "B1", x: 1, y: 1, seq: 1e300 });
+  await relay.run();
+  clock.advance(50);
+  a.sendCursor("B1", 2, 2);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors("B1").map((c) => c.x), [2]);
+});
+
 /** `n` devices with fake transports, all on board B1, the last one the newcomer. */
 async function direct(n = 2) {
   const relay = new FakeRelay(), clock = new Clock();
