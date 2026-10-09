@@ -62,6 +62,11 @@ public struct Peer: Equatable, Sendable {
   public var caret: Caret?
   /// A version it pushed that this device has not pulled yet; its overlay stays until then.
   var awaiting = 0
+  /// The last `seq` taken of each kind of body.
+  var seqs: [String: Int] = [:]
+  var cursorTrack: Track?
+  /// Tracks of the overlay's moving fields, keyed "id field".
+  var motion: [String: Track] = [:]
 }
 
 /// A WebSocket as `Live` uses it; tests put a fake in its place.
@@ -160,6 +165,7 @@ public struct Peer: Equatable, Sendable {
   public static let pingInterval: TimeInterval = 20
   public static let pongTimeout: TimeInterval = 10
   static let maxFrame = 65_536
+  static let moving = ["pos", "size", "w"]
   static let encoder: JSONEncoder = {
     let e = JSONEncoder()
     e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -183,6 +189,7 @@ public struct Peer: Equatable, Sendable {
 
   private let makeSocket: @MainActor (URL) -> LiveSocket
   private let now: () -> Date
+  private let uptime: () -> Double
   private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
   private var socket: LiveSocket?
   private var wanted = false
@@ -202,11 +209,13 @@ public struct Peer: Equatable, Sendable {
   private var liveSent = Date.distantPast, liveQueued = false
   private var lastLive: [String: JSONValue]?
   private var storeCursor = 0
+  private var seq = 0
 
   public init(
     relay: String, space: String, keys: SpaceKeys, me: Person,
     socket: @escaping @MainActor (URL) -> LiveSocket = { WebSocketTaskSocket(url: $0) },
     now: @escaping () -> Date = Date.init,
+    uptime: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime * 1000 },
     schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Void = { delay, work in
       DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated(work) }
     }
@@ -217,6 +226,7 @@ public struct Peer: Equatable, Sendable {
     self.me = me
     makeSocket = socket
     self.now = now
+    self.uptime = uptime
     self.schedule = schedule
   }
 
@@ -305,6 +315,15 @@ public struct Peer: Equatable, Sendable {
     return true
   }
 
+  /// A cursor or live body, stamped with this device's time and the next sequence number.
+  @discardableResult private func sendFast(_ body: [String: JSONValue]) -> Bool {
+    var b = body
+    seq += 1
+    b["at"] = .number(uptime())
+    b["seq"] = .number(Double(seq))
+    return send(b)
+  }
+
   // MARK: receiving
 
   private static func holds(_ v: JSONValue?) -> [String: Set<String>] {
@@ -315,6 +334,21 @@ public struct Peer: Equatable, Sendable {
     guard let o = v?.object, let board = o["board"]?.string, let x = o["x"]?.number, let y = o["y"]?.number, x.isFinite, y.isFinite
     else { return nil }
     return Cursor(board: board, x: x, y: y)
+  }
+
+  private static func numbers(_ v: JSONValue?) -> [Double]? {
+    if let n = v?.number, n.isFinite { return [n] }
+    guard let a = v?.array else { return nil }
+    let ns = a.compactMap(\.number)
+    return ns.count == a.count && ns.allSatisfy(\.isFinite) ? ns : nil
+  }
+
+  /// Whether `b` is newer than the last body of its kind from this peer, over either pipe; one without `seq` is.
+  private static func fresh(_ p: inout Peer, _ b: [String: JSONValue]) -> Bool {
+    guard let t = b["t"]?.string, let n = b["seq"]?.number else { return true }
+    guard Int(n) > p.seqs[t] ?? 0 else { return false }
+    p.seqs[t] = Int(n)
+    return true
   }
 
   private static func caret(_ v: JSONValue?) -> Caret? {
@@ -362,6 +396,12 @@ public struct Peer: Equatable, Sendable {
     let t = now()
     var p = peers[from] ?? Peer(heard: t)
     p.heard = t
+    let arrival = uptime()
+    let at = b["at"]?.number ?? arrival
+    guard !["cursor", "live"].contains(b["t"]?.string) || Self.fresh(&p, b) else {
+      peers[from] = p
+      return
+    }
     switch b["t"]?.string {
     case "presence":
       guard let device = b["device"]?.string, Base64URL.decode(device)?.count == 16 else { return }
@@ -374,13 +414,25 @@ public struct Peer: Equatable, Sendable {
         p.cursorAt = t
       }
     case "cursor":
-      p.cursor = Self.cursor(.object(b))
+      let c = Self.cursor(.object(b))
+      if c == nil || c?.board != p.cursor?.board { p.cursorTrack = nil }
+      if let c {
+        if p.cursorTrack == nil { p.cursorTrack = Track() }
+        p.cursorTrack!.push(at: at, arrival: arrival, value: [c.x, c.y])
+      }
+      p.cursor = c
       p.cursorAt = t
     case "live":
-      p.overlayBoard = b["board"]?.string
+      let board = b["board"]?.string
+      if board != p.overlayBoard { p.motion = [:] }
+      p.overlayBoard = board
       for (id, f) in b["items"]?.object ?? [:] {
         guard let f = f.object else { continue }
         p.overlay[id, default: [:]].merge(f.filter { Records.liveFieldNames.contains($0.key) || $0.key == "kind" }) { $1 }
+        for k in Self.moving {
+          guard let v = Self.numbers(f[k]) else { continue }
+          p.motion["\(id) \(k)", default: Track()].push(at: at, arrival: arrival, value: v)
+        }
       }
       p.caret = Self.caret(b["caret"])
     case "pushed":
@@ -406,6 +458,7 @@ public struct Peer: Equatable, Sendable {
       p.awaiting = 0
       let held = holds[conn] ?? []
       p.overlay = p.overlay.filter { held.contains($0.key) }
+      p.motion = p.motion.filter { p.overlay[String($0.key.prefix { $0 != " " })] != nil }
       if held.isEmpty { p.caret = nil }
       peers[conn] = p
     }
@@ -447,8 +500,8 @@ public struct Peer: Equatable, Sendable {
     if connected && t.timeIntervalSince(presenceSent) >= Self.presenceInterval { sendPresence() }
     if connected && !mine.isEmpty && t.timeIntervalSince(liveSent) >= Self.heartbeat {
       liveSent = t
-      if lastLive == nil || !send(lastLive!) {
-        send(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null])
+      if lastLive == nil || !sendFast(lastLive!) {
+        sendFast(["t": .string("live"), "board": .string(presence.board ?? cursorBoard), "items": .object([:]), "caret": .null])
       }
     }
     if changed { onChange?() }
@@ -490,7 +543,7 @@ public struct Peer: Equatable, Sendable {
 
   private func flushCursor() {
     cursorSent = now()
-    send(["t": .string("cursor"), "board": .string(cursorBoard), "x": cursor.map { .number($0.x) } ?? .null, "y": cursor.map { .number($0.y) } ?? .null])
+    sendFast(["t": .string("cursor"), "board": .string(cursorBoard), "x": cursor.map { .number($0.x) } ?? .null, "y": cursor.map { .number($0.y) } ?? .null])
   }
 
   /// Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect.
@@ -529,7 +582,7 @@ public struct Peer: Equatable, Sendable {
   private func flushLive() {
     guard let l = lastLive else { return }
     liveSent = now()
-    send(l)
+    sendFast(l)
   }
 
   public func sendPushed(_ version: Int) { send(["t": .string("pushed"), "version": .number(Double(version))]) }
@@ -545,18 +598,37 @@ public struct Peer: Equatable, Sendable {
     return peers[conn]?.person ?? Person(device: "", name: "")
   }
 
-  /// Others' live fields on `board`, leaving out what this device holds: its own gesture draws from its model.
+  /// Others' live fields on `board` as they play back now, leaving out what this device holds: its own gesture draws
+  /// from its model.
   public func overlay(on board: String) -> [String: LiveFields] {
+    let t = uptime()
     var out: [String: LiveFields] = [:]
-    for p in peers.values where p.overlayBoard == board { out.merge(p.overlay.filter { !mine.contains($0.key) }) { $1 } }
+    for p in peers.values where p.overlayBoard == board {
+      for (id, f) in p.overlay where !mine.contains(id) {
+        var shown = f
+        for k in Self.moving where f[k] != nil {
+          guard let v = p.motion["\(id) \(k)"]?.sample(t) else { continue }
+          shown[k] = k == "w" ? .number(v[0]) : .array(v.map(JSONValue.number))
+        }
+        out[id] = shown
+      }
+    }
     return out
   }
 
   public func cursors(on board: String) -> [(key: String, person: Person, cursor: Cursor)] {
-    peers.compactMap { k, p in
+    let t = uptime()
+    return peers.compactMap { k, p in
       guard let person = p.person, let c = p.cursor, c.board == board else { return nil }
-      return (k, person, c)
+      let v = p.cursorTrack?.sample(t) ?? [c.x, c.y]
+      return (k, person, Cursor(board: board, x: v[0], y: v[1]))
     }.sorted { $0.key < $1.key }
+  }
+
+  /// Whether any cursor or live edit is still playing back, so that the board draws again next frame.
+  public var animating: Bool {
+    let t = uptime()
+    return peers.values.contains { p in (p.cursor != nil && p.cursorTrack?.playing(t) == true) || p.motion.values.contains { $0.playing(t) } }
   }
 
   public func carets(on board: String) -> [(key: String, person: Person, caret: Caret)] {

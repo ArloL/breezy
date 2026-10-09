@@ -3,7 +3,7 @@ import Foundation
 
 /// Time and timers under a test's control.
 @MainActor final class Clock {
-  var now = Date(timeIntervalSince1970: 1_000_000)
+  var now = Date(timeIntervalSinceReferenceDate: 0)
   private var timers: [(at: Date, work: @MainActor () -> Void)] = []
 
   func schedule(_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) {
@@ -118,6 +118,12 @@ import Foundation
       let to = m["to"] as? String
       for x in others(s) where to == nil || to == x.id { deliver(x, ["from": s.id, "body": body]) }
     }
+  }
+
+  /// Hands everyone else a frame `from` sent before, again.
+  func resend(_ f: (from: String, text: String)) {
+    guard let s = sockets.first(where: { $0.id == f.from }) else { return }
+    received(s, f.text)
   }
 
   func drop(_ s: Socket, code: Int?) {

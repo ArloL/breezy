@@ -10,7 +10,8 @@ private func keys() -> SpaceKeys {
 
 @MainActor private func live(_ relay: FakeRelay, _ clock: Clock, name: String = "Ana", device: String = newID(), keys k: SpaceKeys = keys()) -> Live {
   Live(relay: "wss://relay.example/", space: space, keys: k, me: Person(device: device, name: name),
-       socket: { relay.connect($0) }, now: { clock.now }, schedule: { clock.schedule($0, $1) })
+       socket: { relay.connect($0) }, now: { clock.now },
+       uptime: { clock.now.timeIntervalSince1970 * 1000 }, schedule: { clock.schedule($0, $1) })
 }
 
 /// Two connected devices, both showing board B1.
@@ -54,6 +55,7 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   clock.advance(0.05)
   relay.run()
   #expect(relay.frames.count == before + 2)
+  clock.advance(0.2)
   #expect(b.cursors(on: "B1").map { $0.cursor.x } == [3])
   a.sendCursor(board: "B1", x: nil, y: nil)
   clock.advance(0.05)
@@ -397,4 +399,78 @@ private let moved: [String: LiveFields] = ["c1": ["pos": .array([.number(48), .n
   a.tick()
   relay.run()
   #expect(b.overlay(on: "B1") == moved)
+}
+
+@MainActor private func bodies(_ relay: FakeRelay, last n: Int) throws -> [[String: JSONValue]] {
+  try relay.frames.filter { $0.text.contains("\"body\"") }.suffix(n).map { f in
+    let m = try JSONDecoder().decode([String: JSONValue].self, from: Data(f.text.utf8))
+    return try JSONDecoder().decode([String: JSONValue].self, from: keys().openLive(Base64URL.decode(m["body"]!.string!)!))
+  }
+}
+
+@MainActor @Test func cursorsAndLiveEditsCarryTheSendersTimeAndASequenceNumber() throws {
+  let (relay, clock, a, _) = two()
+  a.sendCursor(board: "B1", x: 1, y: 1)
+  relay.run()
+  clock.advance(0.05)
+  a.hold(["c1"])
+  a.sendLive(board: "B1", items: moved, caret: nil)
+  relay.run()
+  let b = try bodies(relay, last: 2)
+  #expect(b.map { $0["t"]?.string } == ["cursor", "live"])
+  #expect(b.map { $0["seq"]?.number } == [1, 2])
+  #expect(abs(b[1]["at"]!.number! - b[0]["at"]!.number! - 50) < 0.001)
+}
+
+@MainActor @Test func cursorsPlayBackSmoothlyBetweenUpdates() {
+  let (relay, clock, a, b) = two()
+  for x in [0.0, 10, 20] {
+    a.sendCursor(board: "B1", x: x, y: 0)
+    relay.run()
+    clock.advance(0.05)
+  }
+  clock.advance(-0.025)
+  #expect(b.cursors(on: "B1").map { $0.cursor.x } == [15])
+  #expect(b.animating)
+  clock.advance(0.1)
+  #expect(b.cursors(on: "B1").map { $0.cursor.x } == [20])
+  #expect(!b.animating)
+}
+
+@MainActor @Test func aCursorOnAnotherBoardJumpsThere() {
+  let (relay, clock, a, b) = two()
+  for x in [0.0, 10] {
+    a.sendCursor(board: "B1", x: x, y: 0)
+    relay.run()
+    clock.advance(0.05)
+  }
+  a.sendCursor(board: "B2", x: 500, y: 500)
+  relay.run()
+  #expect(b.cursors(on: "B2").map { [$0.cursor.x, $0.cursor.y] } == [[500, 500]])
+}
+
+@MainActor @Test func draggedPositionsPlayBackAndTextShowsOnArrival() {
+  let (relay, clock, a, b) = two()
+  a.hold(["c1"])
+  for (x, text) in [(0.0, "a"), (10, "ab"), (20, "abc")] {
+    a.sendLive(board: "B1", items: ["c1": ["pos": .array([.number(x), .number(0)]), "text": .string(text)]], caret: nil)
+    relay.run()
+    clock.advance(0.05)
+  }
+  clock.advance(-0.025)
+  #expect(b.overlay(on: "B1")["c1"] == ["pos": .array([.number(15), .number(0)]), "text": .string("abc")])
+}
+
+@MainActor @Test func duplicatesAndLateBodiesAreDroppedAndUnstampedOnesTaken() {
+  let (relay, clock, a, b) = two()
+  a.sendCursor(board: "B1", x: 5, y: 5)
+  relay.run()
+  let late = relay.frames.last!
+  clock.advance(0.2)
+  a.sendCursor(board: "B1", x: 9, y: 9)
+  relay.run()
+  relay.resend(late)
+  relay.run()
+  clock.advance(0.2)
+  #expect(b.cursors(on: "B1").map { $0.cursor.x } == [9])
 }
