@@ -511,7 +511,11 @@ public struct Peer: Equatable, Sendable {
       pipe.queued = false
       pipe.sent = now()
       // the encoders throw only for bad input, which `compact` takes
-      try! flush(pipe)
+      do {
+        try flush(pipe)
+      } catch {
+        assertionFailure("\(error)")
+      }
     }
   }
 
