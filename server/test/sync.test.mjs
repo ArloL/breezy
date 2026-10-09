@@ -190,6 +190,29 @@ test("a bad since is refused", async () => {
   assert.equal((await c.pushSince([write()], "x")).status, 400);
 });
 
+test("a push naming another epoch writes nothing and names the current one", async () => {
+  const c = client();
+  const { epoch } = (await c.push([write()])).body;
+  const r = await c.call("POST", {}, { writes: [write()], since: 0, epoch: rand(16) });
+  assert.deepEqual(r.body, { accepted: [], refused: [], epoch });
+  assert.equal((await c.pull()).body.records.length, 1);
+  const ok = await c.call("POST", {}, { writes: [write()], since: 0, epoch });
+  assert.equal(ok.body.accepted.length, 1);
+});
+
+test("a push naming an epoch does not create a space", async () => {
+  const c = client();
+  const r = await c.call("POST", {}, { writes: [write()], since: 0, epoch: rand(16) });
+  assert.deepEqual(r.body, { accepted: [], refused: [], epoch: null });
+  assert.deepEqual((await c.pull()).body, { records: [], cursor: 0, epoch: null });
+});
+
+test("a malformed epoch is refused", async () => {
+  const r = await client().call("POST", {}, { writes: [write()], epoch: "x" });
+  assert.equal(r.status, 400);
+  assert.deepEqual(r.body, { error: "epoch" });
+});
+
 test("answers are gzipped for clients that ask", async () => {
   const c = client();
   await c.push([write()]);

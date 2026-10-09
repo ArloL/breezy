@@ -58,8 +58,8 @@ export class HttpTransport {
     return this.send({ since });
   }
 
-  push(writes, since) {
-    return this.send({}, { writes, ...(since === undefined ? {} : { since }) });
+  push(writes, since, epoch) {
+    return this.send({}, { writes, ...(since === undefined ? {} : { since }), ...(epoch === undefined ? {} : { epoch }) });
   }
 }
 
@@ -187,8 +187,9 @@ export class SyncEngine {
         if (!(await this.retryHeld(keys, same))) return;
       }
       this.flushLocal();
-      let first = this.store.state.resync ? null : await this.outgoing(keys);
-      const combined = first?.writes.length > 0;
+      const ready = this.store.state.resync || this.store.state.epoch == null ? null : await this.outgoing(keys);
+      const combined = ready?.writes.length > 0;
+      let first = combined ? ready : null;
       if (!combined) {
         if (!(await this.pullAll(transport, keys, same))) return;
         this.onPulled(this.store.state.cursor);
@@ -200,7 +201,7 @@ export class SyncEngine {
         first = null;
         if (!writes.length) break;
         const request = combined ? this.store.state.cursor : undefined;
-        const result = await transport.push(writes, request);
+        const result = await transport.push(writes, request, combined ? this.store.state.epoch : undefined);
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
           this.again = true;

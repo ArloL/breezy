@@ -126,6 +126,11 @@ $list = is_array($request) ? ($request['writes'] ?? null) : null;
 if (!is_array($list) || array_values($list) !== $list) reply(400, ['error' => 'writes']);
 $since = is_array($request) && array_key_exists('since', $request) ? $request['since'] : null;
 if ($since !== null && (!is_int($since) || $since < 0)) reply(400, ['error' => 'since']);
+$want = null;
+if (is_array($request) && array_key_exists('epoch', $request)) {
+  $want = bytes($request['epoch'], 16);
+  if ($want === null) reply(400, ['error' => 'epoch']);
+}
 $writes = [];
 foreach ($list as $w) {
   $id = is_array($w) ? bytes($w['id'] ?? null, 16) : null;
@@ -141,13 +146,19 @@ for ($attempt = 1;; $attempt++) {
   try {
     $db->beginTransaction();
     $row = query($db, "SELECT token_hash, version, epoch FROM spaces WHERE id = ?$lock", [$space])->fetch(PDO::FETCH_ASSOC);
-    if (!$row) {
+    if (!$row && $want !== null) {
+      $db->rollBack();
+      reply(200, named(['accepted' => [], 'refused' => [], 'epoch' => null]));
+    } elseif (!$row) {
       $epoch = random_bytes(16);
       query($db, 'INSERT INTO spaces (id, token_hash, version, epoch) VALUES (?, ?, 0, ?)', [$space, $hash, $epoch]);
       $version = 0;
     } elseif (!hash_equals($row['token_hash'], $hash)) {
       $db->rollBack();
       reply(401);
+    } elseif ($want !== null && !hash_equals($row['epoch'], $want)) {
+      $db->rollBack();
+      reply(200, named(['accepted' => [], 'refused' => [], 'epoch' => b64e($row['epoch'])]));
     } else {
       $version = (int)$row['version'];
       $epoch = $row['epoch'];
