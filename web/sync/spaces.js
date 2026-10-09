@@ -3,6 +3,9 @@
 import { Store, withFreshIDs } from "./store.js";
 import { Saver } from "./saver.js";
 import { SyncEngine } from "./engine.js";
+import { Live } from "./live.js";
+import { encode, decode } from "./base64.js";
+import { randomBytes } from "./crypto.js";
 
 export const LOCAL_NAME = "On this device";
 export const UNNAMED = "Shared Space";
@@ -10,6 +13,8 @@ export const UNNAMED = "Shared Space";
 class Group {
   constructor(key, store, engine, saver) {
     Object.assign(this, { key, store, engine, saver });
+    /** The space's live layer, once its server names a relay. */
+    this.live = null;
   }
 
   /** Null for On this device. */
@@ -43,12 +48,22 @@ export class Spaces {
     return spaces;
   }
 
-  constructor(storage, states = {}, { transport, readOnly = false } = {}) {
+  constructor(storage, states = {}, { transport, readOnly = false, socket, now } = {}) {
     this.storage = storage;
     this.transport = transport;
+    this.socket = socket;
+    this.now = now;
     this.readOnly = readOnly;
     this.fresh = false;
     this.lastServer = typeof states.server === "string" ? states.server : null;
+    const me = states.me;
+    /** This device as others in its spaces see it. */
+    this.me = decode(me?.device)?.length === 16 && typeof me.name === "string" ? { device: me.device, name: me.name } : { device: encode(randomBytes(16)), name: "" };
+    if (!me && !readOnly) storage.save("me", this.me).catch(() => {});
+    /** After a group's live layer appears, goes, or hears something. */
+    this.onLive = () => {};
+    /** The relay refused holds a group's live layer asked for. */
+    this.onRefused = () => {};
     /** After a change to what a group's boards show, with the boards concerned and whether it came from the server. */
     this.onChange = () => {};
     this.onStatus = () => {};
@@ -63,7 +78,7 @@ export class Spaces {
   }
 
   make(key, store) {
-    const engine = new SyncEngine(store, this.transport ? { transport: this.transport } : {});
+    const engine = new SyncEngine(store, { ...(this.transport ? { transport: this.transport } : {}), ...(this.now ? { now: this.now } : {}) });
     const saver = new Saver(() => this.storage.save(key, store.state));
     saver.enabled = !this.readOnly;
     const g = new Group(key, store, engine, saver);
@@ -75,7 +90,36 @@ export class Spaces {
     };
     engine.onStatus = () => this.onStatus(g);
     engine.flushLocal = () => this.flushLocal();
+    engine.onRelay = (relay) => this.setRelay(g, relay);
+    engine.onPushed = (version) => g.live?.sendPushed(version);
+    engine.onPulled = (cursor) => g.live?.noteCursor(cursor);
     return g;
+  }
+
+  /** Replaces the group's live layer with one on `relay`, or none; the keys take a moment. */
+  async setRelay(g, relay) {
+    if (relay === (g.live?.relay ?? null)) return;
+    g.live?.close();
+    g.live = null;
+    if (relay && g.space) {
+      const keys = await g.engine.keysOf(g.store.state);
+      if (g.engine.relay !== relay || g.live || !this.spaces.includes(g)) return;
+      const live = new Live({ relay, space: g.space, keys, me: this.me, ...(this.socket ? { socket: this.socket } : {}) });
+      live.onPushed = () => g.engine.sync();
+      live.onChange = () => this.onLive(g);
+      live.onRefused = (ids) => this.onRefused(g, ids);
+      // a refused token is the server's to report: its 401 shows "Not in this space any more"
+      live.onUnauthorized = () => g.engine.sync();
+      g.live = live;
+    }
+    this.onLive(g);
+  }
+
+  /** This device's name, kept and shown to the others in every space. */
+  async setName(name) {
+    this.me = { ...this.me, name };
+    for (const g of this.spaces) g.live?.setMe(this.me);
+    if (!this.readOnly) await this.storage.save("me", this.me).catch(() => {});
   }
 
   /** On this device first, then the spaces by name. */
@@ -127,6 +171,8 @@ export class Spaces {
     if (group === this.local) return;
     this.spaces = this.spaces.filter((g) => g !== group);
     group.store.onDirty = group.store.onChange = group.engine.onStatus = () => {};
+    group.live?.close();
+    group.live = null;
     group.saver.enabled = false;
     await group.saver.writing;
     if (!this.readOnly) await this.storage.remove(group.key);
@@ -147,9 +193,14 @@ export class Spaces {
     return created;
   }
 
-  /** A cycle for every space, each on its own. */
-  syncAll() {
-    for (const g of this.spaces) g.engine.sync();
+  /** A cycle for every space, each on its own. When `polling`, a space whose live layer is connected waits 30 s between
+   * cycles: its relay announces what others push. */
+  syncAll({ polling = false } = {}) {
+    const now = (this.now ?? Date.now)();
+    for (const g of this.spaces) {
+      if (polling && g.live?.connected && now - g.engine.lastCycle < 30_000) continue;
+      g.engine.sync();
+    }
   }
 
   flushAll() {
