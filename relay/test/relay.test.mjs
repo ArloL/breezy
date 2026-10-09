@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 // relay/test.sh runs these against wrangler dev
 const RELAY = process.env.BREEZY_RELAY;
 const rand = (n) => randomBytes(n).toString("base64url");
-const type = (t) => (m) => m.t === t;
+const type = (t) => (m) => m?.t === t;
 
 /** A connection to `space`, authenticated with `token` unless `auth` is false. */
 async function connect(space, token, { auth = true } = {}) {
@@ -17,7 +17,7 @@ async function connect(space, token, { auth = true } = {}) {
   let closed = null;
   const wake = () => waiters.splice(0).forEach((w) => w());
   ws.onmessage = (e) => {
-    inbox.push(JSON.parse(e.data));
+    inbox.push(e.data === "pong" ? e.data : JSON.parse(e.data));
     wake();
   };
   ws.onclose = (e) => {
@@ -88,6 +88,17 @@ test("a socket that never authenticates is closed", { timeout: 30_000 }, async (
   assert.equal(await c.next(type("welcome"), 2000), null);
 });
 
+test("a ping gets a pong, before auth too", async () => {
+  const space = rand(16), token = rand(32);
+  const c = await connect(space, token, { auth: false });
+  c.send("ping");
+  assert.equal(await c.next((m) => m === "pong"), "pong");
+  c.send({ t: "auth", token });
+  assert.ok(await c.next(type("welcome")));
+  c.send("ping");
+  assert.equal(await c.next((m) => m === "pong"), "pong");
+});
+
 test("bodies go to everyone else, or to one", async () => {
   const space = rand(16), token = rand(32);
   const a = await connect(space, token), b = await connect(space, token), c = await connect(space, token);
@@ -117,6 +128,22 @@ test("holds are all or none, and end with release or a close", async () => {
   b.ws.close();
   assert.deepEqual(await a.next(type("leave")), { t: "leave", id: b.welcome.id });
   assert.deepEqual((await a.next((m) => m.t === "holds" && !Object.keys(m.holds).length)).holds, {});
+});
+
+test("a hold of more than 500 ids, or of malformed ids, is refused", async () => {
+  const space = rand(16), token = rand(32);
+  const a = await connect(space, token), b = await connect(space, token);
+  const ids = Array.from({ length: 500 }, () => rand(16));
+  a.send({ t: "hold", ids });
+  assert.equal((await b.next(type("holds"))).holds[a.welcome.id].length, 500);
+  const more = rand(16);
+  a.send({ t: "hold", ids: [more] });
+  assert.deepEqual(await a.next(type("refused")), { t: "refused", ids: [more] });
+  a.send({ t: "hold", ids: ["short"] });
+  assert.deepEqual(await a.next(type("refused")), { t: "refused", ids: ["short"] });
+  a.send({ t: "hold", ids: 7 });
+  assert.deepEqual(await a.next(type("refused")), { t: "refused", ids: [] });
+  assert.equal(await b.next(type("holds"), 300), null);
 });
 
 test("frames over 64 KB are dropped", async () => {

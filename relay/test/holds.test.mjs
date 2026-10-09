@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { conflicts, holdsOf, lapsed, unauthenticated, validIDs, HOLD_TIMEOUT_MS, AUTH_TIMEOUT_MS } from "../src/holds.js";
+import { conflicts, holdsOf, lapsed, refusal, unauthenticated, validIDs, HOLD_TIMEOUT_MS, AUTH_TIMEOUT_MS, MAX_HELD } from "../src/holds.js";
 
 const id = (n) => String(n).padStart(22, "A");
 const conns = [
@@ -33,4 +33,14 @@ test("ids are 22 base64url characters", () => {
   assert.ok(!validIDs(["short"]));
   assert.ok(!validIDs("x"));
   assert.ok(!validIDs([1]));
+});
+
+test("a malformed or oversize hold is refused whole", () => {
+  const many = Array.from({ length: MAX_HELD }, (_, i) => id(i));
+  assert.equal(refusal([], many), null);
+  assert.equal(refusal(many.slice(0, 10), many.slice(5)), null);
+  assert.deepEqual(refusal([id(MAX_HELD)], many), many);
+  assert.deepEqual(refusal([], ["short", id(1)]), ["short", id(1)]);
+  assert.deepEqual(refusal([], [1, id(1)]), []);
+  assert.deepEqual(refusal([], "x"), []);
 });

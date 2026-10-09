@@ -1,7 +1,7 @@
 // The live layer's relay: one Durable Object per space forwards sealed messages between that space's connections and
 // keeps who holds what. It stores the space token's hash and nothing else; see the multiplayer design.
 import { DurableObject } from "cloudflare:workers";
-import { conflicts, holdsOf, lapsed, unauthenticated, validIDs, MAX_MESSAGE } from "./holds.js";
+import { conflicts, holdsOf, lapsed, refusal, unauthenticated, MAX_MESSAGE } from "./holds.js";
 
 const SPACE = /^[A-Za-z0-9_-]{22}$/;
 const TICK_MS = 5_000;
@@ -22,6 +22,12 @@ function send(ws, text) {
 }
 
 export class Space extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    // the apps' liveness check, answered without waking the object
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
   async fetch() {
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
@@ -55,11 +61,12 @@ export class Space extends DurableObject {
       for (const c of others) send(c.ws, JSON.stringify({ t: "join", id: me.id }));
       return;
     }
-    if (m?.t === "hold" && validIDs(m.ids)) {
-      const refused = conflicts(this.conns().filter((c) => c.authed), me.id, m.ids);
-      if (!refused.length) me.holds = [...new Set([...me.holds, ...m.ids])];
+    if (m?.t === "hold") {
+      const bad = refusal(me.holds, m.ids);
+      const refused = bad ?? conflicts(this.conns().filter((c) => c.authed), me.id, m.ids);
+      if (!bad && !refused.length) me.holds = [...new Set([...me.holds, ...m.ids])];
       ws.serializeAttachment(me);
-      if (refused.length) return send(ws, JSON.stringify({ t: "refused", ids: refused }));
+      if (bad || refused.length) return send(ws, JSON.stringify({ t: "refused", ids: refused }));
       await this.wake();
       return this.announce();
     }
@@ -86,6 +93,11 @@ export class Space extends DurableObject {
 
   leave(ws) {
     const me = ws.deserializeAttachment();
+    if (me?.holds.length) {
+      try {
+        ws.serializeAttachment({ ...me, holds: [] });
+      } catch {}
+    }
     try {
       ws.close(1000);
     } catch {}
