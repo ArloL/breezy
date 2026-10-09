@@ -1358,3 +1358,23 @@ private func firstItem(_ v: [Pack], _ key: Int64) -> Pack? { v[5].map?.first?.1.
   relay.run()
   #expect(lastRelayed(relay, a)[3].bin != nil)
 }
+
+@MainActor @Test func theChannelsRepeatOfTheFirstCursorOnAnotherBoardGoesToEveryoneToo() {
+  let (relay, clock, ts, ls) = direct(3)
+  for j in [1, 2] { open(ts, ls, 0, j) }
+  ls[2].setPresence(board: B2, selection: [])
+  relay.run()
+  ls[0].sendCursor(board: B1, x: 1, y: 1)
+  relay.run()
+  clock.advance(0.2)
+  relay.run()
+  ts[0].sent = []
+  ls[0].sendCursor(board: B2, x: 1, y: 1)
+  relay.run()
+  let everyone = [ls[1].id!, ls[2].id!].sorted()
+  #expect(ts[0].sent.map(\.id).sorted() == everyone)
+  ts[0].sent = []
+  clock.advance(Live.cursorRepeat)
+  relay.run()
+  #expect(ts[0].sent.map(\.id).sorted() == everyone)
+}
