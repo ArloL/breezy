@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.js";
-import { statusLines, TransportError } from "../sync/engine.js";
+import { statusLines, TransportError, validRelay } from "../sync/engine.js";
 import { SpaceKeys } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
 import { newID } from "../rules.js";
@@ -361,4 +361,14 @@ test("the engine learns the relay and reports pushes and pulls", async () => {
   server.relay = "http://not-a-relay";
   await b.engine.sync();
   assert.equal(b.engine.relay, null);
+});
+
+test("only WebSockets over TLS, or to this computer, are relays", async () => {
+  for (const r of ["wss://relay.example/", "ws://127.0.0.1:58568/", "ws://localhost:58568/"]) assert.ok(validRelay(r), r);
+  for (const r of ["ws://relay.example/", "https://relay.example/", "wss:", ""]) assert.ok(!validRelay(r), r);
+  const { server, a, id } = await pair(newID);
+  server.relay = "ws://relay.example/";
+  a.edit(id, (x) => (x.cards[0].color = 2));
+  await a.engine.sync();
+  assert.equal(a.engine.relay, null);
 });

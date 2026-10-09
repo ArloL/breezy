@@ -52,6 +52,16 @@ export class HttpTransport {
   }
 }
 
+/** A WebSocket over TLS, or plain to this computer for trying the relay out, as validServer has it. */
+export function validRelay(s) {
+  try {
+    const u = new URL(s);
+    return u.protocol === "wss:" || (u.protocol === "ws:" && ["localhost", "127.0.0.1"].includes(u.hostname));
+  } catch {
+    return false;
+  }
+}
+
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /** The status as the menus show it, a line each. */
@@ -136,7 +146,7 @@ export class SyncEngine {
   }
 
   noteRelay(r) {
-    const relay = typeof r === "string" && /^wss?:\/\//.test(r) ? r : null;
+    const relay = typeof r === "string" && validRelay(r) ? r : null;
     if (relay === this.relay) return;
     this.relay = relay;
     this.onRelay(relay);

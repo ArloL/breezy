@@ -11,13 +11,16 @@ export class SpaceKeys {
     const info = (s) => ({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: enc.encode(s) });
     const key = await crypto.subtle.deriveKey(info("breezy key"), base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
     const token = new Uint8Array(await crypto.subtle.deriveBits(info("breezy token"), base, 256));
-    return new SpaceKeys(space, key, token);
+    const relayToken = new Uint8Array(await crypto.subtle.deriveBits(info("breezy relay"), base, 256));
+    return new SpaceKeys(space, key, token, relayToken);
   }
 
-  constructor(space, key, token) {
+  /** `token` is for the server; `relayToken` for the relay, so that the relay never learns one it could use there. */
+  constructor(space, key, token, relayToken) {
     this.space = space;
     this.key = key;
     this.token = token;
+    this.relayToken = relayToken;
   }
 
   aad(id) {

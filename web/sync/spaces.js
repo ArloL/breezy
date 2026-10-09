@@ -122,9 +122,10 @@ export class Spaces {
     if (!this.readOnly) await this.storage.save("me", this.me).catch(() => {});
   }
 
-  /** On this device first, then the spaces by name. */
+  /** On this device first, then the spaces by name, with names alike but for case tied, then by space id. */
   groups() {
-    const cmp = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) || (a.space < b.space ? -1 : a.space > b.space ? 1 : 0);
+    const cmp = (a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "accent" }) || (a.space < b.space ? -1 : a.space > b.space ? 1 : 0);
     return [this.local, ...[...this.spaces].sort(cmp)];
   }
 

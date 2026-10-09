@@ -64,6 +64,13 @@ test("live messages match the shared vector", async () => {
   assert.equal(new TextDecoder().decode(await keys.openLive(decode(lv.body))), lv.plaintext);
 });
 
+test("the relay gets a token of its own", async () => {
+  const lv = fixture("live.json");
+  const keys = await SpaceKeys.create(decode(lv.space), decode(lv.secret));
+  assert.equal(encode(keys.relayToken), lv.relayToken);
+  assert.notEqual(encode(keys.relayToken), encode(keys.token));
+});
+
 test("live messages and records never pass for each other", async () => {
   const keys = await SpaceKeys.create(randomBytes(16), randomBytes(32));
   const body = await keys.sealLive(enc.encode("x"));
