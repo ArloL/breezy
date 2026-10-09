@@ -22,44 +22,67 @@ import Foundation
   }
 }
 
-/// The relay's rules, in memory. What sockets send is delivered when `run` is called.
+/// The relay's rules, in memory, with its frames: short ids, binary bodies to v2 sockets and JSON to older ones. What
+/// sockets send is delivered when `run` is called, which also runs the timers due now, as a next turn would.
 @MainActor final class FakeRelay {
   final class Socket: LiveSocket {
     var onOpen: (() -> Void)?
     var onMessage: ((String) -> Void)?
+    var onData: ((Data) -> Void)?
     var onClose: ((Int) -> Void)?
-    let id = UUID().uuidString
+    let id: String
     weak var relay: FakeRelay?
     var authed = false
+    /// 2 when its auth said so: bodies reach it as binary frames, else as JSON.
+    var v = 1
     var holds: [String] = []
     /// Its network is gone without a close: nothing it sends arrives, and nothing reaches it.
     var halfOpen = false
 
-    init(relay: FakeRelay) { self.relay = relay }
+    init(relay: FakeRelay, id: String) {
+      self.relay = relay
+      self.id = id
+    }
 
     func send(_ text: String) { relay?.queue.append { [weak self] in if let self { self.relay?.received(self, text) } } }
+    func sendData(_ data: Data) { relay?.queue.append { [weak self] in if let self { self.relay?.received(self, data) } } }
     func close() { relay?.queue.append { [weak self] in if let self { self.relay?.drop(self, code: nil) } } }
   }
 
+  /// A frame a socket sent: JSON text or binary.
+  struct Frame {
+    var from: String
+    var text: String?
+    var bytes: Data?
+  }
+
+  let clock: Clock?
   var sockets: [Socket] = []
   var queue: [() -> Void] = []
   /// The space's token, set by the first `auth`.
   var token: String?
   /// Every frame received, in order.
-  var frames: [(from: String, text: String)] = []
+  var frames: [Frame] = []
   var pings = 0
   /// Sockets opened so far.
   var opened = 0
 
+  init(clock: Clock? = nil) { self.clock = clock }
+
   func connect(_ url: URL) -> LiveSocket {
-    let s = Socket(relay: self)
-    sockets.append(s)
     opened += 1
+    let s = Socket(relay: self, id: String(opened))
+    sockets.append(s)
     queue.append { s.onOpen?() }
     return s
   }
 
-  func run() { while !queue.isEmpty { queue.removeFirst()() } }
+  func run() {
+    repeat {
+      while !queue.isEmpty { queue.removeFirst()() }
+      clock?.advance(0)
+    } while !queue.isEmpty
+  }
 
   /// Closes `s` from the relay's side, as a dropped network does with 1006.
   func kick(_ s: Socket, code: Int) { drop(s, code: code) }
@@ -83,6 +106,25 @@ import Foundation
 
   private func announce() { for s in sockets where s.authed { deliver(s, ["t": "holds", "holds": holds]) } }
 
+  /// A device's binary frame: 0x00 then the body to everyone else, or 0x01, leb(to), then the body to one.
+  func received(_ s: Socket, _ data: Data) {
+    guard sockets.contains(where: { $0 === s }), !s.halfOpen else { return }
+    frames.append(Frame(from: s.id, bytes: data))
+    guard s.authed else { return drop(s, code: 4001) }
+    guard let f = Self.parse(data) else { return }
+    forward(s, bytes: f.body, text: nil, to: f.to.map { String($0) })
+  }
+
+  /// A device's frame: whom it is for, nil for everyone else, and the body; nil if malformed.
+  static func parse(_ data: Data) -> (to: Int?, body: Data)? {
+    let b = [UInt8](data)
+    switch b.first {
+    case 0: return (nil, Data(b.dropFirst()))
+    case 1: return Frames.readLeb(Data(b), 1).map { ($0.value, Data(b[$0.next...])) }
+    default: return nil
+    }
+  }
+
   func received(_ s: Socket, _ text: String) {
     guard sockets.contains(where: { $0 === s }), !s.halfOpen else { return }
     if text == "ping" {
@@ -91,11 +133,12 @@ import Foundation
       return
     }
     guard let m = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
-    frames.append((s.id, text))
+    frames.append(Frame(from: s.id, text: text))
     guard s.authed else {
       guard m["t"] as? String == "auth", let t = m["token"] as? String, token == nil || token == t else { return drop(s, code: 4001) }
       token = t
       s.authed = true
+      s.v = m["v"] as? Int == 2 ? 2 : 1
       let o = others(s)
       deliver(s, ["t": "welcome", "id": s.id, "peers": o.map(\.id), "holds": holds])
       for x in o { deliver(x, ["t": "join", "id": s.id]) }
@@ -115,15 +158,27 @@ import Foundation
       announce()
     default:
       guard let body = m["body"] as? String else { return }
-      let to = m["to"] as? String
-      for x in others(s) where to == nil || to == x.id { deliver(x, ["from": s.id, "body": body]) }
+      forward(s, bytes: nil, text: body, to: m["to"] as? String)
     }
   }
 
-  /// Hands everyone else a frame `from` sent before, again.
-  func resend(_ f: (from: String, text: String)) {
+  /// A body from `s`, as bytes or base64url text, to `to` or everyone else: binary to v2 sockets, JSON to older ones.
+  private func forward(_ s: Socket, bytes: Data?, text: String?, to: String?) {
+    for x in others(s) where to == nil || to == x.id {
+      if x.v == 2 {
+        guard let body = bytes ?? text.flatMap(Base64URL.decode) else { continue }
+        let frame = Frames.leb(Int(s.id)!) + body
+        queue.append { [weak x] in if let x, !x.halfOpen { x.onData?(frame) } }
+      } else {
+        deliver(x, ["from": s.id, "body": text ?? Base64URL.encode(bytes!)])
+      }
+    }
+  }
+
+  /// Hands everyone else a frame `f` sent before, again.
+  func resend(_ f: Frame) {
     guard let s = sockets.first(where: { $0.id == f.from }) else { return }
-    received(s, f.text)
+    if let b = f.bytes { received(s, b) } else if let t = f.text { received(s, t) }
   }
 
   func drop(_ s: Socket, code: Int?) {
@@ -135,6 +190,67 @@ import Foundation
     }
     if let code { queue.append { s.onClose?(code) } }
   }
+}
+
+/// A device from before the lean sync design on the fake relay: auth without `v`, JSON frames, and JSON bodies sealed
+/// with the space key, with `colour` and without `v` or `boards`.
+@MainActor final class OldDevice {
+  let relay: FakeRelay
+  let keys: SpaceKeys
+  let name: String
+  let device: String
+  var id: String?
+  var board: String?
+  /// Bodies heard, opened.
+  var heard: [(from: String, body: [String: JSONValue])] = []
+  /// Bodies that opened but were not JSON.
+  var unreadable = 0
+  private var socket: LiveSocket?
+
+  init(_ relay: FakeRelay, keys: SpaceKeys, name: String = "Old", device: String = newID()) {
+    self.relay = relay
+    self.keys = keys
+    self.name = name
+    self.device = device
+  }
+
+  func connect() {
+    let s = relay.connect(URL(string: "wss://relay.example/")!)
+    socket = s
+    s.onOpen = { [unowned self] in
+      s.send(#"{"t":"auth","token":"\#(Base64URL.encode(keys.relayToken))"}"#)
+    }
+    s.onMessage = { [unowned self] text in
+      guard let m = try? JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8)) else { return }
+      if m["t"]?.string == "welcome" {
+        id = m["id"]?.string
+      } else if m["t"]?.string == "join", let who = m["id"]?.string {
+        presence(board, to: who)
+      } else if let from = m["from"]?.string, let sealed = m["body"]?.string.flatMap(Base64URL.decode),
+                let plain = try? keys.openLive(sealed) {
+        if let b = try? JSONDecoder().decode([String: JSONValue].self, from: plain) { heard.append((from, b)) } else { unreadable += 1 }
+      }
+    }
+  }
+
+  func send(_ body: [String: JSONValue], to: String? = nil) {
+    let sealed = try! keys.sealLive(JSONEncoder().encode(JSONValue.object(body)))
+    var f: [String: JSONValue] = ["body": .string(Base64URL.encode(sealed))]
+    if let to { f["to"] = .string(to) }
+    socket?.send(String(decoding: try! JSONEncoder().encode(JSONValue.object(f)), as: UTF8.self))
+  }
+
+  func presence(_ board: String?, to: String? = nil) {
+    self.board = board
+    send([
+      "t": .string("presence"), "device": .string(device), "name": .string(name),
+      "colour": .string(String(format: "#%06x", Person(device: device, name: name).colour)), "board": board.map(JSONValue.string) ?? .null,
+      "selection": .array([]), "cursor": .null,
+    ], to: to)
+  }
+
+  /// The last body of type `t` heard.
+  func last(_ t: String) -> [String: JSONValue]? { heard.last { $0.body["t"]?.string == t }?.body }
 }
 
 /// A PeerTransport that records what Direct asks of it. Answers and accepts complete at once, or on `release()` while

@@ -23,6 +23,14 @@ extension Records {
     }
     return out
   }
+
+  /// Where the held cards and lanes of `ids` were when the gesture began, as `[x, y]`.
+  public static func startPositions(_ start: Board, ids: Set<String>) -> [String: [Double]] {
+    var out: [String: [Double]] = [:]
+    for c in start.cards where ids.contains(c.id) { out[c.id] = [c.x, c.y] }
+    for l in start.lanes where ids.contains(l.id) { out[l.id] = [l.x, l.y] }
+    return out
+  }
 }
 
 extension Board {

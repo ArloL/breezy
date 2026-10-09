@@ -154,7 +154,7 @@ extension Notification.Name {
     doc.binding.afterEdit = { [weak self, weak doc] in
       guard let self, let doc, let live = spaces.group(of: id)?.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
       live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),
-                    caret: doc.windowController?.canvas.caret())
+                    caret: doc.windowController?.canvas.caret(), starts: Records.startPositions(start, ids: live.mine))
     }
     // at a gesture's end, even when its window closed meanwhile: push at once, then let go
     doc.binding.afterGesture = { [weak self, weak binding = doc.binding] in
@@ -170,7 +170,8 @@ extension Notification.Name {
     documents.contains { g.store.title(of: $0.boardID) != nil && $0.model.inGesture }
   }
 
-  /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front.
+  /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front
+  /// and which show.
   func updateLive() {
     let visible = NSApp.isHidden ? [] : NSApp.windows.filter { $0.occlusionState.contains(.visible) }
     let listShown = visible.contains { $0.windowController is BoardsWindowController }
@@ -180,8 +181,9 @@ extension Notification.Name {
       guard let live = g.live else { continue }
       if listShown || shown.contains(where: { g.store.title(of: $0) != nil }) { live.connect() } else { live.close() }
       let board = key.flatMap { g.store.title(of: $0) != nil ? $0 : nil }
+      let others = shown.filter { $0 != board && g.store.title(of: $0) != nil }
       let selection = board.flatMap { b in documents.first { $0.boardID == b }?.windowController?.canvas.selection }
-      live.setPresence(board: board, selection: selection.map { $0.sorted() } ?? [])
+      live.setPresence(board: board, boards: (board.map { [$0] } ?? []) + others, selection: selection.map { $0.sorted() } ?? [])
     }
   }
 
