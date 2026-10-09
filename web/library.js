@@ -5,6 +5,7 @@ import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
 import { chip } from "./presence.js";
+import { liveFields, overlaid } from "./sync/overlay.js";
 import { statusLines } from "./sync/engine.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
 import * as R from "./rules.js";
@@ -61,7 +62,10 @@ export class Library {
     app.model.onChange = () => {
       change();
       this.binding?.changed();
+      this.gestured();
     };
+    app.view.shown = () => (this.live && this.id ? overlaid(app.model.board, this.live.overlay(this.id)) : app.model.board);
+    spaces.onRefused = (g) => g === this.group && this.app.refused();
     this.restack = (b) => R.gravity(b, (id) => {
       const c = R.card(b, id);
       return c ? app.view.frontHeight(c.text, c.w) : 0;
@@ -96,6 +100,7 @@ export class Library {
     document.body.dataset.screen = "board";
     this.app.load(b);
     this.binding = new Binding(group.store, this.app.model, id, this.restack);
+    this.binding.taken = () => this.live?.taken() ?? new Set();
     this.app.ui.updateSync();
     group.engine.sync();
     this.updateLive();
@@ -211,7 +216,31 @@ export class Library {
     }
     if ([...s.selection].some((x) => s.taken.has(x))) this.app.select(s.selection);
     this.app.view.invalidate();
-    this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], people: live && id ? live.people(id) : [] });
+    this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], carets: live && id ? live.carets(id) : [], people: live && id ? live.people(id) : [] });
+  }
+
+  /** While a gesture holds items, sends what it changed of them; when it ends, pushes at once, then lets go. */
+  gestured() {
+    const { live, id } = this;
+    const model = this.app.model;
+    if (model.inGesture) {
+      this.gesturing = true;
+      if (live?.mine.size && id) live.sendLive(id, liveFields(model.start, model.board, live.mine, id), this.app.caret());
+      return;
+    }
+    if (!this.gesturing) return;
+    this.gesturing = false;
+    this.finishGesture();
+  }
+
+  async finishGesture() {
+    const g = this.group;
+    const live = g?.live;
+    if (!live?.mine.size) return;
+    this.binding?.flush();
+    await g.engine.sync();
+    // a gesture begun meanwhile keeps the holds until it ends
+    if (!this.gesturing) live.release();
   }
 
   /** Each board row's initials of whoever is on it, in place. */

@@ -32,6 +32,8 @@ export class View {
     this.area = () => ({ top: 0, bottom: innerHeight, left: 0, right: innerWidth });
     this.onCamera = () => {};
     this.onRender = () => {};
+    /** The board as drawn: the model's, with others' live edits over it. */
+    this.shown = () => this.model.board;
     this.heightOf = (id) => {
       const c = R.card(this.model.board, id);
       return c ? this.frontHeight(c.text, c.w) : 0;
@@ -147,6 +149,20 @@ export class View {
     this.setCamera({ zoom, x: c.x - (r.x + r.w / 2) * zoom, y: c.y - (r.y + r.h / 2) * zoom }, true);
   }
 
+  /** Where offset `at` of card `id`'s front or notes falls on screen, as { x, y, h }; null when that side isn't shown. */
+  caretRect(id, back, at) {
+    const e = this.els.get(id);
+    if (!e || back !== (this.state.turned === id)) return null;
+    const node = e.el.querySelector(back ? ".notes" : ".front")?.firstChild;
+    if (node?.nodeType !== Node.TEXT_NODE) return null;
+    const r = document.createRange();
+    r.setStart(node, Math.min(at, node.length));
+    r.collapse(true);
+    const rect = r.getClientRects()[0] ?? r.getBoundingClientRect();
+    if (!rect.height) return null;
+    return { x: rect.left, y: rect.top, h: rect.height };
+  }
+
   invalidate() {
     if (!this.frame) this.frame = requestAnimationFrame(() => this.render());
   }
@@ -154,7 +170,7 @@ export class View {
   render() {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
-    const b = this.model.board;
+    const b = this.shown();
     const live = new Set();
     for (const l of b.lanes) {
       live.add(l.id);
@@ -246,7 +262,7 @@ export class View {
     el.className = flags;
     el.style.setProperty("--who", mark);
     el.dataset.who = who?.name ?? "";
-    this.place(e, c.x + f.x, c.y + f.y, s.held.has(c.id), s.lifted.has(c.id) ? 1.05 : 1);
+    this.place(e, c.x + f.x, c.y + f.y, s.held.has(c.id) || s.taken.has(c.id), s.lifted.has(c.id) ? 1.05 : 1);
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
     el.style.zIndex = turned || s.lifted.has(c.id) ? 1000000 : i;
@@ -278,7 +294,7 @@ export class View {
     el.className = flags;
     el.style.setProperty("--who", mark);
     el.dataset.who = who?.name ?? "";
-    this.place(e, l.x + f.x, l.y + f.y, s.held.has(l.id));
+    this.place(e, l.x + f.x, l.y + f.y, s.held.has(l.id) || s.taken.has(l.id));
     el.style.width = `${l.w + f.w}px`;
     el.style.height = `${l.h + f.h}px`;
     if (!renaming) el.querySelector(".title").textContent = l.title;

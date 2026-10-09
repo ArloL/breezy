@@ -140,12 +140,56 @@ export class App {
     this.zoomTo(this.view.cam.zoom * f);
   }
 
+  /** Asks the open board's space to hold `ids` for the gesture starting. */
+  hold(ids) {
+    this.library?.live?.hold(ids);
+  }
+
+  /** Someone else got there first: the gesture under way goes back as it began. */
+  refused() {
+    if (this.input.drag) return this.input.dragCancel();
+    this.cancelEditing();
+  }
+
+  /** Ends the card edit or lane rename in progress, putting the board back as it began. */
+  cancelEditing() {
+    const s = this.state;
+    const id = s.editing?.id ?? s.renaming;
+    if (!id) return;
+    const el = s.editing ? this.view.editorOf(s.editing.id, s.editing.back) : this.view.titleOf(s.renaming);
+    s.editing = s.renaming = null;
+    if (el) {
+      el.onblur = el.oninput = el.onkeydown = null;
+      el.blur();
+      el.contentEditable = "false";
+    }
+    // the editor's text is the typed one; drawing afresh puts the board's back
+    const e = this.view.els.get(id);
+    if (e) e.key = "";
+    this.model.cancel();
+    this.ui.update();
+  }
+
+  /** Where the caret is in the card being edited, for others to draw. */
+  caret() {
+    const e = this.state.editing;
+    const el = e && this.view.editorOf(e.id, e.back);
+    const sel = getSelection();
+    if (!el || !sel.rangeCount || !el.contains(sel.focusNode)) return null;
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.setEnd(sel.focusNode, sel.focusOffset);
+    return { id: e.id, back: e.back, at: r.toString().replace(/\u200b/g, "").length };
+  }
+
   /** Edits the side of card `id` facing up; focus stays synchronous so iOS shows the keyboard. */
   beginEdit(id, name = "Edit Card") {
     const c = R.card(this.model.board, id);
     if (!c) return;
+    if (this.state.taken.has(id)) return;
     this.endEditing();
     this.model.begin();
+    this.hold([id]);
     const back = this.state.turned === id;
     this.state.editing = { id, back, name };
     this.view.render();
@@ -228,8 +272,10 @@ export class App {
   beginRename(id) {
     const l = R.lane(this.model.board, id);
     if (!l) return;
+    if (this.state.taken.has(id)) return;
     this.endEditing();
     this.model.begin();
+    this.hold([id]);
     this.state.renaming = id;
     this.view.render();
     const el = this.view.titleOf(id);
