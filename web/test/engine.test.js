@@ -568,3 +568,32 @@ test("an unreadable pushed record is counted as in a pull", async () => {
   assert.equal(b.store.state.unreadable, 1);
   assert.equal(b.store.state.cursor, p.version);
 });
+
+test("pushed records this device already has still report its cursor", async () => {
+  const { a, b, id } = await pair(newID);
+  const p = await pushedBy(a, id);
+  await b.engine.sync();
+  const pulled = [];
+  b.engine.onPulled = (c) => pulled.push(c);
+  assert.equal(await b.engine.receivePushed(p), true);
+  assert.deepEqual(pulled, [b.store.state.cursor]);
+});
+
+test("a combined cycle reports the cursor of the page it took before a later round fails", async () => {
+  const { server, a, id } = await pair(newID);
+  const pulled = [];
+  a.engine.onPulled = (c) => pulled.push(c);
+  const push = a.transport.push.bind(a.transport);
+  let n = 0;
+  a.transport.push = async (...args) => {
+    if (n++) throw new TransportError("unreachable");
+    const r = await push(...args);
+    a.edit(id, (x) => (x.cards[0].color = 5));
+    return r;
+  };
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  await a.engine.sync();
+  assert.equal(n, 2);
+  assert.equal(a.engine.status.state, "unreachable");
+  assert.deepEqual(pulled, [server.version]);
+});
