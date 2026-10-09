@@ -31,7 +31,12 @@ final class BoardDocument: NSDocument {
   }
 
   override var displayName: String! {
-    get { MainActor.assumeIsolated { Library.shared.store.title(of: boardID) } ?? "Board" }
+    get {
+      MainActor.assumeIsolated {
+        guard let g = Library.shared.spaces.group(of: boardID), let title = g.store.title(of: boardID) else { return "Board" }
+        return g.space == nil ? title : "\(title) — \(g.name)"
+      }
+    }
     set {}
   }
 

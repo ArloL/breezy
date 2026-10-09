@@ -6,25 +6,20 @@ extension Notification.Name {
   static let syncStatusChanged = Notification.Name("BreezySyncStatusChanged")
 }
 
-/// The boards on this Mac: the store, its file and its sync engine, and the open board windows.
+/// The boards on this Mac: their groups, each with its file and sync engine, and the open board windows.
 @MainActor final class Library {
   static var shared: Library!
-  let store: Store
-  let file: StoreFile
-  let engine: SyncEngine
+  let spaces: Spaces
   private var timer: Timer?
   /// Boards whose windows are closing, so that the close's own flush can't close them again.
   private var closing: Set<String> = []
 
   init(directory: URL) throws {
-    file = StoreFile(url: directory.appendingPathComponent("space.json"))
-    store = Store(state: try file.load() ?? SpaceState())
-    engine = SyncEngine(store: store)
-    store.onDirty = { [weak self] in self?.scheduleSave() }
-    store.onChange = { [weak self] boards, remote in self?.changed(boards, remote: remote) }
-    file.onError = { NSApp.presentError($0) }
-    engine.flushLocal = { [weak self] in self?.documents.forEach { $0.binding.flush() } }
-    engine.onStatus = { _ in NotificationCenter.default.post(name: .syncStatusChanged, object: nil) }
+    spaces = try Spaces(directory: directory)
+    spaces.onChange = { [weak self] group, boards, remote in self?.changed(group, boards, remote: remote) }
+    spaces.onStatus = { _ in NotificationCenter.default.post(name: .syncStatusChanged, object: nil) }
+    spaces.onError = { NSApp.presentError($0) }
+    spaces.flushLocal = { [weak self] in self?.documents.forEach { $0.binding.flush() } }
     timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.poll() }
     }
@@ -35,11 +30,18 @@ extension Notification.Name {
 
   var documents: [BoardDocument] { NSDocumentController.shared.documents.compactMap { $0 as? BoardDocument } }
 
-  private func scheduleSave() { file.scheduleSave { [store] in store.state } }
+  /// Each space's status, prefixed by its name, for the Breezy menu.
+  var statusLines: [String] {
+    spaces.groups.filter { $0.space != nil }.flatMap { g in g.engine.status.lines().map { "\(g.name) — \($0)" } }
+  }
 
-  var statusLines: [String] { engine.status.lines() }
+  /// The group of the key board window, else of the Boards window's selection, else On this device.
+  var currentGroup: Spaces.Group {
+    if let d = NSApp.keyWindow?.windowController?.document as? BoardDocument, let g = spaces.group(of: d.boardID) { return g }
+    return BoardsWindowController.shared.selectedGroup ?? spaces.local
+  }
 
-  func syncNow() { Task { await engine.sync() } }
+  func syncNow() { spaces.syncAll() }
 
   /// Every 5 s while a board or the Boards window shows.
   private func poll() {
@@ -49,27 +51,32 @@ extension Notification.Name {
     if shown { syncNow() }
   }
 
-  /// Ends edits and writes the store before quitting.
+  /// Ends edits and writes every group before quitting.
   func saveNow() {
     for d in documents {
       d.windowController?.canvas.endEditing()
       d.binding.flush()
     }
-    file.save(store.state, wait: true)
+    spaces.saveNow()
   }
 
-  func changed(_ boards: Set<String>, remote: Bool) {
-    for d in documents where boards.contains(d.boardID) && !closing.contains(d.boardID) {
-      if store.title(of: d.boardID) == nil {
-        closing.insert(d.boardID)
-        d.close()
-        closing.remove(d.boardID)
-        continue
+  /// A change in `group`: its boards' windows follow, and all its windows retitle when its name changed.
+  func changed(_ group: Spaces.Group, _ boards: Set<String>, remote: Bool) {
+    let renamed = group.space.map { boards.contains($0) } ?? false
+    for d in documents where !closing.contains(d.boardID) {
+      let mine = boards.contains(d.boardID)
+      guard mine || (renamed && group.store.title(of: d.boardID) != nil) else { continue }
+      if mine {
+        if group.store.title(of: d.boardID) == nil {
+          closing.insert(d.boardID)
+          d.close()
+          closing.remove(d.boardID)
+          continue
+        }
+        if remote { d.binding.pull() }
       }
-      if remote { d.binding.pull() }
       d.windowController?.synchronizeWindowTitleWithDocumentName()
     }
-    if !remote { engine.changed() }
     NotificationCenter.default.post(name: .boardsChanged, object: nil)
   }
 
@@ -80,13 +87,29 @@ extension Notification.Name {
     if let open = documents.first(where: { $0.boardID == id }) {
       doc = open
     } else {
-      guard store.title(of: id) != nil else { return nil }
-      doc = BoardDocument(boardID: id, store: store)
+      guard let group = spaces.group(of: id) else { return nil }
+      doc = BoardDocument(boardID: id, store: group.store)
       NSDocumentController.shared.addDocument(doc)
       doc.makeWindowControllers()
     }
     if display { doc.showWindows() }
     syncNow()
     return doc.windowController
+  }
+
+  /// Moves board `id` to `target`; its window, if open, closes with the original and opens on the copy.
+  func move(_ id: String, to target: Spaces.Group) {
+    let doc = documents.first { $0.boardID == id }
+    doc?.windowController?.canvas.endEditing()
+    doc?.binding.flush()
+    guard let new = spaces.move(id, to: target) else { return }
+    if doc != nil { open(new) }
+  }
+
+  /// Closes `group`'s boards and forgets its space on this Mac.
+  func leave(_ group: Spaces.Group) {
+    for d in documents where group.store.title(of: d.boardID) != nil { d.close() }
+    spaces.leave(group)
+    NotificationCenter.default.post(name: .boardsChanged, object: nil)
   }
 }

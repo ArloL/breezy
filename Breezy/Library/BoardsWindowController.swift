@@ -1,12 +1,25 @@
 import AppKit
 import BreezyKit
 
-/// The Boards window: every board in the store, to open, rename, add and delete.
-@MainActor final class BoardsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+/// The Boards window: each group's boards, to open, rename, add, move and delete.
+@MainActor final class BoardsWindowController: NSWindowController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTextFieldDelegate, NSMenuDelegate {
   static let shared = BoardsWindowController()
-  private let table = NSTableView()
+
+  /// A group, or a board in one.
+  final class Row {
+    let group: Spaces.Group
+    let board: (id: String, title: String)?
+    var children: [Row] = []
+
+    init(group: Spaces.Group, board: (id: String, title: String)? = nil) {
+      self.group = group
+      self.board = board
+    }
+  }
+
+  private let outline = NSOutlineView()
   let status = NSTextField(labelWithString: "")
-  private var boards: [(id: String, title: String)] = []
+  private var rows: [Row] = []
 
   init() {
     let window = NSWindow(
@@ -17,16 +30,22 @@ import BreezyKit
     super.init(window: window)
     window.center()
     window.setFrameAutosaveName("Boards")
-    table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title")))
-    table.headerView = nil
-    table.style = .inset
-    table.rowHeight = 28
-    table.dataSource = self
-    table.delegate = self
-    table.target = self
-    table.doubleAction = #selector(openClicked)
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
+    outline.addTableColumn(column)
+    outline.outlineTableColumn = column
+    outline.headerView = nil
+    outline.style = .sourceList
+    outline.rowHeight = 28
+    outline.floatsGroupRows = false
+    outline.dataSource = self
+    outline.delegate = self
+    outline.target = self
+    outline.doubleAction = #selector(openClicked)
+    let menu = NSMenu()
+    menu.delegate = self
+    outline.menu = menu
     let scroll = NSScrollView()
-    scroll.documentView = table
+    scroll.documentView = outline
     scroll.hasVerticalScroller = true
     let add = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "New Board")!, target: nil, action: #selector(AppDelegate.newBoard(_:)))
     let remove = NSButton(image: NSImage(systemSymbolName: "minus", accessibilityDescription: "Delete Board")!, target: self, action: #selector(delete(_:)))
@@ -55,24 +74,57 @@ import BreezyKit
 
   required init?(coder: NSCoder) { fatalError() }
 
+  private var selectedRow: Row? { outline.item(atRow: outline.selectedRow) as? Row }
+  var selectedGroup: Spaces.Group? { selectedRow?.group }
+
+  /// On this device shows only when it has boards or the Mac is in no space.
   func reload() {
-    boards = Library.shared.store.boards
-    table.reloadData()
+    let spaces = Library.shared.spaces
+    let kept = selectedRow.map { ($0.group, $0.board?.id) }
+    rows = spaces.groups.filter { $0.space != nil || spaces.spaces.isEmpty || !$0.store.boards.isEmpty }.map { g in
+      let r = Row(group: g)
+      r.children = g.store.boards.map { Row(group: g, board: $0) }
+      return r
+    }
+    outline.reloadData()
+    outline.expandItem(nil, expandChildren: true)
+    if let (group, board) = kept, let groupRow = rows.first(where: { $0.group === group }) {
+      var row: Row? = groupRow
+      if let board { row = groupRow.children.first { $0.board?.id == board } }
+      let i = row.map { outline.row(forItem: $0) } ?? -1
+      if i >= 0 { outline.selectRowIndexes([i], byExtendingSelection: false) }
+    }
     updateStatus()
   }
 
-  func updateStatus() { status.stringValue = Library.shared.statusLines.joined(separator: " · ") }
+  func select(_ group: Spaces.Group) {
+    guard let r = rows.first(where: { $0.group === group }) else { return }
+    let i = outline.row(forItem: r)
+    guard i >= 0 else { return }
+    outline.selectRowIndexes([i], byExtendingSelection: false)
+    outline.scrollRowToVisible(i)
+  }
 
-  func numberOfRows(in tableView: NSTableView) -> Int { boards.count }
+  func updateStatus() {
+    guard let g = selectedGroup, g.space != nil else { return status.stringValue = "" }
+    status.stringValue = g.engine.status.lines().joined(separator: " · ")
+  }
 
-  func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+  func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { (item as? Row)?.children.count ?? rows.count }
+  func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { (item as? Row)?.children[index] ?? rows[index] }
+  func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? Row)?.board == nil }
+  func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { (item as? Row)?.board == nil }
+  func outlineViewSelectionDidChange(_ notification: Notification) { updateStatus() }
+
+  func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+    guard let row = item as? Row else { return nil }
     let cell = NSTableCellView()
-    let field = NSTextField(string: boards[row].title)
+    let field = NSTextField(string: row.board?.title ?? row.group.name)
     field.isBordered = false
     field.drawsBackground = false
-    field.isEditable = true
+    field.isEditable = row.board != nil
     field.delegate = self
-    field.identifier = NSUserInterfaceItemIdentifier(boards[row].id)
+    field.identifier = row.board.map { NSUserInterfaceItemIdentifier($0.id) }
     field.translatesAutoresizingMaskIntoConstraints = false
     cell.addSubview(field)
     cell.textField = field
@@ -85,35 +137,62 @@ import BreezyKit
   }
 
   func controlTextDidEndEditing(_ obj: Notification) {
-    guard let field = obj.object as? NSTextField, let id = field.identifier?.rawValue, let b = boards.first(where: { $0.id == id }) else { return }
+    guard let field = obj.object as? NSTextField, let id = field.identifier?.rawValue,
+          let row = rows.flatMap(\.children).first(where: { $0.board?.id == id }), let b = row.board else { return }
     let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !title.isEmpty, title != b.title else {
       field.stringValue = b.title
       return
     }
-    Library.shared.store.renameBoard(b.id, title)
+    row.group.store.renameBoard(b.id, title)
   }
 
   @objc private func openClicked() {
-    guard boards.indices.contains(table.clickedRow) else { return }
-    Library.shared.open(boards[table.clickedRow].id)
+    guard let id = (outline.item(atRow: outline.clickedRow) as? Row)?.board?.id else { return }
+    Library.shared.open(id)
   }
 
-  /// Edit → Delete, ⌫ in the list and the − button.
+  /// Edit → Delete, ⌫ in the list, the − button and the context menu.
   @objc func delete(_ sender: Any?) {
-    guard boards.indices.contains(table.selectedRow), let window else { return NSSound.beep() }
-    let b = boards[table.selectedRow]
+    guard let row = selectedRow, let b = row.board, let window else { return NSSound.beep() }
     let alert = NSAlert()
     alert.messageText = "Delete “\(b.title)”?"
-    alert.informativeText = Library.shared.store.state.invite == nil ? "This can’t be undone." : "It is deleted on every device in the space. This can’t be undone."
+    alert.informativeText = row.group.space == nil
+      ? "This can’t be undone." : "It is deleted on every device in “\(row.group.name)”. This can’t be undone."
     alert.addButton(withTitle: "Delete").hasDestructiveAction = true
     alert.addButton(withTitle: "Cancel")
     alert.beginSheetModal(for: window) { response in
       guard response == .alertFirstButtonReturn else { return }
       MainActor.assumeIsolated {
         Library.shared.documents.first { $0.boardID == b.id }?.close()
-        Library.shared.store.deleteBoard(b.id)
+        row.group.store.deleteBoard(b.id)
       }
+    }
+  }
+
+  /// A board's Move to and Delete, or a space's Rename, Share and Leave; the clicked row is selected so they act on it.
+  func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.removeAllItems()
+    guard let row = outline.item(atRow: outline.clickedRow) as? Row else { return }
+    outline.selectRowIndexes([outline.clickedRow], byExtendingSelection: false)
+    if let b = row.board {
+      let targets = NSMenu()
+      for g in Library.shared.spaces.groups where g !== row.group {
+        let i = NSMenuItem(title: g.name, action: #selector(AppDelegate.moveBoard(_:)), keyEquivalent: "")
+        i.representedObject = Move(board: b.id, group: g)
+        targets.addItem(i)
+      }
+      let move = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+      move.submenu = targets
+      move.isEnabled = !targets.items.isEmpty
+      menu.addItem(move)
+      let delete = NSMenuItem(title: "Delete", action: #selector(delete(_:)), keyEquivalent: "")
+      delete.target = self
+      menu.addItem(delete)
+    } else if row.group.space != nil {
+      menu.addItem(NSMenuItem(title: "Rename Space…", action: #selector(AppDelegate.renameSpace(_:)), keyEquivalent: ""))
+      menu.addItem(NSMenuItem(title: "Share Invite", action: #selector(AppDelegate.shareInvite(_:)), keyEquivalent: ""))
+      menu.addItem(NSMenuItem(title: "Leave Space…", action: #selector(AppDelegate.leaveSpace(_:)), keyEquivalent: ""))
     }
   }
 

@@ -7,7 +7,7 @@ final class SyncMenu: NSObject, NSMenuDelegate {
 
   func menuNeedsUpdate(_ menu: NSMenu) {
     for i in menu.items where i.tag == Self.tag { menu.removeItem(i) }
-    guard let at = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.startSyncing(_:)) }) else { return }
+    guard let at = menu.items.firstIndex(where: { $0.action == #selector(AppDelegate.newSpace(_:)) }) else { return }
     for (n, line) in MainActor.assumeIsolated({ Library.shared.statusLines }).enumerated() {
       let i = NSMenuItem(title: line, action: nil, keyEquivalent: "")
       i.tag = Self.tag
