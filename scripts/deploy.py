@@ -6,6 +6,10 @@ locally from mise.local.toml (mise exec -- scripts/deploy.py SITE), in CI from t
 environment. Only files whose hash differs from the live version.json go up; the files that
 announce a new version go last, so the service worker never sees a version whose files are not
 there yet. Every command times out, and a file that fails is retried on a new connection.
+
+The deploy account is an additional FTP user on netcup's Plesk: FTPS only, no SSH or SFTP. SSH is
+only for the plan's main system user, hosting129385. PHP's open_basedir is httpdocs, so config.php
+sits next to sync.php rather than above it.
 """
 
 import base64
