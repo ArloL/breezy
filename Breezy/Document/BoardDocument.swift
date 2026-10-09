@@ -47,6 +47,7 @@ final class BoardDocument: NSDocument {
   /// A closing window leaves the document before `close()`, so its edit ends here.
   override func removeWindowController(_ windowController: NSWindowController) {
     (windowController as? BoardWindowController)?.canvas.endEditing()
+    (windowController as? BoardWindowController)?.canvas.stopPresence()
     super.removeWindowController(windowController)
   }
 

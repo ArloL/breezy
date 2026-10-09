@@ -82,15 +82,11 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     if !now.1 { stopPresence() }
   }
 
-  private func stopPresence() {
+  func stopPresence() {
     presenceLink?.invalidate()
     presenceLink = nil
   }
 
-  override func viewDidMoveToWindow() {
-    super.viewDidMoveToWindow()
-    if window == nil { stopPresence() }
-  }
   /// Heights of cards whose text others are typing, as drawn.
   var overlayHeights: [String: Double] = [:]
   /// What the canvas draws: the board, with others' live edits over it.
@@ -123,6 +119,11 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   override var isFlipped: Bool { true }
   override var acceptsFirstResponder: Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window == nil { stopPresence() }
+  }
 
   var zoom: CGFloat { enclosingScrollView?.magnification ?? 1 }
 
