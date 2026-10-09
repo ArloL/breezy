@@ -293,6 +293,7 @@ public final class StoreFile {
   public var onError: ((Error) -> Void)?
   private let queue = DispatchQueue(label: "breezy.store-file")
   private var scheduled = false
+  private var removed = false
 
   public init(url: URL) { self.url = url }
 
@@ -303,7 +304,7 @@ public final class StoreFile {
 
   /// Saves `state()` half a second from now, once however often it is asked meanwhile.
   public func scheduleSave(_ state: @escaping () -> SpaceState) {
-    guard !scheduled else { return }
+    guard !scheduled, !removed else { return }
     scheduled = true
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
       guard let self else { return }
@@ -314,11 +315,10 @@ public final class StoreFile {
 
   /// With `wait`, returns once this and every earlier save are on disk.
   public func save(_ state: SpaceState, wait: Bool = false) {
-    let e = JSONEncoder()
-    e.outputFormatting = [.sortedKeys]
+    guard !removed else { return }
     let data: Data
     do {
-      data = try e.encode(state)
+      data = try Self.encode(state)
     } catch {
       onError?(error)
       return
@@ -326,13 +326,37 @@ public final class StoreFile {
     let url = url
     let write = { [weak self] in
       do {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try Self.write(data, to: url)
       } catch {
         DispatchQueue.main.async { self?.onError?(error) }
       }
     }
     if wait { queue.sync(execute: write) } else { queue.async(execute: write) }
+  }
+
+  /// Writes `state` before returning, after every earlier save; throws when it cannot.
+  public func saveNow(_ state: SpaceState) throws {
+    let data = try Self.encode(state)
+    let url = url
+    try queue.sync { try Self.write(data, to: url) }
+  }
+
+  /// Deletes the file once earlier saves are done; later saves do nothing.
+  public func remove() {
+    removed = true
+    let url = url
+    queue.sync { try? FileManager.default.removeItem(at: url) }
+  }
+
+  private static func encode(_ state: SpaceState) throws -> Data {
+    let e = JSONEncoder()
+    e.outputFormatting = [.sortedKeys]
+    return try e.encode(state)
+  }
+
+  private static func write(_ data: Data, to url: URL) throws {
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try data.write(to: url, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
   }
 }
