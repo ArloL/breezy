@@ -158,3 +158,13 @@ test("a device in two spaces moving boards ends like each space", async () => {
     for (const { id } of g.store.boards()) assert.deepEqual(g.store.board(id), d.store.board(id));
   }
 });
+
+test("a move while read-only leaves the board where it was", async () => {
+  const old = new Store();
+  const id = old.createBoard("Plans");
+  const spaces = new Spaces(new MemoryStorage(), { local: old.state }, { readOnly: true });
+  const work = spaces.newSpace(SERVER, "Work");
+  assert.equal(await spaces.move(id, work), null);
+  assert.equal(spaces.local.store.title(id), "Plans");
+  assert.deepEqual(work.store.boards(), []);
+});
