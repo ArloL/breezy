@@ -57,6 +57,27 @@ final class Servers {
   #expect(spaces.spaces[0].store.boards.map(\.title) == ["Plans"])
 }
 
+@MainActor @Test func anOldStoreReappearingDoesNotOverwriteTheMigratedGroup() throws {
+  let dir = tempDirectory()
+  let old = Store()
+  _ = old.createBoard(title: "Old")
+  let new = Store()
+  _ = new.createBoard(title: "New")
+  try StoreFile(url: dir.appendingPathComponent("space.json")).saveNow(old.state)
+  try StoreFile(url: dir.appendingPathComponent("Spaces/local.json")).saveNow(new.state)
+  let spaces = try Spaces(directory: dir)
+  #expect(spaces.local.store.boards.map(\.title) == ["New"])
+  #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("space.json").path))
+}
+
+@MainActor @Test func spacesNamedAlikeAreOrderedBySpaceID() throws {
+  let spaces = try Spaces(directory: tempDirectory())
+  let a = spaces.newSpace(server: testServer, name: "abe")
+  let b = spaces.newSpace(server: testServer, name: "Abe")
+  let expected = [a, b].sorted { $0.space! < $1.space! }
+  #expect(spaces.groups.dropFirst().map(\.space) == expected.map(\.space))
+}
+
 @MainActor @Test func groupsComeOnThisDeviceFirstThenSpacesByName() throws {
   let spaces = try Spaces(directory: tempDirectory())
   let zed = spaces.newSpace(server: testServer, name: "Zed")

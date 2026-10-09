@@ -276,11 +276,16 @@ export class Library {
 
   async leaveSpace(g = this.menuGroup) {
     if (!g?.space) return;
-    const sure = await ask({ title: `Leave “${g.name}”?`, message: "Its boards are removed from this device. Others in the space keep them.", ok: null, danger: "Leave" });
+    const n = g.store.pending().length;
+    const lost = n ? `, but ${n === 1 ? "1 change that hasn’t" : `${n} changes that haven’t`} reached the server yet ${n === 1 ? "is" : "are"} lost` : "";
+    const sure = await ask({ title: `Leave “${g.name}”?`, message: `Its boards are removed from this device. Others in the space keep them${lost}.`, ok: null, danger: "Leave" });
     if (!sure?.danger) return;
     if (this.group === g) this.showList();
-    await this.spaces.leave(g);
-    this.renderList();
+    try {
+      await this.spaces.leave(g);
+    } finally {
+      this.renderList();
+    }
   }
 
   async share(g = this.menuGroup) {

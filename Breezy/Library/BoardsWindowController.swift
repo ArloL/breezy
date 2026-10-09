@@ -88,12 +88,13 @@ import BreezyKit
     }
     outline.reloadData()
     outline.expandItem(nil, expandChildren: true)
+    var i = -1
     if let (group, board) = kept, let groupRow = rows.first(where: { $0.group === group }) {
       var row: Row? = groupRow
       if let board { row = groupRow.children.first { $0.board?.id == board } }
-      let i = row.map { outline.row(forItem: $0) } ?? -1
-      if i >= 0 { outline.selectRowIndexes([i], byExtendingSelection: false) }
+      i = row.map { outline.row(forItem: $0) } ?? -1
     }
+    if i >= 0 { outline.selectRowIndexes([i], byExtendingSelection: false) } else { outline.deselectAll(nil) }
     updateStatus()
   }
 

@@ -31,9 +31,11 @@ export class Spaces {
     const fresh = !Object.keys(all).length;
     if (all.space) {
       const key = keyOf(all.space);
-      await storage.save(key, all.space);
+      if (!all[key]) {
+        await storage.save(key, all.space);
+        all[key] = all.space;
+      }
       await storage.remove("space");
-      all[key] = all.space;
       delete all.space;
     }
     const spaces = new Spaces(storage, all, options);
@@ -78,7 +80,7 @@ export class Spaces {
 
   /** On this device first, then the spaces by name. */
   groups() {
-    const cmp = (a, b) => a.name.localeCompare(b.name) || (a.space < b.space ? -1 : a.space > b.space ? 1 : 0);
+    const cmp = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) || (a.space < b.space ? -1 : a.space > b.space ? 1 : 0);
     return [this.local, ...[...this.spaces].sort(cmp)];
   }
 
