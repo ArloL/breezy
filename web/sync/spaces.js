@@ -92,7 +92,7 @@ export class Spaces {
     engine.onStatus = () => this.onStatus(g);
     engine.flushLocal = () => this.flushLocal();
     engine.onRelay = (relay) => this.setRelay(g, relay);
-    engine.onPushed = (version) => g.live?.sendPushed(version);
+    engine.onPushed = (pushed) => g.live?.sendPushed(pushed);
     engine.onPulled = (cursor) => g.live?.noteCursor(cursor);
     return g;
   }
@@ -106,7 +106,9 @@ export class Spaces {
       const keys = await g.engine.keysOf(g.store.state);
       if (g.engine.relay !== relay || g.live || !this.spaces.includes(g)) return;
       const live = new Live({ relay, space: g.space, keys, me: this.me, ...(this.socket ? { socket: this.socket } : {}), ...(this.peerTransport !== undefined ? { peerTransport: this.peerTransport } : {}) });
-      live.onPushed = () => g.engine.sync();
+      live.onPushed = async (version, extra) => {
+        if (!(extra && (await g.engine.receivePushed(extra)))) g.engine.sync();
+      };
       live.onChange = () => this.onLive(g);
       live.onRefused = (ids) => this.onRefused(g, ids);
       // a refused token is the server's to report: its 401 shows "Not in this space any more"

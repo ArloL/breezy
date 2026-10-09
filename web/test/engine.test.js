@@ -349,7 +349,7 @@ test("the engine learns the relay and reports pushes and pulls", async () => {
   const { server, a, b, id } = await pair(newID);
   const relays = [], pushed = [], pulled = [];
   a.engine.onRelay = (r) => relays.push(r);
-  a.engine.onPushed = (v) => pushed.push(v);
+  a.engine.onPushed = (p) => pushed.push(p.version);
   a.engine.onPulled = (c) => pulled.push(c);
   server.relay = "wss://relay.example/";
   a.edit(id, (x) => (x.cards[0].color = 2));
@@ -513,4 +513,58 @@ test("a full page that held this push's own write goes on pulling", async () => 
   a.edit(id, (x) => (x.cards[0].color = 3));
   await a.engine.sync();
   assert.equal(a.store.state.cursor, server.version);
+});
+
+/** What `a` pushes for an edit, as `onPushed` reports it. */
+async function pushedBy(a, id, color = 3) {
+  let out;
+  a.engine.onPushed = (p) => (out = p);
+  a.edit(id, (x) => (x.cards[0].color = color));
+  await a.engine.sync();
+  return out;
+}
+
+test("records another device just pushed are applied without a pull", async () => {
+  const { server, a, b, id } = await pair(newID);
+  const p = await pushedBy(a, id);
+  assert.equal(p.epoch, server.epoch);
+  assert.deepEqual(p.records.map((r) => r.version), [server.version]);
+  const pulled = [];
+  b.engine.onPulled = (c) => pulled.push(c);
+  const calls = b.transport.calls;
+  assert.equal(await b.engine.receivePushed(p), true);
+  assert.equal(b.transport.calls, calls);
+  assert.equal(b.store.state.cursor, server.version);
+  assert.deepEqual(pulled, [server.version]);
+  assert.equal(b.store.board(id).cards[0].color, 3);
+});
+
+test("pushed records that do not follow on are not applied", async () => {
+  const { a, b, id } = await pair(newID);
+  const p = await pushedBy(a, id);
+  const cursor = b.store.state.cursor, calls = b.transport.log.length;
+  const color = b.store.board(id).cards[0].color;
+  const second = await pushedBy(a, id, 4);
+  for (const bad of [
+    { ...p, epoch: "other" },
+    { ...second, records: second.records.map((r) => ({ ...r, version: r.version + 5 })) },
+    { ...second, records: [...p.records, ...second.records].map((r, i) => ({ ...r, version: r.version + i * 2 })) },
+    second,
+    { epoch: p.epoch, records: [] },
+    { epoch: p.epoch },
+  ]) {
+    assert.equal(await b.engine.receivePushed(bad), false);
+    assert.equal(b.store.state.cursor, cursor);
+    assert.equal(b.store.board(id).cards[0].color, color);
+  }
+  assert.equal(b.transport.log.length, calls);
+});
+
+test("an unreadable pushed record is counted as in a pull", async () => {
+  const { a, b, id } = await pair(newID);
+  const p = await pushedBy(a, id);
+  const bad = { ...p, records: [{ ...p.records[0], blob: "AAAA" }] };
+  assert.equal(await b.engine.receivePushed(bad), true);
+  assert.equal(b.store.state.unreadable, 1);
+  assert.equal(b.store.state.cursor, p.version);
 });
