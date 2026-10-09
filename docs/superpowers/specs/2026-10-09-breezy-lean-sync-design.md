@@ -17,10 +17,8 @@ A gesture's end reaches the others after three HTTP round trips in a row: the ho
 
 ## Compatibility
 
-Every change works in a space that mixes devices before and after it, and with a `sync.php` or relay that has not been updated. Nothing older breaks; it just doesn't get the savings.
+`sync.php` and the relay are always current; only devices lag. So `sync.php` and the relay serve both older devices and current ones. A space may mix them, and an older device keeps working without the savings. The relay is deployed before the apps, as the deploy is by hand.
 
-- `sync.php` answers with `v: 2`; a device uses the combined push and compressed requests only after seeing it.
-- The relay's `welcome` carries `v: 2`; a device sends binary frames only to a relay that said so.
 - A device's `presence` carries `v: 2`. Bodies in the compact format go only to connections known to be `v: 2`. A receiver reads both formats always: compact plaintext begins with a MessagePack array byte (`0x90`–`0x9f`, `0xdc`), JSON with `{`.
 - Offers and answers carry `v: 2`. A channel between two `v: 2` ends carries compact bodies unsealed, as binary messages; any other channel keeps sealed JSON text.
 
@@ -33,13 +31,11 @@ Every change works in a space that mixes devices before and after it, and with a
 - `records`: those with `version > since`, ordered, at most 500, without the ones just written.
 - `cursor`: the version of the last row read when 500 were read, else the space's version after the writes.
 
-Without `since` the response is as before. Every response carries `v: 2`.
+Without `since`, as older devices send it, the response is as before.
 
-A cycle sends one `POST` with `since` when there is something to push, the server has said `v: 2`, and the store is not resyncing. It merges `refused`, then `records`, and advances the cursor. When `records` is full it continues with `GET`s as now. Otherwise a cycle is as before: pull, then push.
+A cycle sends one `POST` with `since` when there is something to push and the store is not resyncing. It merges `refused`, then `records`, and advances the cursor. When `records` is full it continues with `GET`s as now. Otherwise a cycle is as before: pull, then push.
 
-### Own writes are not pulled back
-
-After a push without `records` (an older server), a device whose cursor is `c` and whose accepted versions are exactly `c + 1 … c + n` advances its cursor to `c + n`. Otherwise its next pull fetches them again, as now.
+Because `records` leaves out the request's own writes and `cursor` covers them, a device no longer pulls back what it pushed.
 
 ### `pushed` carries the records
 
@@ -55,7 +51,7 @@ It then merges them as a pull would, advances its cursor to `vₙ`, and tells `L
 
 ### Compression
 
-`sync.php` gzips its responses for clients that accept it (`ob_gzhandler`); browsers and `URLSession` unpack them themselves. A request body over 1 KB goes as raw DEFLATE with `Content-Encoding: deflate` once the server has said `v: 2`: `CompressionStream("deflate-raw")` on the web, `NSData.compressed(using: .zlib)` on the Mac. `sync.php` inflates it, and refuses one that inflates past 1 MB with 413.
+`sync.php` gzips its responses for clients that accept it (`ob_gzhandler`); browsers and `URLSession` unpack them themselves. A request body over 1 KB goes as raw DEFLATE with `Content-Encoding: deflate`: `CompressionStream("deflate-raw")` on the web, `NSData.compressed(using: .zlib)` on the Mac. `sync.php` inflates it, and refuses one that inflates past 1 MB with 413.
 
 ## Live
 
@@ -64,7 +60,7 @@ It then merges them as a pull would, advances its cursor to `vₙ`, and tells `L
 - **Two gates.** Open `v: 2` and older channels get cursors and live edits at most every 8 ms. The relay gets them at most every 50 ms, and only while some recipient has no open channel. One person stuck on the relay no longer slows everyone else to 20 a second.
 - **Only to those who see it.** `presence` gains `boards`: every board this device shows, its key board first. The Mac lists its visible board windows; the web sends its one board. A cursor or live body for board `b` goes to the connections whose `boards` include `b`, whose `board` is `b` if they send no `boards`, or whose presence has not arrived yet. The first cursor after this device's cursor moves to another board goes to everyone, so that it disappears from the board it left. Over the relay, a body with one recipient goes with `to`, one with none is not sent, and otherwise it is broadcast.
 - **One body per frame during a gesture.** While a gesture holds items, compact recipients get the cursor inside the live body (`cursor` below) rather than as a body of its own. A receiver takes it only when its `seq` is above the last cursor's, and then counts it as that cursor. JSON recipients still get cursor bodies.
-- **Heartbeat.** A holder that has sent the relay nothing for 5 s sends `{"t":"alive"}`. Both relays update the connection's time and forward nothing.
+- **Heartbeat.** A holder that has sent the relay nothing for 5 s sends `{"t":"alive"}`, which the relay takes as a sign of life and forwards to nobody.
 - **Trims.** `presence` loses `colour`, which every receiver works out from `device`. In JSON bodies, coordinates are rounded to 0.01 and `at` to 0.1 ms.
 - `at` is ms since this `Live` started, in both formats. Only one sender's bodies are ever compared, so the base does not matter.
 
@@ -115,12 +111,11 @@ A compact body is a MessagePack array. Integers take their shortest encoding, co
 ### Relay
 
 - Connection ids are short decimal strings from a counter the Durable Object keeps in storage: `"1"`, `"2"`, …. Older devices take them as any other id.
-- `welcome` carries `v: 2`. Binary frames from a device:
+- Binary frames from a device:
   - `0x00` then the sealed body, to everyone else;
   - `0x01`, a LEB128 connection number, then the sealed body, to one connection.
 - To a `v: 2` device (its `auth` carries `v: 2`), the relay forwards a body as a binary frame: the sender's LEB128 connection number, then the body. To an older device it goes as `{from, body}`, with the body in base64url. A JSON `{to?, body}` from a device reaches `v: 2` devices as binary too.
 - Everything else (auth, holds, refusals, join, leave, ping) stays JSON text.
-- The relay is deployed by hand; until it is, devices keep sending JSON text frames.
 
 ## Not done
 
@@ -139,8 +134,9 @@ A compact body is a MessagePack array. Integers take their shortest encoding, co
   - `live2.json`: compact cursor and live bodies, with splices, groups and keyframes, and the state a receiver ends with.
 - **`sync.php`:** `POST` with `since` against SQLite. Its records leave out the request's own writes; a full page gives the cursor of the last row read; a request without `since` answers as before. Also gzip responses, deflated requests, and the 1 MB limit after inflating.
 - **Engines, both languages:**
-  - a cycle with something pending makes one request against a `v: 2` server and two against an older one;
-  - the cursor advances past consecutive own writes and not past a gap;
+  - a cycle with something pending makes one request;
+  - its own writes are never pulled back;
+  - a full page of `records` goes on with `GET`s;
   - `pushed` with records is applied without a pull only when epoch, consecutiveness and cursor allow;
   - resync never combines.
 - **Live, both languages:**
@@ -152,5 +148,5 @@ A compact body is a MessagePack array. Integers take their shortest encoding, co
   - deltas, splices, a splice on a mismatched hash ignored until a keyframe, and groups;
   - unsealed binary on a `v: 2` link only, and text dropped there.
 - **Relay:** short ids; binary to `v: 2` devices and JSON to older ones, both ways; `to` in binary; `alive` forwards nothing.
-- **`scripts/direct-e2e.mjs`:** the channel carries binary between two current web apps; with the relay at `v: 2`, relay frames are binary.
+- **`scripts/direct-e2e.mjs`:** the channel and the relay carry binary between two current web apps.
 - **By hand:** the Mac and the phone in one space, with direct on and off. Drag a group, type in a long card, then check the frame sizes with the e2e script's counters.
