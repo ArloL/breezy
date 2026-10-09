@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
     case #selector(shareInvite(_:)), #selector(renameSpace(_:)), #selector(leaveSpace(_:)):
-      return MainActor.assumeIsolated { Library.shared.currentGroup.space != nil }
+      return MainActor.assumeIsolated { group(item).space != nil }
     default: return true
     }
   }
@@ -70,8 +70,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     return alert.runModal() == .alertFirstButtonReturn
   }
 
+  /// The group a space menu item was made for, else the current one.
+  @MainActor private func group(_ sender: Any?) -> Spaces.Group {
+    (sender as? NSMenuItem)?.representedObject as? Spaces.Group ?? Library.shared.currentGroup
+  }
+
   @MainActor private func show(_ group: Spaces.Group) {
     BoardsWindowController.shared.showWindow(nil)
+    BoardsWindowController.shared.reload()
     BoardsWindowController.shared.select(group)
   }
 
@@ -120,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   }
 
   @MainActor @objc func renameSpace(_ sender: Any?) {
-    let g = Library.shared.currentGroup
+    let g = group(sender)
     guard g.space != nil else { return }
     let input = field("Name")
     input.stringValue = g.name
@@ -137,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   }
 
   @MainActor @objc func shareInvite(_ sender: Any?) {
-    guard let link = Library.shared.currentGroup.store.invite?.link else { return }
+    guard let link = group(sender).store.invite?.link else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(link, forType: .string)
     // clipboard managers leave out what is marked concealed
@@ -146,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   }
 
   @MainActor @objc func leaveSpace(_ sender: Any?) {
-    let g = Library.shared.currentGroup
+    let g = group(sender)
     guard g.space != nil,
           confirm("Leave “\(g.name)”?", "Its boards are removed from this device. Others in the space keep them.", "Leave", destructive: true)
     else { return }

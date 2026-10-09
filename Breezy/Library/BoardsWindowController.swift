@@ -190,9 +190,15 @@ import BreezyKit
       delete.target = self
       menu.addItem(delete)
     } else if row.group.space != nil {
-      menu.addItem(NSMenuItem(title: "Rename Space…", action: #selector(AppDelegate.renameSpace(_:)), keyEquivalent: ""))
-      menu.addItem(NSMenuItem(title: "Share Invite", action: #selector(AppDelegate.shareInvite(_:)), keyEquivalent: ""))
-      menu.addItem(NSMenuItem(title: "Leave Space…", action: #selector(AppDelegate.leaveSpace(_:)), keyEquivalent: ""))
+      let renameSpace = NSMenuItem(title: "Rename Space…", action: #selector(AppDelegate.renameSpace(_:)), keyEquivalent: "")
+      renameSpace.representedObject = row.group
+      menu.addItem(renameSpace)
+      let shareInvite = NSMenuItem(title: "Share Invite", action: #selector(AppDelegate.shareInvite(_:)), keyEquivalent: "")
+      shareInvite.representedObject = row.group
+      menu.addItem(shareInvite)
+      let leaveSpace = NSMenuItem(title: "Leave Space…", action: #selector(AppDelegate.leaveSpace(_:)), keyEquivalent: "")
+      leaveSpace.representedObject = row.group
+      menu.addItem(leaveSpace)
     }
   }
 
