@@ -255,7 +255,8 @@ if (relayed.length < 5) throw new Error(`only ${relayed.length} body frames reac
 if (r.relay.text.length) throw new Error(`${r.relay.text.length} text body frames reached the relay`);
 const second = await settledCursor("a's cursor moving on b over the relay", first);
 if (Math.abs(second - r.x) > 60) throw new Error(`b shows a at x ${second} over the relay, a's mouse is at ${r.x}`);
-const via = await liveSizes(600);
+// clear of the bottom edge, where the board would scroll under the drag and send a body a frame
+const via = await liveSizes(420);
 for (const [what, sent] of [["typing", via.typed], ["dragging a card", via.dragged]]) {
   const n = bodies(sent).length;
   if (n < 3) throw new Error(`no live bodies reached the relay while ${what}`);
