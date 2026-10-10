@@ -6,7 +6,7 @@ Each language already has a "four devices end the same" test: one seed, its own 
 
 ## Done
 
-`node scripts/fuzz.mjs --seeds 1-50` passes, and finds each planted bug (see Checking the fuzzer) within the per-PR budget of under 2 minutes. Running it in CI belongs to the CI gates work.
+`node scripts/fuzz.mjs --seeds 1-50` passes, and finds a planted bug (see Checking the fuzzer) within the per-PR budget of under 2 minutes. Running it in CI belongs to the CI gates work.
 
 ## Shape
 
@@ -38,15 +38,17 @@ The real Worker runtime and real WebRTC stay with `direct-e2e.mjs`. The server i
 
 The apps keep visibility, drawing and windows. The two copies differ today (the web follows `gesturing` and `unfinished`, the Mac `afterGesture`); `Collab` has one behaviour with shared tests, and a difference that turns out to matter is fixed there.
 
-Seams, each defaulting to what the apps do now:
+Web devices run in the hub's process, whose timers, clocks, random bytes and `fetch` are replaced for code running under a device's context (`AsyncLocalStorage`), so the web code needs no seams. Requests go plain there: deflating runs on a thread pool, which settling cannot see; Swift devices deflate.
+
+Swift seams, each defaulting to what the app does now:
 
 | Seam | Where |
 |---|---|
-| `schedule` and `now` | the engine's `soon` timer, `BoardBinding`'s write-back, the web `Saver`; `Live` takes them already |
-| `spawn` | tasks that `Collab` and `Spaces` start, such as `Task { await engine.sync() }` |
-| `newID` | seeded; nonces stay random, as no decision depends on them |
+| `now`, `uptime`, `schedule` | `Spaces` passes them to every `SyncEngine` and `Live`; `BoardBinding` takes `schedule` |
+| `send` | `HTTPTransport`'s request, so that its own building, timeouts and decoding are fuzzed |
+| `Randomness.source` | a task-local that ids, space secrets and nonces draw from when set; only the sim sets it |
 
-`breezy-sim` hosts any number of Swift devices, each a `Store`, `SyncEngine`, `Live` with `Direct`, `BoardModel`, `BoardBinding` and `Collab`, with transports that forward to the hub. These proxies replace `HTTPTransport` and the web's `HttpTransport`, so those classes' own stall timers are not fuzzed; the hub's stalls exercise how the engines answer one.
+`breezy-sim` hosts any number of Swift devices, each `Spaces` in its own directory with a `BoardModel`, `BoardBinding` and `Collab` for its open board, its relay and channels proxied to the hub. Every global-executor job runs on the main actor, in order, so that a device's work replays exactly and the host can tell when it is idle.
 
 ## Operations
 
@@ -82,7 +84,7 @@ Faults, at low weights, on top:
 | Fault | As when |
 |---|---|
 | a response lost after the server committed | the link went as the answer came back |
-| a 5xx; a 401 | the host struggles; a token is refused |
+| a 5xx | the host struggles |
 | a 200 with HTML, a 302, a truncated body, a failure at once | a captive portal or hotel Wi-Fi answers instead of the server; DNS or TLS fails |
 | the relay drops a connection | |
 | the relay restarts: every socket drops at once, and only what sockets' attachments hold survives | a Durable Object is evicted, or the relay is deployed |
@@ -95,34 +97,39 @@ Faults, at low weights, on top:
 After `--steps`, the hub heals: no more operations or faults, every link good, every device thawed, online and showing, gestures ended. It runs the clock until every device is idle with no timer due within 35 s, past `GONE_MS`. Then:
 
 - every device's boards are equal, compared in a canonical order;
+- each open board shows its store's content, but for what stacking sets locally;
 - nothing is pending;
 - every board's overlay is empty;
 - the relay holds nothing, and every device's `mine` is empty;
 - every device sees each other one present.
 
-With `--profile train`, the hub also reports how long after a tunnel ends each device takes to have every other's edits, as a 95 % CI per run.
+Along the run, every 5 s, no hold may outlive its gesture: a device holding items 120 s after its last gesture, or a relay keeping a connection's holds 45 s after its device let go, fails the run, as holds keep the others from editing. The margins leave a finish its push over a dead network.
+
+The hub reports how long after a tunnel or a dead upstream ends a device takes to sync and to be welcomed by the relay, as 95 % CIs over the run's seeds.
+
+A refused token (401) is no fault here: the device stops syncing until it leaves the space, by design.
 
 ## Failures
 
-A failing run writes its seed, its trace of operations, faults and link changes, and the first difference to `build/fuzz/<seed>.json`, shrinks the trace by delta debugging while it still fails, and prints `node scripts/fuzz.mjs --replay build/fuzz/<seed>.json`.
+A failing run writes its seed, its trace of operations, faults and link changes, and the first difference to `build/fuzz/<profile>-<seed>.json`. `--shrink` drops chunks of the trace by delta debugging while a replay still fails the same way, within 60 replays, and `--replay FILE` runs a written trace again. A replay draws network timings afresh, so it reproduces the failure, not every frame.
 
 ## Checking the fuzzer
 
 `--plant NAME` turns on a bug through a test-only switch in both engines, which nothing else reads:
 
-| Name | Bug |
-|---|---|
-| `merge-local` | a merge takes the local side of every field |
-| `pushed-any` | any `pushed` drops a preview, whatever its `seq` |
-| `no-replaces` | `auth` leaves out `replaces` |
+| Name | Bug | Found |
+|---|---|---|
+| `pushed-skip` | records a `pushed` brings are not applied, though the cursor moves past them | on every seed tried |
+| `order-all` | order keys follow the model's order against the store's, the bug the fuzzer found first | 1 of 24 seeds with 3 web devices; it needs cards made at once |
+| `merge-local` | a merge takes the local side of every field | never: the devices still converge, on the last writer's fields; see Not done |
 
-A test runs each with the per-PR budget and fails unless the fuzzer finds it.
+A test runs `pushed-skip` with the per-PR budget, fails unless the fuzzer finds it, and shrinks the failure to at most 30 entries.
 
 ## Not done
 
 | Idea | Why not |
 |---|---|
-| Checking that nothing typed is lost | The oracle must tell an overwrite after a sync from a lost edit; a project of its own |
+| Checking that nothing typed is lost | The oracle must tell an overwrite after a sync from a lost edit; a project of its own. Until then a merge that drops one side's changes converges and passes, as `merge-local` shows |
 | Real Chromium, the Mac app, `wrangler dev` and WebRTC under the fuzzer | Not deterministic: a failure could not be replayed or shrunk; `direct-e2e.mjs` covers the real stack |
 | A fake server for speed | It would fuzz the fake; `sync.php` on SQLite is fast enough for the budgets |
 | Two tabs of the web app on one device | Not a network fault: each tab loads the state once and saves all of it under the same key, so one can overwrite the other's unpushed edit. It needs a fix of its own, such as one tab holding a Web Lock and the others opening read-only |
