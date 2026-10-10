@@ -38,7 +38,7 @@ The real Worker runtime and real WebRTC stay with `direct-e2e.mjs`. The server i
 
 The apps keep visibility, drawing and windows. The two copies differ today (the web follows `gesturing` and `unfinished`, the Mac `afterGesture`); `Collab` has one behaviour with shared tests, and a difference that turns out to matter is fixed there.
 
-Web devices run in the hub's process, whose timers, clocks, random bytes and `fetch` are replaced for code running under a device's context (`AsyncLocalStorage`), so the web code needs no seams. Requests go plain there: deflating runs on a thread pool, which settling cannot see; Swift devices deflate.
+Web devices run in the hub's process, whose timers, clocks, random bytes and `fetch` are replaced for code running under a device's context (`AsyncLocalStorage`), so the web code needs no seams. Their `CompressionStream` deflates in place, as zlib's own streams run on a thread pool, which settling cannot see.
 
 Swift seams, each defaulting to what the app does now:
 

@@ -1,6 +1,7 @@
 // Virtual time for the web devices and the relay, which run in the hub's process: timers, clocks and random bytes
 // used under a context (a device's or the relay's) come from here, and the hub's own code keeps the real ones.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { deflateRawSync } from "node:zlib";
 import { Rng } from "./rng.mjs";
 
 const als = new AsyncLocalStorage();
@@ -116,8 +117,18 @@ export function install() {
       return f(...args).finally(() => pending--);
     };
   }
-  // deflating takes a thread pool's time, which settling cannot see; requests go plain, which the server takes too
-  globalThis.CompressionStream = undefined;
+  // zlib's own streams run on a thread pool, which settling cannot see; this one deflates in place when the input ends
+  globalThis.CompressionStream = class {
+    constructor(format) {
+      if (format !== "deflate-raw") throw new TypeError(format);
+      const chunks = [];
+      const t = new TransformStream({
+        transform: (c) => chunks.push(Buffer.from(c)),
+        flush: (out) => out.enqueue(new Uint8Array(deflateRawSync(Buffer.concat(chunks)))),
+      });
+      [this.readable, this.writable] = [t.readable, t.writable];
+    }
+  };
 }
 
 /** Turns of the event loop until no crypto call is pending and `quiet()` held for a few rounds running. */
