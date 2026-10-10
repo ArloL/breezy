@@ -663,3 +663,19 @@ private final class RecordingProtocol: URLProtocol, @unchecked Sendable {
   #expect(a.engine.status.state == .unreachable)
   #expect(pulled == [server.version])
 }
+
+@MainActor @Test func aBackOffWaitsOnTheSteadyClockAWallClockSetBackHoldsBackNoRetry() async {
+  let (_, a, _, id) = await pair()
+  var wall = Date(timeIntervalSince1970: 1_000_000), steady = Date(timeIntervalSinceReferenceDate: 0)
+  let t = a.transport
+  let engine = SyncEngine(store: a.store, now: { wall }, clock: { steady }, transport: { _, _ in t })
+  a.transport.online = false
+  a.edit(id) { $0.addCard(x: 0, y: 0) }
+  await engine.sync()
+  #expect(engine.status.state == .offline)
+  a.transport.online = true
+  wall = wall.addingTimeInterval(-3600)
+  steady = steady.addingTimeInterval(6)
+  await engine.sync()
+  #expect(a.store.pending.isEmpty)
+}

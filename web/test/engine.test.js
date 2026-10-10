@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.js";
-import { statusLines, TransportError, validRelay, HttpTransport } from "../sync/engine.js";
+import { statusLines, TransportError, validRelay, HttpTransport, SyncEngine } from "../sync/engine.js";
 import { SpaceKeys } from "../sync/crypto.js";
 import { encode, decode } from "../sync/base64.js";
 import { inflateRawSync } from "node:zlib";
@@ -656,5 +656,20 @@ test("a stalled request is sent again at once, twice, then backs off", async () 
   // the network came back: no waiting out the back-off
   await a.engine.retryNow();
   assert.equal(a.engine.status.state, "synced");
+  assert.deepEqual(a.store.pending(), []);
+});
+
+test("a back-off waits on the steady clock: a wall clock set back holds back no retry", async () => {
+  const { a, id } = await pair(newID);
+  let wall = 1_000_000, steady = 0;
+  const engine = new SyncEngine(a.store, { transport: () => a.transport, now: () => wall, clock: () => steady });
+  a.transport.online = false;
+  a.edit(id, (x) => R.addCard(x, 0, 0));
+  await engine.sync();
+  assert.equal(engine.status.state, "offline");
+  a.transport.online = true;
+  wall -= 3_600_000;
+  steady += 6_000;
+  await engine.sync();
   assert.deepEqual(a.store.pending(), []);
 });
