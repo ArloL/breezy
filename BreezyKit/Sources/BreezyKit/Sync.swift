@@ -178,6 +178,8 @@ public struct SyncStatus: Equatable, Sendable {
   public var onPushed: ((Pushed) -> Void)?
   /// With the store's cursor once the records up to it are in: after each page taken, and after pushed records.
   public var onPulled: ((Int) -> Void)?
+  /// Just before a push goes.
+  public var onPushing: (() -> Void)?
   /// Whether a gesture others follow live is under way: what it changed so far waits for its end.
   public var holdBack: (() -> Bool)?
   /// When a cycle last ended synced.
@@ -243,17 +245,22 @@ public struct SyncStatus: Equatable, Sendable {
     }
   }
 
-  /// The network is back, or may have changed: a cycle now, without waiting out a back-off. A request of the cycle
-  /// running that has taken over `stale` is given up on, as it may be on a connection the network change left dead.
-  public func retryNow() {
+  /// The network is back, or may have changed: a cycle now, without waiting out a back-off. When it `changed`, a request
+  /// of the cycle running that has taken over `stale` is given up on, as it may be on a connection the change left dead.
+  public func retryNow(changed: Bool = true) {
     guard !stopped else { return }
     failures = 0
     retryAt = nil
-    if current != nil, now().timeIntervalSince(cycleAt) >= Self.stale {
+    if changed, current != nil, now().timeIntervalSince(cycleAt) >= Self.stale {
       restarting = true
       current?.cancel()
     }
     Task { await sync() }
+  }
+
+  /// Whether a change made now goes to the server at once, rather than after a back-off or a gesture's end.
+  public var pushesNow: Bool {
+    store.state.invite != nil && !stopped && (retryAt.map { $0 <= now() } ?? true) && holdBack?() != true
   }
 
   /// Forgets a back-off and a refused token, as after joining a space.
@@ -289,6 +296,7 @@ public struct SyncStatus: Equatable, Sendable {
         first = nil
         if out.writes.isEmpty { break }
         let request = combined ? store.state.cursor : nil
+        onPushing?()
         let result = try await transport.push(out.writes, since: request, epoch: combined ? store.state.epoch : nil)
         guard same() else { return }
         if store.note(epoch: result.epoch) {

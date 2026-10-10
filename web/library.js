@@ -283,9 +283,11 @@ export class Library {
       // on others' screens ahead of its push
       const before = this.binding?.seen;
       if (!this.binding?.flush() || !group?.space) return;
+      // shown only when its push goes now, as others would see it undone when the preview lapses
+      const now = group.engine.pushesNow();
       group.engine.sync();
       const ids = new Set([...before.cards, ...before.lanes, ...model.board.cards, ...model.board.lanes].map((x) => x.id));
-      if (live && id) live.sendEdit(id, liveFields(before, model.board, ids, id));
+      if (live && id && now) live.sendEdit(id, liveFields(before, model.board, ids, id));
       return;
     }
     this.unfinished = false;

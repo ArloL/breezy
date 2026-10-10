@@ -154,7 +154,8 @@ export class Live {
     /** When a ping went out that nothing has answered yet. */
     this.pingWaiting = null;
     /** Connection id → { person, v, board, boards, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret,
-     * awaiting, unheld: Map of overlay id → when its live body last came while its sender did not hold it }. */
+     * awaiting, pushedSeq, unheld: Map of overlay id → {at, seq} of its last live body that came while its sender did
+     * not hold it }. */
     this.peers = new Map();
     /** Connection id → its compact bodies' decoders, one per pipe. */
     this.decoders = new Map();
@@ -169,6 +170,8 @@ export class Live {
     /** Cursors the channels have sent, which a later one keeps from being sent again. */
     this.cursorSends = 0;
     this.lastLive = null;
+    /** The last seq sent when the push under way began. */
+    this.pushSeq = 0;
     this.channels = new Pipe(this, true, DIRECT_SEND_MS);
     this.relayPipe = new Pipe(this, false, SEND_MS);
     /** When a frame last reached the relay, which keeps this connection's holds there while it hears from it. */
@@ -559,7 +562,7 @@ export class Live {
 
   heard(from, b) {
     const now = this.now();
-    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, pushedAt: -Infinity, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
+    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, pushedSeq: 0, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
     p.heard = now;
     const arrival = this.clock();
     const at = Number.isFinite(b?.at) ? b.at : arrival;
@@ -593,7 +596,7 @@ export class Live {
           if (!f || typeof f !== "object") continue;
           p.overlay.set(id, { ...p.overlay.get(id), ...pick(f) });
           if (this.holds.get(from)?.has(id)) p.unheld.delete(id);
-          else p.unheld.set(id, now);
+          else p.unheld.set(id, { at: now, seq: integral(b.seq) ? b.seq : Infinity });
           for (const k of MOVING) {
             const v = numbers(f[k]);
             if (!v) continue;
@@ -617,7 +620,8 @@ export class Live {
       case "pushed":
         if (!integral(b.version) || b.version < 0) return;
         p.awaiting = Math.max(p.awaiting, b.version);
-        p.pushedAt = now;
+        // the push holds every edit this sender sent up to seq
+        if (integral(b.seq)) p.pushedSeq = Math.max(p.pushedSeq, b.seq);
         break;
       default:
         return;
@@ -640,7 +644,7 @@ export class Live {
 
   /** Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
    * HOLD_GRACE_MS after its last live body, as that may come direct before the relay says it is held, unless a push
-   * announced since then is in. */
+   * that holds it is in. */
   dropReleased() {
     const now = this.now();
     for (const [conn, p] of this.peers) {
@@ -648,10 +652,10 @@ export class Live {
       p.awaiting = 0;
       const held = this.holds.get(conn) ?? new Set();
       for (const id of [...p.overlay.keys()]) {
-        const since = p.unheld.get(id);
+        const u = p.unheld.get(id);
         if (held.has(id)) p.unheld.delete(id);
         // one shown ahead of a push this device now has, as for an edit outside a gesture, goes at once
-        else if (since === undefined || now - since >= HOLD_GRACE_MS || since <= p.pushedAt) {
+        else if (!u || now - u.at >= HOLD_GRACE_MS || u.seq <= p.pushedSeq) {
           p.overlay.delete(id);
           p.unheld.delete(id);
         }
@@ -798,7 +802,13 @@ export class Live {
 
   /** Announces a push with its records, or without them when they would not fit a frame. */
   sendPushed({ version, epoch, records }) {
-    return this.send({ t: "pushed", version, epoch, records }, undefined, { t: "pushed", version });
+    const seq = this.pushSeq;
+    return this.send({ t: "pushed", version, epoch, records, seq }, undefined, { t: "pushed", version, seq });
+  }
+
+  /** A push is about to go with what the store has now, which holds every edit sent so far. */
+  pushing() {
+    this.pushSeq = this.seq;
   }
 
   /** Ids another connection holds. */

@@ -14,7 +14,9 @@ extension Notification.Name {
   let spaces: Spaces
   private var timer: Timer?
   private let path = NWPathMonitor()
-  private var pathSeen = false
+  /// The interfaces and gateways of the network last seen; nil before the first or while there is none.
+  private var pathSeen: String?
+  private var pathStarted = false
   private var liveTimer: Timer?
   private var peopleSeen = ""
   /// Boards whose windows are closing, so that the close's own flush can't close them again.
@@ -59,12 +61,14 @@ extension Notification.Name {
     }
     // a network that comes back or changes leaves sockets and requests on the old one dead, often without a word
     path.pathUpdateHandler = { [weak self] p in
-      let up = p.status == .satisfied
+      // one network change brings several updates, as addresses and DNS come; only other interfaces or gateways count
+      let key = p.status == .satisfied ? (p.availableInterfaces.map(\.name) + p.gateways.map { "\($0)" }).joined(separator: " ") : nil
       MainActor.assumeIsolated {
-        guard let self else { return }
+        guard let self, key != self.pathSeen || !self.pathStarted else { return }
         // the first says how the network is at the start
-        if self.pathSeen && up { self.spaces.retryAll(changed: true) }
-        self.pathSeen = true
+        if self.pathStarted && key != nil { self.spaces.retryAll(changed: true) }
+        self.pathSeen = key
+        self.pathStarted = true
       }
     }
     path.start(queue: .main)
@@ -185,10 +189,12 @@ extension Notification.Name {
       // others' screens ahead of its push
       let before = doc.binding.seen
       if !doc.model.inGesture, g.space != nil, doc.binding.flush() {
+        // shown only when its push goes now, as others would see it undone when the preview lapses
+        let now = g.engine.pushesNow
         Task { await g.engine.sync() }
         let b = doc.model.board
         let ids = Set(before.cards.map(\.id) + before.lanes.map(\.id) + b.cards.map(\.id) + b.lanes.map(\.id))
-        g.live?.sendEdit(board: id, items: Records.liveFields(from: before, to: b, ids: ids, board: id))
+        if now { g.live?.sendEdit(board: id, items: Records.liveFields(from: before, to: b, ids: ids, board: id)) }
       }
       guard let live = g.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
       live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),

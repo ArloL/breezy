@@ -535,6 +535,55 @@ for (const [silent, who] of [[false, "a"], [true, "a"], [true, "b"]]) {
   report(`after ${what}: recolour on b`, colourBack);
 }
 
+// last, as it leaves the board full of cards
+if (only.has("converge")) {
+  // both edit at random at once, then must show the same board
+  // where the cards are against each other, as edge scrolling during a drag moves one screen's camera
+  const shownOf = (br) => br.run(`(() => {
+    const cs = [...document.querySelectorAll("#board .cards > div:not([style*='pointer-events: none'])")].map((e) => [e, e.getBoundingClientRect()]).filter(([, r]) => r.width);
+    const x0 = Math.min(...cs.map(([, r]) => r.x)), y0 = Math.min(...cs.map(([, r]) => r.y));
+    return cs.map(([e, r]) => [e.querySelector(".front").textContent, e.querySelector(".sheet").className, Math.round(r.x - x0), Math.round(r.y - y0), Math.round(r.width)].join(" ")).sort();
+  })()`);
+  let same = 0;
+  for (let r = 0; r < RUNS; r++) {
+    let seed = 7 + r;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const act = async (br, tag, i) => {
+      const cards = await br.run(`[...document.querySelectorAll(".card:not(.taken):not([style*='pointer-events: none'])")].map((e) => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 15 }; }).filter((c) => c.x > 60 && c.x < 1100 && c.y > 120 && c.y < 700)`);
+      const pick = cards[Math.floor(rand() * cards.length)];
+      const k = rand();
+      if (!pick || k < 0.25) {
+        const x = 100 + rand() * 900, y = 160 + rand() * 480;
+        for (const clickCount of [1, 2]) { await br.mouse("mousePressed", x, y, { clickCount }); await br.mouse("mouseReleased", x, y, { clickCount }); }
+        await sleep(100);
+        await br.send("Input.dispatchKeyEvent", { type: "char", text: `${tag}${i}` });
+        await br.run(`document.activeElement?.blur?.()`);
+        await br.mouse("mousePressed", 1150, 780, { clickCount: 1 }); await br.mouse("mouseReleased", 1150, 780, { clickCount: 1 });
+      } else if (k < 0.55) {
+        await br.mouse("mousePressed", pick.x, pick.y, { clickCount: 1 }); await br.mouse("mouseReleased", pick.x, pick.y, { clickCount: 1 });
+        await br.key(String(1 + Math.floor(rand() * 5)));
+      } else if (k < 0.7 && cards.length > 3) {
+        await br.mouse("mousePressed", pick.x, pick.y, { clickCount: 1 }); await br.mouse("mouseReleased", pick.x, pick.y, { clickCount: 1 });
+        await br.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+      } else {
+        const dx = (rand() - 0.5) * 300, dy = (rand() - 0.5) * 200;
+        await br.mouse("mousePressed", pick.x, pick.y, { clickCount: 1 });
+        for (let j = 1; j <= 8; j++) { await br.mouse("mouseMoved", pick.x + (dx * j) / 8, pick.y + (dy * j) / 8, { buttons: 1 }); await sleep(16); }
+        await br.mouse("mouseReleased", pick.x + dx, pick.y + dy);
+      }
+    };
+    const end = Date.now() + 20_000;
+    const run = async (br, tag) => { for (let i = 0; Date.now() < end; i++) { await act(br, tag, i); await sleep(100 + rand() * 300); } };
+    await Promise.all([run(a, "a"), run(b, "b")]);
+    await sleep(4000);
+    const [sa, sb] = [await shownOf(a), await shownOf(b)];
+    const diff = sa.filter((x) => !sb.includes(x)).length + sb.filter((x) => !sa.includes(x)).length;
+    if (diff) console.log(`  run ${r}: ${sa.length} and ${sb.length} cards, ${diff} differ`, JSON.stringify(sa.filter((x) => !sb.includes(x))), JSON.stringify(sb.filter((x) => !sa.includes(x))));
+    else same++;
+  }
+  console.log(`converge: ${same} of ${RUNS} runs end the same on both screens`);
+}
+
 console.log(JSON.stringify({ opt, results }));
 done = true;
 process.exit(0);

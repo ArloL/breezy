@@ -167,24 +167,35 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(b.overlay(on: B1).isEmpty)
 }
 
-@MainActor @Test func anEditOutsideAGestureShowsAtOnceHoldingNothingUntilItsPushIsIn() {
+@MainActor @Test func anEditOutsideAGestureShowsAtOnceHoldingNothingUntilAPushThatHoldsItIsIn() {
   let (relay, clock, a, b) = two()
-  let recoloured: [String: LiveFields] = [C1: ["color": .number(3)]]
-  a.sendEdit(board: B1, items: recoloured)
+  a.sendEdit(board: B1, items: [C1: ["color": .number(3)]])
   relay.run()
-  #expect(b.overlay(on: B1) == recoloured)
+  #expect(b.overlay(on: B1) == [C1: ["color": .number(3)]])
   #expect(b.taken.isEmpty)
-  // the next body, of a gesture, starts on a keyframe and does not repeat the edit
+  // a push begins with the first edit, then a second edit comes before it is announced
+  a.pushing()
+  clock.advance(0.025)
+  a.sendEdit(board: B1, items: [C2: ["color": .number(4)]])
+  relay.run()
+  a.sendPushed(Pushed(version: 6, epoch: nil, records: []))
+  relay.run()
+  b.noteCursor(6)
+  #expect(b.overlay(on: B1) == [C2: ["color": .number(4)]])
+  a.pushing()
+  a.sendPushed(Pushed(version: 7, epoch: nil, records: []))
+  relay.run()
+  b.noteCursor(7)
+  #expect(b.overlay(on: B1).isEmpty)
+  // a gesture's next body starts on a keyframe, and does not repeat the edit
+  a.sendEdit(board: B1, items: [C1: ["color": .number(5)]])
+  clock.advance(0.025)
+  relay.run()
   a.hold([C2])
   a.sendLive(board: B1, items: [C2: ["pos": .array([.number(1), .number(2)])]], caret: nil)
   clock.advance(0.025)
   relay.run()
   #expect(Set(b.overlay(on: B1).keys) == [C1, C2])
-  a.release()
-  a.sendPushed(Pushed(version: 7, epoch: nil, records: []))
-  relay.run()
-  b.noteCursor(7)
-  #expect(b.overlay(on: B1).isEmpty)
 }
 
 @MainActor @Test func aHoldThatEndsWithoutAPushDropsTheOverlay() {
