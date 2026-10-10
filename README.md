@@ -41,6 +41,7 @@ swift test --package-path BreezyKit
 xcodebuild -project Breezy.xcodeproj -scheme Breezy -derivedDataPath build test
 scripts/selftest.sh                    # after a Debug build; for when XCUITest cannot activate the app
 scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scripts/bench-summary.py
+node scripts/gate.mjs BASELINE RUN     # fails when a measure of feel.mjs's or bench.sh's got worse: its 95 % CI wholly above the baseline's. Nightly runs both against scripts/baselines/, which come from that workflow's artifacts
 ```
 
 ## Sync
