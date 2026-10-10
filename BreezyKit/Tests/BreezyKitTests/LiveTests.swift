@@ -187,6 +187,16 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   relay.run()
   b.noteCursor(7)
   #expect(b.overlay(on: B1).isEmpty)
+  // an edit still waiting for the gate when its push begins goes with that push
+  a.sendCursor(board: B1, x: 1, y: 1)
+  a.sendEdit(board: B1, items: [C1: ["color": .number(2)]])
+  a.pushing()
+  clock.advance(0.025)
+  relay.run()
+  a.sendPushed(Pushed(version: 8, epoch: nil, records: []))
+  relay.run()
+  b.noteCursor(8)
+  #expect(b.overlay(on: B1).isEmpty)
   // a gesture's next body starts on a keyframe, and does not repeat the edit
   a.sendEdit(board: B1, items: [C1: ["color": .number(5)]])
   clock.advance(0.025)

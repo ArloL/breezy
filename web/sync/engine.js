@@ -61,6 +61,7 @@ export class HttpTransport {
     const stall = setTimeout(() => ((stalled = true), abort.abort()), STALL_MS + (payload?.byteLength ?? payload?.length ?? 0) / 20);
     const timeout = setTimeout(() => abort.abort(), 20_000);
     const cancel = () => abort.abort();
+    if (this.signal?.aborted) cancel();
     this.signal?.addEventListener("abort", cancel);
     try {
       res = await fetch(url, { method: body ? "POST" : "GET", headers, body: payload, signal: abort.signal });
@@ -263,7 +264,6 @@ export class SyncEngine {
         first = null;
         if (!writes.length) break;
         const request = combined ? this.store.state.cursor : undefined;
-        this.onPushing();
         const result = await transport.push(writes, request, combined ? this.store.state.epoch : undefined);
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
@@ -435,6 +435,8 @@ export class SyncEngine {
   }
 
   async outgoing(keys) {
+    // before reading what is pending, so that a push holds every edit sent before it began
+    this.onPushing();
     const writes = [], sent = new Map(), blobs = new Map();
     let size = 0;
     this.tooLong = 0;
