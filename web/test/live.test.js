@@ -154,6 +154,24 @@ test("the overlay stays until the pull reaches the pushed version", async () => 
   assert.equal(b.overlay(B1).size, 0);
 });
 
+// as after the server was restored from a backup, which set its versions back
+test("an overlay waits for a pushed version the pull never reaches 10 s at most", async () => {
+  const { relay, clock, a, b } = await two();
+  a.hold([C1]);
+  a.sendLive(B1, moved, null);
+  await relay.run();
+  a.sendPushed({ version: 7 });
+  a.release();
+  await relay.run();
+  b.noteCursor(6);
+  clock.advance(9_000);
+  b.tick();
+  assert.equal(b.overlay(B1).size, 1);
+  clock.advance(1_000);
+  b.tick();
+  assert.equal(b.overlay(B1).size, 0);
+});
+
 test("an edit outside a gesture shows at once, holding nothing, until a push that holds it is in", async () => {
   const { relay, clock, a, b } = await two();
   a.sendEdit(B1, { [C1]: { color: 3 } });

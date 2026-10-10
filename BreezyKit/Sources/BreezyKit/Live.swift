@@ -62,8 +62,10 @@ public struct Peer: Equatable, Sendable {
   public var overlay: [String: LiveFields] = [:]
   public var overlayBoard: String?
   public var caret: Caret?
-  /// A version it pushed that this device has not pulled yet; its overlay stays until then.
+  /// A version it pushed that this device has not pulled yet, and since when; its overlay stays until then, or
+  /// `pushedWait` at most.
   var awaiting = 0
+  var awaitingAt = Date.distantPast
   /// Its pushes so far hold every edit it sent up to this `seq`.
   var pushedSeq = 0
   /// The last `seq` taken of each kind of body.
@@ -183,6 +185,9 @@ public struct Peer: Equatable, Sendable {
   public static let presenceInterval: TimeInterval = 15
   public static let gone: TimeInterval = 30
   public static let holdGrace: TimeInterval = 1
+  /// How long overlays wait for the pull of a version their sender pushed: it may never come, as when the server was
+  /// restored from a backup, which sets versions back.
+  public static let pushedWait: TimeInterval = 10
   public static let idleCursor: TimeInterval = 60
   public static let maxBackoff: TimeInterval = 30
   public static let pingInterval: TimeInterval = 5
@@ -899,6 +904,7 @@ public struct Peer: Equatable, Sendable {
       }
     case "pushed":
       guard let v = Self.integral(b["version"]?.number), v >= 0 else { return }
+      if v > p.awaiting { p.awaitingAt = now() }
       p.awaiting = max(p.awaiting, v)
       // the push holds every edit this sender sent up to seq
       if let n = Self.integral(b["seq"]?.number) { p.pushedSeq = max(p.pushedSeq, n) }
@@ -932,7 +938,7 @@ public struct Peer: Equatable, Sendable {
   private func dropReleased() {
     let t = now()
     for (conn, var p) in peers {
-      guard p.awaiting <= storeCursor else { continue }
+      guard p.awaiting <= storeCursor || t.timeIntervalSince(p.awaitingAt) >= Self.pushedWait else { continue }
       p.awaiting = 0
       let held = holds[conn] ?? []
       for id in p.overlay.keys {
@@ -993,7 +999,7 @@ public struct Peer: Equatable, Sendable {
     }
     // a holder the relay has not heard from lately, as live edits may go only direct, keeps its holds there
     if connected && !mine.isEmpty && t.timeIntervalSince(relaySent) >= Self.heartbeat { frame(["t": .string("alive")]) }
-    if peers.values.contains(where: { !$0.unheld.isEmpty }) {
+    if peers.values.contains(where: { !$0.unheld.isEmpty || $0.awaiting > 0 }) {
       dropReleased()
       changed = true
     }

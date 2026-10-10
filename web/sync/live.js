@@ -17,6 +17,9 @@ export const CURSOR_REPEAT_MS = 100;
 export const PRESENCE_MS = 15_000;
 export const GONE_MS = 30_000;
 export const HOLD_GRACE_MS = 1_000;
+/** How long overlays wait for the pull of a version their sender pushed: it may never come, as when the server was restored
+ * from a backup, which sets versions back. */
+export const PUSHED_WAIT_MS = 10_000;
 export const IDLE_CURSOR_MS = 60_000;
 export const MAX_BACKOFF_MS = 30_000;
 export const PING_MS = 5_000;
@@ -154,7 +157,7 @@ export class Live {
     /** When a ping went out that nothing has answered yet. */
     this.pingWaiting = null;
     /** Connection id → { person, v, board, boards, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret,
-     * awaiting, pushedSeq, unheld: Map of overlay id → {at, seq} of its last live body that came while its sender did
+     * awaiting (a pushed version, since awaitingAt), pushedSeq, unheld: Map of overlay id → {at, seq} of its last live body that came while its sender did
      * not hold it }. */
     this.peers = new Map();
     /** Connection id → its compact bodies' decoders, one per pipe. */
@@ -566,7 +569,7 @@ export class Live {
 
   heard(from, b) {
     const now = this.now();
-    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, pushedSeq: 0, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
+    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, awaitingAt: 0, pushedSeq: 0, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
     p.heard = now;
     const arrival = this.clock();
     const at = Number.isFinite(b?.at) ? b.at : arrival;
@@ -623,6 +626,7 @@ export class Live {
       }
       case "pushed":
         if (!integral(b.version) || b.version < 0) return;
+        if (b.version > p.awaiting) p.awaitingAt = now;
         p.awaiting = Math.max(p.awaiting, b.version);
         // the push holds every edit this sender sent up to seq
         if (integral(b.seq)) p.pushedSeq = Math.max(p.pushedSeq, b.seq);
@@ -652,7 +656,7 @@ export class Live {
   dropReleased() {
     const now = this.now();
     for (const [conn, p] of this.peers) {
-      if (p.awaiting > this.storeCursor) continue;
+      if (p.awaiting > this.storeCursor && now - p.awaitingAt < PUSHED_WAIT_MS) continue;
       p.awaiting = 0;
       const held = this.holds.get(conn) ?? new Set();
       for (const id of [...p.overlay.keys()]) {
@@ -712,7 +716,7 @@ export class Live {
       this.relaySent = now;
       this.frame({ t: "alive" });
     }
-    if ([...this.peers.values()].some((p) => p.unheld.size)) {
+    if ([...this.peers.values()].some((p) => p.unheld.size || p.awaiting)) {
       this.dropReleased();
       changed = true;
     }
