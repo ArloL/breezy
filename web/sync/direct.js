@@ -3,6 +3,13 @@
 export const OPEN_TIMEOUT_MS = 10_000;
 export const RESTART_MS = 2_000;
 export const MAX_RESTARTS = 3;
+/** A version 2 channel beats every tick; once its other side has beaten, this long without hearing anything closes it,
+ * as ICE takes about 30 s to notice a network that went. */
+export const SILENT_MS = 2_500;
+/** Not compact, so devices from before the beat drop it. */
+export const BEAT = new Uint8Array([0]);
+
+const isBeat = (data) => data instanceof Uint8Array && data.length === 1 && data[0] === 0;
 
 const iceOf = (b) =>
   typeof b.candidate === "string" ? { candidate: b.candidate, mid: typeof b.mid === "string" ? b.mid : null, index: Number.isInteger(b.index) ? b.index : null } : null;
@@ -14,13 +21,18 @@ export class Direct {
    * a `Uint8Array` on a version 2 one; `change()` follows a channel opening or closing. */
   constructor(transport, { now, relay, message, change }) {
     Object.assign(this, { transport, now, relay, message, change });
-    /** Connection id → { id, offerer, version, open, everOpen, since, restarts, restartAt, remote, inbox, ready, outbox, answering }. */
+    /** Connection id → { id, offerer, version, up, open, everOpen, beats, heardAt, since, restarts, restartAt, remote, inbox, ready,
+     * outbox, answering }; `up` is the transport's open, `open` that and not silent. */
     this.links = new Map();
     transport.onCandidate = (id, c) => this.gathered(id, c);
     transport.onState = (id, state) => this.state(id, state);
     transport.onMessage = (id, data) => {
       const l = this.links.get(id);
-      if (l?.open && (l.version === 2 ? data instanceof Uint8Array : typeof data === "string")) this.message(id, data);
+      if (!l?.up) return;
+      l.heardAt = this.now();
+      if (isBeat(data)) l.beats = true;
+      if (!l.open) this.opened(l, true);
+      if (!isBeat(data) && (l.version === 2 ? data instanceof Uint8Array : typeof data === "string")) this.message(id, data);
     };
   }
 
@@ -49,7 +61,7 @@ export class Direct {
 
   link(id, offerer) {
     this.transport.create(id);
-    const l = { id, offerer, version: 1, open: false, everOpen: false, since: this.now(), restarts: 0, restartAt: null, remote: false, inbox: [], ready: false, outbox: [], answering: false };
+    const l = { id, offerer, version: 1, up: false, open: false, everOpen: false, beats: false, heardAt: 0, since: this.now(), restarts: 0, restartAt: null, remote: false, inbox: [], ready: false, outbox: [], answering: false };
     this.links.set(id, l);
     return l;
   }
@@ -118,17 +130,28 @@ export class Direct {
   state(id, s) {
     const l = this.links.get(id);
     if (!l) return;
-    const was = l.open;
-    l.open = s === "open";
-    if (l.open) [l.everOpen, l.restarts] = [true, 0];
+    l.up = s === "open";
+    this.opened(l, l.up);
     if (s === "failed" && l.offerer && l.restarts < MAX_RESTARTS && l.restartAt === null) l.restartAt = this.now() + RESTART_MS;
-    if (was !== l.open) this.change();
   }
 
-  /** About once a second: restarts what failed, and gives up on what never opened. */
+  opened(l, open) {
+    const was = l.open;
+    l.open = open;
+    if (open) [l.everOpen, l.restarts, l.heardAt] = [true, 0, this.now()];
+    if (was !== open) this.change();
+  }
+
+  /** About once a second: beats, closes what went silent, restarts what failed or went silent, and gives up on what never
+   * opened. */
   tick() {
     const now = this.now();
     for (const l of [...this.links.values()]) {
+      if (l.up && l.version === 2) this.transport.sendBytes(l.id, BEAT);
+      if (l.open && l.beats && now - l.heardAt >= SILENT_MS) {
+        this.opened(l, false);
+        if (l.offerer && l.restarts < MAX_RESTARTS && l.restartAt === null) l.restartAt = now;
+      }
       if (l.restartAt !== null && now >= l.restartAt) {
         l.restartAt = null;
         l.restarts++;
