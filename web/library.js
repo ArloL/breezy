@@ -255,6 +255,8 @@ export class Library {
     if (!this.live) return;
     this.unfinished = true;
     this.live.hold(ids);
+    // what the gesture did before it held, such as making the card it edits, shows now rather than at its next change
+    this.gestured();
   }
 
   /** While a gesture holds items, sends what it changed of them; when it ends, pushes at once, then lets go. Other edits push at once. */
