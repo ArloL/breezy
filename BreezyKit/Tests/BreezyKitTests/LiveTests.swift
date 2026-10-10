@@ -167,6 +167,24 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(b.overlay(on: B1).isEmpty)
 }
 
+// as after the server was restored from a backup, which set its versions back
+@MainActor @Test func anOverlayWaitsForAPushedVersionThePullNeverReaches10sAtMost() {
+  let (relay, clock, a, b) = two()
+  a.hold([C1])
+  a.sendLive(board: B1, items: moved, caret: nil)
+  relay.run()
+  a.sendPushed(Pushed(version: 7, epoch: nil, records: []))
+  a.release()
+  relay.run()
+  b.noteCursor(6)
+  clock.advance(9)
+  b.tick()
+  #expect(b.overlay(on: B1) == moved)
+  clock.advance(1)
+  b.tick()
+  #expect(b.overlay(on: B1).isEmpty)
+}
+
 @MainActor @Test func anEditOutsideAGestureShowsAtOnceHoldingNothingUntilAPushThatHoldsItIsIn() {
   let (relay, clock, a, b) = two()
   a.sendEdit(board: B1, items: [C1: ["color": .number(3)]])

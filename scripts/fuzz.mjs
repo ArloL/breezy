@@ -66,6 +66,7 @@ for (const seed of seeds) {
 console.log(`${seeds.length - failed} of ${seeds.length} seeds converged`);
 /** Mean with a 95 % confidence interval, in s. */
 const ci = (xs) => {
+  if (!xs.length) return "not seen";
   const m = xs.reduce((a, b) => a + b, 0) / xs.length;
   const sd = Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, xs.length - 1));
   return `${(m / 1000).toFixed(2)} ± ${((1.96 * sd) / Math.sqrt(xs.length) / 1000).toFixed(2)} s (n = ${xs.length})`;
