@@ -18,10 +18,14 @@ const { values: opt } = parseArgs({ options: {
   "relay-ms": { type: "string", default: "25" },
   "server-ms": { type: "string", default: "40" },
   "jitter-ms": { type: "string", default: "0" },
+  "stall-ms": { type: "string", default: "0" },
   runs: { type: "string", default: "10" },
-  only: { type: "string", default: "cursor,drag,colour,type,create,delete,resume,outage,silent,passive" },
+  only: { type: "string", default: "cursor,drag,colour,type,create,delete,open,resume,outage,silent,passive" },
 } });
 const JITTER = Number(opt["jitter-ms"]);
+// every 2 s nothing gets through for --stall-ms, as when TCP waits to resend a lost packet
+let stallUntil = 0;
+if (Number(opt["stall-ms"])) setInterval(() => (stallUntil = Date.now() + Number(opt["stall-ms"])), 2000).unref();
 const RUNS = Number(opt.runs), only = new Set(opt.only.split(","));
 const root = new URL("..", import.meta.url).pathname;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -61,7 +65,7 @@ function delayProxy(port, to, ms) {
   const pipe = (from, into, c) => {
     let due = 0;
     const later = (fn) => {
-      due = Math.max(due, Date.now() + ms + Math.random() * JITTER);
+      due = Math.max(due, Date.now() + ms + Math.random() * JITTER, stallUntil + ms);
       setTimeout(() => c.dead || into.destroyed || fn(), due - Date.now());
     };
     from.on("data", (chunk) => c.dead || later(() => into.write(chunk)));
@@ -412,6 +416,33 @@ if (only.has("delete")) {
     await sleep(1500);
   }
   report("a deleted card goes on b", gone);
+}
+
+if (only.has("open")) {
+  const seesA = [], seenByB = [];
+  for (let r = 0; r < RUNS; r++) {
+    const back = await b.run(`(() => { const r = document.querySelector('[data-act="boards"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    await b.mouse("mousePressed", back.x, back.y, { clickCount: 1 }); await b.mouse("mouseReleased", back.x, back.y, { clickCount: 1 });
+    await waitFor("b's board list", () => b.run(`document.body.dataset.screen === "boards"`));
+    await sleep(1500);
+    await a.run(`window.__seen = null; new MutationObserver(() => { if (!__seen && document.querySelector("#top .people")?.children.length) __seen = __now(); }).observe(document.querySelector("#top .people"), { childList: true })`);
+    await a.run(`document.querySelector("#top .people").replaceChildren()`).catch(() => {});
+    const t = await b.run(`(() => { const t = __now(); document.querySelector('.boards-group[data-group^="space:"] li[data-board] .open').click(); return t; })()`);
+    await b.run("__frames.length = 0");
+    let cx = null;
+    for (const end = Date.now() + 10_000; Date.now() < end && cx === null;) {
+      await a.mouse("mouseMoved", 300 + ((Date.now() / 3) % 400), 450);
+      await sleep(20);
+      const frames = await b.run("__frames.splice(0)");
+      const moving = frames.find((f, i) => i && f[1] !== null && frames[i - 1][1] !== null && f[1] !== frames[i - 1][1]);
+      if (moving) cx = moving[0] - t;
+    }
+    seesA.push(cx ?? 10_000);
+    const seen = await a.run("__seen");
+    seenByB.push(seen ? seen - t : 10_000);
+  }
+  report("b opens the board: a's cursor moves on b", seesA);
+  report("b opens the board: a shows b", seenByB);
 }
 
 if (only.has("resume")) {
