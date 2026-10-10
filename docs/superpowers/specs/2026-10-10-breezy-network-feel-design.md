@@ -6,17 +6,20 @@ Edits reach the other screens as fast as cursors do, and a network change costs 
 
 `scripts/feel.mjs` puts each of two headless Chromiums behind a proxy that delays the relay 25 ms and the server 40 ms each way, so a body takes 50 ms from one browser to the other over the relay. Means with 95 % CIs over 5 runs, 2026-10-10:
 
-| | Before | Relay | Direct channel |
-|---|---|---|---|
-| cursor lag | 127 ± 2 ms | 103 ± 1 ms | 28 ± 0 ms |
-| drag lag | 126 ± 4 ms, still 12 % of frames | 103 ± 0 ms, never still | 35 ± 0 ms |
-| recolour shows | 1472 ± 5 ms | 83 ± 3 ms | 24 ± 4 ms |
-| new card shows | 1477 ± 6 ms | 99 ± 6 ms | not measured |
-| deleted card goes | 1475 ± 8 ms | 81 ± 4 ms | 32 ± 2 ms |
-| typed key shows | not measured | 99 ± 1 ms | 27 ± 2 ms |
-| a started app shows the others | 374 ± 13 ms | 271 ± 11 ms | not measured |
-| cursor back after the network changes, with an online event | 13 to over 60 s | 258 ± 64 ms | not applicable |
-| the same without one | over 60 s | 3226 ± 9 ms | not applicable |
+| | Relay, before | Relay, after | Direct, before | Direct, after |
+|---|---|---|---|---|
+| cursor lag | 127 ± 1 ms | 103 ± 1 ms | 28 ± 0 ms | 28 ± 0 ms |
+| drag lag | 126 ± 2 ms | 103 ± 1 ms | 63 ± 1 ms | 34 ± 0 ms |
+| drag frames standing still | 12 ± 2 % | 0 ± 0 % | 2 ± 0 % | 0 ± 0 % |
+| recolour shows | 1474 ± 5 ms | 85 ± 3 ms | 1470 ± 10 ms | 23 ± 2 ms |
+| new card shows | 1476 ± 9 ms | 104 ± 11 ms | 1469 ± 9 ms | 35 ± 7 ms |
+| deleted card goes | 1475 ± 8 ms | 81 ± 5 ms | 1471 ± 8 ms | 26 ± 6 ms |
+| typed key shows | 98 ± 2 ms | 80 ± 2 ms | 45 ± 1 ms | 27 ± 2 ms |
+| a started app shows the others | 374 ± 13 ms | 277 ± 3 ms | not measured | not measured |
+| cursor back after the network changes, with an online event | 13 to over 60 s | 248 ± 29 ms | not applicable | not applicable |
+| the same without one | over 60 s | 3229 ± 9 ms | not applicable | not applicable |
+
+Before is `main` at 6475073, with feel.mjs run against it. In 5 of 5 runs of 20 s in which both edit at random at once, both screens end the same.
 
 With 0 to 40 ms of jitter a hop, drags trail by 162 ± 3 ms over the relay and settle 178 ± 6 ms after the drop.
 
