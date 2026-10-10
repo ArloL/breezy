@@ -199,13 +199,37 @@ import Foundation
       let taken = open.group.live?.taken ?? []
       // as the apps, which begin, then hold, and edit nothing someone else holds
       guard !model.inGesture, let id = items(model.board.cards.map(\.id), try o.int("n"), 1).first, !taken.contains(id) else { break }
-      let text = try o.string("text")
-      let half = String(decoding: Array(text.utf16.prefix((text.utf16.count + 1) / 2)), as: UTF16.self)
       model.begin()
       open.session.hold([id])
-      model.update { $0.setText(id, half) }
-      model.update { $0.setText(id, text) }
-      model.end("Edit")
+      edit(model, id, try o.string("text"), back: o["back"]?.bool == true)
+      model.end("Edit Card")
+    case "newCard":
+      // as the app makes one: added and stacked, held, typed into, then finished, which takes an empty one away
+      guard !model.inGesture else { break }
+      let (x, y) = (try o.number("x"), try o.number("y"))
+      model.begin()
+      var id = ""
+      model.update { b in
+        id = b.addCard(x: x, y: y)
+        b.gravity(heights(b))
+      }
+      open.session.hold([id])
+      edit(model, id, try o.string("text"), back: false)
+      model.end("New Card")
+    case "laneTitle", "resize":
+      let taken = open.group.live?.taken ?? []
+      guard !model.inGesture, let lid = items(model.board.lanes.map(\.id), try o.int("n"), 1).first, !taken.contains(lid),
+            let l = model.board.lane(lid) else { break }
+      model.begin()
+      open.session.hold([lid])
+      if name == "laneTitle" {
+        let title = try o.string("text")
+        model.update { $0.setLaneTitle(lid, title) }
+      } else {
+        let (dw, dh) = (try o.number("dw"), try o.number("dh"))
+        model.update { $0.resizeLane(lid, w: l.w + dw, h: l.h + dh) }
+      }
+      model.end(name == "laneTitle" ? "Rename Lane" : "Resize Lane")
     case "press":
       guard !model.inGesture else { break }
       let taken = open.group.live?.taken ?? []
@@ -259,6 +283,16 @@ import Foundation
     guard !sorted.isEmpty else { return [] }
     let start = ((n % sorted.count) + sorted.count) % sorted.count
     return (0..<min(max(count, 0), sorted.count)).map { sorted[(start + $0) % sorted.count] }
+  }
+
+  /// Types `text` into card `id`'s front, or its back, in two steps, then finishes as the app does.
+  private func edit(_ model: BoardModel, _ id: String, _ text: String, back: Bool) {
+    let half = String(decoding: Array(text.utf16.prefix((text.utf16.count + 1) / 2)), as: UTF16.self)
+    for t in [half, text] { model.update { back ? $0.setNotes(id, t) : $0.setText(id, t) } }
+    model.update { b in
+      b.finishEdit(id)
+      b.gravity(heights(b))
+    }
   }
 
   private func heights(_ b: Board) -> HeightOf {

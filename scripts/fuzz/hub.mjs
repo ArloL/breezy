@@ -19,7 +19,7 @@ const b64 = (bytes) => Buffer.from(bytes).toString("base64url");
 const unb64 = (s) => (s == null ? null : Buffer.from(s, "base64url"));
 
 /** Operation weights; a gesture is press, drags, then release or cancel. */
-const OPS = { addCard: 10, type: 10, color: 6, delete: 3, addLane: 2, drag: 12, dragLane: 3, undo: 4, redo: 2, hide: 3, retry: 1, resync: 0.5, bulk: 0.4, board: 0.5, cursor: 6 };
+const OPS = { addCard: 10, type: 10, color: 6, delete: 3, addLane: 2, drag: 12, dragLane: 3, undo: 4, redo: 2, hide: 3, retry: 1, resync: 0.5, bulk: 0.4, board: 0.5, cursor: 6, newCard: 6, laneTitle: 1.5, resize: 1.5 };
 const FAULTS = {
   lostResponse: 3, serverError: 2, portal: 2, truncated: 1, failFast: 1, relayDrop: 2, relayRestart: 1, relayEvict: 1,
   directClose: 2, directSilent: 2, directFail: 1, skew: 1, freeze: 2, outage: 2, restore: 0.3, absence: 0.3,
@@ -502,7 +502,14 @@ export class Hub {
       case "addLane":
         return this.op(d, { op: "addLane", x: r.int(10) * 480, y: 0 });
       case "type":
-        return this.op(d, { op: "type", n, text: `${d.me.name} ${r.int(1e6)}${r.chance(0.2) ? "\nmore" : ""}` });
+        return this.op(d, { op: "type", n, back: r.chance(0.25), text: r.chance(0.1) ? "" : `${d.me.name} ${r.int(1e6)}${r.chance(0.2) ? "\nmore  " : ""}` });
+      case "newCard":
+        // now and then left empty, which takes it away again as editing ends
+        return this.op(d, { op: "newCard", x: r.int(40) * 24, y: r.int(30) * 24, text: r.chance(0.15) ? "" : `${d.me.name} new ${r.int(1e6)}` });
+      case "laneTitle":
+        return this.op(d, { op: "laneTitle", n, text: `${d.me.name} lane ${r.int(1000)}` });
+      case "resize":
+        return this.op(d, { op: "resize", n, dw: (r.int(9) - 4) * 24, dh: (r.int(9) - 4) * 24 });
       case "color":
         return this.op(d, { op: "color", n, count: r.chance(0.8) ? 1 : 1 + r.int(5), color: 1 + r.int(5) });
       case "delete":
