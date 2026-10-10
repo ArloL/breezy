@@ -379,8 +379,7 @@ if (only.has("create")) {
   for (let r = 0; r < RUNS; r++) {
     const x = 450 + (r % 3) * 220, y = 150 + Math.floor(r / 3) * 150;
     await b.run("__frames.length = 0");
-    const before = (await b.run("__frames.at(-1) ?? null"))?.[5];
-    await sleep(100);
+    await waitFor("a frame on b", () => b.run("__frames.length > 0"));
     const n0 = (await b.run("__frames.at(-1)"))[5];
     await a.mouse("mouseMoved", x, y);
     await a.mouse("mousePressed", x, y, { clickCount: 1 }); await a.mouse("mouseReleased", x, y, { clickCount: 1 });
