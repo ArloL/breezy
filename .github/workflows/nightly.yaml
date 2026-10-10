@@ -1,0 +1,99 @@
+name: Nightly
+
+# The measured network feel and the Mac's performance journal, each against the baseline in scripts/baselines/ that
+# runners recorded: a run fails when a measure's 95 % CI lies wholly above its baseline's. To record one, copy a run's
+# artifact there. Pull requests that change what is measured or the baselines run it too.
+on:
+  schedule:
+  - cron: "23 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches:
+    - main
+    paths:
+    - .github/workflows/nightly.yaml
+    - scripts/baselines/**
+    - scripts/gate.mjs
+    - scripts/feel.mjs
+    - scripts/bench.sh
+    - Breezy/Support/Bench.swift
+permissions: {}
+
+jobs:
+  feel:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Install the relay
+      run: npm ci --prefix relay
+    - name: Install Chromium
+      env:
+        # renovate: datasource=npm depName=playwright
+        PLAYWRIGHT_VERSION: 1.64.0
+      run: npx --yes "playwright@${PLAYWRIGHT_VERSION}" install chromium
+    # over the relay only: GitHub's macOS runners open no WebRTC channel
+    - name: Measure
+      run: |
+        set -o pipefail
+        mkdir -p build
+        node scripts/feel.mjs | tee build/feel.txt
+        tail -n 1 build/feel.txt > build/feel.json
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: feel
+        path: build/feel.json
+    - name: Compare with the baseline
+      run: |
+        if [ ! -f scripts/baselines/feel.json ]; then
+          echo "::notice::No baseline in scripts/baselines/feel.json: this run's artifact can be one"
+          exit 0
+        fi
+        node scripts/gate.mjs scripts/baselines/feel.json build/feel.json
+  bench:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    - name: Generate project
+      run: xcodegen generate
+    - name: Build
+      run: |
+        xcodebuild \
+          -project Breezy.xcodeproj \
+          -scheme Breezy \
+          -configuration Release \
+          -derivedDataPath build \
+          build
+    - name: Measure
+      run: |
+        printf '{"format": 1, "cards": [], "lanes": []}' > build/empty.breezy
+        python3 scripts/make-stress-board.py build/stress.breezy
+        scripts/bench.sh nightly 10 build/empty.breezy build/stress.breezy
+        python3 scripts/bench-summary.py
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: bench
+        path: build/bench.jsonl
+    - name: Compare with the baseline
+      run: |
+        if [ ! -f scripts/baselines/bench.jsonl ]; then
+          echo "::notice::No baseline in scripts/baselines/bench.jsonl: this run's artifact can be one"
+          exit 0
+        fi
+        node scripts/gate.mjs scripts/baselines/bench.jsonl build/bench.jsonl
