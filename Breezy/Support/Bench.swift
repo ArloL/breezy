@@ -55,19 +55,22 @@ final class Bench {
     }
   }
 
-  /// A live resize: the window grows by 20 pt a step, 30 steps, and shrinks back.
+  /// A live resize: the window grows by 20 pt a step, 30 steps, and shrinks back through the frames it took, as a
+  /// screen too small for it to grow keeps it from shrinking below where it began.
   private func resize() {
     guard let w = wc.window else { return }
-    for i in 0..<60 {
+    var frames: [NSRect] = []
+    for _ in 0..<30 {
       steps.append {
+        frames.append(w.frame)
         var f = w.frame
-        let d: CGFloat = i < 30 ? 20 : -20
-        f.size.width += d
-        f.size.height += d
-        f.origin.y -= d
+        f.size.width += 20
+        f.size.height += 20
+        f.origin.y -= 20
         w.setFrame(f, display: true)
       }
     }
+    for _ in 0..<30 { steps.append { w.setFrame(frames.removeLast(), display: true) } }
   }
 
   static func ramp(_ a: Double, _ b: Double, _ n: Int) -> [Double] {
