@@ -126,6 +126,7 @@ export class Hub {
 
   async op(d, o, extra = {}) {
     this.stats.ops[o.op] = (this.stats.ops[o.op] ?? 0) + 1;
+    if (["press", "drag", "release", "cancel", "type"].includes(o.op)) d.gestureAt = V.now;
     this.note("op", { dev: d.i, op: o, ...extra });
     return this.command(d, { cmd: "op", op: o });
   }
@@ -424,6 +425,7 @@ export class Hub {
       await this.start();
       await this.setUp();
       this.phase = "run";
+      this.watch();
       if (this.opts.replay) this.scheduleReplay(this.opts.replay);
       else {
         this.scheduleOps();
@@ -744,6 +746,41 @@ export class Hub {
     });
   }
 
+  // MARK: checks along the way
+
+  /** Every 5 s: holds no gesture explains, which keep the others from editing those items. A finish holds until its push
+   * returns, which a dead network can take a while over, hence the margins. */
+  watch() {
+    this.violations ??= new Map();
+    this.at(V.now + 5000, "watch", async () => {
+      const mine = new Map();
+      for (const d of this.devices) {
+        const s = await this.command(d, { cmd: "state" });
+        mine.set(d.i, s.mine);
+        if (!d.frozen && s.mine > 0 && !d.gesture && V.now - (d.gestureAt ?? 0) > 120_000) {
+          this.violation(d.i, "holds", `holds ${s.mine} items 120 s after its last gesture`);
+        }
+      }
+      for (const ws of this.relay.state.sockets) {
+        const a = ws.deserializeAttachment();
+        if (!a?.authed || a.left || !a.holds.length || mine.get(ws.conn.dev) > 0) {
+          if (ws.conn) ws.conn.idleHolds = null;
+          continue;
+        }
+        ws.conn.idleHolds ??= V.now;
+        if (V.now - ws.conn.idleHolds > 45_000) this.violation(ws.conn.dev, "relay", `the relay keeps ${a.holds.length} holds 45 s after the device let go`);
+      }
+      if (this.phase !== "done") this.watch();
+    });
+  }
+
+  violation(dev, kind, problem) {
+    const k = `${dev} ${kind}`;
+    if (this.violations.has(k)) return;
+    this.violations.set(k, { dev, problem: `${problem} (at ${(V.now / 1000).toFixed(1)} s)` });
+    this.note("violation", { dev, problem });
+  }
+
   // MARK: replay
 
   /** Runs the run phase's entries of a trace at their times instead of drawing operations, faults and links. */
@@ -865,6 +902,7 @@ export class Hub {
   }
 
   async check() {
+    this.phase = "done";
     const snaps = [];
     for (const d of this.devices) snaps.push(await this.command(d, { cmd: "state" }));
     const problems = [];
@@ -883,6 +921,7 @@ export class Hub {
       const missing = others.filter((x) => !s.seen.includes(x));
       if (missing.length) problems.push({ dev: i, problem: `does not see ${missing.length} of the others` });
     }
+    for (const v of this.violations?.values() ?? []) problems.push(v);
     const held = this.relay.holds();
     if (Object.keys(held).length) problems.push({ problem: `relay holds ${JSON.stringify(held)}` });
     const hash = createHash("sha256").update(JSON.stringify(this.trace)).update(want).digest("hex").slice(0, 16);
