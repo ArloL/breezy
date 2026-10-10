@@ -14,7 +14,7 @@ A space holds records, each with a random 128-bit id (22 characters, base64url, 
 | lane | `board`, `title`, `pos` (x, y), `size` (w, h) |
 | card | `board`, `text`, `notes`, `color`, `pos` (x, y), `w`, `order` |
 
-- A record's plaintext is JSON: `{"format": 1, "kind": "card", …fields}`. A deleted record is `{"format": 1, "kind": "card", "deleted": true}` and stays forever.
+- A record's plaintext is JSON: `{"format": 1, "kind": "card", …fields}`. A deleted record is `{"format": 1, "kind": "card", "deleted": true}`; it comes back only when an undo writes the whole record again, never through an edit to a field.
 - `order` is a text sort key that replaces the array order of cards, so stacking order survives merges. Raising a card gives it a key after the highest; a new card gets one too. Keys are fractional indices: a key can always be made between two others.
 - `pos` and `size` are single fields, so a merge never takes x from one move and y from another.
 - Deleting a board deletes its lanes and cards. A record whose board is deleted or missing is not shown.

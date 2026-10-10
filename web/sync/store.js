@@ -89,7 +89,8 @@ export class Store {
     this.apply(out);
   }
 
-  /** Local edits. A deleted record stays deleted; partial fields for an unknown record, and new records on a deleted board, are dropped. */
+  /** Local edits. A deleted record comes back only whole, as an undo writes it; partial fields for an unknown record, and new
+   * records on a deleted board, are dropped. */
   apply(edits) {
     const boards = new Set();
     for (const [id, change] of Object.entries(edits)) {
@@ -99,7 +100,13 @@ export class Store {
         boards.add(s.current.board ?? id);
         this.state.records[id] = { ...s, current: deletedRecord(change.deleted) };
       } else if (s) {
-        if (s.current.deleted === true) continue;
+        if (s.current.deleted === true) {
+          // a whole record, as undoing a delete writes, brings it back; a field edit, as to a card deleted elsewhere, does not
+          if (!change.fields.kind || this.state.records[change.fields.board]?.current.deleted === true) continue;
+          this.state.records[id] = { ...s, current: change.fields };
+          boards.add(change.fields.board ?? id);
+          continue;
+        }
         const current = { ...s.current, ...change.fields };
         this.state.records[id] = { ...s, current };
         boards.add(current.board ?? id);

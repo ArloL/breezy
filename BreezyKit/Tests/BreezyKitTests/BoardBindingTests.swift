@@ -86,3 +86,24 @@ import Testing
   try await Task.sleep(for: .milliseconds(50))
   #expect(ends == 1)
 }
+
+@MainActor @Test func undoingADeleteBringsTheCardBackToTheStoreToBePushed() {
+  let (store, id, model, binding) = opened(board([card("a", 0, 0, "x")]))
+  model.perform("Delete") { $0.remove(["a"]) }
+  binding.flush()
+  #expect(store.board(id).cards.isEmpty)
+  // the delete went to the server
+  settle(store, version: 2)
+  model.undoManager.undo()
+  binding.flush()
+  #expect(store.board(id).cards.map(\.text) == ["x"])
+  #expect(store.pending.map(\.id) == ["a"])
+}
+
+@MainActor @Test func anEditToACardDeletedElsewhereDoesNotBringItBack() {
+  let (store, id, model, binding) = opened(board([card("a", 0, 0, "x")]))
+  store.merge([Incoming(id: "a", version: 2, record: .marker("card"))])
+  model.perform("Colour") { $0.setColor(["a"], 3) }
+  binding.flush()
+  #expect(store.board(id).cards.isEmpty)
+}
