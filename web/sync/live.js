@@ -131,7 +131,7 @@ class Pipe {
 }
 
 export class Live {
-  constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = () => Date.now(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms), peerTransport = typeof RTCPeerConnection === "function" ? () => new RTCTransport() : null }) {
+  constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = () => performance.now(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms), peerTransport = typeof RTCPeerConnection === "function" ? () => new RTCTransport() : null }) {
     Object.assign(this, { relay, space, keys, me, makeSocket: socket, now, clock, schedule });
     /** What `at` in this device's bodies counts from. */
     this.started = clock();

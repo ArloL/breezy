@@ -328,11 +328,11 @@ public struct Peer: Equatable, Sendable {
   private var decoders: [String: Decoders] = [:]
   private(set) var direct: Direct?
 
-  /// `schedule(0, …)` runs on the next turn.
+  /// `schedule(0, …)` runs on the next turn. `now` times only intervals here, so it need not be the wall clock.
   public init(
     relay: String, space: String, keys: SpaceKeys, me: Person,
     socket: @escaping @MainActor (URL) -> LiveSocket = { WebSocketTaskSocket(url: $0) },
-    now: @escaping () -> Date = Date.init,
+    now: @escaping () -> Date = steady(),
     uptime: @escaping () -> Double = systemUptime,
     schedule: @escaping Schedule = afterOnMain,
     transport: PeerTransport? = nil

@@ -118,9 +118,10 @@ import Foundation
     g.live = nil
     if let relay, let space = g.space, let keys = try? SpaceKeys(state: g.store.state) {
       let transport = peerTransport?()
+      // its timeouts run on uptime: a wall clock set back would keep a dead socket for as long
       let live = socket.map {
-        Live(relay: relay, space: space, keys: keys, me: me, socket: $0, now: now, uptime: uptime, schedule: schedule, transport: transport)
-      } ?? Live(relay: relay, space: space, keys: keys, me: me, now: now, uptime: uptime, schedule: schedule, transport: transport)
+        Live(relay: relay, space: space, keys: keys, me: me, socket: $0, now: steady(uptime), uptime: uptime, schedule: schedule, transport: transport)
+      } ?? Live(relay: relay, space: space, keys: keys, me: me, now: steady(uptime), uptime: uptime, schedule: schedule, transport: transport)
       live.onPushed = { [weak g] version, pushed in
         // a repeat of what this device has already
         guard let g, pushed != nil || version > g.store.state.cursor else { return }
