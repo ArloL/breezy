@@ -166,9 +166,10 @@ export class Space extends DurableObject {
     const now = Date.now();
     // one that left is closed already, and its alarm would come back every TICK_MS until its far end answers
     const conns = this.conns().filter((c) => !c.left);
+    // not 4001, which tells a device its token was refused: one that was only slow tries again
     for (const c of unauthenticated(conns, now)) {
       try {
-        c.ws.close(4001, "unauthorized");
+        c.ws.close(4002, "auth timeout");
       } catch {}
     }
     const gone = lapsed(conns.filter((c) => c.authed), now);
