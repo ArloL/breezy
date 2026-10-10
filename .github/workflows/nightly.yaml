@@ -80,6 +80,15 @@ jobs:
           -configuration Release \
           -derivedDataPath build \
           build
+    - name: Debug the display
+      run: |
+        system_profiler SPDisplaysDataType | grep -iE 'resolution|looks like|display'
+        python3 scripts/make-stress-board.py build/stress.breezy
+        build/Build/Products/Release/Breezy.app/Contents/MacOS/Breezy -ApplePersistenceIgnoreState YES -BreezyBoard build/stress.breezy -BreezyCapture build/capture.png || true
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: capture
+        path: build/capture.png
     - name: Measure
       run: |
         printf '{"format": 1, "cards": [], "lanes": []}' > build/empty.breezy
