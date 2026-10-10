@@ -60,6 +60,7 @@ scripts/build-site.sh build/site local-$(git rev-parse --short HEAD) && mise exe
 relay/test.sh                  # the relay under wrangler dev, with its tests; first npm install --prefix relay
 npm --prefix relay run dev     # serves ws://127.0.0.1:58568/, which server/dev.sh names
 node scripts/direct-e2e.mjs    # starts wrangler, server/dev.sh and a web server on 58568, 58566, 58565; two headless Chromiums open a direct channel, then fall back to the relay, checking that both carry binary, compact bodies, one body a move. Needs Node 24, php, npm install --prefix relay, and Playwright's Chromium (or BREEZY_CHROMIUM; not ungoogled-chromium)
+node scripts/feel.mjs [--direct] [--only cursor,drag,colour,outage,silent,passive]   # the same setup with each browser behind a proxy that delays the relay 25 ms and the server 40 ms each way: how far a cursor and a drag trail, how long a recolour takes, and how long both take after a network change; 95 % CIs over --runs
 ```
 
 ## Touch prototype
