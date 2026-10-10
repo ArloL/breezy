@@ -192,6 +192,11 @@ public struct Peer: Equatable, Sendable {
   public static let maxBackoff: TimeInterval = 30
   public static let pingInterval: TimeInterval = 5
   public static let pongTimeout: TimeInterval = 3
+  /// While another holds something, its bodies come every `sendInterval` at most, so a relay quiet this long is asked
+  /// sooner, and must answer within `heldPongTimeout`. A holder standing still sends nothing, so quiet alone does not drop
+  /// the socket.
+  public static let heldPingInterval: TimeInterval = 1
+  public static let heldPongTimeout: TimeInterval = 1.5
   /// Sending after hearing nothing from the relay this long asks it to answer, so that a socket a network change left
   /// dead is found while someone is busy.
   public static let quiet: TimeInterval = 2
@@ -308,8 +313,9 @@ public struct Peer: Equatable, Sendable {
   /// When the relay last said anything, and last welcomed this layer.
   private var heardAt = Date.distantPast
   private var welcomedAt = Date.distantFuture
-  /// When a ping went out that nothing has answered yet.
+  /// When a ping went out that nothing has answered yet, and how long it has to be answered.
   private var pingWaiting: Date?
+  private var pongTimeout = Live.pongTimeout
   private var presence: (board: String?, boards: [String], selection: [String]) = (nil, [], [])
   private var cursor: Cursor?
   private var cursorBoard = ""
@@ -409,8 +415,9 @@ public struct Peer: Equatable, Sendable {
     guard connected, pingWaiting == nil, let socket else { return }
     let sent = now()
     pingWaiting = sent
+    pongTimeout = taken.isEmpty ? Self.pongTimeout : Self.heldPongTimeout
     socket.send("ping")
-    schedule(Self.pongTimeout) { [weak self] in
+    schedule(pongTimeout) { [weak self] in
       guard let self, pingWaiting == sent else { return }
       _ = unanswered()
     }
@@ -422,7 +429,7 @@ public struct Peer: Equatable, Sendable {
 
   /// Whether the socket left a ping unanswered too long, and so was dropped.
   private func unanswered() -> Bool {
-    guard connected, let p = pingWaiting, now().timeIntervalSince(p) >= Self.pongTimeout else { return false }
+    guard connected, let p = pingWaiting, now().timeIntervalSince(p) >= pongTimeout else { return false }
     let s = socket
     dropped(1006)
     s?.close()
@@ -987,7 +994,7 @@ public struct Peer: Equatable, Sendable {
       s.close()
       return
     }
-    if connected && t.timeIntervalSince(heardAt) >= Self.pingInterval { probe() }
+    if connected && t.timeIntervalSince(heardAt) >= (taken.isEmpty ? Self.pingInterval : Self.heldPingInterval) { probe() }
     var changed = false
     // a connection that never speaks, such as one in another space with this one's token, would keep every cursor on
     // the relay
