@@ -94,7 +94,10 @@ public struct HTTPTransport: Transport {
       var since: Int?
       var epoch: String?
     }
-    let data = try await request([], body: JSONEncoder().encode(Body(writes: writes, since: since, epoch: epoch)))
+    // sorted, so that the same push is the same bytes
+    let e = JSONEncoder()
+    e.outputFormatting = [.sortedKeys]
+    let data = try await request([], body: e.encode(Body(writes: writes, since: since, epoch: epoch)))
     return try JSONDecoder().decode(PushResult.self, from: data)
   }
 
