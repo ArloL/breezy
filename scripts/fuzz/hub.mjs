@@ -129,7 +129,7 @@ export class Hub {
 
   async op(d, o, extra = {}) {
     this.stats.ops[o.op] = (this.stats.ops[o.op] ?? 0) + 1;
-    if (["press", "drag", "release", "cancel", "type"].includes(o.op)) d.gestureAt = V.now;
+    if (["press", "drag", "release", "cancel", "type", "newCard", "laneTitle", "resize"].includes(o.op)) d.gestureAt = V.now;
     this.note("op", { dev: d.i, op: o, ...extra });
     return this.command(d, { cmd: "op", op: o });
   }
@@ -747,6 +747,7 @@ export class Hub {
   async thaw(d) {
     if (!d.frozen) return;
     d.frozen = false;
+    d.thawedAt = V.now;
     const inbox = d.inbox.splice(0);
     for (const c of inbox) await this.command(d, c);
     // the app shows again, or the Mac wakes: both check the network; a replayed freeze thaws again itself
@@ -791,7 +792,8 @@ export class Hub {
       for (const d of this.devices) {
         const s = await this.command(d, { cmd: "state" });
         mine.set(d.i, s.mine);
-        if (!d.frozen && s.mine > 0 && !d.gesture && V.now - (d.gestureAt ?? 0) > 120_000) {
+        // frozen, a finish waits for its push as long, so time counts from the thaw
+        if (!d.frozen && s.mine > 0 && !d.gesture && V.now - Math.max(d.gestureAt ?? 0, d.thawedAt ?? 0) > 120_000) {
           this.violation(d.i, "holds", `holds ${s.mine} items 120 s after its last gesture`);
         }
       }
