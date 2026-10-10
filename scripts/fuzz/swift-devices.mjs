@@ -44,8 +44,10 @@ export class SwiftDevices {
     });
   }
 
+  /** Ends the input, after which breezy-sim removes its devices' files and exits; one that hangs is killed. */
   stop() {
     this.child.stdin.end();
-    this.child.kill();
+    const t = setTimeout(() => this.child.kill(), 5000);
+    this.child.once("exit", () => clearTimeout(t));
   }
 }

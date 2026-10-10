@@ -21,12 +21,15 @@ import Foundation
   private var out: [JSONValue] = []
   private var count = 0
 
-  /// Device directories go under `root`, which `close` removes.
+  /// Device directories go under `root`, which starts empty and which `close` removes. Its name is new each time: a
+  /// process id comes round again, and a sim killed before `close` leaves its directory behind.
   public init(
-    cap: Int = SimHost.cap, root: URL = FileManager.default.temporaryDirectory.appendingPathComponent("breezy-sim-\(getpid())")
+    cap: Int = SimHost.cap,
+    root: URL = FileManager.default.temporaryDirectory.appendingPathComponent("breezy-sim-\(getpid())-\(UUID().uuidString)")
   ) {
     self.cap = cap
     self.root = root
+    try? FileManager.default.removeItem(at: root)
     Serial.install()
   }
 
