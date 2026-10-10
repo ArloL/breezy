@@ -290,6 +290,38 @@ jobs:
       run: scripts/deploy.py _site
     - name: Make sure build did not change anything
       run: git diff --exit-code
+  # the relay on Cloudflare, once the production environment holds CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; a
+  # relay older than the apps still serves them, so it may go after the site
+  relay:
+    needs:
+    - web
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    environment: production
+    concurrency:
+      group: relay
+      cancel-in-progress: false
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Deploy the relay
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      run: |
+        if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+          echo "::warning::The production environment has no CLOUDFLARE_API_TOKEN, so the relay was not deployed"
+          exit 0
+        fi
+        npm ci --prefix relay
+        npm --prefix relay run deploy
   required-status-check:
     name: main.required-status-check
     needs:
