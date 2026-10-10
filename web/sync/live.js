@@ -1,6 +1,7 @@
 // A space's live layer over its relay: who is here and where, what they hold, and their edits as they happen, as
 // BreezyKit's Live; see the multiplayer and lean sync designs. Bodies are sealed with the space key, so the relay reads
 // none of them; a version 2 channel carries compact bodies unsealed.
+import { steadyClock } from "./steady.js";
 import { encode, decode } from "./base64.js";
 import { LIVE_FIELDS } from "./overlay.js";
 import { Track } from "./track.js";
@@ -134,7 +135,7 @@ class Pipe {
 }
 
 export class Live {
-  constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = () => performance.now(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms), peerTransport = typeof RTCPeerConnection === "function" ? () => new RTCTransport() : null }) {
+  constructor({ relay, space, keys, me, socket = (url) => new WebSocket(url), now = steadyClock(), clock = () => performance.now(), schedule = (ms, fn) => setTimeout(fn, ms), peerTransport = typeof RTCPeerConnection === "function" ? () => new RTCTransport() : null }) {
     Object.assign(this, { relay, space, keys, me, makeSocket: socket, now, clock, schedule });
     /** What `at` in this device's bodies counts from. */
     this.started = clock();
