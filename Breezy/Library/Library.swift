@@ -23,6 +23,7 @@ extension Notification.Name {
   private var closing: Set<String> = []
   /// When what gestures hold is let go.
   private let holds = GestureHolds()
+  private var collabs: [ObjectIdentifier: Collab] = [:]
 
   init(directory: URL) throws {
     spaces = try Spaces(directory: directory, me: Self.me(), peerTransport: { WebPeerTransport() })
@@ -37,11 +38,7 @@ extension Notification.Name {
     liveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
-        for g in self.spaces.spaces {
-          guard let live = g.live, let space = g.space else { continue }
-          live.tick()
-          self.holds.sweep(space, holding: !live.mine.isEmpty, busy: self.inGesture(g), release: live.release)
-        }
+        for g in self.spaces.spaces { self.collab(g).tick() }
         self.updateLive()
       }
     }
@@ -170,48 +167,18 @@ extension Notification.Name {
       guard let live = self?.spaces.group(of: id)?.live else { return nil }
       return (CanvasPresence(live, board: id), live.animating(on: id))
     }
-    canvas.hold = { [weak self, weak doc] ids in
-      self?.spaces.group(of: id)?.live?.hold(ids)
-      // what the gesture did before it held, such as making the card it edits, shows now rather than at its next change
-      doc?.binding.afterEdit?()
-    }
-    doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
-    // others follow a held gesture live, and see its intermediate states pushed as changes they restack around
+    canvas.hold = { [weak doc] ids in doc?.session?.hold(ids) }
     if let g = spaces.group(of: id) {
-      g.engine.holdBack = { [weak self, weak g] in
-        guard let self, let g else { return false }
-        return inGesture(g) && g.live?.connected == true && g.live?.mine.isEmpty == false
-      }
-    }
-    doc.binding.afterEdit = { [weak self, weak doc] in
-      guard let self, let doc, let g = spaces.group(of: id) else { return }
-      // an edit outside a gesture, such as a recolour, goes out at once rather than with a later cycle, and shows on
-      // others' screens ahead of its push
-      let before = doc.binding.seen
-      if !doc.model.inGesture, g.space != nil, doc.binding.flush() {
-        // shown only when its push goes now, as others would see it undone when the preview lapses
-        let now = g.engine.pushesNow
-        Task { await g.engine.sync() }
-        let b = doc.model.board
-        let ids = Set(before.cards.map(\.id) + before.lanes.map(\.id) + b.cards.map(\.id) + b.lanes.map(\.id))
-        if now { g.live?.sendEdit(board: id, items: Records.liveFields(from: before, to: b, ids: ids, board: id)) }
-      }
-      guard let live = g.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
-      live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),
-                    caret: doc.windowController?.canvas.caret(), starts: Records.startPositions(start, ids: live.mine))
-    }
-    // at a gesture's end, even when its window closed meanwhile: push at once, then let go
-    doc.binding.afterGesture = { [weak self, weak binding = doc.binding] in
-      guard let self, let binding, let g = spaces.group(of: id), let space = g.space, let live = g.live, !live.mine.isEmpty else { return }
-      holds.finish(
-        space, flush: { binding.flush() }, sync: { await g.engine.sync() }, busy: { [weak self] in self?.inGesture(g) ?? false },
-        release: { [weak g] in g?.live?.release() })
+      doc.session = collab(g).open(id, model: doc.model, binding: doc.binding, caret: { [weak doc] in doc?.windowController?.canvas.caret() })
     }
   }
 
-  /// Whether a board of `g` is in a gesture.
-  private func inGesture(_ g: Spaces.Group) -> Bool {
-    documents.contains { g.store.title(of: $0.boardID) != nil && $0.model.inGesture }
+  /// `g`'s Collab, made on first use.
+  private func collab(_ g: Spaces.Group) -> Collab {
+    if let c = collabs[ObjectIdentifier(g)] { return c }
+    let c = Collab(group: g, holds: holds)
+    collabs[ObjectIdentifier(g)] = c
+    return c
   }
 
   /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front
@@ -264,6 +231,7 @@ extension Notification.Name {
   func leave(_ group: Spaces.Group) {
     for d in documents where group.store.title(of: d.boardID) != nil { d.close() }
     spaces.leave(group)
+    collabs[ObjectIdentifier(group)] = nil
     NotificationCenter.default.post(name: .boardsChanged, object: nil)
   }
 }
