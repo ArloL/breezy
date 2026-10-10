@@ -193,7 +193,13 @@ async function joinSpace(b, name) {
   await b.run(`import("/sync/idb.js").then((m) => m.saveState("me", { device: ${JSON.stringify(b64(16))}, name: ${JSON.stringify(name)} }))`);
   await b.go("about:blank");
   await b.go(`http://localhost:58565/${hash}`);
-  await waitFor(`${name} join prompt`, () => b.click('#sheet:not([hidden]) [data-sheet="ok"]'));
+  // not "Breezy is open in another tab", which shows until the page before lets go of the boards
+  await waitFor(`${name} join prompt`, () => b.run(`(() => {
+    const sheet = document.querySelector("#sheet:not([hidden])");
+    if (!sheet?.querySelector(".sheet-title").textContent.startsWith("Join")) return false;
+    sheet.querySelector('[data-sheet="ok"]').click();
+    return true;
+  })()`));
 }
 
 const a = await browser("a"), b = await browser("b");
