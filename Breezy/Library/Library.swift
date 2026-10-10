@@ -176,7 +176,7 @@ extension Notification.Name {
     if let g = spaces.group(of: id) {
       g.engine.holdBack = { [weak self, weak g] in
         guard let self, let g else { return false }
-        return inGesture(g) && g.live?.mine.isEmpty == false
+        return inGesture(g) && g.live?.connected == true && g.live?.mine.isEmpty == false
       }
     }
     doc.binding.afterEdit = { [weak self, weak doc] in
