@@ -4,7 +4,7 @@ import Foundation
 /// design. Order on the wire: items and group ids by their id's bytes, fields by key ascending.
 public enum Compact {
   public static let keyframe: TimeInterval = 1
-  public static let fields = ["pos", "size", "w", "text", "notes", "color", "title", "kind"]
+  public static let fields = ["pos", "size", "w", "text", "notes", "color", "title", "kind", "gone"]
   static let kinds = ["card", "lane"]
   static let texts: Set<String> = ["text", "notes", "title"]
   /// Group members' offsets count as equal this close.
@@ -350,6 +350,9 @@ public final class LiveDecoder {
     case "kind":
       guard let k = integral(v), k >= 0, k < Double(Compact.kinds.count) else { return .bad }
       return .value(.string(Compact.kinds[Int(k)]))
+    case "gone":
+      guard case .bool(true) = v else { return .bad }
+      return .value(.bool(true))
     default: break
     }
     if let s = v.string { return .value(.string(s)) }

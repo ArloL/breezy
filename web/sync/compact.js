@@ -4,7 +4,7 @@ import { pack, unpack, Float32 } from "./msgpack.js";
 import { encode, decode } from "./base64.js";
 
 export const KEYFRAME_MS = 1000;
-export const FIELDS = ["pos", "size", "w", "text", "notes", "color", "title", "kind"];
+export const FIELDS = ["pos", "size", "w", "text", "notes", "color", "title", "kind", "gone"];
 const KINDS = ["card", "lane"];
 const TEXTS = new Set(["text", "notes", "title"]);
 /** Group members' offsets count as equal this close. */
@@ -173,6 +173,8 @@ function unfield(name, v, current) {
       return Number.isSafeInteger(v) ? v : BAD;
     case "kind":
       return Number.isInteger(v) ? KINDS[v] ?? BAD : BAD;
+    case "gone":
+      return v === true ? true : BAD;
   }
   if (typeof v === "string") return v;
   if (!Array.isArray(v) || v.length !== 4 || !v.slice(0, 3).every(uint) || typeof v[3] !== "string") return BAD;

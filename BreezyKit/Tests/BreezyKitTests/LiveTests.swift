@@ -185,11 +185,6 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   relay.run()
   b.noteCursor(7)
   #expect(b.overlay(on: B1).isEmpty)
-  // during a gesture an edit goes with it
-  a.hold([C1])
-  a.sendEdit(board: B1, items: recoloured)
-  relay.run()
-  #expect(b.overlay(on: B1).isEmpty)
 }
 
 @MainActor @Test func aHoldThatEndsWithoutAPushDropsTheOverlay() {

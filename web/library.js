@@ -268,19 +268,23 @@ export class Library {
     const { live, id, group } = this;
     const model = this.app.model;
     if (model.inGesture) {
+      this.gesturing = true;
       if (!live?.mine.size || !id) return;
       const s = this.app.state;
       const items = floated(liveFields(model.start, model.board, live.mine, id), model.board, new Set([...s.held].filter((x) => live.mine.has(x))), s.float);
       live.sendLive(id, items, this.app.caret(), startPositions(model.start, live.mine));
       return;
     }
-    if (!this.unfinished) {
+    const ended = this.gesturing;
+    this.gesturing = false;
+    // a press asks for holds before any gesture, so an edit that ends none is told apart by the gesture
+    if (!ended || !this.unfinished) {
       // an edit outside a held gesture, such as a recolour, goes out at once rather than with a later cycle, and shows
       // on others' screens ahead of its push
       const before = this.binding?.seen;
       if (!this.binding?.flush() || !group?.space) return;
       group.engine.sync();
-      const ids = new Set([...model.board.cards, ...model.board.lanes].map((x) => x.id));
+      const ids = new Set([...before.cards, ...before.lanes, ...model.board.cards, ...model.board.lanes].map((x) => x.id));
       if (live && id) live.sendEdit(id, liveFields(before, model.board, ids, id));
       return;
     }

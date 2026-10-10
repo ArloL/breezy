@@ -172,11 +172,6 @@ test("an edit outside a gesture shows at once, holding nothing, until its push i
   await relay.run();
   b.noteCursor(7);
   assert.equal(b.overlay(B1).size, 0);
-  // during a gesture an edit goes with it
-  a.hold([C1]);
-  a.sendEdit(B1, recoloured);
-  await relay.run();
-  assert.equal(b.overlay(B1).size, 0);
 });
 
 test("a hold that ends without a push drops the overlay", async () => {

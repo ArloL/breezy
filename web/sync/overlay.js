@@ -1,7 +1,7 @@
 // Others' live edits drawn over a board, and what a gesture sends of them, as BreezyKit's Overlay.
 import { cardRecord, laneRecord } from "./records.js";
 
-/** The fields a live message may carry; an item new during the gesture also carries `kind`. */
+/** The fields a live message may carry; an item new during the gesture also carries `kind`, and one deleted `gone`. */
 export const LIVE_FIELDS = ["pos", "size", "w", "text", "notes", "color", "title"];
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -24,6 +24,8 @@ export function liveFields(start, now, ids, board) {
     const was = start.lanes.find((x) => x.id === l.id);
     put(l.id, was && laneRecord(was, board), laneRecord(l, board));
   }
+  const kept = new Set([...now.cards, ...now.lanes].map((x) => x.id));
+  for (const x of [...start.cards, ...start.lanes]) if (ids.has(x.id) && !kept.has(x.id)) out[x.id] = { gone: true };
   return out;
 }
 
@@ -52,10 +54,14 @@ export function startPositions(start, ids) {
 const pair = (v) => (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite) ? v : null);
 const colour = (v) => Math.trunc(Math.min(5, Math.max(1, v)));
 
-/** `board` as others' live edits show it, a copy; a new card appears, other unknown ids are left out. */
+/** `board` as others' live edits show it, a copy; a new card or lane appears, a deleted one goes, other unknown ids
+ * are left out. */
 export function overlaid(board, overlay) {
   if (!overlay.size) return board;
   const b = structuredClone(board);
+  const gone = (x) => overlay.get(x.id)?.gone === true;
+  b.cards = b.cards.filter((c) => !gone(c));
+  b.lanes = b.lanes.filter((l) => !gone(l));
   for (const c of b.cards) {
     const f = overlay.get(c.id);
     if (!f) continue;
@@ -77,12 +83,18 @@ export function overlaid(board, overlay) {
     if (s) [l.w, l.h] = s;
     if (typeof f.title === "string") l.title = f.title;
   }
-  const known = new Set(b.cards.map((c) => c.id));
+  const known = new Set([...b.cards, ...b.lanes].map((x) => x.id));
   for (const [id, f] of [...overlay].sort(([a], [z]) => (a < z ? -1 : 1))) {
-    if (f.kind !== "card" || known.has(id)) continue;
+    if (known.has(id) || f.gone) continue;
     const [x, y] = pair(f.pos) ?? [0, 0];
-    b.cards.push({ id, x, y, w: Number.isFinite(f.w) ? f.w : 240, text: typeof f.text === "string" ? f.text : "",
-      color: Number.isFinite(f.color) ? colour(f.color) : 1, ...(f.notes ? { notes: f.notes } : {}) });
+    if (f.kind === "card") {
+      b.cards.push({ id, x, y, w: Number.isFinite(f.w) ? f.w : 240, text: typeof f.text === "string" ? f.text : "",
+        color: Number.isFinite(f.color) ? colour(f.color) : 1, ...(f.notes ? { notes: f.notes } : {}) });
+    }
+    if (f.kind === "lane") {
+      const [w, h] = pair(f.size) ?? [480, 720];
+      b.lanes.push({ id, x, y, w, h, title: typeof f.title === "string" ? f.title : "" });
+    }
   }
   return b;
 }
