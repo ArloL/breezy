@@ -12,7 +12,7 @@ Edits reach the other screens as fast as cursors do, and a network change costs 
 | drag lag | 126 ± 4 ms, still 12 % of frames | 103 ± 0 ms, never still | 35 ± 0 ms |
 | recolour shows | 1472 ± 5 ms | 83 ± 3 ms | 24 ± 4 ms |
 | new card shows | 1477 ± 6 ms | 99 ± 6 ms | not measured |
-| deleted card goes | about 170 ms | 81 ± 4 ms | 32 ± 2 ms |
+| deleted card goes | 1475 ± 8 ms | 81 ± 4 ms | 32 ± 2 ms |
 | typed key shows | not measured | 99 ± 1 ms | 27 ± 2 ms |
 | cursor back after the network changes, with an online event | 13 to over 60 s | 258 ± 64 ms | not applicable |
 | the same without one | over 60 s | 3226 ± 9 ms | not applicable |
