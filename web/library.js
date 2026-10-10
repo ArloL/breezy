@@ -211,8 +211,9 @@ export class Library {
   }
 
   /** Others on the open board: what they hold and have selected, their cursors, and their initials. The board draws
-   * again only when what they hold or have selected changed, or while they edit it; `force` after it was opened. */
-  showPresence(force = false) {
+   * again only when what they hold or have selected changed, or while they edit it; `force` after it was opened. In a
+   * frame already (`inFrame`), it draws in that frame rather than the next. */
+  showPresence(force = false, inFrame = false) {
     const { live, id } = this;
     const s = this.app.state;
     const taken = new Map(), seen = new Map();
@@ -226,7 +227,8 @@ export class Library {
       this.presenceKey = key;
       [s.taken, s.seen] = [taken, seen];
       if ([...s.selection].some((x) => s.taken.has(x))) this.app.select(s.selection);
-      this.app.view.invalidate();
+      if (inFrame) this.app.view.render();
+      else this.app.view.invalidate();
     }
     this.overlaySize = overlay;
     this.app.presence.show({ cursors: live && id ? live.cursors(id) : [], carets: live && id ? live.carets(id) : [], people: live && id ? live.people(id) : [] });
@@ -245,7 +247,7 @@ export class Library {
         if (!this.id) this.renderPeople();
       }
       if (!this.live || !this.id) return;
-      this.showPresence();
+      this.showPresence(false, true);
       if (this.live.animating(this.id)) this.animate();
     });
   }
