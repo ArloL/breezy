@@ -62,6 +62,10 @@ export class Space extends DurableObject {
       me.authed = true;
       me.v = m.v === 2 ? 2 : 1;
       ws.serializeAttachment(me);
+      // a device back after its network changed names the connection it had, which may not have closed: it goes now,
+      // with its holds, rather than when it lapses, so that the device can hold them again and nobody sees it twice
+      const old = typeof m.replaces === "string" && this.conns().find((c) => c.authed && c.id === m.replaces && c.id !== me.id);
+      if (old) this.leave(old.ws);
       const others = this.conns().filter((c) => c.authed && c.id !== me.id);
       send(ws, JSON.stringify({ t: "welcome", id: me.id, peers: others.map((c) => c.id), holds: holdsOf(others) }));
       for (const c of others) send(c.ws, JSON.stringify({ t: "join", id: me.id }));
@@ -122,11 +126,10 @@ export class Space extends DurableObject {
 
   leave(ws) {
     const me = ws.deserializeAttachment();
-    if (me?.holds.length) {
-      try {
-        ws.serializeAttachment({ ...me, holds: [] });
-      } catch {}
-    }
+    // a socket closed from here stays among the object's until its far end answers, which a dead one never does
+    try {
+      ws.serializeAttachment({ ...me, authed: false, holds: [] });
+    } catch {}
     try {
       ws.close(1000);
     } catch {}

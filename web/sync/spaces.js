@@ -107,8 +107,11 @@ export class Spaces {
       if (g.engine.relay !== relay || g.live || !this.spaces.includes(g)) return;
       const live = new Live({ relay, space: g.space, keys, me: this.me, ...(this.socket ? { socket: this.socket } : {}), ...(this.peerTransport !== undefined ? { peerTransport: this.peerTransport } : {}) });
       live.onPushed = async (version, extra) => {
+        // a repeat of what this device has already
+        if (!extra && version <= g.store.state.cursor) return;
         if (!(extra && (await g.engine.receivePushed(extra)))) g.engine.sync();
       };
+      live.onWelcome = () => g.engine.retryNow();
       live.onChange = () => this.onLive(g);
       live.onRefused = (ids) => this.onRefused(g, ids);
       // a refused token is the server's to report: its 401 shows "Not in this space any more"
@@ -204,6 +207,15 @@ export class Spaces {
     for (const g of this.spaces) {
       if (polling && g.live?.connected && now - g.engine.lastCycle < 30_000) continue;
       g.engine.sync();
+    }
+  }
+
+  /** The network may have changed, as when the app shows again, or did (`changed`), as when it comes back: every space
+   * syncs now and checks its relay. */
+  retryAll(changed = false) {
+    for (const g of this.spaces) {
+      g.engine.retryNow();
+      g.live?.check(changed);
     }
   }
 

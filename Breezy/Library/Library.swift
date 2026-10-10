@@ -1,5 +1,6 @@
 import AppKit
 import BreezyKit
+import Network
 
 extension Notification.Name {
   static let boardsChanged = Notification.Name("BreezyBoardsChanged")
@@ -12,6 +13,8 @@ extension Notification.Name {
   static var shared: Library!
   let spaces: Spaces
   private var timer: Timer?
+  private let path = NWPathMonitor()
+  private var pathSeen = false
   private var liveTimer: Timer?
   private var peopleSeen = ""
   /// Boards whose windows are closing, so that the close's own flush can't close them again.
@@ -49,8 +52,22 @@ extension Notification.Name {
       MainActor.assumeIsolated { self?.poll() }
     }
     NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-      MainActor.assumeIsolated { self?.syncNow() }
+      MainActor.assumeIsolated { self?.spaces.retryAll() }
     }
+    NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.spaces.retryAll(changed: true) }
+    }
+    // a network that comes back or changes leaves sockets and requests on the old one dead, often without a word
+    path.pathUpdateHandler = { [weak self] p in
+      let up = p.status == .satisfied
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        // the first says how the network is at the start
+        if self.pathSeen && up { self.spaces.retryAll(changed: true) }
+        self.pathSeen = true
+      }
+    }
+    path.start(queue: .main)
   }
 
   var documents: [BoardDocument] { NSDocumentController.shared.documents.compactMap { $0 as? BoardDocument } }
@@ -152,7 +169,10 @@ extension Notification.Name {
     canvas.hold = { [weak self] ids in self?.spaces.group(of: id)?.live?.hold(ids) }
     doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
     doc.binding.afterEdit = { [weak self, weak doc] in
-      guard let self, let doc, let live = spaces.group(of: id)?.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
+      guard let self, let doc, let g = spaces.group(of: id) else { return }
+      // an edit outside a gesture, such as a recolour, goes out at once rather than with a later cycle
+      if !doc.model.inGesture, g.space != nil, doc.binding.flush() { Task { await g.engine.sync() } }
+      guard let live = g.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
       live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),
                     caret: doc.windowController?.canvas.caret(), starts: Records.startPositions(start, ids: live.mine))
     }
@@ -160,7 +180,7 @@ extension Notification.Name {
     doc.binding.afterGesture = { [weak self, weak binding = doc.binding] in
       guard let self, let binding, let g = spaces.group(of: id), let space = g.space, let live = g.live, !live.mine.isEmpty else { return }
       holds.finish(
-        space, flush: binding.flush, sync: { await g.engine.sync() }, busy: { [weak self] in self?.inGesture(g) ?? false },
+        space, flush: { binding.flush() }, sync: { await g.engine.sync() }, busy: { [weak self] in self?.inGesture(g) ?? false },
         release: { [weak g] in g?.live?.release() })
     }
   }

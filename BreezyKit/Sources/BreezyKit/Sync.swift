@@ -189,6 +189,12 @@ public struct SyncStatus: Equatable, Sendable {
   private var blocked: Set<String> = []
   private var retryAt: Date?
   private var soon: Task<Void, Never>?
+  /// The cycle running, and when it began.
+  private var current: Task<Void, Never>?
+  private var cycleAt = Date.distantPast
+  private var restarting = false
+  /// A request of the cycle running that has taken this long when the network changes is given up on.
+  static let stale: TimeInterval = 1
 
   public init(
     store: Store, now: @escaping () -> Date = Date.init,
@@ -201,6 +207,8 @@ public struct SyncStatus: Equatable, Sendable {
 
   /// One cycle; a call during a cycle runs another after it, and returns when that one ends.
   public func sync() async {
+    // this cycle, or the one after the one running, takes what changed so far
+    soon?.cancel()
     if let running {
       again = true
       return await running.value
@@ -208,7 +216,11 @@ public struct SyncStatus: Equatable, Sendable {
     let task = Task {
       repeat {
         again = false
-        await cycle()
+        let c = Task { await self.cycle() }
+        current = c
+        cycleAt = now()
+        await c.value
+        current = nil
       } while again
       // in the same turn as the last check of `again`, so that a call either repeats this loop or starts a new one
       running = nil
@@ -227,6 +239,19 @@ public struct SyncStatus: Equatable, Sendable {
     }
   }
 
+  /// The network is back, or may have changed: a cycle now, without waiting out a back-off. A request of the cycle
+  /// running that has taken over `stale` is given up on, as it may be on a connection the network change left dead.
+  public func retryNow() {
+    guard !stopped else { return }
+    failures = 0
+    retryAt = nil
+    if current != nil, now().timeIntervalSince(cycleAt) >= Self.stale {
+      restarting = true
+      current?.cancel()
+    }
+    Task { await sync() }
+  }
+
   /// Forgets a back-off and a refused token, as after joining a space.
   public func reset() {
     failures = 0
@@ -242,6 +267,7 @@ public struct SyncStatus: Equatable, Sendable {
     guard !stopped, retryAt.map({ $0 <= now() }) ?? true else { return }
     let space = state.space
     func same() -> Bool { store.state.space == space }
+    restarting = false
     do {
       flushLocal?()
       if !heldTried {
@@ -313,6 +339,11 @@ public struct SyncStatus: Equatable, Sendable {
       update(.notInSpace)
     } catch {
       guard same() else { return }
+      if restarting {
+        restarting = false
+        again = true
+        return
+      }
       failures += 1
       retryAt = now().addingTimeInterval(min(60, 5 * pow(2, Double(failures - 1))))
       update(error as? TransportError == .offline ? .offline : .unreachable)

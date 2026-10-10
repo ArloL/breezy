@@ -27,13 +27,16 @@ export class Binding {
     this.timer = setTimeout(() => this.flush(), 300);
   }
 
+  /** Writes what changed since the store last saw the board; → whether anything did. */
   flush() {
     clearTimeout(this.timer);
     const held = this.taken();
     const c = changes(this.seen, this.model.board, this.id, this.store.orders(this.id));
     for (const id of held) delete c[id];
     this.seen = structuredClone(this.model.board);
-    if (Object.keys(c).length) this.store.apply(c);
+    if (!Object.keys(c).length) return false;
+    this.store.apply(c);
+    return true;
   }
 
   /** After the store merged changes for this board. */

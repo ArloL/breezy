@@ -5,7 +5,7 @@ import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
 import { chip } from "./presence.js";
-import { liveFields, overlaid, startPositions } from "./sync/overlay.js";
+import { floated, liveFields, overlaid, startPositions } from "./sync/overlay.js";
 import { statusLines } from "./sync/engine.js";
 import { GestureHolds } from "./sync/gesture-holds.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
@@ -61,7 +61,8 @@ export class Library {
     spaces.onLive = () => this.liveChanged();
     app.onSelect = () => this.updateLive();
     document.addEventListener("visibilitychange", () => this.updateLive());
-    document.addEventListener("visibilitychange", () => document.hidden || spaces.syncAll());
+    document.addEventListener("visibilitychange", () => document.hidden || spaces.retryAll());
+    addEventListener("online", () => spaces.retryAll(true));
     const change = app.model.onChange;
     app.model.onChange = () => {
       change();
@@ -256,15 +257,22 @@ export class Library {
     this.live.hold(ids);
   }
 
-  /** While a gesture holds items, sends what it changed of them; when it ends, pushes at once, then lets go. */
+  /** While a gesture holds items, sends what it changed of them; when it ends, pushes at once, then lets go. Other edits push at once. */
   gestured() {
     const { live, id, group } = this;
     const model = this.app.model;
     if (model.inGesture) {
-      if (live?.mine.size && id) live.sendLive(id, liveFields(model.start, model.board, live.mine, id), this.app.caret(), startPositions(model.start, live.mine));
+      if (!live?.mine.size || !id) return;
+      const s = this.app.state;
+      const items = floated(liveFields(model.start, model.board, live.mine, id), model.board, new Set([...s.held].filter((x) => live.mine.has(x))), s.float);
+      live.sendLive(id, items, this.app.caret(), startPositions(model.start, live.mine));
       return;
     }
-    if (!this.unfinished) return;
+    if (!this.unfinished) {
+      // an edit outside a held gesture, such as a recolour, goes out at once rather than with a later cycle
+      if (this.binding?.flush() && group?.space) group.engine.sync();
+      return;
+    }
     this.unfinished = false;
     if (!group?.space) return;
     this.holds.finish(group.space, {

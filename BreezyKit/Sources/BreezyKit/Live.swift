@@ -181,8 +181,16 @@ public struct Peer: Equatable, Sendable {
   public static let holdGrace: TimeInterval = 1
   public static let idleCursor: TimeInterval = 60
   public static let maxBackoff: TimeInterval = 30
-  public static let pingInterval: TimeInterval = 20
-  public static let pongTimeout: TimeInterval = 10
+  public static let pingInterval: TimeInterval = 5
+  public static let pongTimeout: TimeInterval = 3
+  /// Sending after hearing nothing from the relay this long asks it to answer, so that a socket a network change left
+  /// dead is found while someone is busy.
+  public static let quiet: TimeInterval = 2
+  /// A socket the relay has not welcomed this long after opening is given up on, as one opened while the network went
+  /// may never open or close.
+  public static let welcomeTimeout: TimeInterval = 5
+  /// A connection that worked this long is opened again at once when it drops.
+  public static let quickRetry: TimeInterval = 5
   static let maxFrame = 65_536
   static let maxPushed = 60_000
   static let moving = ["pos", "size", "w"]
@@ -265,6 +273,8 @@ public struct Peer: Equatable, Sendable {
   public var onPushed: ((Int, Pushed?) -> Void)?
   public var onRefused: ((Set<String>) -> Void)?
   public var onUnauthorized: (() -> Void)?
+  /// After the relay welcomed this connection: the network works, and pushes announced meanwhile were missed.
+  public var onWelcome: (() -> Void)?
 
   private let makeSocket: @MainActor (URL) -> LiveSocket
   private let now: () -> Date
@@ -276,10 +286,17 @@ public struct Peer: Equatable, Sendable {
   private var wanted = false
   private var failures = 0
   private var retrying = false
+  /// Counts back-offs, so that one overtaken by an earlier reconnect does nothing.
+  private var retries = 0
+  private var openedAt = Date.distantPast
+  /// The last connection this layer had, which the next one replaces.
+  private var lastID: String?
   /// After the relay refused the token: this layer stays closed. A new one comes when the server names another relay,
   /// or at the next launch.
   private var stopped = false
-  private var pingSent = Date.distantPast
+  /// When the relay last said anything, and last welcomed this layer.
+  private var heardAt = Date.distantPast
+  private var welcomedAt = Date.distantFuture
   /// When a ping went out that nothing has answered yet.
   private var pingWaiting: Date?
   private var presence: (board: String?, boards: [String], selection: [String]) = (nil, [], [])
@@ -347,9 +364,61 @@ public struct Peer: Equatable, Sendable {
     if socket == nil && !retrying && !stopped { open() }
   }
 
+  /// The network may have changed, as when the app becomes active: a socket open now must answer within `pongTimeout`,
+  /// and one waiting to retry opens now. When it did change (`changed`), as when it comes back or the Mac wakes, a
+  /// socket open now is replaced at once: it was on the network that went.
+  public func check(changed: Bool = false) {
+    guard wanted, !stopped else { return }
+    if connected && !changed { return probe() }
+    if connected, let s = socket {
+      reset()
+      socket = nil
+      s.close()
+    }
+    // just opened
+    if socket != nil && now().timeIntervalSince(openedAt) < Self.pongTimeout { return }
+    if let s = socket {
+      // still opening, maybe over the network that went
+      socket = nil
+      s.close()
+    }
+    retrying = false
+    retries += 1
+    failures = 0
+    open()
+  }
+
+  /// Asks the relay to answer, unless it was asked already; a socket that does not answer in time is given up on.
+  private func probe() {
+    guard connected, pingWaiting == nil, let socket else { return }
+    let sent = now()
+    pingWaiting = sent
+    socket.send("ping")
+    schedule(Self.pongTimeout) { [weak self] in
+      guard let self, pingWaiting == sent else { return }
+      _ = unanswered()
+    }
+  }
+
+  private func probeIfQuiet() {
+    if now().timeIntervalSince(heardAt) >= Self.quiet { probe() }
+  }
+
+  /// Whether the socket left a ping unanswered too long, and so was dropped.
+  private func unanswered() -> Bool {
+    guard connected, let p = pingWaiting, now().timeIntervalSince(p) >= Self.pongTimeout else { return false }
+    let s = socket
+    dropped(1006)
+    s?.close()
+    return true
+  }
+
   /// Closes, holding nothing: the relay drops a closed connection's holds.
   public func close() {
     wanted = false
+    // opening again need not wait out a back-off
+    retrying = false
+    retries += 1
     mine = []
     lastLive = nil
     for p in pipes { p.restart() }
@@ -365,19 +434,24 @@ public struct Peer: Equatable, Sendable {
     guard let url = c.url else { return }
     let s = makeSocket(url)
     socket = s
+    openedAt = now()
     s.onOpen = { [weak self, weak s] in
       guard let self, let s, s === socket else { return }
-      frame(["t": .string("auth"), "token": .string(Base64URL.encode(keys.relayToken)), "v": .number(2)])
+      var auth: [String: JSONValue] = ["t": .string("auth"), "token": .string(Base64URL.encode(keys.relayToken)), "v": .number(2)]
+      if let lastID { auth["replaces"] = .string(lastID) }
+      frame(auth)
     }
     s.onMessage = { [weak self, weak s] text in
       guard let self, let s, s === socket else { return }
       // anything from the relay shows the socket is alive
       pingWaiting = nil
+      heardAt = now()
       received(text)
     }
     s.onData = { [weak self, weak s] data in
       guard let self, let s, s === socket else { return }
       pingWaiting = nil
+      heardAt = now()
       if let f = Frames.parseRelayFrame(data) { opened(String(f.from), f.body, direct: false) }
     }
     s.onClose = { [weak self, weak s] code in
@@ -396,11 +470,15 @@ public struct Peer: Equatable, Sendable {
       return
     }
     guard wanted else { return }
-    let delay = min(Self.maxBackoff, pow(2, Double(failures)))
+    // at once after a connection that worked a while, as one a network change ended; else after a back-off
+    let quick = failures == 0 && now().timeIntervalSince(welcomedAt) >= Self.quickRetry
+    let delay = quick ? 0 : min(Self.maxBackoff, pow(2, Double(failures)))
     failures += 1
+    retries += 1
+    let n = retries
     retrying = true
     schedule(delay) { [weak self] in
-      guard let self else { return }
+      guard let self, n == retries else { return }
       retrying = false
       guard wanted, socket == nil, !stopped else { return }
       open()
@@ -409,6 +487,8 @@ public struct Peer: Equatable, Sendable {
 
   private func reset() {
     let had = connected || !peers.isEmpty || !holds.isEmpty
+    // the relay may not know yet that this connection is gone: the next one names it
+    if let id { lastID = id }
     id = nil
     pingWaiting = nil
     peers = [:]
@@ -423,6 +503,7 @@ public struct Peer: Equatable, Sendable {
     guard let socket, let data = Self.json(f) else { return }
     socket.send(String(decoding: data, as: UTF8.self))
     relaySent = now()
+    probeIfQuiet()
   }
 
   private static func json(_ body: [String: JSONValue]) -> Data? { try? encoder.encode(JSONValue.object(body)) }
@@ -461,6 +542,7 @@ public struct Peer: Equatable, Sendable {
       socket.send(String(decoding: data, as: UTF8.self))
     }
     relaySent = now()
+    probeIfQuiet()
     return true
   }
 
@@ -682,12 +764,16 @@ public struct Peer: Equatable, Sendable {
     case "welcome":
       id = m["id"]?.string
       failures = 0
-      pingSent = now()
+      welcomedAt = now()
+      heardAt = now()
       holds = Self.holds(m["holds"])
       roster = Dictionary((m["peers"]?.array ?? []).compactMap(\.string).map { ($0, now()) }) { a, _ in a }
       direct?.welcome(roster.keys.sorted())
       sendPresence()
       if !mine.isEmpty { frame(["t": .string("hold"), "ids": .array(mine.sorted().map(JSONValue.string))]) }
+      // what this device pushed while its last socket was dead, as after a network change, was announced to nobody
+      if storeCursor > 0 { send(["t": .string("pushed"), "version": .number(Double(storeCursor))]) }
+      onWelcome?()
       onChange?()
     case "join":
       guard let who = m["id"]?.string else { return }
@@ -854,17 +940,13 @@ public struct Peer: Equatable, Sendable {
   /// here, and checks that the relay still answers.
   public func tick() {
     let t = now()
-    if connected, let p = pingWaiting, t.timeIntervalSince(p) >= Self.pongTimeout {
-      let s = socket
+    if unanswered() { return }
+    if let s = socket, !connected, t.timeIntervalSince(openedAt) >= Self.welcomeTimeout {
       dropped(1006)
-      s?.close()
+      s.close()
       return
     }
-    if connected && pingWaiting == nil && t.timeIntervalSince(pingSent) >= Self.pingInterval {
-      pingSent = t
-      pingWaiting = t
-      socket?.send("ping")
-    }
+    if connected && t.timeIntervalSince(heardAt) >= Self.pingInterval { probe() }
     var changed = false
     // a connection that never speaks, such as one in another space with this one's token, would keep every cursor on
     // the relay

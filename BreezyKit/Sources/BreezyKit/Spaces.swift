@@ -109,8 +109,9 @@ import Foundation
       let transport = peerTransport?()
       let live = socket.map { Live(relay: relay, space: space, keys: keys, me: me, socket: $0, transport: transport) }
         ?? Live(relay: relay, space: space, keys: keys, me: me, transport: transport)
-      live.onPushed = { [weak g] _, pushed in
-        guard let g else { return }
+      live.onPushed = { [weak g] version, pushed in
+        // a repeat of what this device has already
+        guard let g, pushed != nil || version > g.store.state.cursor else { return }
         Task {
           if let pushed, await g.engine.receivePushed(pushed) { return }
           await g.engine.sync()
@@ -124,6 +125,7 @@ import Foundation
         guard let self, let g else { return }
         onRefused?(g, ids)
       }
+      live.onWelcome = { [weak g] in g?.engine.retryNow() }
       // a refused token is the server's to report: its 401 shows "Not in this space any more"
       live.onUnauthorized = { [weak g] in
         guard let g else { return }
@@ -208,6 +210,15 @@ import Foundation
     for g in spaces {
       if polling, g.live?.connected == true, let last = g.engine.lastSynced, now.timeIntervalSince(last) < 30 { continue }
       Task { await g.engine.sync() }
+    }
+  }
+
+  /// The network may have changed, as when the app becomes active, or did (`changed`), as when it comes back or the Mac
+  /// wakes: every space syncs now and checks its relay.
+  public func retryAll(changed: Bool = false) {
+    for g in spaces {
+      g.engine.retryNow()
+      g.live?.check(changed: changed)
     }
   }
 

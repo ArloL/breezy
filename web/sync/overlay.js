@@ -27,6 +27,21 @@ export function liveFields(start, now, ids, board) {
   return out;
 }
 
+/** `items`, from liveFields, with the `held` items of `board` where they float under the pointer, off the grid, by
+ * `float` (`{x, y}` or `{w, h}`), as this device draws them: others then see the drag as smoothly. */
+export function floated(items, board, held, float) {
+  if (!float) return items;
+  const out = { ...items };
+  for (const x of [...board.cards, ...board.lanes]) {
+    if (!held.has(x.id) || !(x.id in items || float.x || float.y || float.w || float.h)) continue;
+    const f = { ...out[x.id] };
+    if (Number.isFinite(float.x)) f.pos = [x.x + float.x, x.y + float.y];
+    if (Number.isFinite(float.w)) f.size = [x.w + float.w, x.h + float.h];
+    out[x.id] = f;
+  }
+  return out;
+}
+
 /** Where items `ids` were when the gesture began, as `{id: [x, y]}`. */
 export function startPositions(start, ids) {
   const out = {};

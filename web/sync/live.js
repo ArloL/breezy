@@ -19,8 +19,16 @@ export const GONE_MS = 30_000;
 export const HOLD_GRACE_MS = 1_000;
 export const IDLE_CURSOR_MS = 60_000;
 export const MAX_BACKOFF_MS = 30_000;
-export const PING_MS = 20_000;
-export const PONG_TIMEOUT_MS = 10_000;
+export const PING_MS = 5_000;
+export const PONG_TIMEOUT_MS = 3_000;
+/** Sending after hearing nothing from the relay this long asks it to answer, so that a socket a network change left
+ * dead is found while someone is busy. */
+export const QUIET_MS = 2_000;
+/** A socket the relay has not welcomed this long after opening is given up on, as one opened while the network went
+ * may never open or close. */
+export const WELCOME_MS = 5_000;
+/** A connection that worked this long is opened again at once when it drops. */
+export const QUICK_RETRY_MS = 5_000;
 const MAX_FRAME = 65_536;
 const MAX_PUSHED = 60_000;
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -130,13 +138,19 @@ export class Live {
     this.seq = 0;
     this.ws = null;
     this.id = null;
+    /** The last connection this layer had, which the next one replaces. */
+    this.lastId = null;
     this.wanted = false;
     this.failures = 0;
     this.retrying = false;
+    /** Counts back-offs, so that one overtaken by an earlier reconnect does nothing. */
+    this.retries = 0;
     /** After the relay refused the token: this layer stays closed. A new one comes when the server names another relay,
      * or at the next launch. */
     this.stopped = false;
-    this.pingSent = -Infinity;
+    /** When the relay last said anything, and last welcomed this layer. */
+    this.heardAt = -Infinity;
+    this.welcomedAt = Infinity;
     /** When a ping went out that nothing has answered yet. */
     this.pingWaiting = null;
     /** Connection id → { person, v, board, boards, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret,
@@ -166,6 +180,8 @@ export class Live {
     this.onPushed = () => {};
     this.onRefused = () => {};
     this.onUnauthorized = () => {};
+    /** After the relay welcomed this connection: the network works, and pushes announced meanwhile were missed. */
+    this.onWelcome = () => {};
     /** The other connections in the space, as the relay names them → when each joined or was last heard. */
     this.roster = new Map();
     this.direct = peerTransport && new Direct(peerTransport(), {
@@ -190,9 +206,59 @@ export class Live {
     if (!this.ws && !this.retrying && !this.stopped) this.open();
   }
 
+  /** The network may have changed, as when the app shows again: a socket open now must answer within PONG_TIMEOUT_MS,
+   * and one waiting to retry opens now. When it did change (`changed`), as when it comes back, a socket open now is
+   * replaced at once: it was on the network that went. */
+  check(changed = false) {
+    if (!this.wanted || this.stopped) return;
+    if (this.connected && !changed) return this.probe();
+    if (this.connected) {
+      const ws = this.ws;
+      this.reset();
+      this.ws = null;
+      ws.close();
+    }
+    // just opened, as when the app shows again
+    if (this.ws && this.now() - this.openedAt < PONG_TIMEOUT_MS) return;
+    if (this.ws) {
+      // still opening, maybe over the network that went
+      const ws = this.ws;
+      this.ws = null;
+      ws.close();
+    }
+    this.retrying = false;
+    this.retries++;
+    this.failures = 0;
+    this.open();
+  }
+
+  /** Asks the relay to answer, unless it was asked already; a socket that does not answer in time is given up on. */
+  probe() {
+    if (!this.connected || this.pingWaiting !== null || this.ws.readyState !== 1) return;
+    const sent = (this.pingWaiting = this.now());
+    this.ws.send("ping");
+    this.schedule(PONG_TIMEOUT_MS, () => this.pingWaiting === sent && this.unanswered());
+  }
+
+  probeIfQuiet() {
+    if (this.now() - this.heardAt >= QUIET_MS) this.probe();
+  }
+
+  /** Whether the socket left a ping unanswered too long, and so was dropped. */
+  unanswered() {
+    if (!this.connected || this.pingWaiting === null || this.now() - this.pingWaiting < PONG_TIMEOUT_MS) return false;
+    const ws = this.ws;
+    this.dropped(1006);
+    ws?.close();
+    return true;
+  }
+
   /** Closes, holding nothing: the relay drops a closed connection's holds. */
   close() {
     this.wanted = false;
+    // opening again, as when the app shows again, need not wait out a back-off
+    this.retrying = false;
+    this.retries++;
     this.mine.clear();
     this.lastLive = null;
     for (const p of this.pipes) p.restart();
@@ -206,13 +272,15 @@ export class Live {
     const url = new URL(this.relay);
     url.searchParams.set("space", this.space);
     const ws = this.makeSocket(url.href);
+    this.openedAt = this.now();
     ws.binaryType = "arraybuffer";
     this.ws = ws;
-    ws.onopen = () => ws === this.ws && this.frame({ t: "auth", token: encode(this.keys.relayToken), v: 2 });
+    ws.onopen = () => ws === this.ws && this.frame({ t: "auth", token: encode(this.keys.relayToken), v: 2, ...(this.lastId && { replaces: this.lastId }) });
     ws.onmessage = ({ data }) => {
       if (ws !== this.ws) return;
       // anything from the relay shows the socket is alive
       this.pingWaiting = null;
+      this.heardAt = this.now();
       this.in = this.in.then(() => (typeof data === "string" ? this.received(data) : this.receivedFrame(new Uint8Array(data)))).catch(() => {});
     };
     ws.onclose = (e) => ws === this.ws && this.dropped(e.code);
@@ -227,9 +295,14 @@ export class Live {
       return this.onUnauthorized();
     }
     if (!this.wanted) return;
-    const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.failures++);
+    // at once after a connection that worked a while, as one a network change ended; else after a back-off
+    const quick = this.failures === 0 && this.now() - this.welcomedAt >= QUICK_RETRY_MS;
+    const delay = quick ? 0 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.failures);
+    this.failures++;
+    const n = ++this.retries;
     this.retrying = true;
     this.schedule(delay, () => {
+      if (n !== this.retries) return;
       this.retrying = false;
       if (this.wanted && !this.ws && !this.stopped) this.open();
     });
@@ -237,6 +310,8 @@ export class Live {
 
   reset() {
     const had = this.connected || this.peers.size || this.holds.size;
+    // the relay may not know yet that this connection is gone: the next one names it
+    if (this.id !== null) this.lastId = this.id;
     this.id = null;
     this.pingWaiting = null;
     this.peers.clear();
@@ -254,6 +329,7 @@ export class Live {
       if (ws !== this.ws || ws.readyState !== 1) return;
       ws.send(JSON.stringify(f));
       this.relaySent = this.now();
+      this.probeIfQuiet();
     });
   }
 
@@ -282,6 +358,7 @@ export class Live {
       if (!sealed || ws !== this.ws || ws.readyState !== 1) return false;
       ws.send(binary ? relayFrame(conn, sealed) : JSON.stringify(to === null ? { body: encode(sealed) } : { to, body: encode(sealed) }));
       this.relaySent = this.now();
+      this.probeIfQuiet();
       return true;
     }).catch(() => false);
     this.out = sent;
@@ -406,12 +483,16 @@ export class Live {
       case "welcome":
         this.id = m.id;
         this.failures = 0;
-        this.pingSent = this.now();
+        this.welcomedAt = this.now();
+        this.heardAt = this.now();
         this.holds = holdsFrom(m.holds);
         this.roster = new Map((Array.isArray(m.peers) ? m.peers.filter((p) => typeof p === "string") : []).map((p) => [p, this.now()]));
         this.direct?.welcome([...this.roster.keys()]);
         this.sendPresence();
         if (this.mine.size) this.frame({ t: "hold", ids: [...this.mine].sort() });
+        // what this device pushed while its last socket was dead, as after a network change, was announced to nobody
+        if (this.storeCursor > 0) this.send({ t: "pushed", version: this.storeCursor });
+        this.onWelcome();
         return this.onChange();
       case "join":
         this.roster.set(m.id, this.now());
@@ -583,15 +664,13 @@ export class Live {
    * here, and checks that the relay still answers. */
   tick() {
     const now = this.now();
-    if (this.connected && this.pingWaiting !== null && now - this.pingWaiting >= PONG_TIMEOUT_MS) {
+    if (this.unanswered()) return;
+    if (this.ws && !this.connected && now - this.openedAt >= WELCOME_MS) {
       const ws = this.ws;
       this.dropped(1006);
-      return ws?.close();
+      return ws.close();
     }
-    if (this.connected && this.pingWaiting === null && now - this.pingSent >= PING_MS) {
-      this.pingSent = this.pingWaiting = now;
-      if (this.ws.readyState === 1) this.ws.send("ping");
-    }
+    if (this.connected && now - this.heardAt >= PING_MS) this.probe();
     this.direct?.tick();
     let changed = false;
     // a connection that never speaks, such as one in another space with this one's token, would keep every cursor on

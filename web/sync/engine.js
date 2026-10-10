@@ -8,6 +8,12 @@ export const PAGE_SIZE = 500;
 export const MAX_BLOB = 65536;
 const MAX_REQUEST = 900_000;
 const DEFLATE_ABOVE = 1024;
+const STALE_MS = 1000;
+/** A request whose answer has not begun this long after it went, plus a ms for every 20 bytes it sends, is given up on
+ * and sent again at once: it is likely on a connection that a network change left dead, as the server answers in a
+ * fraction of a second. */
+const STALL_MS = 5000;
+const STALLS = 2;
 
 export class TransportError extends Error {
   constructor(kind) {
@@ -50,15 +56,19 @@ export class HttpTransport {
       }
     }
     let res;
+    const stall = new AbortController();
+    const timer = setTimeout(() => stall.abort(), STALL_MS + (payload?.byteLength ?? payload?.length ?? 0) / 20);
     try {
       res = await fetch(url, {
         method: body ? "POST" : "GET",
         headers,
         body: payload,
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.any([stall.signal, AbortSignal.timeout(20_000), ...(this.signal ? [this.signal] : [])]),
       });
     } catch {
-      throw new TransportError(globalThis.navigator?.onLine === false ? "offline" : "unreachable");
+      throw new TransportError(globalThis.navigator?.onLine === false ? "offline" : stall.signal.aborted ? "stalled" : "unreachable");
+    } finally {
+      clearTimeout(timer);
     }
     if (res.status === 401) throw new TransportError("unauthorized");
     if (res.status === 413) throw new TransportError("tooLarge");
@@ -133,10 +143,17 @@ export class SyncEngine {
     this.keys = null;
     this.keysFor = null;
     this.blocked = new Set();
+    /** Aborts the requests of the cycle running, and when it began. */
+    this.abort = null;
+    this.cycleAt = 0;
+    this.restarting = false;
+    this.stalls = 0;
   }
 
   /** One cycle; a call during a cycle runs another after it. */
   async sync() {
+    // this cycle, or the one after the one running, takes what changed so far
+    clearTimeout(this.timer);
     if (this.running) {
       this.again = true;
       return this.running;
@@ -158,6 +175,19 @@ export class SyncEngine {
   changed() {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.sync(), 1000);
+  }
+
+  /** The network is back, or may have changed: a cycle now, without waiting out a back-off. A request of the cycle
+   * running that has taken over STALE_MS is given up on, as it may be on a connection the network change left dead. */
+  retryNow() {
+    if (this.stopped) return;
+    this.failures = 0;
+    this.retryAt = 0;
+    if (this.running && this.now() - this.cycleAt >= STALE_MS) {
+      this.restarting = true;
+      this.abort?.abort();
+    }
+    return this.sync();
   }
 
   /** Forgets a back-off and a refused token, as after joining a space. */
@@ -194,6 +224,10 @@ export class SyncEngine {
     try {
       const keys = await this.keysOf(state);
       const transport = this.makeTransport(state, keys);
+      this.abort = new AbortController();
+      this.cycleAt = this.now();
+      transport.signal = this.abort.signal;
+      this.restarting = false;
       this.flushLocal();
       if (!this.heldTried) {
         this.heldTried = true;
@@ -245,6 +279,7 @@ export class SyncEngine {
       }
       this.failures = 0;
       this.retryAt = 0;
+      this.stalls = 0;
       this.lastCycle = this.now();
       this.update("synced");
     } catch (error) {
@@ -252,6 +287,11 @@ export class SyncEngine {
       if (error?.kind === "unauthorized") {
         this.stopped = true;
         return this.update("notInSpace");
+      }
+      if (this.restarting || (error?.kind === "stalled" && this.stalls++ < STALLS)) {
+        this.restarting = false;
+        this.again = true;
+        return;
       }
       if (!(error instanceof TransportError)) console.warn("sync failed", error);
       this.failures++;
