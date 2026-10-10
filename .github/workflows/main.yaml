@@ -122,6 +122,40 @@ jobs:
         path: build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast
     - name: Make sure build did not change anything
       run: git diff --exit-code
+  # the server and the relay under their tests, then web and Swift devices fuzzed against both: fixed seeds, so a failure
+  # replays with the same command
+  sync:
+    needs: version
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Test the server
+      run: server/test.sh
+    - name: Test the relay
+      run: |
+        npm ci --prefix relay
+        relay/test.sh
+    - name: Build breezy-sim
+      run: swift build --package-path BreezyKit --product breezy-sim
+    - name: Test the fuzzer
+      run: node --test scripts/fuzz/test/*.test.mjs
+    - name: Fuzz convergence
+      run: node scripts/fuzz.mjs --seeds 1-10 --steps 200
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ failure() }}
+      with:
+        name: fuzz
+        path: build/fuzz
   web:
     needs: version
     runs-on: ubuntu-slim
