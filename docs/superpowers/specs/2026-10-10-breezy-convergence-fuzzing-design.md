@@ -53,14 +53,18 @@ Seams, each defaulting to what the apps do now:
 4 devices by default, 2 web and 2 Swift (`--web N --swift N`). One makes the space; the others join at random times, some after edits exist. Operations, with seeded weights, go through `BoardModel`, the binding and `Collab` as the apps do:
 
 - add, type into, recolour or delete a card; add or move a lane;
+- select 50–300 cards and move, recolour or delete them at once, whose live bodies pass the relay's 64 KB limit;
 - undo and redo;
 - a drag: press (holds), moves over virtual time, then release or cancel;
 - show or hide the app, which connects or closes `Live`;
+- freeze for 5 s to 8 h, as iOS suspends a web app in the background or a Mac sleeps: nothing reaches the device and none of its timers fire, then everything due fires late at once;
 - a full resync.
+
+A run may include a long absence: one device goes offline for days of virtual time while the others make more than `PAGE_SIZE` records, so that it pages through them over its link when it comes back.
 
 ## Networks
 
-Each device has its own link to the server, the relay and each peer. A seeded state machine moves each link between states over virtual time:
+Each device has its own link to the server, the relay and each peer, and each link changes state on its own: the relay can be reachable while the server is not, or the other way round, and a direct channel can work while both are down. A seeded state machine moves each link between states over virtual time:
 
 | State | Latency each way | Loss | The device is told |
 |---|---|---|---|
@@ -71,13 +75,24 @@ Each device has its own link to the server, the relay and each peer. A seeded st
 | upstream dead | requests hang | all | nothing: the link is up |
 | flapping | handovers every 0.2–2 s for a while | — | a burst of network changes |
 
-`--profile lan|office|train|tether|mixed` sets the rates between states; `mixed` gives each device its own, so someone on a train edits with someone in an office. HTTP requests and WebSocket frames keep their order within a connection, as TCP does; direct channels are unordered and lossy, as their `maxRetransmits: 0` channel is. A slow link delays a request by its size, so the stall rule of 5 s plus 1 ms per 20 bytes is met.
+`--profile lan|office|train|tether|blocked-ws|mixed` sets the rates between states; `blocked-ws` keeps the relay unreachable, as behind a proxy that refuses WebSockets, and `mixed` gives each device its own profile, so someone on a train edits with someone in an office. HTTP requests and WebSocket frames keep their order within a connection, as TCP does; direct channels are unordered and lossy, as their `maxRetransmits: 0` channel is. A slow link delays a request by its size, so the stall rule of 5 s plus 1 ms per 20 bytes is met.
 
-Faults, at low weights, on top: a response lost after the server committed; a 5xx; a 401; the relay dropping a connection; a direct channel closing mid-gesture or failing to open; a database restored from a backup with a new epoch (rare; `--no-restore` turns it off).
+Faults, at low weights, on top:
+
+| Fault | As when |
+|---|---|
+| a response lost after the server committed | the link went as the answer came back |
+| a 5xx; a 401 | the host struggles; a token is refused |
+| a 200 with HTML, a 302, a truncated body, a failure at once | a captive portal or hotel Wi-Fi answers instead of the server; DNS or TLS fails |
+| the relay drops a connection | |
+| the relay restarts: every socket drops at once, and only what sockets' attachments hold survives | a Durable Object is evicted, or the relay is deployed |
+| a direct channel closes mid-gesture, fails to open, or goes silent without closing | the network changes under it, and NAT rebinding leaves ICE to notice after about 30 s |
+| a device's wall clock is off by up to minutes, or jumps forward or back | NTP corrects it, or someone sets it; monotonic clocks and timers are unaffected |
+| the database is restored from a backup with a new epoch; rare, and `--no-restore` turns it off | |
 
 ## Checks
 
-After `--steps`, the hub heals: no more operations or faults, every link good, every device online and showing, gestures ended. It runs the clock until every device is idle with no timer due within 35 s, past `GONE_MS`. Then:
+After `--steps`, the hub heals: no more operations or faults, every link good, every device thawed, online and showing, gestures ended. It runs the clock until every device is idle with no timer due within 35 s, past `GONE_MS`. Then:
 
 - every device's boards are equal, compared in a canonical order;
 - nothing is pending;
@@ -110,3 +125,4 @@ A test runs each with the per-PR budget and fails unless the fuzzer finds it.
 | Checking that nothing typed is lost | The oracle must tell an overwrite after a sync from a lost edit; a project of its own |
 | Real Chromium, the Mac app, `wrangler dev` and WebRTC under the fuzzer | Not deterministic: a failure could not be replayed or shrunk; `direct-e2e.mjs` covers the real stack |
 | A fake server for speed | It would fuzz the fake; `sync.php` on SQLite is fast enough for the budgets |
+| Two tabs of the web app on one device | Not a network fault: each tab loads the state once and saves all of it under the same key, so one can overwrite the other's unpushed edit. It needs a fix of its own, such as one tab holding a Web Lock and the others opening read-only |
