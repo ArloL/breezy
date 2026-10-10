@@ -15,3 +15,14 @@ test("the steady clock follows the monotonic clock when the wall clock goes back
   wall += 60_000;
   assert.equal(now() - t0, 60_300);
 });
+
+test("the steady clock keeps time when read often against a wall clock that steps in coarse ticks", () => {
+  let mono = 0;
+  const now = steadyClock(() => Math.floor(mono / 16.7) * 16.7, () => mono);
+  const t0 = now();
+  for (let i = 0; i < 60_000; i++) {
+    mono += 1;
+    now();
+  }
+  assert.ok(Math.abs(now() - t0 - 60_000) < 50, `${now() - t0}`);
+});
