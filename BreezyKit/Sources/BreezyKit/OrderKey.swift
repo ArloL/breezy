@@ -56,7 +56,7 @@ public enum OrderKey {
   }
 
   /// The indices of a longest strictly increasing run of the keys present.
-  static func longestIncreasing(_ keys: [String?]) -> Set<Int> {
+  static func longestIncreasing<T: Comparable>(_ keys: [T?]) -> Set<Int> {
     var tails: [Int] = []
     var prev = [Int?](repeating: nil, count: keys.count)
     for (i, k) in keys.enumerated() {

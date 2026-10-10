@@ -1,7 +1,7 @@
 // Boards as records and back, as BreezyKit's Records. A card's pos and a lane's pos and size are pairs, so that a
 // merge never takes x from one move and y from another.
 import { CARD_W, LANE_W, LANE_H } from "../rules.js";
-import { assign } from "./order-key.js";
+import { assign, longestIncreasing } from "./order-key.js";
 
 export const FORMAT = 1;
 
@@ -40,10 +40,28 @@ export function boardFrom(records, id) {
 
 const diff = (a, b) => Object.fromEntries(Object.entries(b).filter(([k, v]) => JSON.stringify(a[k]) !== JSON.stringify(v)));
 
+/** Keys for `now`'s cards, writing only an order changed here: cards that kept their places relative to each other
+ * since `old` stay in the order of `orders`, which may hold another device's reorder, and the rest get keys after the
+ * card before them in `now`. */
+function orderKeys(old, now, orders) {
+  const was = new Map(old.cards.map((c, i) => [c.id, i]));
+  const ids = now.cards.map((c) => c.id);
+  const kept = longestIncreasing(ids.map((id) => was.get(id) ?? null));
+  const after = new Map();
+  let prev = "";
+  ids.forEach((id, i) => {
+    if (kept.has(i)) prev = id;
+    else after.set(prev, [...(after.get(prev) ?? []), id]);
+  });
+  const stay = ids.filter((_, i) => kept.has(i)).sort((a, b) => cmp(orders[a] ?? "", orders[b] ?? "") || cmp(a, b));
+  const sequence = [...(after.get("") ?? []), ...stay.flatMap((id) => [id, ...(after.get(id) ?? [])])];
+  return assign(sequence, Object.fromEntries(stay.filter((id) => id in orders).map((id) => [id, orders[id]])));
+}
+
 /** What changed from `old` to `now`, both board `id`: whole records for new items, changed fields, deletions. */
 export function changes(old, now, board, orders) {
   const out = {};
-  const keys = assign(now.cards.map((c) => c.id), orders);
+  const keys = orderKeys(old, now, orders);
   const put = (id, before, after) => {
     const d = before ? diff(before, after) : after;
     if (Object.keys(d).length) out[id] = { fields: d };

@@ -93,7 +93,7 @@ public enum Records {
   /// fields of the others, and deletions. `orders` holds the order keys the store has for its cards.
   public static func changes(from old: Board, to new: Board, board id: String, orders: [String: String]) -> [String: Change] {
     var out: [String: Change] = [:]
-    let keys = OrderKey.assign(new.cards.map(\.id), keeping: orders)
+    let keys = orderKeys(from: old, to: new, orders: orders)
     let oldCards = Dictionary(old.cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     for c in new.cards {
       let now = card(c, board: id, order: keys[c.id]!)
@@ -118,6 +118,24 @@ public enum Records {
     for c in old.cards where !cardIDs.contains(c.id) { out[c.id] = .deleted("card") }
     for l in old.lanes where !laneIDs.contains(l.id) { out[l.id] = .deleted("lane") }
     return out
+  }
+
+  /// Keys for `new`'s cards, writing only an order changed here: cards that kept their places relative to each other
+  /// since `old` stay in the order of `orders`, which may hold another device's reorder, and the rest get keys after the
+  /// card before them in `new`.
+  static func orderKeys(from old: Board, to new: Board, orders: [String: String]) -> [String: String] {
+    let was = Dictionary(old.cards.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let ids = new.cards.map(\.id)
+    let kept = OrderKey.longestIncreasing(ids.map { was[$0] })
+    var after: [String: [String]] = [:]
+    var prev = ""
+    for (i, id) in ids.enumerated() {
+      if kept.contains(i) { prev = id } else { after[prev, default: []].append(id) }
+    }
+    let stay = ids.indices.filter(kept.contains).map { ids[$0] }.sorted { (orders[$0] ?? "", $0) < (orders[$1] ?? "", $1) }
+    let sequence = (after[""] ?? []) + stay.flatMap { [$0] + (after[$0] ?? []) }
+    let staying = Set(stay)
+    return OrderKey.assign(sequence, keeping: orders.filter { staying.contains($0.key) })
   }
 
   static func changed(_ a: Record, _ b: Record) -> [String: JSONValue] { b.fields.filter { a[$0.key] != $0.value } }
