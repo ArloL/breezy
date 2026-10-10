@@ -122,8 +122,8 @@ jobs:
         path: build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast
     - name: Make sure build did not change anything
       run: git diff --exit-code
-  # the server and the relay under their tests, then web and Swift devices fuzzed against both: fixed seeds, so a failure
-  # replays with the same command
+  # the server and the relay under their tests, two browsers over both and a direct channel, then web and Swift devices
+  # fuzzed against them: fixed seeds, so a failure replays with the same command
   sync:
     needs: version
     runs-on: macos-latest
@@ -145,6 +145,10 @@ jobs:
       run: |
         npm ci --prefix relay
         relay/test.sh
+    - name: Test direct channels end to end
+      run: |
+        npx --yes playwright@1.64.0 install chromium
+        node scripts/direct-e2e.mjs
     - name: Build breezy-sim
       run: swift build --package-path BreezyKit --product breezy-sim
     - name: Test the fuzzer
