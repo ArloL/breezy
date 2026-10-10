@@ -598,7 +598,7 @@ test("a combined cycle reports the cursor of the page it took before a later rou
   assert.deepEqual(pulled, [server.version]);
 });
 
-test("big requests go plain where deflate-raw is missing", async () => {
+test("big requests go plain where deflate-raw is missing or fails", async () => {
   const sent = [];
   const [realFetch, realStream] = [globalThis.fetch, globalThis.CompressionStream];
   globalThis.fetch = async (url, init) => {
@@ -616,11 +616,19 @@ test("big requests go plain where deflate-raw is missing", async () => {
       }
     };
     await t.push(big, 7);
+    // one that fails while it deflates
+    globalThis.CompressionStream = class {
+      constructor() {
+        const t = new TransformStream({ transform: () => Promise.reject(new Error("broken")) });
+        [this.readable, this.writable] = [t.readable, t.writable];
+      }
+    };
+    await t.push(big, 7);
   } finally {
     globalThis.fetch = realFetch;
     globalThis.CompressionStream = realStream;
   }
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 3);
   for (const s of sent) {
     assert.equal(s.headers["Content-Encoding"], undefined);
     assert.equal(s.body, JSON.stringify({ writes: big, since: 7 }));
