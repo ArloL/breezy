@@ -51,9 +51,10 @@ export class HttpTransport {
     if (body) {
       headers["Content-Type"] = "application/json";
       payload = JSON.stringify(body);
-      const deflated = payload.length > DEFLATE_ABOVE && deflateRaw(payload);
+      // a browser that fails to deflate sends it plain, rather than failing every push from then on
+      const deflated = payload.length > DEFLATE_ABOVE && (await deflateRaw(payload)?.catch(() => null));
       if (deflated) {
-        payload = await deflated;
+        payload = deflated;
         headers["Content-Encoding"] = "deflate";
       }
     }
