@@ -2,6 +2,7 @@
 // merge never takes x from one move and y from another.
 import { CARD_W, LANE_W, LANE_H } from "../rules.js";
 import { assign, longestIncreasing } from "./order-key.js";
+import { planted } from "./plant.js";
 
 export const FORMAT = 1;
 
@@ -61,7 +62,7 @@ function orderKeys(old, now, orders) {
 /** What changed from `old` to `now`, both board `id`: whole records for new items, changed fields, deletions. */
 export function changes(old, now, board, orders) {
   const out = {};
-  const keys = orderKeys(old, now, orders);
+  const keys = planted("order-all") ? assign(now.cards.map((c) => c.id), orders) : orderKeys(old, now, orders);
   const put = (id, before, after) => {
     const d = before ? diff(before, after) : after;
     if (Object.keys(d).length) out[id] = { fields: d };

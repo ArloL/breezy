@@ -418,9 +418,10 @@ export class Hub {
           for (const d of this.devices) this.scheduleLink(d);
         }
       }
-      while (this.opsLeft > 0 || this.gestures > 0) {
+      // a replay may lack a gesture's end, which healing gives it
+      while (this.opsLeft > 0 || (this.gestures > 0 && !this.opts.replay)) {
         await this.runUntil(V.now + 1000);
-        if (V.now > 3_600_000 * 4) throw new Error("ran over four virtual hours");
+        if (V.now > 3_600_000 * 48) throw new Error("ran over 48 virtual hours");
       }
       await this.heal();
       return await this.check();

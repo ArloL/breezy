@@ -2,6 +2,8 @@
 // both did; text or notes both sides changed differently, or changed on one side and deleted on the other, go into a
 // copy card so that nothing typed is lost.
 
+import { planted } from "./plant.js";
+
 const TEXTS = ["text", "notes"];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -18,6 +20,7 @@ function copyOf(r) {
 }
 
 export function mergeRecord(base, local, incoming) {
+  if (planted("merge-local")) return { record: local, copy: null };
   base ??= {};
   if (incoming.deleted === true || local.deleted === true) {
     const survivor = incoming.deleted === true ? (local.deleted === true ? null : local) : incoming;
