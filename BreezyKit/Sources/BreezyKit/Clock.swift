@@ -9,3 +9,8 @@ public func afterOnMain(_ delay: TimeInterval, _ work: @escaping @MainActor () -
 
 /// Milliseconds since boot, which only go forward.
 public func systemUptime() -> Double { ProcessInfo.processInfo.systemUptime * 1000 }
+
+/// A `Date` that only moves forward, from `uptime` in ms: for timeouts, which a wall clock set back would stall.
+public func steady(_ uptime: @escaping () -> Double = systemUptime) -> () -> Date {
+  { Date(timeIntervalSinceReferenceDate: uptime() / 1000) }
+}
