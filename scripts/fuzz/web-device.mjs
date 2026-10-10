@@ -171,6 +171,18 @@ class WebDevice {
     return this._collab;
   }
 
+  /** Types `text` into card `id`'s front, or its back, in two steps, then finishes as the app does. */
+  edit(id, text, back) {
+    const m = this.open.model;
+    const set = back ? R.setNotes : R.setText;
+    m.update((b) => set(b, id, text.slice(0, Math.ceil(text.length / 2))));
+    m.update((b) => set(b, id, text));
+    m.update((b) => {
+      R.finishEdit(b, id);
+      this.restack(b);
+    });
+  }
+
   taken() {
     return this.group?.live?.taken() ?? new Set();
   }
@@ -265,9 +277,34 @@ class WebDevice {
         if (!id || m.inGesture || this.taken().has(id)) return null;
         m.begin();
         this.open.session.hold(new Set([id]));
-        m.update((b) => R.setText(b, id, o.text.slice(0, Math.ceil(o.text.length / 2))));
-        m.update((b) => R.setText(b, id, o.text));
-        m.end("Edit");
+        this.edit(id, o.text, o.back);
+        m.end("Edit Card");
+        return null;
+      }
+      case "newCard": {
+        if (m.inGesture) return null;
+        // as the app makes one: added and stacked, held, typed into, then finished, which takes an empty one away
+        m.begin();
+        let id;
+        m.update((b) => {
+          id = R.addCard(b, o.x, o.y);
+          this.restack(b);
+        });
+        this.open.session.hold(new Set([id]));
+        this.edit(id, o.text, false);
+        m.end("New Card");
+        return null;
+      }
+      case "laneTitle":
+      case "resize": {
+        const [lid] = this.items("lanes", o.n);
+        if (!lid || m.inGesture || this.taken().has(lid)) return null;
+        const l = R.lane(m.board, lid);
+        m.begin();
+        this.open.session.hold(new Set([lid]));
+        if (o.op === "laneTitle") m.update((b) => R.setLaneTitle(b, lid, o.text));
+        else m.update((b) => R.resizeLane(b, lid, l.w + o.dw, l.h + o.dh));
+        m.end(o.op === "laneTitle" ? "Rename Lane" : "Resize Lane");
         return null;
       }
       case "press": {
