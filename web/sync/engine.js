@@ -122,6 +122,8 @@ export class SyncEngine {
     this.onStatus = () => {};
     /** Called before merging, so that edits not yet in the store get there first. */
     this.flushLocal = () => {};
+    /** Whether a gesture others follow live is under way: what it changed so far waits for its end. */
+    this.holdBack = () => false;
     /** The relay the server last named; null until it names one. */
     this.relay = null;
     this.onRelay = () => {};
@@ -173,6 +175,8 @@ export class SyncEngine {
 
   /** A cycle a second from now, once however many changes come meanwhile. */
   changed() {
+    // the gesture's end syncs
+    if (this.holdBack()) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.sync(), 1000);
   }
@@ -234,12 +238,12 @@ export class SyncEngine {
         if (!(await this.retryHeld(keys, same))) return;
       }
       this.flushLocal();
-      const ready = this.store.state.resync || this.store.state.epoch == null ? null : await this.outgoing(keys);
+      const ready = this.store.state.resync || this.store.state.epoch == null || this.holdBack() ? null : await this.outgoing(keys);
       const combined = ready?.writes.length > 0;
       let first = combined ? ready : null;
       if (!combined && !(await this.pullAll(transport, keys, same))) return;
       let refusals = 0;
-      for (let round = 0; round < 10; round++) {
+      for (let round = 0; round < 10 && !this.holdBack(); round++) {
         this.flushLocal();
         const { writes, sent, blobs } = first ?? (await this.outgoing(keys));
         first = null;

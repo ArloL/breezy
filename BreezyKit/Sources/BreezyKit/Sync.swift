@@ -178,6 +178,8 @@ public struct SyncStatus: Equatable, Sendable {
   public var onPushed: ((Pushed) -> Void)?
   /// With the store's cursor once the records up to it are in: after each page taken, and after pushed records.
   public var onPulled: ((Int) -> Void)?
+  /// Whether a gesture others follow live is under way: what it changed so far waits for its end.
+  public var holdBack: (() -> Bool)?
   /// When a cycle last ended synced.
   public private(set) var lastSynced: Date?
   private let makeTransport: (SpaceState, SpaceKeys) -> Transport?
@@ -231,6 +233,8 @@ public struct SyncStatus: Equatable, Sendable {
 
   /// A cycle a second from now, once however many changes come meanwhile.
   public func changed() {
+    // the gesture's end syncs
+    if holdBack?() == true { return }
     soon?.cancel()
     soon = Task { [weak self] in
       try? await Task.sleep(for: .seconds(1))
@@ -274,12 +278,12 @@ public struct SyncStatus: Equatable, Sendable {
         heldTried = true
         retryHeld(keys)
       }
-      let ready = state.resync || state.epoch == nil ? nil : outgoing(keys)
+      let ready = state.resync || state.epoch == nil || holdBack?() == true ? nil : outgoing(keys)
       let combined = ready?.writes.isEmpty == false
       var first = combined ? ready : nil
       if !combined { guard try await pullAll(transport, keys, same) else { return } }
       var refusals = 0
-      for _ in 0..<10 {
+      for _ in 0..<10 where holdBack?() != true {
         flushLocal?()
         let out = first ?? outgoing(keys)
         first = nil
