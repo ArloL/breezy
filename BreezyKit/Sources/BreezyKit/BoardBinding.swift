@@ -17,7 +17,7 @@ public final class BoardBinding {
   /// mid-edit does: the gesture's holds are released from here.
   public var afterGesture: (() -> Void)?
   /// The board as last given to or taken from the store, stacked as shown.
-  private var seen: Board
+  public private(set) var seen: Board
   private var waiting = false
   private var flushing = false
 

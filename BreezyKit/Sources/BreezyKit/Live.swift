@@ -64,6 +64,8 @@ public struct Peer: Equatable, Sendable {
   public var caret: Caret?
   /// A version it pushed that this device has not pulled yet; its overlay stays until then.
   var awaiting = 0
+  /// When its last push was announced.
+  var pushedAt = Date.distantPast
   /// The last `seq` taken of each kind of body.
   var seqs: [String: Int] = [:]
   var cursorTrack: Track?
@@ -251,6 +253,8 @@ public struct Peer: Equatable, Sendable {
     var items: [String: LiveFields]
     var caret: Caret?
     var starts: [String: [Double]]
+    /// An edit outside a gesture, sent once.
+    var once = false
   }
 
   /// A sender's compact decoders, one per pipe.
@@ -637,6 +641,11 @@ public struct Peer: Equatable, Sendable {
       folded = try emit(pipe, .live, recipients(live.board), json) { s in
         try pipe.liveEncoder.encode(body, seq: s.seq, at: s.at, now: s.now)
       }
+      if live.once {
+        // the next body starts afresh, and nothing repeats this one
+        pipe.restart()
+        if !pipes.contains(where: \.live), lastLive?.once == true { lastLive = nil }
+      }
     }
     guard cursor else { return }
     let json: [String: JSONValue] = [
@@ -881,6 +890,7 @@ public struct Peer: Equatable, Sendable {
     case "pushed":
       guard let v = Self.integral(b["version"]?.number), v >= 0 else { return }
       p.awaiting = max(p.awaiting, v)
+      p.pushedAt = now()
       peers[from] = p
       onPushed?(v, Self.pushed(b, version: v))
       dropReleased()
@@ -906,7 +916,8 @@ public struct Peer: Equatable, Sendable {
   }
 
   /// Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
-  /// `holdGrace` after its last live body, as that may come direct before the relay says it is held.
+  /// `holdGrace` after its last live body, as that may come direct before the relay says it is held, unless a push
+  /// announced since then is in.
   private func dropReleased() {
     let t = now()
     for (conn, var p) in peers {
@@ -916,7 +927,8 @@ public struct Peer: Equatable, Sendable {
       for id in p.overlay.keys {
         if held.contains(id) {
           p.unheld[id] = nil
-        } else if let since = p.unheld[id], t.timeIntervalSince(since) < Self.holdGrace {
+        } else if let since = p.unheld[id], t.timeIntervalSince(since) < Self.holdGrace, since > p.pushedAt {
+          // one shown ahead of a push this device now has, as for an edit outside a gesture, goes at once
           continue
         } else {
           p.overlay[id] = nil
@@ -1036,6 +1048,18 @@ public struct Peer: Equatable, Sendable {
   public func sendLive(board: String, items: [String: LiveFields], caret: Caret?, starts: [String: [Double]] = [:]) {
     lastLive = LiveState(board: board, items: Self.trimmed(items), caret: caret, starts: starts)
     guard !roster.isEmpty else { return }
+    for p in pipes {
+      p.live = true
+      run(p)
+    }
+  }
+
+  /// What an edit outside a gesture changed of items on `board`, such as a recolour, so that others show it at once
+  /// rather than after its push: one keyframe, holding nothing.
+  public func sendEdit(board: String, items: [String: LiveFields]) {
+    guard !roster.isEmpty, !items.isEmpty, mine.isEmpty else { return }
+    for p in pipes { p.restart() }
+    lastLive = LiveState(board: board, items: Self.trimmed(items), caret: nil, starts: [:], once: true)
     for p in pipes {
       p.live = true
       run(p)

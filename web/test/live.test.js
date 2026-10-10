@@ -154,6 +154,31 @@ test("the overlay stays until the pull reaches the pushed version", async () => 
   assert.equal(b.overlay(B1).size, 0);
 });
 
+test("an edit outside a gesture shows at once, holding nothing, until its push is in", async () => {
+  const { relay, clock, a, b } = await two();
+  const recoloured = { [C1]: { color: 3 } };
+  a.sendEdit(B1, recoloured);
+  await relay.run();
+  assert.deepEqual(Object.fromEntries(b.overlay(B1)), recoloured);
+  assert.equal(b.taken().size, 0);
+  // the next body, of a gesture, starts on a keyframe and does not repeat the edit
+  a.hold([C2]);
+  a.sendLive(B1, { [C2]: { pos: [1, 2] } }, null);
+  clock.advance(25);
+  await relay.run();
+  assert.deepEqual([...b.overlay(B1).keys()].sort(), [C1, C2].sort());
+  a.release();
+  a.sendPushed({ version: 7 });
+  await relay.run();
+  b.noteCursor(7);
+  assert.equal(b.overlay(B1).size, 0);
+  // during a gesture an edit goes with it
+  a.hold([C1]);
+  a.sendEdit(B1, recoloured);
+  await relay.run();
+  assert.equal(b.overlay(B1).size, 0);
+});
+
 test("a hold that ends without a push drops the overlay", async () => {
   const { relay, a, b } = await two();
   a.hold([C1]);

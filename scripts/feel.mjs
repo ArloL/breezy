@@ -308,7 +308,7 @@ if (only.has("drag")) {
 }
 
 if (only.has("colour")) {
-  const shown = [];
+  const shown = [], back = [];
   for (let r = 0; r < RUNS; r++) {
     const c = await cardAt(a);
     await a.mouse("mousePressed", c.x, c.y, { clickCount: 1 }); await a.mouse("mouseReleased", c.x, c.y, { clickCount: 1 });
@@ -318,11 +318,15 @@ if (only.has("colour")) {
     const t = await now();
     await a.key(r % 2 ? "3" : "2");
     await waitFor("b to show the colour", () => b.run(`__frames.some((f) => f[3] === ${want})`), 15_000);
-    const frames = await b.run("__frames");
-    shown.push(frames.find((f) => f[3] === want)[0] - t);
     await sleep(1500);
+    const frames = await b.run("__frames");
+    const i = frames.findIndex((f) => f[3] === want);
+    shown.push(frames[i][0] - t);
+    // frames after it showed that show it as it was, as when a preview goes before the push is in
+    back.push(frames.slice(i).filter((f) => f[3] !== want).length);
   }
   report("recolour shows on b", shown);
+  report("recolour: frames b flips back after", back, "frames");
 }
 
 if (only.has("type")) {

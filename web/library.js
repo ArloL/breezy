@@ -273,8 +273,13 @@ export class Library {
       return;
     }
     if (!this.unfinished) {
-      // an edit outside a held gesture, such as a recolour, goes out at once rather than with a later cycle
-      if (this.binding?.flush() && group?.space) group.engine.sync();
+      // an edit outside a held gesture, such as a recolour, goes out at once rather than with a later cycle, and shows
+      // on others' screens ahead of its push
+      const before = this.binding?.seen;
+      if (!this.binding?.flush() || !group?.space) return;
+      group.engine.sync();
+      const ids = new Set([...model.board.cards, ...model.board.lanes].map((x) => x.id));
+      if (live && id) live.sendEdit(id, liveFields(before, model.board, ids, id));
       return;
     }
     this.unfinished = false;

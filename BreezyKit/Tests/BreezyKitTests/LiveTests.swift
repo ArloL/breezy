@@ -167,6 +167,31 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(b.overlay(on: B1).isEmpty)
 }
 
+@MainActor @Test func anEditOutsideAGestureShowsAtOnceHoldingNothingUntilItsPushIsIn() {
+  let (relay, clock, a, b) = two()
+  let recoloured: [String: LiveFields] = [C1: ["color": .number(3)]]
+  a.sendEdit(board: B1, items: recoloured)
+  relay.run()
+  #expect(b.overlay(on: B1) == recoloured)
+  #expect(b.taken.isEmpty)
+  // the next body, of a gesture, starts on a keyframe and does not repeat the edit
+  a.hold([C2])
+  a.sendLive(board: B1, items: [C2: ["pos": .array([.number(1), .number(2)])]], caret: nil)
+  clock.advance(0.025)
+  relay.run()
+  #expect(Set(b.overlay(on: B1).keys) == [C1, C2])
+  a.release()
+  a.sendPushed(Pushed(version: 7, epoch: nil, records: []))
+  relay.run()
+  b.noteCursor(7)
+  #expect(b.overlay(on: B1).isEmpty)
+  // during a gesture an edit goes with it
+  a.hold([C1])
+  a.sendEdit(board: B1, items: recoloured)
+  relay.run()
+  #expect(b.overlay(on: B1).isEmpty)
+}
+
 @MainActor @Test func aHoldThatEndsWithoutAPushDropsTheOverlay() {
   let (relay, _, a, b) = two()
   a.hold([C1])

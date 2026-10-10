@@ -429,6 +429,11 @@ export class Live {
     if (live) {
       const json = { t: "live", board: live.board, items: trimmed(live.items, 100), caret: live.caret };
       folded = this.emit(pipe, "live", this.recipients(live.board), { ...live, cursor: fold }, json);
+      if (live.once) {
+        // the next body starts afresh, and nothing repeats this one
+        pipe.restart();
+        if (!this.pipes.some((p) => p.live) && this.lastLive === live) this.lastLive = null;
+      }
     }
     if (!cursor) return;
     const ids = this.recipients(everyone ? null : this.cursorBoard);
@@ -554,7 +559,7 @@ export class Live {
 
   heard(from, b) {
     const now = this.now();
-    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
+    const p = this.peers.get(from) ?? { person: null, board: null, selection: [], cursor: null, cursorAt: 0, overlay: new Map(), overlayBoard: null, caret: null, awaiting: 0, pushedAt: -Infinity, cursorTrack: null, motion: new Map(), seqs: {}, unheld: new Map() };
     p.heard = now;
     const arrival = this.clock();
     const at = Number.isFinite(b?.at) ? b.at : arrival;
@@ -612,6 +617,7 @@ export class Live {
       case "pushed":
         if (!integral(b.version) || b.version < 0) return;
         p.awaiting = Math.max(p.awaiting, b.version);
+        p.pushedAt = now;
         break;
       default:
         return;
@@ -633,7 +639,8 @@ export class Live {
   }
 
   /** Overlays of items no longer held go, unless their holder pushed a version not pulled yet. One not held yet stays
-   * HOLD_GRACE_MS after its last live body, as that may come direct before the relay says it is held. */
+   * HOLD_GRACE_MS after its last live body, as that may come direct before the relay says it is held, unless a push
+   * announced since then is in. */
   dropReleased() {
     const now = this.now();
     for (const [conn, p] of this.peers) {
@@ -643,7 +650,8 @@ export class Live {
       for (const id of [...p.overlay.keys()]) {
         const since = p.unheld.get(id);
         if (held.has(id)) p.unheld.delete(id);
-        else if (since === undefined || now - since >= HOLD_GRACE_MS) {
+        // one shown ahead of a push this device now has, as for an edit outside a gesture, goes at once
+        else if (since === undefined || now - since >= HOLD_GRACE_MS || since <= p.pushedAt) {
           p.overlay.delete(id);
           p.unheld.delete(id);
         }
@@ -762,6 +770,18 @@ export class Live {
   sendLive(board, items, caret = null, starts = {}) {
     this.lastLive = { board, items: trimmed(items), caret, starts };
     if (!this.roster.size) return;
+    for (const p of this.pipes) {
+      p.live = true;
+      p.gate.run();
+    }
+  }
+
+  /** What an edit outside a gesture changed of items on `board`, such as a recolour, so that others show it at once
+   * rather than after its push: one keyframe, holding nothing. */
+  sendEdit(board, items) {
+    if (!this.roster.size || !Object.keys(items).length || this.mine.size) return;
+    for (const p of this.pipes) p.restart();
+    this.lastLive = { board, items: trimmed(items), caret: null, starts: {}, once: true };
     for (const p of this.pipes) {
       p.live = true;
       p.gate.run();
