@@ -1,0 +1,1433 @@
+[
+ {
+  "name": "insert 0",
+  "old": [
+   "aX",
+   "b",
+   "c"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "c",
+   "new"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "V",
+   "c": "t"
+  },
+  "keys": {
+   "aX": "G",
+   "new": "x"
+  }
+ },
+ {
+  "name": "none 1",
+  "old": [
+   "aX",
+   "b"
+  ],
+  "now": [
+   "aX",
+   "b"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "l"
+  },
+  "keys": {}
+ },
+ {
+  "name": "insert 2",
+  "old": [
+   "aX",
+   "b",
+   "c",
+   "d",
+   "e",
+   "f"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "c",
+   "new",
+   "d",
+   "e",
+   "f"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "l",
+   "c": "t",
+   "d": "zV",
+   "e": "z",
+   "f": "x"
+  },
+  "keys": {
+   "new": "v"
+  }
+ },
+ {
+  "name": "none 3",
+  "old": [
+   "a",
+   "b",
+   "cX",
+   "dX",
+   "e"
+  ],
+  "now": [
+   "a",
+   "b",
+   "cX",
+   "dX",
+   "e"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "V",
+   "cX": "",
+   "dX": "x",
+   "e": "z"
+  },
+  "keys": {
+   "a": "O",
+   "cX": "G"
+  }
+ },
+ {
+  "name": "move 4",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e"
+  ],
+  "now": [
+   "a",
+   "c",
+   "d",
+   "e",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x",
+   "e": "z"
+  },
+  "keys": {
+   "b": "zV"
+  }
+ },
+ {
+  "name": "delete 5",
+  "old": [
+   "a"
+  ],
+  "now": [
+   "a"
+  ],
+  "orders": {
+   "a": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 6",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e",
+   "fX",
+   "gX"
+  ],
+  "now": [
+   "a",
+   "c",
+   "d",
+   "b",
+   "e",
+   "fX",
+   "gX"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x",
+   "e": "z",
+   "fX": "zV",
+   "gX": "zl"
+  },
+  "keys": {
+   "b": "y"
+  }
+ },
+ {
+  "name": "delete 7",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 8",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "now": [
+   "b",
+   "c",
+   "a",
+   "d"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x"
+  },
+  "keys": {
+   "a": "v"
+  }
+ },
+ {
+  "name": "move 9",
+  "old": [
+   "aX",
+   "b",
+   "cX",
+   "d",
+   "e",
+   "f"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "f",
+   "cX",
+   "d",
+   "e"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "l",
+   "cX": "t",
+   "d": "x",
+   "e": "z",
+   "f": "zV"
+  },
+  "keys": {
+   "f": "p"
+  }
+ },
+ {
+  "name": "delete 10",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e",
+   "f"
+  ],
+  "now": [
+   "b",
+   "c",
+   "d",
+   "e",
+   "f"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x",
+   "e": "z",
+   "f": "zV"
+  },
+  "keys": {}
+ },
+ {
+  "name": "none 11",
+  "old": [
+   "a",
+   "bX",
+   "c",
+   "dX",
+   "e",
+   "fX"
+  ],
+  "now": [
+   "a",
+   "bX",
+   "c",
+   "dX",
+   "e",
+   "fX"
+  ],
+  "orders": {
+   "a": "V",
+   "bX": "l",
+   "c": "t",
+   "dX": "x",
+   "e": "z",
+   "fX": "zV"
+  },
+  "keys": {}
+ },
+ {
+  "name": "insert 12",
+  "old": [
+   "a",
+   "b",
+   "cX",
+   "dX"
+  ],
+  "now": [
+   "a",
+   "b",
+   "new",
+   "cX",
+   "dX"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "cX": "t",
+   "dX": "x"
+  },
+  "keys": {
+   "new": "p"
+  }
+ },
+ {
+  "name": "insert 13",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e",
+   "fX"
+  ],
+  "now": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "new",
+   "e",
+   "fX"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x",
+   "e": "z",
+   "fX": ""
+  },
+  "keys": {
+   "new": "y",
+   "fX": "G"
+  }
+ },
+ {
+  "name": "none 14",
+  "old": [
+   "a",
+   "bX",
+   "c"
+  ],
+  "now": [
+   "a",
+   "bX",
+   "c"
+  ],
+  "orders": {
+   "a": "V",
+   "bX": "l",
+   "c": "t"
+  },
+  "keys": {}
+ },
+ {
+  "name": "delete 15",
+  "old": [
+   "a",
+   "bX"
+  ],
+  "now": [
+   "bX"
+  ],
+  "orders": {
+   "a": "l",
+   "bX": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 16",
+  "old": [
+   "aX",
+   "b",
+   "c",
+   "d",
+   "eX"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "c",
+   "d",
+   "eX"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "",
+   "c": "x",
+   "d": "t",
+   "eX": "z"
+  },
+  "keys": {
+   "b": "G"
+  }
+ },
+ {
+  "name": "move 17",
+  "old": [
+   "a",
+   "b",
+   "cX",
+   "d",
+   "e"
+  ],
+  "now": [
+   "a",
+   "cX",
+   "b",
+   "d",
+   "e"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "cX": "t",
+   "d": "x",
+   "e": "z"
+  },
+  "keys": {
+   "cX": "d"
+  }
+ },
+ {
+  "name": "move 18",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "dX",
+   "e",
+   "f",
+   "g"
+  ],
+  "now": [
+   "a",
+   "c",
+   "dX",
+   "e",
+   "f",
+   "b",
+   "g"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "dX": "x",
+   "e": "z",
+   "f": "zV",
+   "g": "zl"
+  },
+  "keys": {
+   "b": "zd"
+  }
+ },
+ {
+  "name": "insert 19",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e",
+   "f"
+  ],
+  "now": [
+   "a",
+   "b",
+   "c",
+   "new",
+   "d",
+   "e",
+   "f"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "x",
+   "c": "t",
+   "d": "l",
+   "e": "",
+   "f": "zV"
+  },
+  "keys": {
+   "new": "v",
+   "e": "G"
+  }
+ },
+ {
+  "name": "move 20",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "now": [
+   "a",
+   "c",
+   "d",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x"
+  },
+  "keys": {
+   "b": "z"
+  }
+ },
+ {
+  "name": "delete 21",
+  "old": [
+   "aX",
+   "bX",
+   "cX",
+   "d",
+   "e",
+   "f",
+   "g"
+  ],
+  "now": [
+   "bX",
+   "cX",
+   "d",
+   "e",
+   "f",
+   "g"
+  ],
+  "orders": {
+   "aX": "V",
+   "bX": "x",
+   "cX": "t",
+   "d": "l",
+   "e": "z",
+   "f": "zV",
+   "g": "zl"
+  },
+  "keys": {}
+ },
+ {
+  "name": "insert 22",
+  "old": [
+   "a"
+  ],
+  "now": [
+   "new",
+   "a"
+  ],
+  "orders": {
+   "a": "V"
+  },
+  "keys": {
+   "new": "G"
+  }
+ },
+ {
+  "name": "delete 23",
+  "old": [
+   "a",
+   "b",
+   "cX"
+  ],
+  "now": [
+   "a",
+   "b"
+  ],
+  "orders": {
+   "a": "t",
+   "b": "l",
+   "cX": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "none 24",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "a",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 25",
+  "old": [
+   "a",
+   "bX",
+   "cX",
+   "d",
+   "eX",
+   "f"
+  ],
+  "now": [
+   "a",
+   "bX",
+   "cX",
+   "eX",
+   "d",
+   "f"
+  ],
+  "orders": {
+   "a": "V",
+   "bX": "l",
+   "cX": "t",
+   "d": "x",
+   "eX": "z",
+   "f": "zV"
+  },
+  "keys": {
+   "eX": "v"
+  }
+ },
+ {
+  "name": "delete 26",
+  "old": [
+   "a"
+  ],
+  "now": [
+   "a"
+  ],
+  "orders": {
+   "a": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 27",
+  "old": [
+   "a",
+   "b",
+   "c"
+  ],
+  "now": [
+   "a",
+   "c",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t"
+  },
+  "keys": {
+   "c": "d"
+  }
+ },
+ {
+  "name": "move 28",
+  "old": [
+   "aX"
+  ],
+  "now": [
+   "aX"
+  ],
+  "orders": {
+   "aX": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 29",
+  "old": [
+   "a",
+   "b",
+   "c"
+  ],
+  "now": [
+   "a",
+   "c",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t"
+  },
+  "keys": {
+   "c": "d"
+  }
+ },
+ {
+  "name": "insert 30",
+  "old": [
+   "aX",
+   "b",
+   "cX",
+   "dX",
+   "e",
+   "f",
+   "g"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "cX",
+   "dX",
+   "new",
+   "e",
+   "f",
+   "g"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "V",
+   "cX": "zV",
+   "dX": "x",
+   "e": "z",
+   "f": "t",
+   "g": "zl"
+  },
+  "keys": {
+   "aX": "G",
+   "new": "y"
+  }
+ },
+ {
+  "name": "move 31",
+  "old": [
+   "aX",
+   "b",
+   "c",
+   "dX",
+   "e"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "dX",
+   "c",
+   "e"
+  ],
+  "orders": {
+   "aX": "z",
+   "b": "l",
+   "c": "t",
+   "dX": "x",
+   "e": "V"
+  },
+  "keys": {
+   "dX": "p"
+  }
+ },
+ {
+  "name": "move 32",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "a",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "V"
+  },
+  "keys": {
+   "a": "G"
+  }
+ },
+ {
+  "name": "none 33",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "a",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "V"
+  },
+  "keys": {
+   "a": "G"
+  }
+ },
+ {
+  "name": "insert 34",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "a",
+   "new",
+   "b"
+  ],
+  "orders": {
+   "a": "",
+   "b": "l"
+  },
+  "keys": {
+   "a": "O",
+   "new": "a"
+  }
+ },
+ {
+  "name": "move 35",
+  "old": [
+   "a",
+   "bX"
+  ],
+  "now": [
+   "bX",
+   "a"
+  ],
+  "orders": {
+   "a": "V",
+   "bX": "l"
+  },
+  "keys": {
+   "bX": "G"
+  }
+ },
+ {
+  "name": "insert 36",
+  "old": [
+   "aX",
+   "b",
+   "c"
+  ],
+  "now": [
+   "aX",
+   "new",
+   "b",
+   "c"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "l",
+   "c": "t"
+  },
+  "keys": {
+   "new": "d"
+  }
+ },
+ {
+  "name": "delete 37",
+  "old": [
+   "a",
+   "bX",
+   "c",
+   "dX",
+   "e",
+   "fX"
+  ],
+  "now": [
+   "a",
+   "c",
+   "dX",
+   "e",
+   "fX"
+  ],
+  "orders": {
+   "a": "V",
+   "bX": "V",
+   "c": "t",
+   "dX": "x",
+   "e": "",
+   "fX": "zV"
+  },
+  "keys": {
+   "e": "G"
+  }
+ },
+ {
+  "name": "none 38",
+  "old": [
+   "aX",
+   "bX",
+   "cX"
+  ],
+  "now": [
+   "aX",
+   "bX",
+   "cX"
+  ],
+  "orders": {
+   "aX": "l",
+   "bX": "V",
+   "cX": "t"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 39",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e",
+   "f"
+  ],
+  "now": [
+   "a",
+   "b",
+   "c",
+   "e",
+   "d",
+   "f"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "d": "x",
+   "e": "z",
+   "f": "zV"
+  },
+  "keys": {
+   "e": "v"
+  }
+ },
+ {
+  "name": "insert 40",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "now": [
+   "a",
+   "b",
+   "c",
+   "new",
+   "d"
+  ],
+  "orders": {
+   "a": "t",
+   "b": "l",
+   "c": "V",
+   "d": "x"
+  },
+  "keys": {
+   "new": "d"
+  }
+ },
+ {
+  "name": "insert 41",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "a",
+   "new",
+   "b"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l"
+  },
+  "keys": {
+   "new": "d"
+  }
+ },
+ {
+  "name": "delete 42",
+  "old": [
+   "aX",
+   "b",
+   "cX",
+   "dX",
+   "e"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "cX",
+   "e"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "x",
+   "cX": "t",
+   "dX": "l",
+   "e": "z"
+  },
+  "keys": {}
+ },
+ {
+  "name": "delete 43",
+  "old": [
+   "aX",
+   "b",
+   "c",
+   "dX",
+   "eX",
+   "f"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "c",
+   "eX",
+   "f"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "l",
+   "c": "t",
+   "dX": "x",
+   "eX": "z",
+   "f": "zV"
+  },
+  "keys": {}
+ },
+ {
+  "name": "none 44",
+  "old": [
+   "a",
+   "b",
+   "c"
+  ],
+  "now": [
+   "a",
+   "b",
+   "c"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 45",
+  "old": [
+   "aX",
+   "b",
+   "cX",
+   "dX",
+   "eX"
+  ],
+  "now": [
+   "aX",
+   "cX",
+   "b",
+   "dX",
+   "eX"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "V",
+   "cX": "t",
+   "dX": "x",
+   "eX": ""
+  },
+  "keys": {
+   "aX": "O",
+   "cX": "S",
+   "eX": "G"
+  }
+ },
+ {
+  "name": "delete 46",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "dX",
+   "e",
+   "f"
+  ],
+  "now": [
+   "a",
+   "b",
+   "c",
+   "dX",
+   "f"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "z",
+   "c": "t",
+   "dX": "x",
+   "e": "l",
+   "f": "zV"
+  },
+  "keys": {}
+ },
+ {
+  "name": "insert 47",
+  "old": [
+   "a",
+   "b"
+  ],
+  "now": [
+   "new",
+   "a",
+   "b"
+  ],
+  "orders": {
+   "a": "",
+   "b": "V"
+  },
+  "keys": {
+   "new": "G",
+   "a": "O"
+  }
+ },
+ {
+  "name": "delete 48",
+  "old": [
+   "aX",
+   "b",
+   "cX",
+   "d",
+   "eX",
+   "f"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "cX",
+   "eX",
+   "f"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "V",
+   "cX": "t",
+   "d": "x",
+   "eX": "z",
+   "f": "zV"
+  },
+  "keys": {
+   "aX": "G"
+  }
+ },
+ {
+  "name": "none 49",
+  "old": [
+   "aX",
+   "b",
+   "c",
+   "d",
+   "eX",
+   "f"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "c",
+   "d",
+   "eX",
+   "f"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "V",
+   "c": "t",
+   "d": "x",
+   "eX": "z",
+   "f": "zV"
+  },
+  "keys": {
+   "aX": "G"
+  }
+ },
+ {
+  "name": "move 50",
+  "old": [
+   "a",
+   "bX"
+  ],
+  "now": [
+   "bX",
+   "a"
+  ],
+  "orders": {
+   "a": "l",
+   "bX": "V"
+  },
+  "keys": {
+   "bX": "O"
+  }
+ },
+ {
+  "name": "move 51",
+  "old": [
+   "aX",
+   "b",
+   "c",
+   "d"
+  ],
+  "now": [
+   "b",
+   "c",
+   "d",
+   "aX"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "l",
+   "c": "t",
+   "d": ""
+  },
+  "keys": {
+   "d": "O",
+   "aX": "a"
+  }
+ },
+ {
+  "name": "none 52",
+  "old": [
+   "aX"
+  ],
+  "now": [
+   "aX"
+  ],
+  "orders": {
+   "aX": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 53",
+  "old": [
+   "aX",
+   "b",
+   "c"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "c"
+  ],
+  "orders": {
+   "aX": "t",
+   "b": "l",
+   "c": "V"
+  },
+  "keys": {}
+ },
+ {
+  "name": "move 54",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "dX"
+  ],
+  "now": [
+   "b",
+   "c",
+   "a",
+   "dX"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "l",
+   "c": "t",
+   "dX": "x"
+  },
+  "keys": {
+   "a": "v"
+  }
+ },
+ {
+  "name": "move 55",
+  "old": [
+   "a",
+   "bX",
+   "c",
+   "d",
+   "eX",
+   "f",
+   "g"
+  ],
+  "now": [
+   "a",
+   "bX",
+   "d",
+   "eX",
+   "f",
+   "g",
+   "c"
+  ],
+  "orders": {
+   "a": "V",
+   "bX": "V",
+   "c": "",
+   "d": "x",
+   "eX": "z",
+   "f": "zV",
+   "g": "zl"
+  },
+  "keys": {
+   "a": "G",
+   "c": "zt"
+  }
+ },
+ {
+  "name": "move 56",
+  "old": [
+   "a",
+   "b",
+   "c",
+   "dX",
+   "eX",
+   "f"
+  ],
+  "now": [
+   "f",
+   "a",
+   "b",
+   "c",
+   "dX",
+   "eX"
+  ],
+  "orders": {
+   "a": "V",
+   "b": "V",
+   "c": "t",
+   "dX": "x",
+   "eX": "z",
+   "f": "zV"
+  },
+  "keys": {
+   "f": "G",
+   "a": "O"
+  }
+ },
+ {
+  "name": "insert 57",
+  "old": [
+   "aX",
+   "bX",
+   "c",
+   "d",
+   "eX",
+   "f",
+   "g"
+  ],
+  "now": [
+   "new",
+   "aX",
+   "bX",
+   "c",
+   "d",
+   "eX",
+   "f",
+   "g"
+  ],
+  "orders": {
+   "aX": "V",
+   "bX": "l",
+   "c": "t",
+   "d": "x",
+   "eX": "z",
+   "f": "zV",
+   "g": "zl"
+  },
+  "keys": {
+   "new": "G"
+  }
+ },
+ {
+  "name": "move 58",
+  "old": [
+   "aX",
+   "b",
+   "cX"
+  ],
+  "now": [
+   "aX",
+   "b",
+   "cX"
+  ],
+  "orders": {
+   "aX": "V",
+   "b": "V",
+   "cX": "t"
+  },
+  "keys": {
+   "aX": "G"
+  }
+ },
+ {
+  "name": "insert 59",
+  "old": [
+   "a",
+   "bX"
+  ],
+  "now": [
+   "new",
+   "a",
+   "bX"
+  ],
+  "orders": {
+   "a": "l",
+   "bX": ""
+  },
+  "keys": {
+   "new": "O",
+   "bX": "a"
+  }
+ }
+]

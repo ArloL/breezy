@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { boardFrom, cardRecord, changes, deletedRecord } from "../sync/records.js";
 import { decode } from "../sync/base64.js";
 import { newID } from "../rules.js";
+import { between } from "../sync/order-key.js";
+import { fixture } from "./helpers/fixture.js";
 
 const card = (id, x, y, text = "t") => ({ id, x, y, w: 240, text, color: 1 });
 const lane = (id, x, y) => ({ id, x, y, w: 480, h: 720, title: "Lane" });
@@ -69,4 +71,27 @@ test("only a JSON number sets a colour", () => {
 test("only deleted: true leaves a record out", () => {
   const [c] = boardFrom({ c: { format: 1, kind: "card", board: "B", deleted: 1 } }, "B").cards;
   assert.equal(c.id, "c");
+});
+
+const keysOf = (out) => Object.fromEntries(Object.entries(out).filter(([, c]) => c.fields?.order !== undefined).map(([id, c]) => [id, c.fields.order]));
+const cards = (ids) => ids.map((id) => card(id, 0, 0));
+
+test("order writes match the shared cases", () => {
+  for (const c of fixture("order-writes.json")) assert.deepEqual(keysOf(changes({ cards: cards(c.old), lanes: [] }, { cards: cards(c.now), lanes: [] }, "B", c.orders)), c.keys, c.name);
+});
+
+test("when the store has the order seen here, the keys written give the board's order", () => {
+  let seed = 1;
+  const rand = (n) => ((seed = (seed * 48271) % 2147483647) % n);
+  for (let n = 0; n < 2000; n++) {
+    const ids = Array.from({ length: 1 + rand(8) }, (_, i) => `c${i}`);
+    let k = "";
+    const orders = Object.fromEntries(ids.map((id) => [id, (k = rand(4) ? between(k, null) : k + "V")]));
+    const now = [...ids].sort(() => rand(3) - 1);
+    if (rand(2)) now.splice(rand(now.length + 1), 0, "new");
+    const out = changes({ cards: cards(ids), lanes: [] }, { cards: cards(now), lanes: [] }, "B", orders);
+    const keys = { ...orders, ...keysOf(out) };
+    const recs = Object.fromEntries(now.map((id) => [id, cardRecord(card(id, 0, 0), "B", keys[id])]));
+    assert.deepEqual(boardFrom(recs, "B").cards.map((c) => c.id), now, JSON.stringify({ ids, orders, now }));
+  }
 });
