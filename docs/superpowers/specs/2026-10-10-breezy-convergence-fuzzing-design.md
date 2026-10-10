@@ -103,7 +103,7 @@ After `--steps`, the hub heals: no more operations or faults, every link good, e
 - the relay holds nothing, and every device's `mine` is empty;
 - every device sees each other one present.
 
-Along the run, every 5 s, no hold may outlive its gesture: a device holding items 120 s after its last gesture, or a relay keeping a connection's holds 45 s after its device let go, fails the run, as holds keep the others from editing. The margins leave a finish its push over a dead network.
+Along the run, every 15 s, no hold may outlive its gesture: a device holding items 120 s after its last gesture, or a relay keeping a connection's holds 45 s after its device let go, fails the run, as holds keep the others from editing. The margins leave a finish its push over a dead network.
 
 The hub reports how long after a tunnel or a dead upstream ends a device takes to sync and to be welcomed by the relay, as 95 % CIs over the run's seeds.
 
