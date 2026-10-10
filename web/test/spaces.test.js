@@ -200,8 +200,12 @@ async function liveSpaces(srv, relay, storage = new MemoryStorage()) {
   return Spaces.open(storage, { transport: srv.transport, socket: () => relay.connect() });
 }
 
-/** Lets the live layer appear: it needs the space's keys, which take a moment. */
-const settleLive = () => new Promise((r) => setTimeout(r, 20));
+/** Lets the live layer of each of `groups` appear, as it needs the space's keys, which take a moment, or 20 ms for none. */
+async function settleLive(...groups) {
+  const wait = () => new Promise((r) => setTimeout(r, 5));
+  if (!groups.length) return new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 400 && groups.some((g) => !g.live); i++) await wait();
+}
 
 test("a device has a name and an id, kept", async () => {
   const storage = new MemoryStorage();
@@ -222,7 +226,7 @@ test("a relay gives the space a live layer", async () => {
   const g = spaces.newSpace(SERVER, "Work");
   srv.server(g.space).relay = "wss://relay.example/";
   await g.engine.sync();
-  await settleLive();
+  await settleLive(g);
   assert.equal(g.live.relay, "wss://relay.example/");
   assert.equal(g.live.me.name, "Ana");
   assert.ok(heard >= 1);
@@ -242,7 +246,7 @@ test("a space's live layer comes back at launch before any sync", async () => {
   await g.engine.sync();
   await spaces.flushAll();
   const again = await liveSpaces(srv, relay, storage);
-  await settleLive();
+  await settleLive(again.spaces[0]);
   assert.equal(again.spaces[0].live?.relay, "wss://relay.example/");
 });
 
@@ -267,7 +271,7 @@ test("while live is connected, polling waits 30 s", async () => {
   const g = spaces.newSpace(SERVER, "Work");
   srv.server(g.space).relay = "wss://relay.example/";
   await g.engine.sync();
-  await settleLive();
+  await settleLive(g);
   g.live.connect();
   await relay.run();
   assert.ok(g.live.connected);
@@ -289,7 +293,7 @@ test("a push is announced, and an announced push is pulled at once", async () =>
   await ga.engine.sync();
   const gb = b.join(ga.store.invite);
   await gb.engine.sync();
-  await settleLive();
+  await settleLive(ga, gb);
   ga.live.connect();
   gb.live.connect();
   await relay.run();
@@ -306,7 +310,7 @@ test("leaving a space closes its live layer", async () => {
   const g = spaces.newSpace(SERVER, "Work");
   srv.server(g.space).relay = "wss://relay.example/";
   await g.engine.sync();
-  await settleLive();
+  await settleLive(g);
   g.live.connect();
   await relay.run();
   await spaces.leave(g);
@@ -323,10 +327,12 @@ test("an announced push with its records is taken without a request, and with a 
   await ga.engine.sync();
   const gb = b.join(ga.store.invite);
   await gb.engine.sync();
-  await settleLive();
+  await settleLive(ga, gb);
   ga.live.connect();
   gb.live.connect();
   await relay.run();
+  // the welcomes' catch-up syncs, which would otherwise pull while the test counts pulls
+  await Promise.all([ga.engine.running, gb.engine.running]);
   const id = ga.store.createBoard("Plans");
   const seen = [];
   const pull = server.pull.bind(server);

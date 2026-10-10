@@ -3,6 +3,16 @@ import { conflicts, holdsOf, lapsed } from "../../../relay/src/holds.js";
 import { outFrame, parseFrame } from "../../../relay/src/frames.js";
 import { encode, decode } from "../../sync/base64.js";
 
+/** Crypto calls under way: sealing and opening run on a thread pool, which a busy machine makes slow. */
+let pending = 0;
+for (const name of ["encrypt", "decrypt", "importKey", "deriveKey", "deriveBits", "digest"]) {
+  const f = crypto.subtle[name].bind(crypto.subtle);
+  crypto.subtle[name] = (...args) => {
+    pending++;
+    return f(...args).finally(() => pending--);
+  };
+}
+
 /** Time and timers under a test's control, in ms. */
 export class Clock {
   constructor() {
@@ -78,9 +88,10 @@ export class FakeRelay {
     return s;
   }
 
-  /** Delivers until nothing is left, letting sealing and opening finish between rounds. */
+  /** Delivers until nothing is left, letting sealing and opening finish between rounds, however long a busy machine takes. */
   async run() {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0, calm = 0; i < 100_000 && calm < 40; i++) {
+      calm = this.queue.length || pending ? 0 : calm + 1;
       while (this.queue.length) this.queue.shift()();
       await new Promise((r) => setImmediate(r));
     }
