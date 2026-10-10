@@ -200,6 +200,8 @@ export class Live {
         for (const p of this.pipes) p.to = { cursor: null, live: null };
         this.onChange();
       },
+      // the relay socket often shares the network that went
+      lost: () => this.probe(),
     });
   }
 

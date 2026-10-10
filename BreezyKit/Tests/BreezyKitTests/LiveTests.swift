@@ -865,6 +865,16 @@ private func unpack(_ m: PeerMessage?) -> [Pack] { data(m).flatMap { try? Pack.u
   #expect(Array(ls[1].overlay(on: B1).keys) == [C1])
 }
 
+@MainActor @Test func aChannelThatDiesAsksTheRelayToAnswerAtOnce() {
+  let (relay, _, ts, ls) = direct()
+  open(ts, ls, 0, 1)
+  relay.run()
+  #expect(relay.pings == 0)
+  ts[0].onState?(ls[1].id!, .failed)
+  relay.run()
+  #expect(relay.pings == 1)
+}
+
 @MainActor @Test func aConnectionThatNeverSpeaksLeavesTheRosterAfter30sAndTheStatusLineCountsTheRoster() {
   let (relay, clock, ts, ls) = direct()
   open(ts, ls, 0, 1)

@@ -366,7 +366,9 @@ public struct Peer: Equatable, Sendable {
           // a channel opened or closed: a peer moved between pipes, so each pipe's next body is a keyframe
           for p in pipes { p.to = [:] }
           onChange?()
-        })
+        },
+        // the relay socket often shares the network that went
+        lost: { [weak self] in self?.probe() })
     }
   }
 

@@ -834,6 +834,16 @@ test("a live edit that comes direct before its hold is shown and keeps its track
   assert.deepEqual([...ls[1].overlay(B1).keys()], [C1]);
 });
 
+test("a channel that dies asks the relay to answer at once, as the relay socket may have died with it", async () => {
+  const { relay, ts, ls, open } = await direct();
+  open(0, 1);
+  await relay.run();
+  assert.equal(relay.pings, 0);
+  ts[0].onState(ls[1].id, "failed");
+  await relay.run();
+  assert.equal(relay.pings, 1);
+});
+
 test("a connection that never speaks leaves the roster after 30 s, and the status line counts the roster", async () => {
   const { relay, clock, ls, open } = await direct();
   open(0, 1);
