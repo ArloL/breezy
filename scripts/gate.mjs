@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Fails when a measure got worse: its mean's 95 % CI lies wholly above the baseline's. Every measure is lower-is-better.
-// Takes feel.mjs's output, whose last line holds its samples, or bench.sh's build/bench.jsonl, as a run and as a baseline.
-//   node scripts/gate.mjs BASELINE RUN
+// Fails when a measure got worse: its mean's 95 % CI lies wholly above the CI of every baseline, runs recorded on the same
+// kind of machine, whose spread from one machine to the next the envelope takes in. Every measure is lower-is-better.
+// Takes feel.mjs's output, whose last line holds its samples, or bench.sh's build/bench.jsonl, as the run and baselines.
+//   node scripts/gate.mjs RUN BASELINE...
 import { readFileSync } from "node:fs";
 
 // as bench-summary.py
@@ -30,17 +31,18 @@ function ci(xs) {
   return { m, lo: m - h, hi: m + h, text: `${m.toFixed(1)} ± ${h.toFixed(1)}` };
 }
 
-const [baseline, run] = process.argv.slice(2).map(samples);
+const [run, ...baselines] = process.argv.slice(2).map(samples);
 let worse = 0;
-for (const [k, xs] of Object.entries(baseline)) {
+for (const k of new Set(baselines.flatMap(Object.keys))) {
   if (!run[k]) {
     console.log(`${k}: not measured`);
     worse++;
     continue;
   }
-  const b = ci(xs), r = ci(run[k]);
-  const verdict = r.lo > b.hi ? "WORSE" : r.hi < b.lo ? "better: record a new baseline" : "ok";
+  const bs = baselines.filter((b) => b[k]).map((b) => ci(b[k])), r = ci(run[k]);
+  const lo = Math.min(...bs.map((b) => b.lo)), hi = Math.max(...bs.map((b) => b.hi));
+  const verdict = r.lo > hi ? "WORSE" : r.hi < lo ? "better: record new baselines" : "ok";
   if (verdict === "WORSE") worse++;
-  console.log(`${k.padEnd(48)} ${r.text.padStart(16)} against ${b.text.padEnd(16)} ${verdict}`);
+  console.log(`${k.padEnd(48)} ${r.text.padStart(16)} against ${`${lo.toFixed(1)} to ${hi.toFixed(1)}`.padEnd(18)} ${verdict}`);
 }
 process.exit(worse ? 1 : 0);

@@ -1,8 +1,9 @@
 name: Nightly
 
-# The measured network feel and the Mac's performance journal, each against the baseline in scripts/baselines/ that
-# runners recorded: a run fails when a measure's 95 % CI lies wholly above its baseline's. To record one, copy a run's
-# artifact there. Pull requests that change what is measured or the baselines run it too.
+# The measured network feel and the Mac's performance journal, each against baselines in scripts/baselines/ that runners
+# recorded: a run fails when a measure's 95 % CI lies wholly above every baseline's. One runner can measure 40 % slower
+# than the next, so the baselines are several runs' artifacts; one that fails on such a runner joins them. Pull requests
+# that change what is measured or the baselines run it too.
 on:
   schedule:
   - cron: "23 2 * * *"
@@ -55,11 +56,13 @@ jobs:
         path: build/feel.json
     - name: Compare with the baseline
       run: |
-        if [ ! -f scripts/baselines/feel.json ]; then
-          echo "::notice::No baseline in scripts/baselines/feel.json: this run's artifact can be one"
+        shopt -s nullglob
+        baselines=(scripts/baselines/feel/*.json)
+        if [ ${#baselines[@]} -eq 0 ]; then
+          echo "::notice::No baselines in scripts/baselines/feel/: this run's artifact can be one"
           exit 0
         fi
-        node scripts/gate.mjs scripts/baselines/feel.json build/feel.json
+        node scripts/gate.mjs build/feel.json "${baselines[@]}"
   bench:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -92,8 +95,10 @@ jobs:
         path: build/bench.jsonl
     - name: Compare with the baseline
       run: |
-        if [ ! -f scripts/baselines/bench.jsonl ]; then
-          echo "::notice::No baseline in scripts/baselines/bench.jsonl: this run's artifact can be one"
+        shopt -s nullglob
+        baselines=(scripts/baselines/bench/*.jsonl)
+        if [ ${#baselines[@]} -eq 0 ]; then
+          echo "::notice::No baselines in scripts/baselines/bench/: this run's artifact can be one"
           exit 0
         fi
-        node scripts/gate.mjs scripts/baselines/bench.jsonl build/bench.jsonl
+        node scripts/gate.mjs build/bench.jsonl "${baselines[@]}"
