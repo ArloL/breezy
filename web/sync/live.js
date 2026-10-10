@@ -25,6 +25,10 @@ export const IDLE_CURSOR_MS = 60_000;
 export const MAX_BACKOFF_MS = 30_000;
 export const PING_MS = 5_000;
 export const PONG_TIMEOUT_MS = 3_000;
+/** While another holds something, its bodies come every SEND_MS at most, so a relay quiet this long is asked sooner, and
+ * must answer within HELD_PONG_MS. A holder standing still sends nothing, so quiet alone does not drop the socket. */
+export const HELD_PING_MS = 1_000;
+export const HELD_PONG_MS = 1_500;
 /** Sending after hearing nothing from the relay this long asks it to answer, so that a socket a network change left
  * dead is found while someone is busy. */
 export const QUIET_MS = 2_000;
@@ -155,8 +159,9 @@ export class Live {
     /** When the relay last said anything, and last welcomed this layer. */
     this.heardAt = -Infinity;
     this.welcomedAt = Infinity;
-    /** When a ping went out that nothing has answered yet. */
+    /** When a ping went out that nothing has answered yet, and how long it has to be answered. */
     this.pingWaiting = null;
+    this.pongTimeout = PONG_TIMEOUT_MS;
     /** Connection id → { person, v, board, boards, selection, cursor, cursorAt, heard, overlay: Map, overlayBoard, caret,
      * awaiting (a pushed version, since awaitingAt), pushedSeq, unheld: Map of overlay id → {at, seq} of its last live body that came while its sender did
      * not hold it }. */
@@ -245,8 +250,9 @@ export class Live {
   probe() {
     if (!this.connected || this.pingWaiting !== null || this.ws.readyState !== 1) return;
     const sent = (this.pingWaiting = this.now());
+    this.pongTimeout = this.taken().size ? HELD_PONG_MS : PONG_TIMEOUT_MS;
     this.ws.send("ping");
-    this.schedule(PONG_TIMEOUT_MS, () => this.pingWaiting === sent && this.unanswered());
+    this.schedule(this.pongTimeout, () => this.pingWaiting === sent && this.unanswered());
   }
 
   probeIfQuiet() {
@@ -255,7 +261,7 @@ export class Live {
 
   /** Whether the socket left a ping unanswered too long, and so was dropped. */
   unanswered() {
-    if (!this.connected || this.pingWaiting === null || this.now() - this.pingWaiting < PONG_TIMEOUT_MS) return false;
+    if (!this.connected || this.pingWaiting === null || this.now() - this.pingWaiting < this.pongTimeout) return false;
     const ws = this.ws;
     this.dropped(1006);
     ws?.close();
@@ -698,7 +704,7 @@ export class Live {
       this.dropped(1006);
       return ws.close();
     }
-    if (this.connected && now - this.heardAt >= PING_MS) this.probe();
+    if (this.connected && now - this.heardAt >= (this.taken().size ? HELD_PING_MS : PING_MS)) this.probe();
     this.direct?.tick();
     let changed = false;
     // a connection that never speaks, such as one in another space with this one's token, would keep every cursor on

@@ -445,6 +445,28 @@ test("a socket that stops answering is closed and opened again", async () => {
   assert.ok(a.connected && relay.opened === 3);
 });
 
+test("while another holds something, a relay quiet for 1 s is asked to answer within 1.5 s", async () => {
+  const { relay, clock, a, b } = await two();
+  clock.advance(1000);
+  a.tick();
+  await relay.run();
+  assert.equal(relay.pings, 0);
+  b.hold([C1]);
+  await relay.run();
+  relay.sockets[0].halfOpen = true;
+  clock.advance(999);
+  a.tick();
+  assert.equal(a.pingWaiting, null);
+  clock.advance(1);
+  a.tick();
+  await relay.run();
+  assert.notEqual(a.pingWaiting, null);
+  clock.advance(1499);
+  assert.ok(a.connected);
+  clock.advance(1);
+  assert.ok(!a.connected);
+});
+
 test("sending after the relay was quiet a while asks it to answer", async () => {
   const { relay, clock, a } = await two();
   a.sendCursor(B1, 1, 1);

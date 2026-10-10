@@ -47,6 +47,7 @@ A socket a network change left dead says nothing, so the app asks:
 |---|---|
 | the relay has said nothing for 5 s | ping |
 | sending after the relay said nothing for 2 s | ping |
+| another holds something and the relay has said nothing for 1 s | ping, dropping it if unanswered for 1.5 s |
 | a ping unanswered for 3 s, or a socket not welcomed 5 s after opening | drop it |
 | a connection that worked at least 5 s drops | open again at once; else the back-off as before |
 | an online event, or the Mac wakes or its network's interfaces or gateways change | replace the socket at once |

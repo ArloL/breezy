@@ -456,6 +456,28 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(a.connected && relay.opened == 3)
 }
 
+@MainActor @Test func whileAnotherHoldsSomethingARelayQuietFor1sIsAskedToAnswerWithin1_5s() {
+  let (relay, clock, a, b) = two()
+  clock.advance(1)
+  a.tick()
+  relay.run()
+  #expect(relay.pings == 0)
+  b.hold([C1])
+  relay.run()
+  clock.advance(0.999)
+  a.tick()
+  relay.run()
+  #expect(relay.pings == 0)
+  relay.sockets[0].halfOpen = true
+  clock.advance(0.001)
+  a.tick()
+  relay.run()
+  clock.advance(1.499)
+  #expect(a.connected)
+  clock.advance(0.001)
+  #expect(!a.connected)
+}
+
 @MainActor @Test func sendingAfterTheRelayWasQuietAWhileAsksItToAnswer() {
   let (relay, clock, a, _) = two()
   a.sendCursor(board: B1, x: 1, y: 1)
