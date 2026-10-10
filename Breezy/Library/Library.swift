@@ -166,7 +166,11 @@ extension Notification.Name {
       guard let live = self?.spaces.group(of: id)?.live else { return nil }
       return (CanvasPresence(live, board: id), live.animating(on: id))
     }
-    canvas.hold = { [weak self] ids in self?.spaces.group(of: id)?.live?.hold(ids) }
+    canvas.hold = { [weak self, weak doc] ids in
+      self?.spaces.group(of: id)?.live?.hold(ids)
+      // what the gesture did before it held, such as making the card it edits, shows now rather than at its next change
+      doc?.binding.afterEdit?()
+    }
     doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
     doc.binding.afterEdit = { [weak self, weak doc] in
       guard let self, let doc, let g = spaces.group(of: id) else { return }

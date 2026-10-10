@@ -18,7 +18,7 @@ const { values: opt } = parseArgs({ options: {
   "relay-ms": { type: "string", default: "25" },
   "server-ms": { type: "string", default: "40" },
   runs: { type: "string", default: "10" },
-  only: { type: "string", default: "cursor,drag,colour,outage,silent,passive" },
+  only: { type: "string", default: "cursor,drag,colour,type,create,outage,silent,passive" },
 } });
 const RUNS = Number(opt.runs), only = new Set(opt.only.split(","));
 const root = new URL("..", import.meta.url).pathname;
@@ -126,7 +126,8 @@ window.__frames = [];
 (function frame() {
   const c = document.querySelector(".presence .cursor")?.style.transform.match(/translate\\((-?[\\d.]+)px, (-?[\\d.]+)px/);
   const card = document.querySelector(".card")?.getBoundingClientRect();
-  __frames.push([__now(), c ? +c[1] : null, card ? card.x : null, document.querySelectorAll(".sheet.c2").length]);
+  const fronts = [...document.querySelectorAll(".card:not([style*='pointer-events: none']) .front")];
+  __frames.push([__now(), c ? +c[1] : null, card ? card.x : null, document.querySelectorAll(".sheet.c2").length, document.querySelector(".card .front")?.textContent.length ?? 0, fronts.length]);
   if (__frames.length > 20000) __frames.splice(0, 10000);
   requestAnimationFrame(frame);
 })();
@@ -322,6 +323,60 @@ if (only.has("colour")) {
     await sleep(1500);
   }
   report("recolour shows on b", shown);
+}
+
+if (only.has("type")) {
+  const lags = [];
+  for (let r = 0; r < RUNS; r++) {
+    const c = await cardAt(a);
+    for (const clickCount of [1, 2]) { await a.mouse("mousePressed", c.x, c.y, { clickCount }); await a.mouse("mouseReleased", c.x, c.y, { clickCount }); }
+    await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
+    await a.run(`(() => { const e = document.querySelector("[contenteditable]"); const r = document.createRange(); r.selectNodeContents(e); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+    await sleep(800);
+    await b.run("__frames.length = 0");
+    const keys = [];
+    for (let i = 0; i < 8; i++) {
+      keys.push([await now()]);
+      await a.send("Input.dispatchKeyEvent", { type: "char", text: "k" });
+      await sleep(150);
+    }
+    await sleep(500);
+    const frames = await b.run("__frames");
+    if (process.env.FEEL_DEBUG) console.log("  type", r, frames[0][4], frames.at(-1)[4], await a.run(`document.querySelector("[contenteditable]")?.textContent`));
+    const base = frames[0][4];
+    // the frame b first shows each key's text
+    for (let i = 0; i < keys.length; i++) {
+      const f = frames.find((f) => f[4] >= base + i + 1);
+      if (f) lags.push(f[0] - keys[i][0]);
+    }
+    await a.run(`document.activeElement.blur()`);
+    await a.mouse("mousePressed", 900, 700, { clickCount: 1 }); await a.mouse("mouseReleased", 900, 700, { clickCount: 1 });
+    await sleep(1500);
+  }
+  report("a typed key shows on b, per key", lags);
+}
+
+if (only.has("create")) {
+  const shown = [];
+  for (let r = 0; r < RUNS; r++) {
+    const x = 450 + (r % 3) * 220, y = 150 + Math.floor(r / 3) * 150;
+    await b.run("__frames.length = 0");
+    const before = (await b.run("__frames.at(-1) ?? null"))?.[5];
+    await sleep(100);
+    const n0 = (await b.run("__frames.at(-1)"))[5];
+    await a.mouse("mouseMoved", x, y);
+    await a.mouse("mousePressed", x, y, { clickCount: 1 }); await a.mouse("mouseReleased", x, y, { clickCount: 1 });
+    const t = await now();
+    await a.mouse("mousePressed", x, y, { clickCount: 2 }); await a.mouse("mouseReleased", x, y, { clickCount: 2 });
+    if (process.env.FEEL_DEBUG) { await sleep(2000); console.log("  create", r, n0, await a.run(`document.querySelectorAll(".card").length`), await b.run(`__frames.at(-1)`), await a.run(`!!document.querySelector("[contenteditable]")`)); }
+    await waitFor("b to show the new card", () => b.run(`__frames.some((f) => f[5] > ${n0})`), 15_000);
+    shown.push((await b.run(`__frames.find((f) => f[5] > ${n0})[0]`)) - t);
+    await a.send("Input.dispatchKeyEvent", { type: "char", text: "n" });
+    await a.run(`document.activeElement.blur()`);
+    await a.mouse("mousePressed", 900, 700, { clickCount: 1 }); await a.mouse("mouseReleased", 900, 700, { clickCount: 1 });
+    await sleep(1500);
+  }
+  report("a new card shows on b", shown);
 }
 
 for (const [silent, who] of [[false, "a"], [true, "a"], [true, "b"]]) {
