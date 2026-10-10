@@ -224,4 +224,18 @@ export class Spaces {
   flushAll() {
     return Promise.all(this.groups().map((g) => g.saver.flush()));
   }
+
+  /** Saves what is pending, then nothing more, and stops syncing, as when another tab takes the boards over. */
+  stop() {
+    return Promise.all(this.groups().map((g) => {
+      g.engine.stopped = true;
+      clearTimeout(g.engine.timer);
+      g.engine.abort?.abort();
+      g.live?.close();
+      g.live = null;
+      const written = g.saver.flush();
+      g.saver.enabled = false;
+      return written;
+    }));
+  }
 }

@@ -120,11 +120,22 @@ if (demo === "add") app.ui.act("add");
 
 if (!scratch) {
   document.body.dataset.screen = "boards";
-  let waited = false;
-  await ownBoards(navigator.locks, () => {
-    waited = true;
-    ask({ title: "Breezy is open in another tab", message: "Close it to use Breezy here.", ok: null, cancel: null });
+  let waited = false, opened;
+  await ownBoards({
+    locks: globalThis.BroadcastChannel && navigator.locks,
+    channel: globalThis.BroadcastChannel && new BroadcastChannel("breezy-boards"),
+    waiting: async (useHere) => {
+      waited = true;
+      // shown again until the boards come, as the other tab may not answer
+      for (;;) {
+        await ask({ title: "Breezy is open in another tab", ok: "Use Here", cancel: null });
+        useHere();
+      }
+    },
+    handOver: () => opened.then((library) => library.handOver()),
+    handedOver: () => location.reload(),
   });
   if (waited) document.getElementById("sheet").hidden = true;
-  await Library.open(app);
+  opened = Library.open(app);
+  await opened;
 }
