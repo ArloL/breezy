@@ -41,7 +41,7 @@ import Foundation
   }
   private var open: Open?
   /// Where a press's items stood: a lane and the cards it carries, or cards.
-  private var pressed: (lane: Origin?, cards: [Origin])?
+  private var pressed: (lane: Origin?, cards: [Origin], room: Room?)?
   private var visible = true
 
   init(_ index: Int, me: Person, seed: UInt64, directory: URL, host: SimHost) throws {
@@ -196,16 +196,19 @@ import Foundation
         $0.gravity(heights($0))
       }
     case "type":
-      guard !model.inGesture, let id = items(model.board.cards.map(\.id), try o.int("n"), 1).first else { break }
+      let taken = open.group.live?.taken ?? []
+      // as the apps, which begin, then hold, and edit nothing someone else holds
+      guard !model.inGesture, let id = items(model.board.cards.map(\.id), try o.int("n"), 1).first, !taken.contains(id) else { break }
       let text = try o.string("text")
       let half = String(decoding: Array(text.utf16.prefix((text.utf16.count + 1) / 2)), as: UTF16.self)
-      open.session.hold([id])
       model.begin()
+      open.session.hold([id])
       model.update { $0.setText(id, half) }
       model.update { $0.setText(id, text) }
       model.end("Edit")
     case "press":
       guard !model.inGesture else { break }
+      let taken = open.group.live?.taken ?? []
       let b = model.board
       let (n, count) = (try o.int("n"), try o.int("count"))
       let ids: [String]
@@ -213,14 +216,17 @@ import Foundation
         guard let lid = items(b.lanes.map(\.id), n, 1).first, let lane = b.lane(lid) else { break }
         let carried = b.cardsInLane(lid, heightOf: heights(b))
         ids = [lid] + carried.map(\.id)
-        pressed = (Origin(id: lid, x: lane.x, y: lane.y), carried.map { Origin(id: $0.id, x: $0.x, y: $0.y) })
+        guard !ids.contains(where: taken.contains) else { break }
+        pressed = (Origin(id: lid, x: lane.x, y: lane.y), carried.map { Origin(id: $0.id, x: $0.x, y: $0.y) }, nil)
       } else {
         ids = items(b.cards.map(\.id), n, count)
-        guard !ids.isEmpty else { break }
-        pressed = (nil, ids.compactMap { b.card($0) }.map { Origin(id: $0.id, x: $0.x, y: $0.y) })
+        guard let first = ids.first, !taken.contains(first) else { break }
+        // others make way while the cards move, and they land on release, as in the apps
+        let room = Room(base: b.layout(excluding: Set(ids)), heightOf: heights(b))
+        pressed = (nil, ids.compactMap { b.card($0) }.map { Origin(id: $0.id, x: $0.x, y: $0.y) }, room)
       }
-      open.session.hold(Set(ids))
       model.begin()
+      open.session.hold(Set(ids))
     case "drag":
       guard model.inGesture, let pressed else { break }
       let (dx, dy) = (try o.number("dx"), try o.number("dy"))
@@ -228,12 +234,14 @@ import Foundation
         if let lane = pressed.lane {
           b.moveLane(lane, cards: pressed.cards, dx: dx, dy: dy)
         } else {
-          b.moveCards(pressed.cards, dx: dx, dy: dy)
+          b.moveCards(pressed.cards, dx: dx, dy: dy, room: pressed.room)
         }
       }
     case "release":
+      let p = pressed
       pressed = nil
-      model.end("Move")
+      if let p, let room = p.room, model.inGesture { model.update { $0.land(Set(p.cards.map(\.id)), room: room) } }
+      model.end(p?.lane == nil ? "Move" : "Move Lane")
     case "cancel":
       pressed = nil
       model.cancel()
@@ -302,7 +310,7 @@ import Foundation
 
   // MARK: state
 
-  func snapshot() -> JSONValue { Snapshot.of(spaces) }
+  func snapshot() -> JSONValue { Snapshot.of(spaces, shown: open.map { ($0.id, $0.model, $0.group.store) }) }
 
   private static func json(_ invite: Invite?) throws -> JSONValue {
     guard let i = invite else { throw SimError("not syncing") }

@@ -171,6 +171,10 @@ class WebDevice {
     return this._collab;
   }
 
+  taken() {
+    return this.group?.live?.taken() ?? new Set();
+  }
+
   restack(b) {
     R.gravity(b, (id) => heightOf(R.card(b, id)?.text));
   }
@@ -257,9 +261,10 @@ class WebDevice {
         });
       case "type": {
         const [id] = this.items("cards", o.n);
-        if (!id || m.inGesture) return null;
-        this.open.session.hold(new Set([id]));
+        // as the apps, which begin, then hold, and edit nothing someone else holds
+        if (!id || m.inGesture || this.taken().has(id)) return null;
         m.begin();
+        this.open.session.hold(new Set([id]));
         m.update((b) => R.setText(b, id, o.text.slice(0, Math.ceil(o.text.length / 2))));
         m.update((b) => R.setText(b, id, o.text));
         m.end("Edit");
@@ -274,14 +279,16 @@ class WebDevice {
           if (!lid) return null;
           const carried = R.cardsInLane(b, lid, (c) => heightOf(c.text)).map((c) => c.id);
           ids = [lid, ...carried];
+          if (ids.some((x) => this.taken().has(x))) return null;
           this.gesture = { lane: lid, carried };
         } else {
           ids = this.items("cards", o.n, o.count);
-          if (!ids.length) return null;
-          this.gesture = { cards: ids };
+          if (!ids.length || this.taken().has(ids[0])) return null;
+          // others make way while the cards move, and they land on release, as in the apps
+          this.gesture = { cards: ids, room: { base: R.layout(b, new Set(ids)), heightOf: (id) => heightOf(R.card(m.board, id)?.text) } };
         }
-        this.open.session.hold(new Set(ids));
         m.begin();
+        this.open.session.hold(new Set(ids));
         return null;
       }
       case "drag": {
@@ -295,12 +302,15 @@ class WebDevice {
           if (gs.lane) {
             const o0 = origin(gs.lane);
             if (o0) R.moveLane(b, o0, gs.carried.map(origin).filter(Boolean), o.dx, o.dy);
-          } else R.moveCards(b, gs.cards.map(origin).filter(Boolean), o.dx, o.dy);
+          } else R.moveCards(b, gs.cards.map(origin).filter(Boolean), o.dx, o.dy, gs.room);
         });
       }
-      case "release":
+      case "release": {
+        const gs = this.gesture;
         this.gesture = null;
-        return m.end("Move");
+        if (gs?.cards && m.inGesture) m.update((b) => R.land(b, new Set(gs.cards), gs.room));
+        return m.end(gs?.lane ? "Move Lane" : "Move");
+      }
       case "cancel":
         this.gesture = null;
         return m.cancel();
@@ -380,7 +390,14 @@ class WebDevice {
       overlays[id] = g.live?.overlay(id).size ?? 0;
     }
     const seen = [...new Set([...(g.live?.peers.values() ?? [])].map((p) => p.person?.device).filter(Boolean))].sort();
-    return { boards, pending: g.store.pending().length, overlays, mine: g.live?.mine.size ?? 0, connected: !!g.live?.connected, seen, status: g.engine.status.state };
+    // what the open board shows: its store's
+    let shown = null;
+    if (this.open && !this.open.model.inGesture) {
+      // but for where stacking puts cards and how tall lanes grow, which stay local, and lanes' order, which a pull sets
+      const content = (b) => JSON.stringify([...b.cards.map((c) => [c.id, c.x, c.w, c.color, c.text, c.notes ?? ""]), ...[...b.lanes].sort((x, y) => (x.id < y.id ? -1 : 1)).map((l) => [l.id, l.x, l.y, l.w, l.title])]);
+      shown = { board: this.open.id, same: content(g.store.board(this.open.id)) === content(this.open.model.board) };
+    }
+    return { boards, pending: g.store.pending().length, overlays, mine: g.live?.mine.size ?? 0, connected: !!g.live?.connected, seen, status: g.engine.status.state, shown };
   }
 }
 
