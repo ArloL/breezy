@@ -109,14 +109,31 @@ export function install() {
     new Uint8Array(a.buffer, a.byteOffset, a.byteLength).set(bytes);
     return a;
   };
+  // on a thread pool, calls under way finish in no fixed order: one at a time, they finish in the order they were made
   const subtle = crypto.subtle;
+  let chain = Promise.resolve();
   for (const name of ["encrypt", "decrypt", "importKey", "deriveKey", "deriveBits", "digest", "sign", "verify", "exportKey"]) {
     const f = subtle[name].bind(subtle);
     subtle[name] = (...args) => {
       pending++;
-      return f(...args).finally(() => pending--);
+      const done = chain.then(() => f(...args));
+      chain = done.catch(() => {});
+      return done.finally(() => pending--);
     };
   }
+  // a Blob's stream reads outside the event loop's turns, which settling cannot count; this one hands its bytes over
+  const RealBlob = globalThis.Blob;
+  globalThis.Blob = class extends RealBlob {
+    constructor(parts = [], options) {
+      super(parts, options);
+      this.bytes = Buffer.concat(parts.map((p) => (typeof p === "string" ? Buffer.from(p) : Buffer.from(ArrayBuffer.isView(p) ? new Uint8Array(p.buffer, p.byteOffset, p.byteLength) : p))));
+    }
+
+    stream() {
+      const bytes = new Uint8Array(this.bytes);
+      return new ReadableStream({ start: (c) => (c.enqueue(bytes), c.close()) });
+    }
+  };
   // zlib's own streams run on a thread pool, which settling cannot see; this one deflates in place when the input ends
   globalThis.CompressionStream = class {
     constructor(format) {
