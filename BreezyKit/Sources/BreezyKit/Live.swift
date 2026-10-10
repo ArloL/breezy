@@ -185,9 +185,9 @@ public struct Peer: Equatable, Sendable {
   public static let presenceInterval: TimeInterval = 15
   public static let gone: TimeInterval = 30
   public static let holdGrace: TimeInterval = 1
-  /// How long overlays wait for the pull of a version their sender pushed: it may never come, as when the server was
-  /// restored from a backup, which sets versions back.
-  public static let pushedWait: TimeInterval = 10
+  /// How long overlays wait at most for the pull of a version their sender pushed, past a slow network's retries: should
+  /// it never come, they would stay for good.
+  public static let pushedWait: TimeInterval = 60
   public static let idleCursor: TimeInterval = 60
   public static let maxBackoff: TimeInterval = 30
   public static let pingInterval: TimeInterval = 5
@@ -323,6 +323,7 @@ public struct Peer: Equatable, Sendable {
   /// When a frame last reached the relay, which keeps this connection's holds there while it hears from it.
   private var relaySent = Date.distantPast
   private var storeCursor = 0
+  private var storeEpoch: String?
   private var seq = 0
   /// The last `seq` sent when the push under way began, and the edit outside a gesture that waited then, if any.
   private var pushSeq = 0, pushWaits = 0
@@ -961,8 +962,15 @@ public struct Peer: Equatable, Sendable {
   }
 
   /// The store pulled up to `cursor`: overlays waiting for it can go.
-  public func noteCursor(_ cursor: Int) {
-    storeCursor = max(storeCursor, cursor)
+  /// A new `epoch`, as after a restore from a backup, sets versions back: those announced before it may never come.
+  public func noteCursor(_ cursor: Int, epoch: String? = nil) {
+    if epoch != storeEpoch {
+      if storeEpoch != nil { for k in peers.keys { peers[k]?.awaiting = 0 } }
+      storeEpoch = epoch
+      storeCursor = cursor
+    } else {
+      storeCursor = max(storeCursor, cursor)
+    }
     dropReleased()
     onChange?()
   }

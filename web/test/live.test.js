@@ -154,8 +154,7 @@ test("the overlay stays until the pull reaches the pushed version", async () => 
   assert.equal(b.overlay(B1).size, 0);
 });
 
-// as after the server was restored from a backup, which set its versions back
-test("an overlay waits for a pushed version the pull never reaches 10 s at most", async () => {
+test("an overlay waits for a pushed version the pull never reaches 60 s at most", async () => {
   const { relay, clock, a, b } = await two();
   a.hold([C1]);
   a.sendLive(B1, moved, null);
@@ -163,12 +162,32 @@ test("an overlay waits for a pushed version the pull never reaches 10 s at most"
   a.sendPushed({ version: 7 });
   a.release();
   await relay.run();
-  b.noteCursor(6);
-  clock.advance(9_000);
+  b.noteCursor(6, "E");
+  // a keeps being heard, as it is while it is on the board
+  for (let i = 0; i < 6; i++) {
+    clock.advance(9_900);
+    a.sendCursor(B1, i, i);
+    await relay.run();
+    b.tick();
+    assert.equal(b.overlay(B1).size, 1);
+  }
+  clock.advance(600);
   b.tick();
+  assert.equal(b.overlay(B1).size, 0);
+});
+
+// a restore from a backup sets versions back, so a version pushed before it may never come
+test("a new epoch drops overlays waiting for a version pushed before it", async () => {
+  const { relay, a, b } = await two();
+  a.hold([C1]);
+  a.sendLive(B1, moved, null);
+  await relay.run();
+  a.sendPushed({ version: 7 });
+  a.release();
+  await relay.run();
+  b.noteCursor(6, "E");
   assert.equal(b.overlay(B1).size, 1);
-  clock.advance(1_000);
-  b.tick();
+  b.noteCursor(3, "F");
   assert.equal(b.overlay(B1).size, 0);
 });
 

@@ -18,9 +18,9 @@ export const CURSOR_REPEAT_MS = 100;
 export const PRESENCE_MS = 15_000;
 export const GONE_MS = 30_000;
 export const HOLD_GRACE_MS = 1_000;
-/** How long overlays wait for the pull of a version their sender pushed: it may never come, as when the server was restored
- * from a backup, which sets versions back. */
-export const PUSHED_WAIT_MS = 10_000;
+/** How long overlays wait at most for the pull of a version their sender pushed, past a slow network's retries: should it
+ * never come, they would stay for good. */
+export const PUSHED_WAIT_MS = 60_000;
 export const IDLE_CURSOR_MS = 60_000;
 export const MAX_BACKOFF_MS = 30_000;
 export const PING_MS = 5_000;
@@ -674,9 +674,14 @@ export class Live {
     }
   }
 
-  /** The store pulled up to `cursor`: overlays waiting for it can go. */
-  noteCursor(cursor) {
-    this.storeCursor = Math.max(this.storeCursor, cursor);
+  /** The store pulled up to `cursor` in `epoch`: overlays waiting for it can go. A new epoch, as after a restore from a
+   * backup, sets versions back: those announced before it may never come. */
+  noteCursor(cursor, epoch) {
+    if (epoch !== this.storeEpoch) {
+      if (this.storeEpoch !== undefined) for (const p of this.peers.values()) p.awaiting = 0;
+      this.storeEpoch = epoch;
+      this.storeCursor = cursor;
+    } else this.storeCursor = Math.max(this.storeCursor, cursor);
     this.dropReleased();
     this.onChange();
   }
