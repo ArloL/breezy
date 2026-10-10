@@ -174,8 +174,14 @@ extension Notification.Name {
     doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
     doc.binding.afterEdit = { [weak self, weak doc] in
       guard let self, let doc, let g = spaces.group(of: id) else { return }
-      // an edit outside a gesture, such as a recolour, goes out at once rather than with a later cycle
-      if !doc.model.inGesture, g.space != nil, doc.binding.flush() { Task { await g.engine.sync() } }
+      // an edit outside a gesture, such as a recolour, goes out at once rather than with a later cycle, and shows on
+      // others' screens ahead of its push
+      let before = doc.binding.seen
+      if !doc.model.inGesture, g.space != nil, doc.binding.flush() {
+        Task { await g.engine.sync() }
+        let b = doc.model.board
+        g.live?.sendEdit(board: id, items: Records.liveFields(from: before, to: b, ids: Set(b.cards.map(\.id) + b.lanes.map(\.id)), board: id))
+      }
       guard let live = g.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
       live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),
                     caret: doc.windowController?.canvas.caret(), starts: Records.startPositions(start, ids: live.mine))
