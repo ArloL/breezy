@@ -50,12 +50,15 @@ public final class BoardBinding {
     }
   }
 
-  public func flush() {
-    guard model.board != seen else { return }
+  /// Writes what changed since the store last saw the board; → whether anything did.
+  @discardableResult public func flush() -> Bool {
+    guard model.board != seen else { return false }
     let held = taken()
     let changes = Records.changes(from: seen, to: model.board, board: id, orders: store.orders(of: id)).filter { !held.contains($0.key) }
     seen = model.board
+    guard !changes.isEmpty else { return false }
     store.apply(changes)
+    return true
   }
 
   /// After the store merged changes for this board.

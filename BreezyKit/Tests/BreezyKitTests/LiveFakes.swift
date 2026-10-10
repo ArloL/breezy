@@ -70,6 +70,8 @@ import Foundation
   var pings = 0
   /// Sockets opened so far.
   var opened = 0
+  /// Sockets opened meanwhile hear nothing and are not heard, as over a network that just went.
+  var silent = false
 
   init(clock: Clock? = nil, old: Bool = false) {
     self.clock = clock
@@ -82,6 +84,7 @@ import Foundation
     opened += 1
     let s = Socket(relay: self, id: old ? UUID().uuidString.lowercased() : String(opened))
     s.last = now
+    s.halfOpen = silent
     sockets.append(s)
     queue.append { s.onOpen?() }
     return s
@@ -157,6 +160,7 @@ import Foundation
       token = t
       s.authed = true
       s.v = m["v"] as? Int == 2 && !old ? 2 : 1
+      if let r = m["replaces"] as? String, let replaced = others(s).first(where: { $0.id == r }) { drop(replaced, code: 1000) }
       let o = others(s)
       deliver(s, ["t": "welcome", "id": s.id, "peers": o.map(\.id), "holds": holds])
       for x in o { deliver(x, ["t": "join", "id": s.id]) }

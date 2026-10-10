@@ -11,7 +11,7 @@ const cat = (...parts) => Uint8Array.from(parts.flatMap((p) => [...p]));
 const type = (t) => (m) => m?.t === t;
 
 /** A connection to `space`, authenticated with `token` unless `auth` is false. */
-async function connect(space, token, { auth = true, v } = {}) {
+async function connect(space, token, { auth = true, v, replaces } = {}) {
   const url = new URL(RELAY);
   url.searchParams.set("space", space);
   const ws = new WebSocket(url);
@@ -56,7 +56,7 @@ async function connect(space, token, { auth = true, v } = {}) {
     },
   };
   if (auth) {
-    c.send({ t: "auth", token, ...(v && { v }) });
+    c.send({ t: "auth", token, ...(v && { v }), ...(replaces && { replaces }) });
     c.welcome = await c.next(type("welcome"));
   }
   return c;
@@ -246,4 +246,22 @@ test("alive every 5 s keeps holds past 10 s", { timeout: 30_000 }, async () => {
   assert.equal(await b.next((m) => m.t === "holds" && !Object.keys(m.holds).length, 100), null);
   a.send({ t: "hold", ids: [rand(16)] });
   assert.ok(await b.next((m) => m.t === "holds" && m.holds[a.welcome.id]?.length === 2));
+});
+
+test("a connection that names the one it replaces closes it, with its holds", async () => {
+  const space = rand(16), token = rand(32), id = rand(16);
+  const a = await connect(space, token, { v: 2 });
+  const b = await connect(space, token, { v: 2 });
+  a.send({ t: "hold", ids: [id] });
+  assert.ok(await b.next((m) => m?.t === "holds" && m.holds[a.welcome.id]));
+  const again = await connect(space, token, { v: 2, replaces: a.welcome.id });
+  assert.deepEqual(again.welcome.peers, [b.welcome.id]);
+  assert.deepEqual(again.welcome.holds, {});
+  assert.deepEqual(await b.next(type("leave")), { t: "leave", id: a.welcome.id });
+  assert.ok(await a.closedWith());
+  again.send({ t: "hold", ids: [id] });
+  assert.deepEqual((await b.next((m) => m?.t === "holds" && m.holds[again.welcome.id])).holds, { [again.welcome.id]: [id] });
+  // a stranger's id, or its own, closes nothing
+  const c = await connect(space, token, { v: 2, replaces: "999" });
+  assert.deepEqual(c.welcome.peers.sort(), [b.welcome.id, again.welcome.id].sort());
 });

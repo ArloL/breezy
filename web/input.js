@@ -171,6 +171,8 @@ export class Input {
       const l = R.lane(app.model.board, d.id);
       app.state.float = { w: Math.max(R.LANE_MIN, d.size.w + dx) - l.w, h: Math.max(R.LANE_MIN, d.size.h + dy) - l.h };
     }
+    // others see what floats where it floats, which the model's change came too early to say
+    if (["move", "lane", "resize"].includes(d.action)) app.library?.gestured();
     if (d.action === "marquee") {
       const r = { x: Math.min(d.w0.x, w.x), y: Math.min(d.w0.y, w.y), w: Math.abs(dx), h: Math.abs(dy) };
       app.state.marquee = r;

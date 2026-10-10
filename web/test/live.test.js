@@ -340,32 +340,116 @@ test("a refused token keeps the layer closed", async () => {
 test("a socket that stops answering is closed and opened again", async () => {
   const { relay, clock, a } = await two();
   const first = relay.sockets[0];
-  clock.advance(20_000);
+  clock.advance(4000);
   a.tick();
   await relay.run();
-  assert.equal(relay.pings, 1);
-  clock.advance(10_000);
-  a.tick();
-  assert.ok(a.connected);
-  clock.advance(10_000);
-  a.tick();
-  await relay.run();
-  assert.equal(relay.pings, 2);
-  first.halfOpen = true;
-  clock.advance(20_000);
-  a.tick();
-  await relay.run();
-  clock.advance(9000);
-  a.tick();
-  assert.ok(a.connected);
+  assert.equal(relay.pings, 0);
   clock.advance(1000);
   a.tick();
+  await relay.run();
+  assert.ok(relay.pings === 1 && a.pingWaiting === null);
+  first.halfOpen = true;
+  clock.advance(5000);
+  a.tick();
+  await relay.run();
+  assert.notEqual(a.pingWaiting, null);
+  clock.advance(2900);
+  assert.ok(a.connected);
+  clock.advance(100);
   assert.ok(!a.connected);
   await relay.run();
   assert.ok(!relay.sockets.includes(first));
   clock.advance(1000);
   await relay.run();
   assert.ok(a.connected && relay.opened === 3);
+});
+
+test("sending after the relay was quiet a while asks it to answer", async () => {
+  const { relay, clock, a } = await two();
+  a.sendCursor(B1, 1, 1);
+  await relay.run();
+  assert.equal(a.pingWaiting, null);
+  clock.advance(2000);
+  relay.sockets[0].halfOpen = true;
+  a.sendCursor(B1, 2, 2);
+  await relay.run();
+  assert.notEqual(a.pingWaiting, null);
+  clock.advance(2900);
+  assert.ok(a.connected);
+  clock.advance(100);
+  assert.ok(!a.connected);
+});
+
+test("a check opens at once, without waiting out a back-off, and makes an open socket answer", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock);
+  a.connect();
+  await relay.run();
+  for (let i = 0; i < 3; i++) {
+    relay.kick(relay.sockets.at(-1), 1006);
+    await relay.run();
+    clock.advance(2 ** i * 1000);
+    await relay.run();
+  }
+  relay.kick(relay.sockets.at(-1), 1006);
+  await relay.run();
+  assert.ok(!a.connected && relay.opened === 4);
+  a.check();
+  await relay.run();
+  assert.ok(a.connected && relay.opened === 5);
+  // the back-off that was waiting opens nothing more
+  clock.advance(8000);
+  await relay.run();
+  assert.equal(relay.opened, 5);
+  a.check();
+  await relay.run();
+  assert.equal(relay.pings, 1);
+  a.close();
+  a.check();
+  await relay.run();
+  assert.equal(relay.opened, 5);
+});
+
+test("a socket the relay never welcomes is given up on", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock);
+  relay.silent = true;
+  a.connect();
+  await relay.run();
+  clock.advance(4900);
+  a.tick();
+  assert.equal(relay.opened, 1);
+  relay.silent = false;
+  clock.advance(100);
+  a.tick();
+  clock.advance(1000);
+  await relay.run();
+  assert.ok(a.connected && relay.opened === 2);
+});
+
+test("a connection back after its network went replaces the one it had: the others stop showing it, and its holds come back", async () => {
+  const { relay, clock, a, b } = await two();
+  a.hold([C1]);
+  a.sendCursor(B1, 5, 5);
+  await relay.run();
+  const first = relay.sockets.find((s) => s.id === a.id);
+  assert.equal(b.cursors(B1).length, 1);
+  first.halfOpen = true;
+  a.sendCursor(B1, 6, 6);
+  clock.advance(2000);
+  a.sendCursor(B1, 7, 7);
+  await relay.run();
+  clock.advance(3000);
+  // at once, as the connection had worked a while
+  await relay.run();
+  assert.ok(a.connected && a.id !== first.id);
+  a.sendCursor(B1, 8, 8);
+  clock.advance(200);
+  await relay.run();
+  clock.advance(200);
+  assert.deepEqual(b.cursors(B1).map((c) => c.x), [8]);
+  assert.deepEqual([...b.taken()], [C1]);
+  assert.equal(b.holderOf(C1).name, "Ana Lima");
 });
 
 test("a closed layer holds nothing", async () => {

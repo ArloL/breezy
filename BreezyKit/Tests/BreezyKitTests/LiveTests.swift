@@ -352,32 +352,112 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
 @MainActor @Test func aSocketThatStopsAnsweringIsClosedAndOpenedAgain() {
   let (relay, clock, a, _) = two()
   let first = relay.sockets[0]
-  clock.advance(20)
+  clock.advance(4)
+  a.tick()
+  relay.run()
+  #expect(relay.pings == 0)
+  clock.advance(1)
   a.tick()
   relay.run()
   #expect(relay.pings == 1)
-  clock.advance(10)
-  a.tick()
-  #expect(a.connected)
-  clock.advance(10)
-  a.tick()
-  relay.run()
-  #expect(relay.pings == 2)
   first.halfOpen = true
-  clock.advance(20)
+  clock.advance(5)
   a.tick()
   relay.run()
-  clock.advance(9)
-  a.tick()
+  clock.advance(2.9)
   #expect(a.connected)
-  clock.advance(1)
-  a.tick()
+  clock.advance(0.1)
   #expect(!a.connected)
   relay.run()
   #expect(!relay.sockets.contains { $0 === first })
   clock.advance(1)
   relay.run()
   #expect(a.connected && relay.opened == 3)
+}
+
+@MainActor @Test func sendingAfterTheRelayWasQuietAWhileAsksItToAnswer() {
+  let (relay, clock, a, _) = two()
+  a.sendCursor(board: B1, x: 1, y: 1)
+  relay.run()
+  clock.advance(2)
+  relay.sockets[0].halfOpen = true
+  a.sendCursor(board: B1, x: 2, y: 2)
+  relay.run()
+  clock.advance(2.9)
+  #expect(a.connected)
+  clock.advance(0.1)
+  #expect(!a.connected)
+}
+
+@MainActor @Test func aCheckOpensAtOnceWithoutWaitingOutABackOffAndMakesAnOpenSocketAnswer() {
+  let clock = Clock(), relay = FakeRelay(clock: clock)
+  let a = live(relay, clock)
+  a.connect()
+  relay.run()
+  for i in 0..<3 {
+    relay.kick(relay.sockets.last!, code: 1006)
+    relay.run()
+    clock.advance(pow(2, Double(i)))
+    relay.run()
+  }
+  relay.kick(relay.sockets.last!, code: 1006)
+  relay.run()
+  #expect(!a.connected && relay.opened == 4)
+  a.check()
+  relay.run()
+  #expect(a.connected && relay.opened == 5)
+  // the back-off that was waiting opens nothing more
+  clock.advance(8)
+  relay.run()
+  #expect(relay.opened == 5)
+  a.check()
+  relay.run()
+  #expect(relay.pings == 1)
+  a.close()
+  a.check()
+  relay.run()
+  #expect(relay.opened == 5)
+}
+
+@MainActor @Test func aSocketTheRelayNeverWelcomesIsGivenUpOn() {
+  let clock = Clock(), relay = FakeRelay(clock: clock)
+  let a = live(relay, clock)
+  relay.silent = true
+  a.connect()
+  relay.run()
+  clock.advance(4.9)
+  a.tick()
+  #expect(relay.opened == 1)
+  relay.silent = false
+  clock.advance(0.1)
+  a.tick()
+  clock.advance(1)
+  relay.run()
+  #expect(a.connected && relay.opened == 2)
+}
+
+@MainActor @Test func aConnectionBackAfterItsNetworkWentReplacesTheOneItHad() {
+  let (relay, clock, a, b) = two()
+  a.hold([C1])
+  a.sendCursor(board: B1, x: 5, y: 5)
+  relay.run()
+  let first = relay.sockets.first { $0.id == a.id }!
+  #expect(b.cursors(on: B1).count == 1)
+  first.halfOpen = true
+  a.sendCursor(board: B1, x: 6, y: 6)
+  clock.advance(2)
+  a.sendCursor(board: B1, x: 7, y: 7)
+  relay.run()
+  clock.advance(3)
+  // at once, as the connection had worked a while
+  relay.run()
+  #expect(a.connected && a.id != first.id)
+  a.sendCursor(board: B1, x: 8, y: 8)
+  clock.advance(0.2)
+  relay.run()
+  clock.advance(0.2)
+  #expect(b.cursors(on: B1).map(\.cursor.x) == [8])
+  #expect(b.taken == [C1])
 }
 
 @MainActor @Test func aClosedLayerHoldsNothing() {

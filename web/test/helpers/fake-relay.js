@@ -68,6 +68,8 @@ export class FakeRelay {
   connect() {
     const n = ++this.opened;
     const s = new Socket(this, this.old ? crypto.randomUUID() : String(n));
+    // opened over a network that just went: it hears nothing and is not heard
+    s.halfOpen = this.silent === true;
     this.sockets.push(s);
     this.queue.push(() => {
       s.readyState = 1;
@@ -134,6 +136,8 @@ export class FakeRelay {
       this.token = m.token;
       s.authed = true;
       s.v = m.v === 2 && !this.old ? 2 : 1;
+      const replaced = typeof m.replaces === "string" && this.conns().find((x) => x !== s && x.id === m.replaces);
+      if (replaced) this.drop(replaced, 1000);
       const others = this.conns().filter((x) => x !== s);
       this.deliver(s, { t: "welcome", id: s.id, peers: others.map((x) => x.id), holds: holdsOf(others) });
       for (const x of others) this.deliver(x, { t: "join", id: s.id });

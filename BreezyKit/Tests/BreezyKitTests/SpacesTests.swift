@@ -237,6 +237,8 @@ final class Servers {
   g.live!.connect()
   relay.run()
   #expect(g.live!.connected)
+  // after the welcome's catch-up
+  await g.engine.sync()
   let before = g.engine.lastSynced!
   spaces.syncAll(polling: true, now: before.addingTimeInterval(10))
   try await Task.sleep(for: .milliseconds(100))
@@ -289,6 +291,9 @@ final class Servers {
   ga.live!.connect()
   gb.live!.connect()
   relay.run()
+  // after the welcomes' catch-ups
+  await ga.engine.sync()
+  await gb.engine.sync()
   let id = ga.store.createBoard(title: "Plans")
   server.pulls = []
   await ga.engine.sync()
