@@ -94,6 +94,7 @@ import Foundation
       guard let self, let g else { return }
       setRelay(relay, for: g)
     }
+    engine.onPushing = { [weak g] in g?.live?.pushing() }
     engine.onPushed = { [weak g] in g?.live?.sendPushed($0) }
     engine.onPulled = { [weak g] in g?.live?.noteCursor($0) }
     file.onError = { [weak self] in self?.onError?($0) }
@@ -126,7 +127,7 @@ import Foundation
         guard let self, let g else { return }
         onRefused?(g, ids)
       }
-      live.onWelcome = { [weak g] in g?.engine.retryNow() }
+      live.onWelcome = { [weak g] in g?.engine.retryNow(changed: false) }
       // a refused token is the server's to report: its 401 shows "Not in this space any more"
       live.onUnauthorized = { [weak g] in
         guard let g else { return }

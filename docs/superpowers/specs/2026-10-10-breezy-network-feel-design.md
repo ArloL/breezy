@@ -22,7 +22,7 @@ With 0 to 40 ms of jitter a hop, drags trail by 162 ± 3 ms over the relay and s
 
 ## Edits
 
-- An edit outside a gesture pushes at once. It also goes to the live layer as one keyframe that holds nothing; receivers draw it as an overlay until the push it preceded is in, then drop it at once rather than after `HOLD_GRACE_MS`, so that it cannot hide their own edit to that item.
+- An edit outside a gesture pushes at once. When that push goes now, rather than after a back-off or a gesture's end, the edit also goes to the live layer as one keyframe that holds nothing. Receivers draw it as an overlay until a push that holds it is in, then drop it at once rather than after `HOLD_GRACE_MS`, so that it cannot hide their own edit to that item. `pushed` carries `seq`, the sender's last `seq` when that push began; it holds every edit body up to it, so a push already under way does not drop a later edit's overlay.
 - A gesture's end is told apart from such an edit by a gesture having been under way, not by holds: a press asks for holds before any gesture starts.
 - Live fields gain `gone`, compact key 8, for a deleted item. Overlays take such items off the board, and put new lanes on it as they did new cards.
 - Asking for holds sends the gesture's live state, so a new card shows before its first key.
@@ -32,7 +32,7 @@ With 0 to 40 ms of jitter a hop, drags trail by 162 ± 3 ms over the relay and s
 ## Relay
 
 - The relay gets bodies at most every 25 ms. One person moving without pause makes about 7,200 Durable Object requests an hour, at the 20:1 rate for incoming WebSocket messages, against 100,000 a day free. At 50 ms the relay lag was 127 ms, at 33 ms 112, at 16 ms 95.
-- `auth` may carry `replaces`, the connection this layer had before. The relay closes that one with its holds, so the others stop showing a frozen cursor for 30 s and a drag under way can hold its cards again. A socket the relay closes stays among the object's until its far end answers, which a dead one never does, so leaving marks it unauthenticated.
+- `auth` may carry `replaces`, the connection this layer had before. The relay closes that one with its holds, so the others stop showing a frozen cursor for 30 s and a drag under way can hold its cards again. A socket the relay closes stays among the object's until its far end answers, which a dead one never does, so leaving marks it `left`: it no longer counts as a connection, and no alarm comes back for it.
 
 - The store keeps the relay the server last named, so that the live layer connects at launch alongside the first sync rather than after it.
 
@@ -46,10 +46,10 @@ A socket a network change left dead says nothing, so the app asks:
 | sending after the relay said nothing for 2 s | ping |
 | a ping unanswered for 3 s, or a socket not welcomed 5 s after opening | drop it |
 | a connection that worked at least 5 s drops | open again at once; else the back-off as before |
-| an online event, or the Mac wakes or its network path changes | replace the socket at once |
+| an online event, or the Mac wakes or its network's interfaces or gateways change | replace the socket at once |
 | the app shows again or becomes active | ping, and open at once if waiting to retry |
 
-After each welcome a device repeats `pushed` with the highest version it has, as one sent on a dead socket reached nobody; a receiver at that version already does not pull. It also syncs, cancelling a request that has run over a second. A web request whose answer has not begun after 5 s, plus a ms per 20 bytes sent, goes again at once, twice at most.
+After each welcome a device repeats `pushed` with the highest version it has, as one sent on a dead socket reached nobody; a receiver at that version already does not pull. It also syncs. A network change cancels a request that has run over a second. A web request whose answer has not begun after 5 s, plus a ms per 20 bytes sent, goes again at once, twice at most.
 
 ## Not done
 

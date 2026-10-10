@@ -92,6 +92,7 @@ export class Spaces {
     engine.onStatus = () => this.onStatus(g);
     engine.flushLocal = () => this.flushLocal();
     engine.onRelay = (relay) => this.setRelay(g, relay);
+    engine.onPushing = () => g.live?.pushing();
     engine.onPushed = (pushed) => g.live?.sendPushed(pushed);
     engine.onPulled = (cursor) => g.live?.noteCursor(cursor);
     // the live layer connects at once rather than after the first sync names the relay
@@ -113,7 +114,7 @@ export class Spaces {
         if (!extra && version <= g.store.state.cursor) return;
         if (!(extra && (await g.engine.receivePushed(extra)))) g.engine.sync();
       };
-      live.onWelcome = () => g.engine.retryNow();
+      live.onWelcome = () => g.engine.retryNow(false);
       live.onChange = () => this.onLive(g);
       live.onRefused = (ids) => this.onRefused(g, ids);
       // a refused token is the server's to report: its 401 shows "Not in this space any more"

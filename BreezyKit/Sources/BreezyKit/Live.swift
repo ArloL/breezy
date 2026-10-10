@@ -64,8 +64,8 @@ public struct Peer: Equatable, Sendable {
   public var caret: Caret?
   /// A version it pushed that this device has not pulled yet; its overlay stays until then.
   var awaiting = 0
-  /// When its last push was announced.
-  var pushedAt = Date.distantPast
+  /// Its pushes so far hold every edit it sent up to this `seq`.
+  var pushedSeq = 0
   /// The last `seq` taken of each kind of body.
   var seqs: [String: Int] = [:]
   var cursorTrack: Track?
@@ -73,6 +73,8 @@ public struct Peer: Equatable, Sendable {
   var motion: [String: Track] = [:]
   /// Overlay ids whose live body last came, at this time, while it did not hold them.
   var unheld: [String: Date] = [:]
+  /// The `seq` of each of those bodies.
+  var unheldSeq: [String: Int] = [:]
 
   /// Whether its presence shows `board`.
   func shows(_ board: String) -> Bool { boards?.contains(board) ?? (self.board == board) }
@@ -317,6 +319,8 @@ public struct Peer: Equatable, Sendable {
   private var relaySent = Date.distantPast
   private var storeCursor = 0
   private var seq = 0
+  /// The last `seq` sent when the push under way began.
+  private var pushSeq = 0
   /// The other connections in the space, as the relay names them → when each joined or was last heard.
   private var roster: [String: Date] = [:]
   private var decoders: [String: Decoders] = [:]
@@ -871,7 +875,9 @@ public struct Peer: Equatable, Sendable {
       for (id, f) in b["items"]?.object ?? [:] {
         guard let f = f.object else { continue }
         p.overlay[id, default: [:]].merge(f.filter { Records.liveFieldNames.contains($0.key) || $0.key == "kind" || ($0.key == "gone" && $0.value == .bool(true)) }) { $1 }
-        p.unheld[id] = holds[from]?.contains(id) == true ? nil : t
+        let isHeld = holds[from]?.contains(id) == true
+        p.unheld[id] = isHeld ? nil : t
+        p.unheldSeq[id] = isHeld ? nil : Self.integral(b["seq"]?.number) ?? .max
         for k in Self.moving {
           guard let v = Self.numbers(f[k]) else { continue }
           // a value of another length than the track's cannot be played back with it
@@ -890,7 +896,8 @@ public struct Peer: Equatable, Sendable {
     case "pushed":
       guard let v = Self.integral(b["version"]?.number), v >= 0 else { return }
       p.awaiting = max(p.awaiting, v)
-      p.pushedAt = now()
+      // the push holds every edit this sender sent up to seq
+      if let n = Self.integral(b["seq"]?.number) { p.pushedSeq = max(p.pushedSeq, n) }
       peers[from] = p
       onPushed?(v, Self.pushed(b, version: v))
       dropReleased()
@@ -927,12 +934,14 @@ public struct Peer: Equatable, Sendable {
       for id in p.overlay.keys {
         if held.contains(id) {
           p.unheld[id] = nil
-        } else if let since = p.unheld[id], t.timeIntervalSince(since) < Self.holdGrace, since > p.pushedAt {
+          p.unheldSeq[id] = nil
+        } else if let since = p.unheld[id], t.timeIntervalSince(since) < Self.holdGrace, p.unheldSeq[id] ?? .max > p.pushedSeq {
           // one shown ahead of a push this device now has, as for an edit outside a gesture, goes at once
           continue
         } else {
           p.overlay[id] = nil
           p.unheld[id] = nil
+          p.unheldSeq[id] = nil
         }
       }
       p.motion = p.motion.filter { p.overlay[String($0.key.prefix { $0 != " " })] != nil }
@@ -1066,9 +1075,14 @@ public struct Peer: Equatable, Sendable {
     }
   }
 
+  /// A push is about to go with what the store has now, which holds every edit sent so far.
+  public func pushing() {
+    pushSeq = seq
+  }
+
   /// Announces a push with its records, or without them when they would not fit a frame.
   public func sendPushed(_ p: Pushed) {
-    let bare: [String: JSONValue] = ["t": .string("pushed"), "version": .number(Double(p.version))]
+    let bare: [String: JSONValue] = ["t": .string("pushed"), "version": .number(Double(p.version)), "seq": .number(Double(pushSeq))]
     var full = bare
     if let epoch = p.epoch { full["epoch"] = .string(epoch) }
     full["records"] = .array(p.records.map { .object(["id": .string($0.id), "version": .number(Double($0.version)), "blob": .string($0.blob)]) })

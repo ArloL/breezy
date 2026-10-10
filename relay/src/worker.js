@@ -128,7 +128,7 @@ export class Space extends DurableObject {
     const me = ws.deserializeAttachment();
     // a socket closed from here stays among the object's until its far end answers, which a dead one never does
     try {
-      ws.serializeAttachment({ ...me, authed: false, holds: [] });
+      ws.serializeAttachment({ ...me, authed: false, left: true, holds: [] });
     } catch {}
     try {
       ws.close(1000);
@@ -164,7 +164,8 @@ export class Space extends DurableObject {
 
   async alarm() {
     const now = Date.now();
-    const conns = this.conns();
+    // one that left is closed already, and its alarm would come back every TICK_MS until its far end answers
+    const conns = this.conns().filter((c) => !c.left);
     for (const c of unauthenticated(conns, now)) {
       try {
         c.ws.close(4001, "unauthorized");
@@ -173,7 +174,7 @@ export class Space extends DurableObject {
     const gone = lapsed(conns.filter((c) => c.authed), now);
     for (const c of gone) c.ws.serializeAttachment({ ...c.ws.deserializeAttachment(), holds: [] });
     if (gone.length) this.announce();
-    if (this.conns().some((c) => !c.authed || c.holds.length)) await this.ctx.storage.setAlarm(now + TICK_MS);
+    if (this.conns().some((c) => !c.left && (!c.authed || c.holds.length))) await this.ctx.storage.setAlarm(now + TICK_MS);
   }
 }
 

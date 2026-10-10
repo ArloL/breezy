@@ -55,25 +55,30 @@ export class HttpTransport {
         headers["Content-Encoding"] = "deflate";
       }
     }
-    let res;
-    const stall = new AbortController();
-    const timer = setTimeout(() => stall.abort(), STALL_MS + (payload?.byteLength ?? payload?.length ?? 0) / 20);
+    let res, stalled = false;
+    // one controller for all three, as Safari before 17.4 lacks AbortSignal.any
+    const abort = new AbortController();
+    const stall = setTimeout(() => ((stalled = true), abort.abort()), STALL_MS + (payload?.byteLength ?? payload?.length ?? 0) / 20);
+    const timeout = setTimeout(() => abort.abort(), 20_000);
+    const cancel = () => abort.abort();
+    this.signal?.addEventListener("abort", cancel);
     try {
-      res = await fetch(url, {
-        method: body ? "POST" : "GET",
-        headers,
-        body: payload,
-        signal: AbortSignal.any([stall.signal, AbortSignal.timeout(20_000), ...(this.signal ? [this.signal] : [])]),
-      });
+      res = await fetch(url, { method: body ? "POST" : "GET", headers, body: payload, signal: abort.signal });
     } catch {
-      throw new TransportError(globalThis.navigator?.onLine === false ? "offline" : stall.signal.aborted ? "stalled" : "unreachable");
+      clearTimeout(timeout);
+      throw new TransportError(globalThis.navigator?.onLine === false ? "offline" : stalled ? "stalled" : "unreachable");
     } finally {
-      clearTimeout(timer);
+      clearTimeout(stall);
+      this.signal?.removeEventListener("abort", cancel);
     }
-    if (res.status === 401) throw new TransportError("unauthorized");
-    if (res.status === 413) throw new TransportError("tooLarge");
-    if (!res.ok) throw new TransportError("unreachable");
-    return res.json();
+    try {
+      if (res.status === 401) throw new TransportError("unauthorized");
+      if (res.status === 413) throw new TransportError("tooLarge");
+      if (!res.ok) throw new TransportError("unreachable");
+      return await res.json();
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   pull(since) {
@@ -124,6 +129,8 @@ export class SyncEngine {
     this.flushLocal = () => {};
     /** Whether a gesture others follow live is under way: what it changed so far waits for its end. */
     this.holdBack = () => false;
+    /** Just before a push goes. */
+    this.onPushing = () => {};
     /** The relay the server last named; null until it names one. */
     this.relay = null;
     this.onRelay = () => {};
@@ -181,17 +188,23 @@ export class SyncEngine {
     this.timer = setTimeout(() => this.sync(), 1000);
   }
 
-  /** The network is back, or may have changed: a cycle now, without waiting out a back-off. A request of the cycle
-   * running that has taken over STALE_MS is given up on, as it may be on a connection the network change left dead. */
-  retryNow() {
+  /** The network is back, or may have changed: a cycle now, without waiting out a back-off. When it `changed`, a
+   * request of the cycle running that has taken over STALE_MS is given up on, as it may be on a connection the change
+   * left dead. */
+  retryNow(changed = true) {
     if (this.stopped) return;
     this.failures = 0;
     this.retryAt = 0;
-    if (this.running && this.now() - this.cycleAt >= STALE_MS) {
+    if (changed && this.running && this.now() - this.cycleAt >= STALE_MS) {
       this.restarting = true;
       this.abort?.abort();
     }
     return this.sync();
+  }
+
+  /** Whether a change made now goes to the server at once, rather than after a back-off or a gesture's end. */
+  pushesNow() {
+    return this.store.syncing && !this.stopped && this.retryAt <= this.now() && !this.holdBack();
   }
 
   /** Forgets a back-off and a refused token, as after joining a space. */
@@ -250,6 +263,7 @@ export class SyncEngine {
         first = null;
         if (!writes.length) break;
         const request = combined ? this.store.state.cursor : undefined;
+        this.onPushing();
         const result = await transport.push(writes, request, combined ? this.store.state.epoch : undefined);
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
