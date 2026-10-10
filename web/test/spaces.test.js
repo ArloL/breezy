@@ -234,6 +234,18 @@ test("a relay gives the space a live layer", async () => {
   assert.equal(g.live, null);
 });
 
+test("a space's live layer comes back at launch before any sync", async () => {
+  const srv = servers(), relay = new FakeRelay(), storage = new MemoryStorage();
+  const spaces = await liveSpaces(srv, relay, storage);
+  const g = spaces.newSpace(SERVER, "Work");
+  srv.server(g.space).relay = "wss://relay.example/";
+  await g.engine.sync();
+  await spaces.flushAll();
+  const again = await liveSpaces(srv, relay, storage);
+  await settleLive();
+  assert.equal(again.spaces[0].live?.relay, "wss://relay.example/");
+});
+
 test("without a relay there is no live layer", async () => {
   const srv = servers(), relay = new FakeRelay();
   const spaces = await liveSpaces(srv, relay);

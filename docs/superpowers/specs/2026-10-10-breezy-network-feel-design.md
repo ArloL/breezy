@@ -14,6 +14,7 @@ Edits reach the other screens as fast as cursors do, and a network change costs 
 | new card shows | 1477 ± 6 ms | 99 ± 6 ms | not measured |
 | deleted card goes | 1475 ± 8 ms | 81 ± 4 ms | 32 ± 2 ms |
 | typed key shows | not measured | 99 ± 1 ms | 27 ± 2 ms |
+| a started app shows the others | 374 ± 13 ms | 271 ± 11 ms | not measured |
 | cursor back after the network changes, with an online event | 13 to over 60 s | 258 ± 64 ms | not applicable |
 | the same without one | over 60 s | 3226 ± 9 ms | not applicable |
 
@@ -32,6 +33,8 @@ With 0 to 40 ms of jitter a hop, drags trail by 162 ± 3 ms over the relay and s
 
 - The relay gets bodies at most every 25 ms. One person moving without pause makes about 7,200 Durable Object requests an hour, at the 20:1 rate for incoming WebSocket messages, against 100,000 a day free. At 50 ms the relay lag was 127 ms, at 33 ms 112, at 16 ms 95.
 - `auth` may carry `replaces`, the connection this layer had before. The relay closes that one with its holds, so the others stop showing a frozen cursor for 30 s and a drag under way can hold its cards again. A socket the relay closes stays among the object's until its far end answers, which a dead one never does, so leaving marks it unauthenticated.
+
+- The store keeps the relay the server last named, so that the live layer connects at launch alongside the first sync rather than after it.
 
 ## Liveness
 

@@ -7,7 +7,7 @@ import { encode } from "./base64.js";
 import { randomBytes } from "./crypto.js";
 
 export const emptyState = () => ({
-  server: null, space: null, secret: null, cursor: 0, records: {}, held: {}, unreadable: 0, epoch: null, resync: false, invitedName: null,
+  server: null, space: null, secret: null, relay: null, cursor: 0, records: {}, held: {}, unreadable: 0, epoch: null, resync: false, invitedName: null,
 });
 
 export const withFreshIDs = (board) => ({
@@ -176,6 +176,13 @@ export class Store {
    * Takes the server's epoch when none is stored; when it differs from the stored one, as after a restore from a backup or
    * the loss of the space, starts pulling everything again, as `merge` and `resynced` describe, and returns true.
    */
+  /** The relay the server last named, so that the live layer can connect before the first sync. */
+  noteRelay(relay) {
+    if ((this.state.relay ?? null) === relay) return;
+    this.state.relay = relay;
+    this.onDirty();
+  }
+
   noteEpoch(epoch = null) {
     const s = this.state;
     if (epoch === (s.epoch ?? null)) return false;

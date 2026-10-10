@@ -97,6 +97,7 @@ import Foundation
     engine.onPushed = { [weak g] in g?.live?.sendPushed($0) }
     engine.onPulled = { [weak g] in g?.live?.noteCursor($0) }
     file.onError = { [weak self] in self?.onError?($0) }
+    engine.noteStoredRelay()
     return g
   }
 

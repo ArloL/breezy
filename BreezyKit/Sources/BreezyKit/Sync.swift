@@ -415,7 +415,13 @@ public struct SyncStatus: Equatable, Sendable {
     let valid = r.flatMap { Self.validRelay($0) ? $0 : nil }
     guard valid != relay else { return }
     relay = valid
+    store.note(relay: valid)
     onRelay?(valid)
+  }
+
+  /// Names the relay the store kept, so that the live layer connects at once rather than after the first sync.
+  public func noteStoredRelay() {
+    note(relay: store.state.relay)
   }
 
   private func decode(_ p: Pulled, _ keys: SpaceKeys) -> Incoming? {

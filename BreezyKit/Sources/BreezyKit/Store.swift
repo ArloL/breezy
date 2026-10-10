@@ -32,6 +32,8 @@ public struct SpaceState: Codable, Equatable, Sendable {
   public var resync = false
   /// The name the invite gave, until the space's name record arrives.
   public var invitedName: String?
+  /// The relay the server last named, so that the live layer can connect before the first sync.
+  public var relay: String?
 
   public init() {}
 
@@ -55,6 +57,7 @@ extension SpaceState {
     epoch = try c.decodeIfPresent(String.self, forKey: .epoch)
     resync = try c.decodeIfPresent(Bool.self, forKey: .resync) ?? false
     invitedName = try c.decodeIfPresent(String.self, forKey: .invitedName)
+    relay = try c.decodeIfPresent(String.self, forKey: .relay)
   }
 }
 
@@ -211,6 +214,12 @@ public final class Store {
   /// Takes the server's epoch when none is stored; when it differs from the stored one, as after a
   /// restore from a backup or the loss of the space, starts pulling everything again, as `merge`
   /// and `resynced` describe, and returns true.
+  public func note(relay: String?) {
+    guard relay != state.relay else { return }
+    state.relay = relay
+    onDirty?()
+  }
+
   public func note(epoch: String?) -> Bool {
     guard epoch != state.epoch else { return false }
     defer { onDirty?() }

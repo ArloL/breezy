@@ -198,6 +198,17 @@ final class Servers {
   try Spaces(directory: dir, me: Person(device: newID(), name: "Ana"), transport: servers.transport, socket: { relay.connect($0) })
 }
 
+@MainActor @Test func aSpacesLiveLayerComesBackAtLaunchBeforeAnySync() async throws {
+  let servers = Servers(), relay = FakeRelay(), dir = tempDirectory()
+  let spaces = try liveSpaces(servers, relay, dir: dir)
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  servers.server(g.space!).relay = "wss://relay.example/"
+  await g.engine.sync()
+  spaces.saveNow()
+  let again = try liveSpaces(servers, relay, dir: dir)
+  #expect(again.spaces.first?.live?.relay == "wss://relay.example/")
+}
+
 @MainActor @Test func aRelayGivesTheSpaceALiveLayer() async throws {
   let servers = Servers(), relay = FakeRelay()
   let spaces = try liveSpaces(servers, relay)

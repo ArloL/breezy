@@ -20,7 +20,7 @@ const { values: opt } = parseArgs({ options: {
   "jitter-ms": { type: "string", default: "0" },
   "stall-ms": { type: "string", default: "0" },
   runs: { type: "string", default: "10" },
-  only: { type: "string", default: "cursor,drag,colour,type,create,delete,open,resume,outage,silent,passive" },
+  only: { type: "string", default: "cursor,drag,colour,type,create,delete,open,launch,resume,outage,silent,passive" },
 } });
 const JITTER = Number(opt["jitter-ms"]);
 // every 2 s nothing gets through for --stall-ms, as when TCP waits to resend a lost packet
@@ -235,7 +235,7 @@ const report = (k, xs, unit = "ms") => {
  * was at that x, put through `map` from b's x to a's. Also the share of frames mid-sweep where b's copy stood still. */
 function lag(moves, frames, col, x0, x1, shift) {
   const out = [];
-  let still = 0, total = 0, prev = null;
+  let still = 0, total = 0, back = 0, prev = null;
   for (const f of frames) {
     const x = f[col];
     if (x === null) continue;
@@ -248,10 +248,11 @@ function lag(moves, frames, col, x0, x1, shift) {
       }
       total++;
       if (prev !== null && x === prev) still++;
+      if (prev !== null && x < prev - 0.5) back++;
     }
     prev = x;
   }
-  return { median: pct(out, 0.5), p95: pct(out, 0.95), still: total ? (100 * still) / total : 0 };
+  return { median: pct(out, 0.5), p95: pct(out, 0.95), still: total ? (100 * still) / total : 0, back: total ? (100 * back) / total : 0 };
 }
 
 /** a's pointer sweeps from x0 to x1 at y, at `speed` px/s, an event every 8 ms; pressed with `buttons`. */
@@ -264,7 +265,7 @@ async function sweep(x0, x1, y, buttons = 0, speed = 600) {
 }
 
 if (only.has("cursor")) {
-  const med = [], p95 = [], still = [];
+  const med = [], p95 = [], still = [], back = [];
   for (let r = 0; r < RUNS; r++) {
     await sweep(300, 300, 450);
     await sleep(600);
@@ -275,9 +276,10 @@ if (only.has("cursor")) {
     // b's cursor where a's pointer stopped gives the offset between the two screens
     const shift = 800 - frames.at(-1)[1];
     const l = lag(moves, frames, 1, 300, 800, shift);
-    med.push(l.median); p95.push(l.p95); still.push(l.still);
+    med.push(l.median); p95.push(l.p95); still.push(l.still); back.push(l.back);
   }
   report("cursor lag, median", med); report("cursor lag, p95", p95); report("cursor still frames mid-move", still, "%");
+  report("cursor frames moving backwards", back, "%");
 }
 
 const cardAt = (br) => br.run(`(() => { const r = document.querySelector(".card").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 20, left: r.x }; })()`);
@@ -443,6 +445,20 @@ if (only.has("open")) {
   }
   report("b opens the board: a's cursor moves on b", seesA);
   report("b opens the board: a shows b", seenByB);
+}
+
+if (only.has("launch")) {
+  const known = [];
+  for (let r = 0; r < RUNS; r++) {
+    // b starts again, as a phone does after the system ended it, on the board list
+    await b.go("http://localhost:58565/");
+    const t = await b.run("performance.timeOrigin");
+    await waitFor("b to show a on the board list", () => b.run(`!!document.querySelector(".boards-list li[data-board] .people")?.children.length`), 15_000);
+    known.push((await b.run("__now()")) - t);
+    await waitFor("the board on b", () => b.click('.boards-group[data-group^="space:"] li[data-board] .open'));
+    await sleep(1500);
+  }
+  report("b starts: shows a on the board list", known);
 }
 
 if (only.has("resume")) {
