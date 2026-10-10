@@ -668,6 +668,8 @@ export class Hub {
         this.outage(d, "server", ms);
         this.outage(d, "relay", ms);
         this.at(V.now + r.between(60_000, ms / 2), "absence bulk", async () => {
+          // healing makes no more edits, so that the checks see the network settle
+          if (this.healing) return;
           for (let i = 0; i < 520 + r.int(200); i++) await this.op(other, { op: "addCard", x: (i % 30) * 264, y: 2400 + Math.floor(i / 30) * 120 });
         });
         return;

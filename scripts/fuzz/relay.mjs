@@ -1,5 +1,5 @@
 // relay/src/worker.js's Durable Object, run in the hub on virtual time, one per run: the relay the devices meet.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as V from "./virtual.mjs";
 import { State } from "./cloudflare-shim.mjs";
@@ -15,7 +15,9 @@ async function loadWorker() {
     .replace(/from "\.\/([a-z]+\.js)"/g, (_, f) => `from "${pathToFileURL(src + f).href}"`);
   mkdirSync(`${root}build/fuzz`, { recursive: true });
   const out = `${root}build/fuzz/worker.mjs`;
-  writeFileSync(out, text);
+  // runs in parallel share the file: each writes it whole, then moves it in place
+  writeFileSync(`${out}.${process.pid}`, text);
+  renameSync(`${out}.${process.pid}`, out);
   return import(pathToFileURL(out).href);
 }
 
