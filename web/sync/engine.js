@@ -3,6 +3,7 @@
 import { SpaceKeys } from "./crypto.js";
 import { encode, decode } from "./base64.js";
 import { FORMAT } from "./records.js";
+import { steadyClock } from "./steady.js";
 import { planted } from "./plant.js";
 
 export const PAGE_SIZE = 500;
@@ -121,10 +122,13 @@ export function statusLines(s, now = Date.now()) {
 }
 
 export class SyncEngine {
-  constructor(store, { transport = (state, keys) => new HttpTransport(state.server, state.space, encode(keys.token)), now = () => Date.now() } = {}) {
+  /** `now` is the wall clock, for when the status says it last synced; `clock` times back-offs and polling, and goes
+   * neither back nor still: a wall clock set back would hold them back as long. Given `now` alone, it times both. */
+  constructor(store, { transport = (state, keys) => new HttpTransport(state.server, state.space, encode(keys.token)), now, clock } = {}) {
     this.store = store;
     this.makeTransport = transport;
-    this.now = now;
+    this.now = now ?? (() => Date.now());
+    this.clock = clock ?? now ?? steadyClock();
     this.status = { state: "local", at: null, waiting: 0, unreadable: 0, held: 0, tooLong: 0 };
     this.onStatus = () => {};
     /** Called before merging, so that edits not yet in the store get there first. */
@@ -141,8 +145,8 @@ export class SyncEngine {
     this.onPushed = () => {};
     /** With the store's cursor once the records up to it are in: after each page taken, and after pushed records. */
     this.onPulled = () => {};
-    /** When a cycle last ended synced, in ms. */
-    this.lastCycle = 0;
+    /** When a cycle last ended synced, on `clock`. */
+    this.lastCycle = -Infinity;
     this.running = null;
     this.again = false;
     this.stopped = false;
@@ -197,7 +201,7 @@ export class SyncEngine {
     if (this.stopped) return;
     this.failures = 0;
     this.retryAt = 0;
-    if (changed && this.running && this.now() - this.cycleAt >= STALE_MS) {
+    if (changed && this.running && this.clock() - this.cycleAt >= STALE_MS) {
       this.restarting = true;
       this.abort?.abort();
     }
@@ -206,7 +210,7 @@ export class SyncEngine {
 
   /** Whether a change made now goes to the server at once, rather than after a back-off or a gesture's end. */
   pushesNow() {
-    return this.store.syncing && !this.stopped && this.retryAt <= this.now() && !this.holdBack();
+    return this.store.syncing && !this.stopped && this.retryAt <= this.clock() && !this.holdBack();
   }
 
   /** Forgets a back-off and a refused token, as after joining a space. */
@@ -238,14 +242,14 @@ export class SyncEngine {
   async cycle() {
     const state = this.store.state;
     if (!this.store.syncing) return this.update("local");
-    if (this.stopped || this.retryAt > this.now()) return;
+    if (this.stopped || this.retryAt > this.clock()) return;
     const space = state.space;
     const same = () => this.store.state.space === space;
     try {
       const keys = await this.keysOf(state);
       const transport = this.makeTransport(state, keys);
       this.abort = new AbortController();
-      this.cycleAt = this.now();
+      this.cycleAt = this.clock();
       transport.signal = this.abort.signal;
       this.restarting = false;
       this.flushLocal();
@@ -300,7 +304,7 @@ export class SyncEngine {
       this.failures = 0;
       this.retryAt = 0;
       this.stalls = 0;
-      this.lastCycle = this.now();
+      this.lastCycle = this.clock();
       this.update("synced");
     } catch (error) {
       if (!same()) return;
@@ -315,7 +319,7 @@ export class SyncEngine {
       }
       if (!(error instanceof TransportError)) console.warn("sync failed", error);
       this.failures++;
-      this.retryAt = this.now() + Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
+      this.retryAt = this.clock() + Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
       this.update(error?.kind === "offline" ? "offline" : "unreachable");
     }
   }

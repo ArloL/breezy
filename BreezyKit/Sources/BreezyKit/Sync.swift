@@ -189,10 +189,12 @@ public struct SyncStatus: Equatable, Sendable {
   public var onPushing: (() -> Void)?
   /// Whether a gesture others follow live is under way: what it changed so far waits for its end.
   public var holdBack: (() -> Bool)?
-  /// When a cycle last ended synced.
+  /// When a cycle last ended synced, on `clock`.
   public private(set) var lastSynced: Date?
   private let makeTransport: (SpaceState, SpaceKeys) -> Transport?
   private let now: () -> Date
+  /// Times back-offs and polling, and goes neither back nor still: a wall clock set back would hold them back as long.
+  public let clock: () -> Date
   private var running: Task<Void, Never>?
   private var again = false, stopped = false, heldTried = false
   private var failures = 0, tooLong = 0
@@ -209,13 +211,15 @@ public struct SyncStatus: Equatable, Sendable {
   /// A request of the cycle running that has taken this long when the network changes is given up on.
   static let stale: TimeInterval = 1
 
+  /// `now` is the wall clock, for when the status says it last synced; given `now` alone, it times back-offs too.
   public init(
-    store: Store, now: @escaping () -> Date = Date.init,
+    store: Store, now: @escaping () -> Date = Date.init, clock: (() -> Date)? = nil,
     transport: @escaping (SpaceState, SpaceKeys) -> Transport? = { s, k in HTTPTransport(server: s.server ?? "", space: s.space ?? "", token: k.token) },
     schedule: @escaping Schedule = afterOnMain
   ) {
     self.store = store
     self.now = now
+    self.clock = clock ?? now
     makeTransport = transport
     self.schedule = schedule
   }
@@ -233,7 +237,7 @@ public struct SyncStatus: Equatable, Sendable {
         again = false
         let c = Task { await self.cycle() }
         current = c
-        cycleAt = now()
+        cycleAt = clock()
         await c.value
         current = nil
       } while again
@@ -262,7 +266,7 @@ public struct SyncStatus: Equatable, Sendable {
     guard !stopped else { return }
     failures = 0
     retryAt = nil
-    if changed, current != nil, now().timeIntervalSince(cycleAt) >= Self.stale {
+    if changed, current != nil, clock().timeIntervalSince(cycleAt) >= Self.stale {
       restarting = true
       current?.cancel()
     }
@@ -271,7 +275,7 @@ public struct SyncStatus: Equatable, Sendable {
 
   /// Whether a change made now goes to the server at once, rather than after a back-off or a gesture's end.
   public var pushesNow: Bool {
-    store.state.invite != nil && !stopped && (retryAt.map { $0 <= now() } ?? true) && holdBack?() != true
+    store.state.invite != nil && !stopped && (retryAt.map { $0 <= clock() } ?? true) && holdBack?() != true
   }
 
   /// Forgets a back-off and a refused token, as after joining a space.
@@ -286,7 +290,7 @@ public struct SyncStatus: Equatable, Sendable {
   private func cycle() async {
     let state = store.state
     guard let keys = try? SpaceKeys(state: state), let transport = makeTransport(state, keys) else { return update(.local) }
-    guard !stopped, retryAt.map({ $0 <= now() }) ?? true else { return }
+    guard !stopped, retryAt.map({ $0 <= clock() }) ?? true else { return }
     let space = state.space
     func same() -> Bool { store.state.space == space }
     restarting = false
@@ -353,7 +357,7 @@ public struct SyncStatus: Equatable, Sendable {
       }
       failures = 0
       retryAt = nil
-      lastSynced = now()
+      lastSynced = clock()
       update(.synced)
     } catch TransportError.unauthorized {
       guard same() else { return }
@@ -367,7 +371,7 @@ public struct SyncStatus: Equatable, Sendable {
         return
       }
       failures += 1
-      retryAt = now().addingTimeInterval(min(60, 5 * pow(2, Double(failures - 1))))
+      retryAt = clock().addingTimeInterval(min(60, 5 * pow(2, Double(failures - 1))))
       update(error as? TransportError == .offline ? .offline : .unreachable)
     }
   }

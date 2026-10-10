@@ -81,8 +81,8 @@ import Foundation
   }
 
   private func make(_ store: Store) -> Group {
-    let engine = transport.map { SyncEngine(store: store, now: now, transport: $0, schedule: schedule) }
-      ?? SyncEngine(store: store, now: now, schedule: schedule)
+    let engine = transport.map { SyncEngine(store: store, now: now, clock: steady(uptime), transport: $0, schedule: schedule) }
+      ?? SyncEngine(store: store, now: now, clock: steady(uptime), schedule: schedule)
     let g = Group(store: store, engine: engine, file: file(for: store.state.space))
     let file = g.file
     store.onDirty = { [weak store] in
@@ -218,11 +218,10 @@ import Foundation
   }
 
   /// A cycle for every space, each on its own. When `polling`, a space whose live layer is connected waits 30 s
-  /// between cycles: its relay announces what others push.
+  /// between cycles: its relay announces what others push. `now` is on the engines' clock.
   public func syncAll(polling: Bool = false, now: Date? = nil) {
-    let now = now ?? self.now()
     for g in spaces {
-      if polling, g.live?.connected == true, let last = g.engine.lastSynced, now.timeIntervalSince(last) < 30 { continue }
+      if polling, g.live?.connected == true, let last = g.engine.lastSynced, (now ?? g.engine.clock()).timeIntervalSince(last) < 30 { continue }
       Task { await g.engine.sync() }
     }
   }

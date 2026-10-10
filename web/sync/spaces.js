@@ -206,9 +206,8 @@ export class Spaces {
   /** A cycle for every space, each on its own. When `polling`, a space whose live layer is connected waits 30 s between
    * cycles: its relay announces what others push. */
   syncAll({ polling = false } = {}) {
-    const now = (this.now ?? Date.now)();
     for (const g of this.spaces) {
-      if (polling && g.live?.connected && now - g.engine.lastCycle < 30_000) continue;
+      if (polling && g.live?.connected && g.engine.clock() - g.engine.lastCycle < 30_000) continue;
       g.engine.sync();
     }
   }
