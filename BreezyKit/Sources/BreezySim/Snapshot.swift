@@ -5,7 +5,9 @@ import Foundation
 /// store's order, `notes` and `title` "" when absent, numbers as the store has them. Over all the device's spaces:
 /// `pending` and `mine` add up, `connected` needs every live layer connected, `status` is the first space's.
 enum Snapshot {
-  @MainActor static func of(_ spaces: Spaces) -> JSONValue {
+  /// `shown` is the open board's model, unless it is in a gesture: whether its content is its store's, leaving out what
+  /// stacking moves here.
+  @MainActor static func of(_ spaces: Spaces, shown: (id: String, model: BoardModel, store: Store)? = nil) -> JSONValue {
     var boards: Fields = [:], overlays: Fields = [:], seen: Set<String> = []
     var pending = 0, mine = 0
     for g in spaces.spaces {
@@ -36,7 +38,17 @@ enum Snapshot {
       "boards": .object(boards), "pending": .int(pending), "overlays": .object(overlays), "mine": .int(mine),
       "connected": .bool(connected), "seen": .array(seen.sorted().map(JSONValue.string)),
       "status": .string(status(spaces.spaces.first?.engine.status.state ?? .local)),
+      "shown": shown.flatMap { s in
+        s.model.inGesture ? nil : .object(["board": .string(s.id), "same": .bool(content(s.store.board(s.id)) == content(s.model.board))])
+      } ?? .null,
     ])
+  }
+
+  /// What a board shows but for where stacking puts cards and how tall lanes grow, which stay local, and lanes' order,
+  /// which a pull sets.
+  static func content(_ b: Board) -> [String] {
+    b.cards.map { "\($0.id) \($0.x) \($0.w) \($0.color) \($0.text) \($0.notes ?? "")" }
+      + b.lanes.sorted { $0.id < $1.id }.map { "\($0.id) \($0.x) \($0.y) \($0.w) \($0.title)" }
   }
 
   static func status(_ s: SyncStatus.State) -> String {

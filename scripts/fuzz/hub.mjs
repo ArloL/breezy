@@ -913,6 +913,7 @@ export class Hub {
       const d = this.devices[i];
       if (canon(s) !== want) problems.push({ dev: i, problem: "boards differ from device 0's", diff: firstDiff(snaps[0].boards, s.boards) });
       if (s.pending) problems.push({ dev: i, problem: `${s.pending} records pending` });
+      if (s.shown && !s.shown.same) problems.push({ dev: i, problem: "the open board shows other than its store" });
       for (const [b, n] of Object.entries(s.overlays)) if (n) problems.push({ dev: i, problem: `${n} overlaid items on ${b}` });
       if (s.mine) problems.push({ dev: i, problem: `holds ${s.mine} items` });
       if (!s.connected) problems.push({ dev: i, problem: "live layer not connected" });
