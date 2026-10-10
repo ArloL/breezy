@@ -285,7 +285,7 @@ public struct Peer: Equatable, Sendable {
   private let makeSocket: @MainActor (URL) -> LiveSocket
   private let now: () -> Date
   private let uptime: () -> Double
-  private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
+  private let schedule: Schedule
   /// What `at` in this device's bodies counts from, in ms of `uptime`.
   let started: Double
   private var socket: LiveSocket?
@@ -333,10 +333,8 @@ public struct Peer: Equatable, Sendable {
     relay: String, space: String, keys: SpaceKeys, me: Person,
     socket: @escaping @MainActor (URL) -> LiveSocket = { WebSocketTaskSocket(url: $0) },
     now: @escaping () -> Date = Date.init,
-    uptime: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime * 1000 },
-    schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Void = { delay, work in
-      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated(work) }
-    },
+    uptime: @escaping () -> Double = systemUptime,
+    schedule: @escaping Schedule = afterOnMain,
     transport: PeerTransport? = nil
   ) {
     self.relay = relay

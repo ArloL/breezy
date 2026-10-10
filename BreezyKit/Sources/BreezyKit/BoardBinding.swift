@@ -20,11 +20,23 @@ public final class BoardBinding {
   public private(set) var seen: Board
   private var waiting = false
   private var flushing = false
+  private let schedule: Schedule
 
-  public init(id: String, model: BoardModel, store: Store) {
+  /// `schedule(0, …)` runs on the next turn.
+  public init(
+    id: String, model: BoardModel, store: Store,
+    schedule: @escaping Schedule = { delay, work in
+      if delay > 0 {
+        afterOnMain(delay, work)
+      } else {
+        DispatchQueue.main.async { MainActor.assumeIsolated(work) }
+      }
+    }
+  ) {
     self.id = id
     self.model = model
     self.store = store
+    self.schedule = schedule
     seen = model.board
     model.onEdit = { [weak self] in
       self?.changed()
@@ -33,7 +45,7 @@ public final class BoardBinding {
     model.onGestureEnd = { [weak self] in
       guard let self else { return }
       // after the gesture's undo step is registered, so that the step holds only local changes
-      DispatchQueue.main.async {
+      schedule(0) {
         if self.waiting { self.pull() }
         self.afterGesture?()
       }
@@ -44,7 +56,7 @@ public final class BoardBinding {
   public func changed() {
     guard !flushing else { return }
     flushing = true
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+    schedule(0.3) { [weak self] in
       self?.flushing = false
       self?.flush()
     }
