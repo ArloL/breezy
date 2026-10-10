@@ -174,6 +174,16 @@ test("an edit outside a gesture shows at once, holding nothing, until a push tha
   await relay.run();
   b.noteCursor(7);
   assert.equal(b.overlay(B1).size, 0);
+  // an edit still waiting for the gate when its push begins goes with that push
+  a.sendCursor(B1, 1, 1);
+  a.sendEdit(B1, { [C1]: { color: 2 } });
+  a.pushing();
+  clock.advance(25);
+  await relay.run();
+  a.sendPushed({ version: 8 });
+  await relay.run();
+  b.noteCursor(8);
+  assert.equal(b.overlay(B1).size, 0);
   // a gesture's next body starts on a keyframe, and does not repeat the edit
   a.sendEdit(B1, { [C1]: { color: 5 } });
   clock.advance(25);

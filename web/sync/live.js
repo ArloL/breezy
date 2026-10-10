@@ -435,7 +435,11 @@ export class Live {
       if (live.once) {
         // the next body starts afresh, and nothing repeats this one
         pipe.restart();
-        if (!this.pipes.some((p) => p.live) && this.lastLive === live) this.lastLive = null;
+        if (!this.pipes.some((p) => p.live)) {
+          // a push that began while it waited holds it
+          if (this.pushWaits === live) [this.pushSeq, this.pushWaits] = [this.seq, null];
+          if (this.lastLive === live) this.lastLive = null;
+        }
       }
     }
     if (!cursor) return;
@@ -809,6 +813,8 @@ export class Live {
   /** A push is about to go with what the store has now, which holds every edit sent so far. */
   pushing() {
     this.pushSeq = this.seq;
+    // an edit waiting for its pipe's gate gets its seq later
+    this.pushWaits = this.lastLive?.once && this.pipes.some((p) => p.live) ? this.lastLive : null;
   }
 
   /** Ids another connection holds. */

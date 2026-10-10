@@ -296,7 +296,6 @@ public struct SyncStatus: Equatable, Sendable {
         first = nil
         if out.writes.isEmpty { break }
         let request = combined ? store.state.cursor : nil
-        onPushing?()
         let result = try await transport.push(out.writes, since: request, epoch: combined ? store.state.epoch : nil)
         guard same() else { return }
         if store.note(epoch: result.epoch) {
@@ -463,6 +462,8 @@ public struct SyncStatus: Equatable, Sendable {
   }
 
   private func outgoing(_ keys: SpaceKeys) -> Outgoing {
+    // before reading what is pending, so that a push holds every edit sent before it began
+    onPushing?()
     var out = Outgoing(), size = 0
     tooLong = 0
     for p in store.pending where !blocked.contains(p.id) {

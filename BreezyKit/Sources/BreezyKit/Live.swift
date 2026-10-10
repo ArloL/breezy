@@ -255,8 +255,8 @@ public struct Peer: Equatable, Sendable {
     var items: [String: LiveFields]
     var caret: Caret?
     var starts: [String: [Double]]
-    /// An edit outside a gesture, sent once.
-    var once = false
+    /// An edit outside a gesture, sent once: its number among them, else 0.
+    var once = 0
   }
 
   /// A sender's compact decoders, one per pipe.
@@ -319,8 +319,10 @@ public struct Peer: Equatable, Sendable {
   private var relaySent = Date.distantPast
   private var storeCursor = 0
   private var seq = 0
-  /// The last `seq` sent when the push under way began.
-  private var pushSeq = 0
+  /// The last `seq` sent when the push under way began, and the edit outside a gesture that waited then, if any.
+  private var pushSeq = 0, pushWaits = 0
+  /// Edits outside a gesture sent so far.
+  private var edits = 0
   /// The other connections in the space, as the relay names them → when each joined or was last heard.
   private var roster: [String: Date] = [:]
   private var decoders: [String: Decoders] = [:]
@@ -645,10 +647,14 @@ public struct Peer: Equatable, Sendable {
       folded = try emit(pipe, .live, recipients(live.board), json) { s in
         try pipe.liveEncoder.encode(body, seq: s.seq, at: s.at, now: s.now)
       }
-      if live.once {
+      if live.once > 0 {
         // the next body starts afresh, and nothing repeats this one
         pipe.restart()
-        if !pipes.contains(where: \.live), lastLive?.once == true { lastLive = nil }
+        if !pipes.contains(where: \.live) {
+          // a push that began while it waited holds it
+          if pushWaits == live.once { (pushSeq, pushWaits) = (seq, 0) }
+          if lastLive?.once == live.once { lastLive = nil }
+        }
       }
     }
     guard cursor else { return }
@@ -1068,7 +1074,8 @@ public struct Peer: Equatable, Sendable {
   public func sendEdit(board: String, items: [String: LiveFields]) {
     guard !roster.isEmpty, !items.isEmpty else { return }
     for p in pipes { p.restart() }
-    lastLive = LiveState(board: board, items: Self.trimmed(items), caret: nil, starts: [:], once: true)
+    edits += 1
+    lastLive = LiveState(board: board, items: Self.trimmed(items), caret: nil, starts: [:], once: edits)
     for p in pipes {
       p.live = true
       run(p)
@@ -1078,6 +1085,8 @@ public struct Peer: Equatable, Sendable {
   /// A push is about to go with what the store has now, which holds every edit sent so far.
   public func pushing() {
     pushSeq = seq
+    // an edit waiting for its pipe's gate gets its seq later
+    pushWaits = pipes.contains(where: \.live) ? lastLive?.once ?? 0 : 0
   }
 
   /// Announces a push with its records, or without them when they would not fit a frame.
