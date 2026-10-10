@@ -68,19 +68,23 @@ public struct HTTPTransport: Transport {
   let server: URL
   let space: String
   let token: String
-  let session: URLSession
+  let send: (URLRequest) async throws -> (Data, URLResponse)
   static let deflateAbove = 1024
 
-  public init?(server: String, space: String, token: Data, session: URLSession = .shared) {
+  /// `send` makes the request: `session`'s, unless the fuzzer forwards it.
+  public init?(
+    server: String, space: String, token: Data, session: URLSession = .shared,
+    send: ((URLRequest) async throws -> (Data, URLResponse))? = nil
+  ) {
     guard let url = URL(string: server) else { return nil }
     self.server = url
     self.space = space
     self.token = Base64URL.encode(token)
-    self.session = session
+    self.send = send ?? { try await session.data(for: $0) }
   }
 
   public func pull(since: Int) async throws -> Page {
-    let data = try await send([URLQueryItem(name: "since", value: String(since))], body: nil)
+    let data = try await request([URLQueryItem(name: "since", value: String(since))], body: nil)
     return try JSONDecoder().decode(Page.self, from: data)
   }
 
@@ -90,11 +94,11 @@ public struct HTTPTransport: Transport {
       var since: Int?
       var epoch: String?
     }
-    let data = try await send([], body: JSONEncoder().encode(Body(writes: writes, since: since, epoch: epoch)))
+    let data = try await request([], body: JSONEncoder().encode(Body(writes: writes, since: since, epoch: epoch)))
     return try JSONDecoder().decode(PushResult.self, from: data)
   }
 
-  private func send(_ query: [URLQueryItem], body: Data?) async throws -> Data {
+  private func request(_ query: [URLQueryItem], body: Data?) async throws -> Data {
     var c = URLComponents(url: server, resolvingAgainstBaseURL: false)!
     c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "space", value: space)] + query
     var r = URLRequest(url: c.url!, timeoutInterval: 20)
@@ -110,7 +114,7 @@ public struct HTTPTransport: Transport {
     }
     let data: Data, response: URLResponse
     do {
-      (data, response) = try await session.data(for: r)
+      (data, response) = try await send(r)
     } catch let e as URLError where [.notConnectedToInternet, .networkConnectionLost, .dataNotAllowed].contains(e.code) {
       throw TransportError.offline
     } catch {
@@ -192,7 +196,9 @@ public struct SyncStatus: Equatable, Sendable {
   /// Ids whose newer server record cannot be decoded; their local edits wait instead of being resent.
   private var blocked: Set<String> = []
   private var retryAt: Date?
-  private var soon: Task<Void, Never>?
+  /// Counts `changed` timers; only the latest, and only before a cycle begins, syncs.
+  private var soon = 0
+  private let schedule: Schedule
   /// The cycle running, and when it began.
   private var current: Task<Void, Never>?
   private var cycleAt = Date.distantPast
@@ -202,17 +208,19 @@ public struct SyncStatus: Equatable, Sendable {
 
   public init(
     store: Store, now: @escaping () -> Date = Date.init,
-    transport: @escaping (SpaceState, SpaceKeys) -> Transport? = { s, k in HTTPTransport(server: s.server ?? "", space: s.space ?? "", token: k.token) }
+    transport: @escaping (SpaceState, SpaceKeys) -> Transport? = { s, k in HTTPTransport(server: s.server ?? "", space: s.space ?? "", token: k.token) },
+    schedule: @escaping Schedule = afterOnMain
   ) {
     self.store = store
     self.now = now
     makeTransport = transport
+    self.schedule = schedule
   }
 
   /// One cycle; a call during a cycle runs another after it, and returns when that one ends.
   public func sync() async {
     // this cycle, or the one after the one running, takes what changed so far
-    soon?.cancel()
+    soon += 1
     if let running {
       again = true
       return await running.value
@@ -237,11 +245,11 @@ public struct SyncStatus: Equatable, Sendable {
   public func changed() {
     // the gesture's end syncs
     if holdBack?() == true { return }
-    soon?.cancel()
-    soon = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(1))
-      guard !Task.isCancelled else { return }
-      await self?.sync()
+    soon += 1
+    let n = soon
+    schedule(1) { [weak self] in
+      guard let self, soon == n else { return }
+      Task { await self.sync() }
     }
   }
 

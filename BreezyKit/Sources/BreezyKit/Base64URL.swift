@@ -15,7 +15,14 @@ public enum Base64URL {
   }
 }
 
+/// Where ids, secrets and nonces come from: the system's generator, unless a task binds `source`, as the fuzzer's
+/// devices bind a seeded one so that runs replay.
+public enum Randomness {
+  @TaskLocal public static var source: (@Sendable (Int) -> Data)?
+}
+
 public func randomBytes(_ count: Int) -> Data {
+  if let source = Randomness.source { return source(count) }
   var g = SystemRandomNumberGenerator()
   return Data((0..<count).map { _ in UInt8.random(in: 0...255, using: &g) })
 }

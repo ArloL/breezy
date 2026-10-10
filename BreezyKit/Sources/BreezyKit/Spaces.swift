@@ -44,17 +44,25 @@ import Foundation
   private let transport: ((SpaceState, SpaceKeys) -> Transport?)?
   private let socket: (@MainActor (URL) -> LiveSocket)?
   private let peerTransport: (@MainActor () -> PeerTransport)?
+  /// The clocks every engine and live layer gets.
+  private let now: () -> Date
+  private let uptime: () -> Double
+  private let schedule: Schedule
 
   /// The groups in `directory`/Spaces, after moving a store from before spaces, `directory`/space.json, among them.
   public init(
     directory: URL, me: Person = Person(device: newID(), name: ""), transport: ((SpaceState, SpaceKeys) -> Transport?)? = nil,
-    socket: (@MainActor (URL) -> LiveSocket)? = nil, peerTransport: (@MainActor () -> PeerTransport)? = nil
+    socket: (@MainActor (URL) -> LiveSocket)? = nil, peerTransport: (@MainActor () -> PeerTransport)? = nil,
+    now: @escaping () -> Date = Date.init, uptime: @escaping () -> Double = systemUptime, schedule: @escaping Schedule = afterOnMain
   ) throws {
     self.directory = directory.appendingPathComponent("Spaces")
     self.me = me
     self.transport = transport
     self.socket = socket
     self.peerTransport = peerTransport
+    self.now = now
+    self.uptime = uptime
+    self.schedule = schedule
     let old = StoreFile(url: directory.appendingPathComponent("space.json"))
     if let state = try old.load() {
       let target = file(for: state.space)
@@ -73,7 +81,8 @@ import Foundation
   }
 
   private func make(_ store: Store) -> Group {
-    let engine = transport.map { SyncEngine(store: store, transport: $0) } ?? SyncEngine(store: store)
+    let engine = transport.map { SyncEngine(store: store, now: now, transport: $0, schedule: schedule) }
+      ?? SyncEngine(store: store, now: now, schedule: schedule)
     let g = Group(store: store, engine: engine, file: file(for: store.state.space))
     let file = g.file
     store.onDirty = { [weak store] in
@@ -109,8 +118,9 @@ import Foundation
     g.live = nil
     if let relay, let space = g.space, let keys = try? SpaceKeys(state: g.store.state) {
       let transport = peerTransport?()
-      let live = socket.map { Live(relay: relay, space: space, keys: keys, me: me, socket: $0, transport: transport) }
-        ?? Live(relay: relay, space: space, keys: keys, me: me, transport: transport)
+      let live = socket.map {
+        Live(relay: relay, space: space, keys: keys, me: me, socket: $0, now: now, uptime: uptime, schedule: schedule, transport: transport)
+      } ?? Live(relay: relay, space: space, keys: keys, me: me, now: now, uptime: uptime, schedule: schedule, transport: transport)
       live.onPushed = { [weak g] version, pushed in
         // a repeat of what this device has already
         guard let g, pushed != nil || version > g.store.state.cursor else { return }
@@ -208,7 +218,8 @@ import Foundation
 
   /// A cycle for every space, each on its own. When `polling`, a space whose live layer is connected waits 30 s
   /// between cycles: its relay announces what others push.
-  public func syncAll(polling: Bool = false, now: Date = Date()) {
+  public func syncAll(polling: Bool = false, now: Date? = nil) {
+    let now = now ?? self.now()
     for g in spaces {
       if polling, g.live?.connected == true, let last = g.engine.lastSynced, now.timeIntervalSince(last) < 30 { continue }
       Task { await g.engine.sync() }

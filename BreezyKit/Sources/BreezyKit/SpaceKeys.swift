@@ -21,7 +21,7 @@ public struct SpaceKeys {
   }
 
   /// Nonce, ciphertext and tag; the space and record ids are bound in, so the blob opens nowhere else.
-  public func seal(_ plaintext: Data, id: Data, nonce: AES.GCM.Nonce = AES.GCM.Nonce()) throws -> Data {
+  public func seal(_ plaintext: Data, id: Data, nonce: AES.GCM.Nonce = freshNonce()) throws -> Data {
     try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: space + id).combined!
   }
 
@@ -30,13 +30,18 @@ public struct SpaceKeys {
   }
 
   /// A live message's body: bound to the space, and marked live so that it never passes for a record.
-  public func sealLive(_ plaintext: Data, nonce: AES.GCM.Nonce = AES.GCM.Nonce()) throws -> Data {
+  public func sealLive(_ plaintext: Data, nonce: AES.GCM.Nonce = freshNonce()) throws -> Data {
     try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: Data("live".utf8) + space).combined!
   }
 
   public func openLive(_ body: Data) throws -> Data {
     try AES.GCM.open(AES.GCM.SealedBox(combined: body), using: key, authenticating: Data("live".utf8) + space)
   }
+}
+
+/// CryptoKit's own, unless `Randomness.source` is bound.
+public func freshNonce() -> AES.GCM.Nonce {
+  Randomness.source.map { try! AES.GCM.Nonce(data: $0(12)) } ?? AES.GCM.Nonce()
 }
 
 /// What joins a device to a space: the server, the space and its secret, as a link.
