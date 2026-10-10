@@ -118,6 +118,17 @@ test("leaving removes the space's key for good", async () => {
   assert.deepEqual((await Spaces.open(storage)).spaces, []);
 });
 
+test("stopping saves what is pending, then nothing more", async () => {
+  const storage = new MemoryStorage();
+  const spaces = await Spaces.open(storage);
+  const id = spaces.local.store.createBoard("Plans");
+  await spaces.stop();
+  assert.equal(new Store(storage.data.get("local")).title(id), "Plans");
+  spaces.local.store.renameBoard(id, "Later");
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(new Store(storage.data.get("local")).title(id), "Plans");
+});
+
 test("moving a board copies it with new ids and deletes it where it was", async () => {
   const storage = new MemoryStorage();
   const spaces = await Spaces.open(storage);

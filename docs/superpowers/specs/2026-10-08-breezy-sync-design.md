@@ -114,7 +114,7 @@ Requests carry `Authorization: Bearer <token>`; the server compares SHA-256 of t
 ## Web app
 
 - The store is IndexedDB. The app asks for persistent storage; if iOS clears it anyway, the invite goes too: the device joins again with the link and then gets everything back.
-- One tab on a device owns the boards, holding a Web Lock: it alone loads, saves, syncs and joins the relay. Another tab says "Breezy is open in another tab" and opens the boards once the owner closes. Browsers without Web Locks let every tab own them.
+- One tab on a device owns the boards, holding a Web Lock: it alone loads, saves, syncs and joins the relay. Another tab says "Breezy is open in another tab" and opens the boards once the owner closes, or at once on Use Here: it asks over a BroadcastChannel, the owner saves and stops, and the asking tab steals the lock and loads. The owner then reloads and waits in turn. Browsers without Web Locks let every tab own them.
 - It opens on a list of boards; a board's top bar gains a back button. The first launch on a device creates one board from the sample. `?stress` loads 500 cards into a board that is not stored.
 - The ⋯ menu gains Start Syncing, Join Space, Share Invite and the sync status.
 - New modules in `web/sync/`: `records.js`, `merge.js`, `order-key.js`, `store.js`, `client.js`, `crypto.js`.

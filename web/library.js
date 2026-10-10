@@ -84,6 +84,13 @@ export class Library {
     document.querySelector('[data-act="boards"]').hidden = false;
   }
 
+  /** Saves what is pending and stops saving and syncing, as another tab takes the boards over. */
+  handOver() {
+    this.app.endEditing();
+    this.binding?.flush();
+    return this.spaces.stop();
+  }
+
   changed(group, boards, remote) {
     if (this.id && group === this.group && boards.has(this.id)) {
       if (group.store.title(this.id) === null) return this.showList();
