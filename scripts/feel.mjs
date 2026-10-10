@@ -458,8 +458,12 @@ if (only.has("launch")) {
     // b starts again, as a phone does after the system ended it, on the board list
     await b.go("http://localhost:58565/");
     const t = await b.run("performance.timeOrigin");
-    await waitFor("b to show a on the board list", () => b.run(`!!document.querySelector(".boards-list li[data-board] .people")?.children.length`), 15_000);
-    known.push((await b.run("__now()")) - t);
+    // a missed presence counts as 20 s, as outages count as the time given up after, rather than ending the run
+    let shown = null;
+    for (const end = Date.now() + 20_000; Date.now() < end && shown === null; await sleep(50))
+      if (await b.run(`!!document.querySelector(".boards-list li[data-board] .people")?.children.length`)) shown = (await b.run("__now()")) - t;
+    if (shown === null) console.log(`  launch ${r}: b did not show a on the board list within 20 s`);
+    known.push(shown ?? 20_000);
     await waitFor("the board on b", () => b.click('.boards-group[data-group^="space:"] li[data-board] .open'));
     await sleep(1500);
   }
