@@ -440,6 +440,7 @@ export class Hub {
         if (V.now > 3_600_000 * 48) throw new Error("ran over 48 virtual hours");
       }
       await this.heal();
+      if (!this.opts.replay) for (let i = 0; i < (this.opts.probes ?? 4); i++) await this.probe(i % 2 === 0);
       return await this.check();
     } finally {
       this.stop();
@@ -901,6 +902,39 @@ export class Hub {
       if (!d.opened) await this.openBoard(d);
     }
     await this.runUntil(V.now + HEAL_MS);
+  }
+
+  /** Two devices edit one card while both are cut off, then come back: a recolour on one and text on the other must
+   * both stay (`disjoint`); text on both must stay, the second in a copy, as merging promises. Converging is not enough:
+   * a merge that drops one side's change converges too. */
+  async probe(disjoint) {
+    const r = this.rngOps;
+    const snaps = await Promise.all(this.devices.map((d) => this.command(d, { cmd: "state" })));
+    const open = this.devices.filter((d, i) => snaps[i].shown?.same && snaps[i].shown.board);
+    const board = open[0] && snaps[open[0].i].shown.board;
+    const pair = open.filter((d) => snaps[d.i].shown.board === board);
+    if (pair.length < 2) return;
+    const [a, b] = [r.pick(pair), r.pick(pair.filter((d) => d !== pair[0]))].sort((x, y) => x.i - y.i);
+    if (a === b) return;
+    const cards = snaps[a.i].boards[board]?.cards ?? [];
+    if (!cards.length) return;
+    const ids = cards.map((c) => c.id).sort();
+    const n = r.int(ids.length), id = ids[n], card = cards.find((c) => c.id === id);
+    const color = 1 + ((card.color ?? 1) % 5), ta = `probe a ${r.int(1e6)}`, tb = `probe b ${r.int(1e6)}`;
+    for (const d of [a, b]) d.link.blocked = { server: true, relay: true };
+    await this.op(a, disjoint ? { op: "color", n, count: 1, color } : { op: "type", n, text: ta });
+    await this.op(b, { op: "type", n, text: tb });
+    await this.runUntil(V.now + 2000);
+    for (const d of [a, b]) {
+      d.link.blocked = { server: false, relay: false };
+      await this.op(d, { op: "retry", changed: true });
+    }
+    await this.runUntil(V.now + 60_000);
+    const after = (await this.command(this.devices[0], { cmd: "state" })).boards[board];
+    const got = after?.cards.find((c) => c.id === id);
+    const texts = new Set(after?.cards.map((c) => c.text));
+    const lost = disjoint ? (got?.color !== color ? "the recolour" : got?.text !== tb ? "the text" : null) : !texts.has(ta) || !texts.has(tb) ? "a text" : null;
+    if (lost) this.violation(a.i, `probe ${this.probes = (this.probes ?? 0) + 1}`, `${lost} edited alongside device ${b.i} was lost in the merge`);
   }
 
   async check() {

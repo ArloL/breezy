@@ -105,6 +105,8 @@ After `--steps`, the hub heals: no more operations or faults, every link good, e
 
 Along the run, every 15 s, no hold may outlive its gesture: a device holding items 120 s after its last gesture, or a relay keeping a connection's holds 45 s after its device let go, fails the run, as holds keep the others from editing. The margins leave a finish its push over a dead network.
 
+After healing, merge probes: two devices showing one board edit one card while both are cut off, then come back. A recolour on one and text on the other must both stay, and text on both must stay, the second in a copy; four probes a run, alternating. Converging alone cannot show this: a merge that drops one side's change converges too.
+
 The hub reports how long after a tunnel or a dead upstream ends a device takes to sync and to be welcomed by the relay, as 95 % CIs over the run's seeds.
 
 A refused token (401) is no fault here: the device stops syncing until it leaves the space, by design.
@@ -121,7 +123,7 @@ A failing run writes its seed, its trace of operations, faults and link changes,
 |---|---|---|
 | `pushed-skip` | records a `pushed` brings are not applied, though the cursor moves past them | on every seed tried |
 | `order-all` | order keys follow the model's order against the store's, the bug the fuzzer found first | 1 of 24 seeds with 3 web devices; it needs cards made at once |
-| `merge-local` | a merge takes the local side of every field | never: the devices still converge, on the last writer's fields; see Not done |
+| `merge-local` | a merge takes the local side of every field | on every seed tried, by the merge probes; the convergence checks alone never find it |
 
 A test runs `pushed-skip` with the per-PR budget, fails unless the fuzzer finds it, and shrinks the failure to at most 30 entries.
 
@@ -129,7 +131,7 @@ A test runs `pushed-skip` with the per-PR budget, fails unless the fuzzer finds 
 
 | Idea | Why not |
 |---|---|
-| Checking that nothing typed is lost | The oracle must tell an overwrite after a sync from a lost edit; a project of its own. Until then a merge that drops one side's changes converges and passes, as `merge-local` shows |
+| Checking that nothing typed is lost along the run | The oracle must tell an overwrite after a sync from a lost edit; the merge probes check what merging promises, after healing |
 | Real Chromium, the Mac app, `wrangler dev` and WebRTC under the fuzzer | Not deterministic: a failure could not be replayed or shrunk; `direct-e2e.mjs` covers the real stack |
 | A fake server for speed | It would fuzz the fake; `sync.php` on SQLite is fast enough for the budgets |
 | Two tabs of the web app on one device | Not a network fault: each tab loads the state once and saves all of it under the same key, so one can overwrite the other's unpushed edit. It needs a fix of its own, such as one tab holding a Web Lock and the others opening read-only |
