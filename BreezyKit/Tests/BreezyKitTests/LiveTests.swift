@@ -79,7 +79,7 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(Person.palette.contains(colour(newID())))
 }
 
-@MainActor @Test func cursorsGoAtMostTwentyTimesASecond() {
+@MainActor @Test func cursorsGoAtMostFortyTimesASecond() {
   let (relay, clock, a, b) = two()
   let sent = { fast(sentBy(relay, a.id)).count }
   a.sendCursor(board: B1, x: 1, y: 1)
@@ -90,7 +90,10 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   a.sendCursor(board: B1, x: 3, y: 3)
   relay.run()
   #expect(sent() == 1)
-  clock.advance(0.05)
+  clock.advance(0.024)
+  relay.run()
+  #expect(sent() == 1)
+  clock.advance(0.001)
   relay.run()
   #expect(sent() == 2)
   clock.advance(0.2)
@@ -1006,7 +1009,7 @@ private func unpack(_ m: PeerMessage?) -> [Pack] { data(m).flatMap { try? Pack.u
   #expect(size <= 24, "\(size) B")
 }
 
-@MainActor @Test func withOnePeerOnAChannelAndOneOnTheRelayTheChannelGetsABodyEvery8msAndTheRelayEvery50ms() {
+@MainActor @Test func withOnePeerOnAChannelAndOneOnTheRelayTheChannelGetsABodyEvery8msAndTheRelayEvery25ms() {
   let (relay, clock, ts, ls) = direct(3)
   open(ts, ls, 0, 1)
   for t in stride(from: 0, to: 100, by: 8) {
@@ -1016,7 +1019,7 @@ private func unpack(_ m: PeerMessage?) -> [Pack] { data(m).flatMap { try? Pack.u
   }
   relay.run()
   #expect(ts[0].sent.filter { $0.id == ls[1].id }.count == 13)
-  #expect(relayed(relay, ls[0]).map(\.to) == Array(repeating: Int(ls[2].id!), count: 3))
+  #expect(relayed(relay, ls[0]).map(\.to) == Array(repeating: Int(ls[2].id!), count: 5))
 }
 
 @MainActor @Test func cursorsGoToThoseOnTheirBoardTheFirstOnAnotherBoardGoesToEveryoneAndOneShowingBothGetsBoth() {

@@ -65,7 +65,7 @@ test("people see each other and what they have selected", async () => {
   assert.ok(PALETTE.includes(colourOf(device())));
 });
 
-test("cursors go at most twenty times a second", async () => {
+test("cursors go at most forty times a second", async () => {
   const { relay, clock, a, b } = await two();
   const sent = async () => fast(await sentBy(relay, a.id)).length;
   a.sendCursor(B1, 1, 1);
@@ -76,7 +76,10 @@ test("cursors go at most twenty times a second", async () => {
   a.sendCursor(B1, 3, 3);
   await relay.run();
   assert.equal(await sent(), 1);
-  clock.advance(50);
+  clock.advance(24);
+  await relay.run();
+  assert.equal(await sent(), 1);
+  clock.advance(1);
   await relay.run();
   assert.equal(await sent(), 2);
   clock.advance(200);
@@ -939,7 +942,7 @@ test("relay frames are binary, and a compact cursor is at most 60 B from the rel
   assert.ok(d.ts[0].sent[1].data.length <= 24, `${d.ts[0].sent[1].data.length} B`);
 });
 
-test("with one peer on a channel and one on the relay, the channel gets a body every 8 ms and the relay every 50 ms", async () => {
+test("with one peer on a channel and one on the relay, the channel gets a body every 8 ms and the relay every 25 ms", async () => {
   const { relay, clock, ts, ls, open, relayed } = await direct(3);
   open(0, 1);
   for (let t = 0; t < 100; t += 8) {
@@ -949,7 +952,7 @@ test("with one peer on a channel and one on the relay, the channel gets a body e
   }
   await relay.run();
   assert.equal(ts[0].sent.filter((s) => s.id === ls[1].id).length, 13);
-  assert.deepEqual((await relayed()).map((s) => s.to), [2, 2, 2].map(() => Number(ls[2].id)));
+  assert.deepEqual((await relayed()).map((s) => s.to), [2, 2, 2, 2, 2].map(() => Number(ls[2].id)));
 });
 
 test("cursors go to those on their board; the first on another board goes to everyone, and one showing both gets both", async () => {

@@ -10,7 +10,7 @@ import { CursorEncoder, LiveEncoder, LiveDecoder, isCompact } from "./compact.js
 import { relayFrame, parseRelayFrame } from "./frames.js";
 
 export const PALETTE = ["#e5484d", "#f76b15", "#12a594", "#8e4ec6", "#3e63dd", "#e93d82", "#ad7f58", "#00a2c7"];
-export const SEND_MS = 50;
+export const SEND_MS = 25;
 export const DIRECT_SEND_MS = 8;
 export const HEARTBEAT_MS = 5_000;
 export const CURSOR_REPEAT_MS = 100;

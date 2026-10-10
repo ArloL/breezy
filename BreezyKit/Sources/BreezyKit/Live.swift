@@ -172,7 +172,7 @@ public struct Peer: Equatable, Sendable {
 /// the multiplayer and lean sync designs. Bodies are sealed with the space key, so the relay reads none of them; a
 /// version 2 channel carries compact bodies unsealed.
 @MainActor public final class Live {
-  public static let sendInterval: TimeInterval = 0.05
+  public static let sendInterval: TimeInterval = 0.025
   public static let directSendInterval: TimeInterval = 0.008
   public static let heartbeat: TimeInterval = 5
   public static let cursorRepeat: TimeInterval = 0.1
