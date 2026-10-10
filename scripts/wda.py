@@ -10,7 +10,10 @@
   scripts/wda.py source                    the accessibility tree, to find what to tap
   scripts/wda.py relaunch "Breezy Dev"     quits home-screen web apps and opens the icon with that label afresh
 
-WDA_URL overrides http://192.168.178.46:8100, the address WebDriverAgent prints when it starts.
+It reaches WebDriverAgent over USB, through iproxy 8100:8100 (brew install libimobiledevice), whatever network the phone
+is on. WDA_URL overrides http://127.0.0.1:8100, e.g. with the address WebDriverAgent prints when it starts. Turning the
+phone's Wi-Fi off still ends WebDriverAgent, as Xcode reaches it over the network, and Back Tap does nothing while a
+session is open.
 The session is remembered in /tmp/wda-session between calls.
 
 Every touch first checks the app in front and refuses while a call is on screen, since it is a real phone.
@@ -27,7 +30,7 @@ import os
 import sys
 import urllib.request
 
-URL = os.environ.get("WDA_URL", "http://192.168.178.46:8100")
+URL = os.environ.get("WDA_URL", "http://127.0.0.1:8100")
 SESSION_FILE = "/tmp/wda-session"
 
 
