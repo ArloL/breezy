@@ -18,7 +18,7 @@ One way is half: the relay takes about 26 ms on Wi-Fi and 45 ms on mobile data, 
 A Cloudflare Worker with one Durable Object per space (`idFromName(space id)`), using WebSocket hibernation. It forwards sealed messages between a space's connections and keeps the holds. It stores no record and cannot read a message.
 
 - `sync.php` names it: every response gains `relay`, a `wss://` URL from `config.php`'s `relay` key, omitted when the key is absent. Existing invites keep working, and moving the relay to a VPS changes one line of config. Without `relay`, the apps work as today.
-- A connection's first message is `{"t": "auth", "token": …}`; browsers cannot set headers on a WebSocket, and a URL could end up in logs. The token is derived from the space secret for the relay (HKDF-SHA256, info `breezy relay`), not `sync.php`'s, so the relay can't act on `sync.php`. The first connection to a space stores the token's SHA-256, as `sync.php` does when a space is created; a later token that does not match closes the socket with code 4001, as does no `auth` within 5 s.
+- A connection's first message is `{"t": "auth", "token": …}`; browsers cannot set headers on a WebSocket, and a URL could end up in logs. The token is derived from the space secret for the relay (HKDF-SHA256, info `breezy relay`), not `sync.php`'s, so the relay can't act on `sync.php`. The first connection to a space stores the token's SHA-256, as `sync.php` does when a space is created; a later token that does not match closes the socket with code 4001, and no `auth` within 5 s with 4002, after which the device tries again.
 - The relay sees who connects and when, message sizes and timing, and the record ids of held items: no more than `sync.php` sees.
 
 ### Messages

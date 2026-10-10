@@ -226,6 +226,14 @@ test("binary before auth closes the socket", async () => {
   assert.equal(await c.closedWith(), 4001);
 });
 
+// a device too slow to authenticate, as on a weak link or suspended just after connecting, tries again: 4001 would stop it
+test("a socket that does not authenticate in time closes with 4002", { timeout: 30_000 }, async () => {
+  const c = await connect(rand(16), rand(32), { auth: false });
+  // a frame first, without which local workerd does not complete the close
+  c.send("ping");
+  assert.equal(await c.closedWith(15_000), 4002);
+});
+
 test("alive forwards nothing", async () => {
   const space = rand(16), token = rand(32);
   const a = await connect(space, token, { v: 2 }), b = await connect(space, token, { v: 2 }), c = await connect(space, token);
