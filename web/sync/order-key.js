@@ -20,7 +20,7 @@ export function between(a, b) {
 }
 
 /** The indices of a longest strictly increasing run of the keys present. */
-function longestIncreasing(keys) {
+export function longestIncreasing(keys) {
   const tails = [];
   const prev = new Array(keys.length).fill(null);
   keys.forEach((k, i) => {

@@ -25,6 +25,20 @@ test("reordering writes one order key", () => {
   assert.deepEqual(changes(old, now, "B", { a: "V", b: "l" }), { b: { fields: { order: "G" } } });
 });
 
+test("an order another device changed is not written back when nothing moved here", () => {
+  const b = { cards: [card("a", 0, 0), card("b", 0, 0)], lanes: [] };
+  assert.deepEqual(changes(b, structuredClone(b), "B", { a: "V", b: "G" }), {});
+});
+
+test("a card moved here gets a key among the others' order, which stays", () => {
+  const old = { cards: [card("a", 0, 0), card("b", 0, 0), card("c", 0, 0)], lanes: [] };
+  const now = { cards: [card("a", 0, 0), card("c", 0, 0), card("b", 0, 0)], lanes: [] };
+  // another device put c first meanwhile; here c went between a and b
+  const out = changes(old, now, "B", { a: "V", b: "l", c: "G" });
+  assert.deepEqual(Object.keys(out), ["c"]);
+  assert.ok(out.c.fields.order > "V" && out.c.fields.order < "l");
+});
+
 test("removed items are marked deleted", () => {
   const old = { cards: [card("a", 0, 0)], lanes: [lane("l", 0, 0)] };
   assert.deepEqual(changes(old, { cards: [], lanes: [] }, "B", { a: "V" }), { a: { deleted: "card" }, l: { deleted: "lane" } });

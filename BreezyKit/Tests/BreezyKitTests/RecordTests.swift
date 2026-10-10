@@ -21,6 +21,24 @@ private func records(_ changes: [String: Change]) -> [String: Record] {
   #expect(Records.changes(from: old, to: new, board: "B", orders: ["c1": "V"]) == ["c1": .fields(["color": .number(3)])])
 }
 
+@Test func anOrderAnotherDeviceChangedIsNotWrittenBackWhenNothingMovedHere() {
+  let b = board([card("a", 0, 0), card("b", 0, 0)])
+  #expect(Records.changes(from: b, to: b, board: "B", orders: ["a": "V", "b": "G"]).isEmpty)
+}
+
+@Test func aCardMovedHereGetsAKeyAmongTheOthersOrderWhichStays() {
+  let old = board([card("a", 0, 0), card("b", 0, 0), card("c", 0, 0)])
+  let new = board([card("a", 0, 0), card("c", 0, 0), card("b", 0, 0)])
+  // another device put c first meanwhile; here c went between a and b
+  let out = Records.changes(from: old, to: new, board: "B", orders: ["a": "V", "b": "l", "c": "G"])
+  #expect(Array(out.keys) == ["c"])
+  guard case let .fields(f)? = out["c"], let key = f["order"]?.string else {
+    Issue.record("no order for c")
+    return
+  }
+  #expect(key > "V" && key < "l")
+}
+
 @Test func reorderingWritesOneOrderKey() {
   let old = board([card("a", 0, 0), card("b", 0, 0)])
   let new = board([card("b", 0, 0), card("a", 0, 0)])
