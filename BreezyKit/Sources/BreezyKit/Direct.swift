@@ -38,12 +38,18 @@ public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
   public static let openTimeout: TimeInterval = 10
   public static let restartDelay: TimeInterval = 2
   public static let maxRestarts = 3
+  /// A version 2 channel beats every tick; once its other side has beaten, this long without hearing anything closes it,
+  /// as ICE takes about 30 s to notice a network that went.
+  public static let silence: TimeInterval = 2.5
+  /// Not compact, so devices from before the beat drop it.
+  public static let beat = Data([0])
 
   private final class Link {
     let offerer: Bool
     var version = 1
-    var open = false, everOpen = false, remote = false, ready = false, answering = false
-    var since: Date
+    /// `up` is the transport's open, `open` that and not silent.
+    var up = false, open = false, everOpen = false, beats = false, remote = false, ready = false, answering = false
+    var since: Date, heardAt: Date
     var restarts = 0
     var restartAt: Date?
     var inbox: [IceCandidate] = []
@@ -52,6 +58,7 @@ public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
     init(offerer: Bool, since: Date) {
       self.offerer = offerer
       self.since = since
+      heardAt = since
     }
   }
 
@@ -73,7 +80,12 @@ public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
     transport.onCandidate = { [weak self] in self?.gathered($0, $1) }
     transport.onState = { [weak self] in self?.state($0, $1) }
     transport.onMessage = { [weak self] id, m in
-      guard let self, let l = links[id], l.open else { return }
+      guard let self, let l = links[id], l.up else { return }
+      l.heardAt = now()
+      let beat = m == .bytes(Self.beat)
+      if beat { l.beats = true }
+      if !l.open { opened(l, true) }
+      if beat { return }
       switch m {
       case .text where l.version == 1, .bytes where l.version == 2: self.message(id, m)
       default: return
@@ -179,20 +191,32 @@ public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
 
   private func state(_ id: String, _ s: PeerState) {
     guard let l = links[id] else { return }
-    let was = l.open
-    l.open = s == .open
-    if l.open {
-      l.everOpen = true
-      l.restarts = 0
-    }
+    l.up = s == .open
+    opened(l, l.up)
     if s == .failed, l.offerer, l.restarts < Self.maxRestarts, l.restartAt == nil { l.restartAt = now().addingTimeInterval(Self.restartDelay) }
-    if was != l.open { change() }
   }
 
-  /// About once a second: restarts what failed, and gives up on what never opened.
+  private func opened(_ l: Link, _ open: Bool) {
+    let was = l.open
+    l.open = open
+    if open {
+      l.everOpen = true
+      l.restarts = 0
+      l.heardAt = now()
+    }
+    if was != open { change() }
+  }
+
+  /// About once a second: beats, closes what went silent, restarts what failed or went silent, and gives up on what never
+  /// opened.
   public func tick() {
     let t = now()
     for (id, l) in links {
+      if l.up, l.version == 2 { transport.sendBytes(id, Self.beat) }
+      if l.open, l.beats, t.timeIntervalSince(l.heardAt) >= Self.silence {
+        opened(l, false)
+        if l.offerer, l.restarts < Self.maxRestarts, l.restartAt == nil { l.restartAt = t }
+      }
       if let at = l.restartAt, t >= at {
         l.restartAt = nil
         l.restarts += 1

@@ -99,7 +99,7 @@ async function browser(name) {
   await send("Page.enable");
   await send("Network.enable");
   // every peer connection the page makes, so that the test can close them
-  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size, kind: typeof d === 'string' ? null : new Uint8Array(d)[1], bytes: typeof d === 'string' ? null : Array.from(new Uint8Array(d)) }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__ch = []; const S = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { if (window.__mute) return; __ch.push({ bin: typeof d !== 'string', n: typeof d === 'string' ? new TextEncoder().encode(d).length : d.byteLength ?? d.size, kind: typeof d === 'string' ? null : new Uint8Array(d)[1], bytes: typeof d === 'string' ? null : Array.from(new Uint8Array(d)) }); return S.call(this, d); }; window.__pcs = []; const P = RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new P(...a); __pcs.push(pc); return pc; }; RTCPeerConnection.prototype = P.prototype;" });
   const go = async (url) => {
     const loaded = new Promise((r) => listeners.push(function l(m) { if (m.method === "Page.loadEventFired") { listeners.splice(listeners.indexOf(l), 1); r(); } }));
     await send("Page.navigate", { url });
@@ -246,6 +246,15 @@ for (const [what, sent] of [["typing", over.typed], ["dragging a card", over.dra
   }
   console.log(`${what}, channel: ${sent.channel.length} binary messages, median ${median(sent.channel.map((m) => m.n))} B (${list(sent)}); relay body frames: ${bodies(sent).length}`);
 }
+
+// b's channel goes silent without closing, as when the network under it goes
+await b.run("window.__mute = true");
+const muted = Date.now();
+await waitFor("the fall back from a silent channel", async () => (await a.status()).includes("Direct with 0 of 1 person"), 6000);
+const silentMs = Date.now() - muted;
+await b.run("window.__mute = false");
+await waitFor("the channel heard again", async () => (await a.status()).includes("Direct with 1 of 1 person"), 6000);
+console.log(`silent channel: a falls back in ${(silentMs / 1000).toFixed(1)} s and comes back when it hears b`);
 
 await b.run("__pcs.forEach((pc) => pc.close())");
 await waitFor("the fall back", async () => (await a.status()).includes("Direct with 0 of 1 person"));

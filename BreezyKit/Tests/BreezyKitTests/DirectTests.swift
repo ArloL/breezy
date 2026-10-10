@@ -192,3 +192,83 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   r.direct.heard("p1", ice.merging(["index": .number(2)]) { $1 })
   #expect(r.transport.added.map(\.index) == [nil, nil, nil, 2])
 }
+
+/// A version 2 channel to p1 that is open and has beaten once; this side offered unless `answerer`.
+@MainActor private func beating(answerer: Bool = false) -> Rig {
+  let r = Rig()
+  if answerer {
+    r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o"), "v": .number(2)])
+  } else {
+    r.direct.welcome(["p1"])
+    r.direct.heard("p1", ["t": .string("answer"), "sdp": .string("a"), "v": .number(2)])
+  }
+  r.transport.onState?("p1", .open)
+  r.transport.onMessage?("p1", .bytes(Direct.beat))
+  return r
+}
+
+@MainActor @Test func eachTickBeatsOverEveryOpenVersion2ChannelAndABeatIsNoMessage() {
+  let r = beating()
+  r.direct.heard("p2", ["t": .string("offer"), "sdp": .string("o")])
+  r.transport.onState?("p2", .open)
+  r.direct.tick()
+  #expect(r.transport.sent.map(\.id) == ["p1"] && r.transport.sent.map(\.message) == [.bytes(Direct.beat)])
+  #expect(r.messages.isEmpty)
+}
+
+@MainActor @Test func aChannelSilentAfterABeatClosesAndItsOffererRestartsAtOnce() {
+  let r = beating()
+  r.now += Direct.silence - 0.001
+  r.direct.tick()
+  #expect(r.direct.isOpen("p1"))
+  r.now += 0.001
+  r.direct.tick()
+  #expect(!r.direct.isOpen("p1") && r.changes == 2)
+  #expect(r.transport.log.contains("offer p1 restart"))
+}
+
+@MainActor @Test func aSilentChannelsAnswererClosesItAndWaitsForTheOfferer() {
+  let r = beating(answerer: true)
+  r.now += Direct.silence
+  r.direct.tick()
+  #expect(!r.direct.isOpen("p1"))
+  #expect(!r.transport.log.contains { $0.hasPrefix("offer") })
+}
+
+@MainActor @Test func anyMessageKeepsAChannelOpen() {
+  let r = beating()
+  for _ in 0..<5 {
+    r.now += Direct.silence - 0.001
+    r.transport.onMessage?("p1", .bytes(Data([0x90])))
+    r.direct.tick()
+  }
+  #expect(r.direct.isOpen("p1"))
+}
+
+@MainActor @Test func aChannelThatNeverBeatIsNotClosedForSilence() {
+  let r = Rig()
+  r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o"), "v": .number(2)])
+  r.transport.onState?("p1", .open)
+  r.now += Direct.openTimeout
+  r.direct.tick()
+  #expect(r.direct.isOpen("p1"))
+}
+
+@MainActor @Test func aChannelClosedForSilenceOpensAgainWhenHeard() {
+  let r = beating(answerer: true)
+  r.now += Direct.silence
+  r.direct.tick()
+  let bytes = Data([0x90])
+  r.transport.onMessage?("p1", .bytes(bytes))
+  #expect(r.direct.isOpen("p1") && r.changes == 3)
+  #expect(r.messages.map(\.1) == [.bytes(bytes)])
+}
+
+@MainActor @Test func aChannelClosedForSilenceStillBeats() {
+  let r = beating(answerer: true)
+  r.now += Direct.silence
+  r.direct.tick()
+  r.transport.sent = []
+  r.direct.tick()
+  #expect(r.transport.sent.map(\.message) == [.bytes(Direct.beat)])
+}

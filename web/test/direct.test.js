@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Direct, OPEN_TIMEOUT_MS, RESTART_MS } from "../sync/direct.js";
+import { Direct, BEAT, OPEN_TIMEOUT_MS, RESTART_MS, SILENT_MS } from "../sync/direct.js";
 import { FakeTransport } from "./helpers/fake-transport.js";
 
 const settle = () => new Promise((r) => setImmediate(r));
@@ -184,4 +184,91 @@ test("a failed accept closes the connection", async () => {
   await settle();
   assert.ok(transport.log.includes("close p1"));
   assert.ok(!d.isOpen("p1"));
+});
+
+/** A version 2 channel to p1 that is open and has beaten once; this side offered unless `answerer`. */
+async function beating(answerer = false) {
+  const r = direct();
+  if (answerer) r.d.heard("p1", { t: "offer", sdp: "o", v: 2 });
+  else {
+    r.d.welcome(["p1"]);
+    await settle();
+    r.d.heard("p1", { t: "answer", sdp: "a", v: 2 });
+  }
+  await settle();
+  r.transport.onState("p1", "open");
+  r.transport.onMessage("p1", BEAT);
+  return r;
+}
+
+test("each tick beats over every open version 2 channel, and a beat is no message", async () => {
+  const { d, transport, messages } = await beating();
+  d.heard("p2", { t: "offer", sdp: "o" });
+  await settle();
+  transport.onState("p2", "open");
+  d.tick();
+  assert.deepEqual(transport.sent, [{ id: "p1", data: BEAT }]);
+  assert.deepEqual(messages, []);
+});
+
+test("a channel silent for 2.5 s after a beat closes, and its offerer restarts ICE at once", async () => {
+  const { d, transport, advance, changes } = await beating();
+  advance(SILENT_MS - 1);
+  d.tick();
+  assert.ok(d.isOpen("p1"));
+  advance(1);
+  d.tick();
+  await settle();
+  assert.ok(!d.isOpen("p1"));
+  assert.equal(changes(), 2);
+  assert.ok(transport.log.includes("offer p1 restart"));
+});
+
+test("a silent channel's answerer closes it and waits for the offerer to restart", async () => {
+  const { d, transport, advance } = await beating(true);
+  advance(SILENT_MS);
+  d.tick();
+  await settle();
+  assert.ok(!d.isOpen("p1"));
+  assert.ok(!transport.log.some((l) => l.startsWith("offer")));
+});
+
+test("any message keeps a channel open", async () => {
+  const { d, transport, advance } = await beating();
+  for (let i = 0; i < 5; i++) {
+    advance(SILENT_MS - 1);
+    transport.onMessage("p1", new Uint8Array([0x90]));
+    d.tick();
+  }
+  assert.ok(d.isOpen("p1"));
+});
+
+test("a channel that never beat is not closed for silence", async () => {
+  const { d, transport, advance } = direct();
+  d.heard("p1", { t: "offer", sdp: "o", v: 2 });
+  await settle();
+  transport.onState("p1", "open");
+  advance(OPEN_TIMEOUT_MS);
+  d.tick();
+  assert.ok(d.isOpen("p1"));
+});
+
+test("a channel closed for silence opens again when heard", async () => {
+  const { d, transport, messages, advance, changes } = await beating(true);
+  advance(SILENT_MS);
+  d.tick();
+  const bytes = new Uint8Array([0x90]);
+  transport.onMessage("p1", bytes);
+  assert.ok(d.isOpen("p1"));
+  assert.equal(changes(), 3);
+  assert.deepEqual(messages, [{ from: "p1", data: bytes }]);
+});
+
+test("a channel closed for silence still beats, so the other side can hear it again", async () => {
+  const { d, transport, advance } = await beating(true);
+  advance(SILENT_MS);
+  d.tick();
+  transport.sent.length = 0;
+  d.tick();
+  assert.deepEqual(transport.sent, [{ id: "p1", data: BEAT }]);
 });
