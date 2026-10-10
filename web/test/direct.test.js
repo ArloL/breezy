@@ -8,9 +8,9 @@ const settle = () => new Promise((r) => setImmediate(r));
 function direct() {
   let t = 1_000_000;
   const transport = new FakeTransport(), relayed = [], messages = [];
-  let changes = 0;
-  const d = new Direct(transport, { now: () => t, relay: (to, b) => relayed.push({ to, ...b }), message: (from, data) => messages.push({ from, data }), change: () => changes++ });
-  return { d, transport, relayed, messages, advance: (ms) => (t += ms), changes: () => changes };
+  let changes = 0, lost = 0;
+  const d = new Direct(transport, { now: () => t, relay: (to, b) => relayed.push({ to, ...b }), message: (from, data) => messages.push({ from, data }), change: () => changes++, lost: () => lost++ });
+  return { d, transport, relayed, messages, advance: (ms) => (t += ms), changes: () => changes, lost: () => lost };
 }
 
 test("the newcomer offers to everyone already here, its candidates after its offer", async () => {
@@ -271,4 +271,18 @@ test("a channel closed for silence still beats, so the other side can hear it ag
   transport.sent.length = 0;
   d.tick();
   assert.deepEqual(transport.sent, [{ id: "p1", data: BEAT }]);
+});
+
+test("a channel that fails or falls silent is lost; one left is not", async () => {
+  const { d, transport, advance, lost } = await beating();
+  transport.onState("p1", "failed");
+  assert.equal(lost(), 1);
+  transport.onState("p1", "open");
+  transport.onMessage("p1", BEAT);
+  advance(SILENT_MS);
+  d.tick();
+  assert.equal(lost(), 2);
+  transport.onMessage("p1", BEAT);
+  d.leave("p1");
+  assert.equal(lost(), 2);
 });

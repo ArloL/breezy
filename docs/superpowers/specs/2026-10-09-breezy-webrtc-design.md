@@ -48,7 +48,7 @@ New sealed bodies, sent through the relay with `to`:
 
 - A channel that does not open within 10 s of the offer leaves that peer on the relay.
 - On `failed`, the offerer calls `restartIce()` and sends a new `offer`, up to 3 times, 2 s apart. `disconnected` waits for `failed`.
-- A version 2 channel beats every tick, with the single byte `0`, which devices from before the beat drop as not compact. A network that goes under a channel closes nothing for about 30 s, so once the other side has beaten, 2.5 s without hearing anything over the channel moves that peer to the relay, and the offerer restarts ICE at once. Anything heard over it again moves the peer back.
+- A version 2 channel beats every tick, with the single byte `0`, which devices from before the beat drop as not compact. A network that goes under a channel closes nothing for about 30 s, so once the other side has beaten, 2.5 s without hearing anything over the channel moves that peer to the relay, and the offerer restarts ICE at once. Anything heard over it again moves the peer back. A channel that fails or falls silent also has the relay answer a ping at once, as the relay socket often shares the network that went.
 - A network change also drops the relay socket. Reconnecting gives the device a new connection id, the others see `leave` and `join`, and the newcomer offers afresh. `leave` closes that peer's connection.
 - Nothing is shown to the user: a browser that gathers no candidates, such as ungoogled-chromium without `--webrtc-ip-handling-policy=default`, cannot be fixed from the app. Each space's sync status lines gain a passive "Direct with 1 of 2 people" while someone is present, for debugging.
 

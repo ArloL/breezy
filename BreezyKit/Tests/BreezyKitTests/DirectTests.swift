@@ -8,10 +8,12 @@ import Testing
   var relayed: [[String: JSONValue]] = []
   var messages: [(String, PeerMessage)] = []
   var changes = 0
+  var lost = 0
   lazy var direct = Direct(
     transport: transport, now: { [unowned self] in now },
     relay: { [unowned self] to, b in relayed.append(b.merging(["to": .string(to)]) { $1 }) },
-    message: { [unowned self] in messages.append(($0, $1)) }, change: { [unowned self] in changes += 1 })
+    message: { [unowned self] in messages.append(($0, $1)) }, change: { [unowned self] in changes += 1 },
+    lost: { [unowned self] in lost += 1 })
   func tag(_ b: [String: JSONValue]) -> String { "\(b["t"]!.string!) \(b["to"]!.string!)" }
 }
 
@@ -271,4 +273,18 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   r.transport.sent = []
   r.direct.tick()
   #expect(r.transport.sent.map(\.message) == [.bytes(Direct.beat)])
+}
+
+@MainActor @Test func aChannelThatFailsOrFallsSilentIsLostAndOneLeftIsNot() {
+  let r = beating()
+  r.transport.onState?("p1", .failed)
+  #expect(r.lost == 1)
+  r.transport.onState?("p1", .open)
+  r.transport.onMessage?("p1", .bytes(Direct.beat))
+  r.now += Direct.silence
+  r.direct.tick()
+  #expect(r.lost == 2)
+  r.transport.onMessage?("p1", .bytes(Direct.beat))
+  r.direct.leave("p1")
+  #expect(r.lost == 2)
 }

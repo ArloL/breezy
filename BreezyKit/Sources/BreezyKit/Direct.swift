@@ -67,16 +67,19 @@ public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
   private let relay: (String, [String: JSONValue]) -> Void
   private let message: (String, PeerMessage) -> Void
   private let change: () -> Void
+  private let lost: () -> Void
   private var links: [String: Link] = [:]
 
-  /// `message` is what came direct: text on a version 1 link, bytes on a version 2 one.
+  /// `message` is what came direct: text on a version 1 link, bytes on a version 2 one; `change` follows a channel
+  /// opening or closing, `lost` one failing or falling silent.
   public init(transport: PeerTransport, now: @escaping () -> Date, relay: @escaping (String, [String: JSONValue]) -> Void,
-              message: @escaping (String, PeerMessage) -> Void, change: @escaping () -> Void) {
+              message: @escaping (String, PeerMessage) -> Void, change: @escaping () -> Void, lost: @escaping () -> Void) {
     self.transport = transport
     self.now = now
     self.relay = relay
     self.message = message
     self.change = change
+    self.lost = lost
     transport.onCandidate = { [weak self] in self?.gathered($0, $1) }
     transport.onState = { [weak self] in self?.state($0, $1) }
     transport.onMessage = { [weak self] id, m in
@@ -205,6 +208,7 @@ public enum PeerMessage: Equatable, Sendable { case text(String), bytes(Data) }
       l.heardAt = now()
     }
     if was != open { change() }
+    if was, !open { lost() }
   }
 
   /// About once a second: beats, closes what went silent, restarts what failed or went silent, and gives up on what never

@@ -18,9 +18,10 @@ const versionOf = (b) => (typeof b.v === "number" && b.v >= 2 ? 2 : 1);
 
 export class Direct {
   /** `relay(to, body)` sends through the relay; `message(from, data)` is what came direct: text on a version 1 link,
-   * a `Uint8Array` on a version 2 one; `change()` follows a channel opening or closing. */
-  constructor(transport, { now, relay, message, change }) {
-    Object.assign(this, { transport, now, relay, message, change });
+   * a `Uint8Array` on a version 2 one; `change()` follows a channel opening or closing, `lost()` one failing or falling
+   * silent. */
+  constructor(transport, { now, relay, message, change, lost }) {
+    Object.assign(this, { transport, now, relay, message, change, lost });
     /** Connection id → { id, offerer, version, up, open, everOpen, beats, heardAt, since, restarts, restartAt, remote, inbox, ready,
      * outbox, answering }; `up` is the transport's open, `open` that and not silent. */
     this.links = new Map();
@@ -140,6 +141,7 @@ export class Direct {
     l.open = open;
     if (open) [l.everOpen, l.restarts, l.heardAt] = [true, 0, this.now()];
     if (was !== open) this.change();
+    if (was && !open) this.lost();
   }
 
   /** About once a second: beats, closes what went silent, restarts what failed or went silent, and gives up on what never
