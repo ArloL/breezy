@@ -47,7 +47,7 @@ export class Hub {
 
   note(kind, detail) {
     // the server's port changes from run to run
-    const entry = JSON.parse(JSON.stringify({ t: Math.round(V.now), kind, ...detail }).replaceAll(this.server?.url ?? "\0", "SERVER"));
+    const entry = JSON.parse(JSON.stringify({ t: Math.round(V.now * 1000) / 1000, kind, phase: this.phase, ...detail }).replaceAll(this.server?.url ?? "\0", "SERVER"));
     this.trace.push(entry);
   }
 
@@ -110,9 +110,9 @@ export class Hub {
     await this.command(d, c);
   }
 
-  async op(d, o) {
+  async op(d, o, extra = {}) {
     this.stats.ops[o.op] = (this.stats.ops[o.op] ?? 0) + 1;
-    this.note("op", { dev: d.i, op: o });
+    this.note("op", { dev: d.i, op: o, ...extra });
     return this.command(d, { cmd: "op", op: o });
   }
 
@@ -175,7 +175,7 @@ export class Hub {
       const fault = this.httpFault;
       this.httpFault = null;
       if (fault) {
-        this.note("fault", { fault, dev: d.i });
+        this.note("hit", { fault, dev: d.i });
         if (fault === "serverError") return answer(this.transit(d, "client", conn) ?? Infinity, { status: 503, body: null });
         if (fault === "portal") return answer(this.transit(d, "client", conn) ?? Infinity, { status: 200, body: b64(Buffer.from("<html><body>Log in to continue</body></html>")) });
         if (fault === "failFast") return answer(V.now + 1, { error: "unreachable" });
@@ -406,12 +406,17 @@ export class Hub {
 
   async run() {
     try {
+      this.phase = "setup";
       await this.start();
       await this.setUp();
-      this.scheduleOps();
-      if (this.opts.faults) {
-        this.scheduleFaults();
-        for (const d of this.devices) this.scheduleLink(d);
+      this.phase = "run";
+      if (this.opts.replay) this.scheduleReplay(this.opts.replay);
+      else {
+        this.scheduleOps();
+        if (this.opts.faults) {
+          this.scheduleFaults();
+          for (const d of this.devices) this.scheduleLink(d);
+        }
       }
       while (this.opsLeft > 0 || this.gestures > 0) {
         await this.runUntil(V.now + 1000);
@@ -433,15 +438,18 @@ export class Hub {
     await this.openBoard(first);
     this.invite = invite;
     // the others join at random times, some after edits exist
+    if (this.opts.replay) return;
     for (const d of others) this.at(V.now + this.rngOps.between(0, 20_000), "join", async () => {
+      this.phase = "run";
       d.joined = true;
       await this.op(d, { op: "join", invite });
     });
   }
 
-  async openBoard(d) {
-    const board = this.rngOps.pick(this.boards);
-    const r = await this.op(d, { op: "open", board });
+  async openBoard(d, index = this.rngOps.int(this.boards.length)) {
+    const board = this.boards[index];
+    if (!board) return;
+    const r = await this.op(d, { op: "open", board }, { boardIndex: index });
     d.opened = !!r?.opened;
     d.board = d.opened ? board : null;
   }
@@ -586,6 +594,7 @@ export class Hub {
       case "truncated":
       case "failFast":
         // the next request to reach the server meets it
+        this.note("fault", { fault: f });
         this.httpFault = f;
         return;
       case "relayDrop": {
@@ -603,15 +612,14 @@ export class Hub {
         const eps = [...this.peers.values()].filter((e) => e.open);
         if (!eps.length) return;
         const ep = r.pick(eps);
-        this.note("fault", { fault: f, dev: ep.dev });
-        await this.deliver(this.devices[ep.dev], { cmd: "peer-state", peer: ep.peer, state: "closed" });
-        return this.closeChannel(ep, true);
+        this.note("fault", { fault: f, dev: ep.dev, peer: ep.peer });
+        return this.directClose(ep);
       }
       case "directSilent": {
         const eps = [...this.peers.values()].filter((e) => e.open && !e.silent);
         if (!eps.length) return;
         const ep = r.pick(eps);
-        this.note("fault", { fault: f, dev: ep.dev });
+        this.note("fault", { fault: f, dev: ep.dev, peer: ep.peer });
         return this.silence(ep);
       }
       case "skew":
@@ -624,21 +632,31 @@ export class Hub {
         const dest = r.pick(["server", "relay"]);
         const ms = r.between(10_000, 60_000);
         this.note("fault", { fault: f, dev: d.i, dest, ms: Math.round(ms) });
-        d.link.blocked[dest] = true;
-        this.at(V.now + ms, "outage ends", () => {
-          d.link.blocked[dest] = d.link.profile.relayBlocked && dest === "relay";
-        });
-        return;
+        return this.outage(d, dest, ms);
       }
       case "restore":
-        this.note("fault", { fault: f });
-        if (!this.backedUp) {
-          this.server.backup();
-          this.backedUp = true;
-          return;
-        }
-        return this.server.restore();
+        this.note("fault", { fault: f, backup: !this.backedUp });
+        return this.restore(!this.backedUp);
     }
+  }
+
+  async directClose(ep) {
+    await this.deliver(this.devices[ep.dev], { cmd: "peer-state", peer: ep.peer, state: "closed" });
+    this.closeChannel(ep, true);
+  }
+
+  outage(d, dest, ms) {
+    d.link.blocked[dest] = true;
+    this.at(V.now + ms, "outage ends", () => {
+      d.link.blocked[dest] = !this.healing && d.link.profile.relayBlocked && dest === "relay";
+    });
+  }
+
+  restore(backup) {
+    if (backup) {
+      this.server.backup();
+      this.backedUp = true;
+    } else if (this.backedUp) this.server.restore();
   }
 
   async freeze(d, ms) {
@@ -655,16 +673,16 @@ export class Hub {
     d.frozen = false;
     const inbox = d.inbox.splice(0);
     for (const c of inbox) await this.command(d, c);
-    // the app shows again, or the Mac wakes: both check the network
-    await this.op(d, { op: "retry", changed: d.kind === "swift" });
-    if (!d.hidden) await this.op(d, { op: "show", visible: true });
+    // the app shows again, or the Mac wakes: both check the network; a replayed freeze thaws again itself
+    await this.op(d, { op: "retry", changed: d.kind === "swift" }, { derived: true });
+    if (!d.hidden) await this.op(d, { op: "show", visible: true }, { derived: true });
   }
 
   scheduleLink(d) {
     const step = () => {
       if (this.healing) return;
       const s = d.link.step(V.now);
-      if (s.from !== s.to) this.note("link", { dev: d.i, to: s.to, until: Math.round(s.until) });
+      this.note("link", { dev: d.i, to: s.to, state: d.link.state, until: s.until, kills: s.kills, keeps: d.link.keeps, toldOffline: d.link.toldOffline });
       if (s.kills) this.kill(d);
       if (s.to === "flapping") this.flap(d, s.until);
       if (s.tell) this.at(V.now + this.rngNet.between(0, 2000), "network event", () => !d.frozen && this.op(d, { op: "retry", changed: true }));
@@ -678,15 +696,98 @@ export class Hub {
     if (t >= until) return;
     this.at(t, "flap", async () => {
       if (this.healing) return;
+      this.note("link", { dev: d.i, to: "flap", kills: true });
       this.kill(d);
       if (!d.frozen && this.rngNet.chance(0.7)) await this.op(d, { op: "retry", changed: true });
       this.flap(d, until);
     });
   }
 
+  // MARK: replay
+
+  /** Runs the run phase's entries of a trace at their times instead of drawing operations, faults and links. */
+  scheduleReplay(trace) {
+    const entries = trace.filter((e) => e.phase === "run" && !e.derived && ["op", "fault", "link"].includes(e.kind));
+    this.opsLeft = entries.length;
+    this.gestures = 0;
+    for (const e of entries) this.at(e.t, "replay", async () => {
+      this.opsLeft--;
+      await this.replayEntry(e);
+    });
+  }
+
+  async replayEntry(e) {
+    const d = this.devices[e.dev];
+    if (e.kind === "link") {
+      if (e.to === "flap") return this.kill(d);
+      Object.assign(d.link, { state: e.state, until: e.until, keeps: e.keeps, toldOffline: e.toldOffline });
+      if (e.kills) this.kill(d);
+      return;
+    }
+    if (e.kind === "fault") {
+      const ep = () => this.peers.get(`${e.dev} ${e.peer}`);
+      switch (e.fault) {
+        case "relayDrop":
+          for (const c of this.conns.values()) if (c.dev === d.i && c.kind === "ws" && c.server && !c.dead) c.server.close(1011);
+          return;
+        case "relayRestart":
+          return this.relay.restart();
+        case "relayEvict":
+          return this.relay.evict();
+        case "directClose":
+          return ep()?.open && this.directClose(ep());
+        case "directSilent":
+          return ep()?.open && this.silence(ep());
+        case "skew":
+          d.skew = e.skew;
+          return;
+        case "freeze":
+          return this.freeze(d, e.ms);
+        case "outage":
+          return this.outage(d, e.dest, e.ms);
+        case "restore":
+          return this.restore(e.backup);
+        default:
+          this.httpFault = e.fault;
+          return;
+      }
+    }
+    const o = e.op;
+    if (d.frozen && !["show", "retry"].includes(o.op)) return;
+    switch (o.op) {
+      case "open":
+        return this.openBoard(d, e.boardIndex);
+      case "join":
+        d.joined = true;
+        return this.op(d, { op: "join", invite: this.invite });
+      case "createBoard": {
+        const { board } = await this.op(d, o);
+        this.boards.push(board);
+        return;
+      }
+      case "press":
+        if (d.gesture) return;
+        d.gesture = true;
+        this.gestures++;
+        return this.op(d, o);
+      case "release":
+      case "cancel":
+        if (!d.gesture) return;
+        d.gesture = false;
+        this.gestures--;
+        return this.op(d, o);
+      case "show":
+        d.hidden = !o.visible;
+        return this.op(d, o);
+      default:
+        return this.op(d, o);
+    }
+  }
+
   // MARK: healing and checks
 
   async heal() {
+    this.phase = "heal";
     this.healing = true;
     this.httpFault = null;
     this.directFails = false;
