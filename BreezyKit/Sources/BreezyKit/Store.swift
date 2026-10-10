@@ -129,8 +129,8 @@ public final class Store {
     apply(changes)
   }
 
-  /// Local edits. A deleted record stays deleted; partial fields for an unknown record, and new
-  /// records on a deleted board, are dropped.
+  /// Local edits. A deleted record comes back only whole, as an undo writes it; partial fields for an unknown record,
+  /// and new records on a deleted board, are dropped.
   public func apply(_ changes: [String: Change]) {
     var boards = Set<String>()
     for (id, change) in changes {
@@ -142,7 +142,14 @@ public final class Store {
         state.records[id] = s
       case .fields(let f):
         if var s = state.records[id] {
-          guard !s.current.deleted else { continue }
+          if s.current.deleted {
+            // a whole record, as undoing a delete writes, brings it back; a field edit, as to a card deleted elsewhere, does not
+            guard f["kind"] != nil, !(f["board"]?.string.flatMap { state.records[$0]?.current.deleted } ?? false) else { continue }
+            s.current = Record(f)
+            state.records[id] = s
+            boards.insert(f["board"]?.string ?? id)
+            continue
+          }
           s.current.fields.merge(f) { _, new in new }
           state.records[id] = s
           boards.insert(s.current.board ?? id)

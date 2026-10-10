@@ -64,3 +64,24 @@ test("changes to items others hold are not written", () => {
   assert.equal(store.board(id).cards.find((c) => c.id === "a").x, 48);
   assert.equal(store.board(id).cards.find((c) => c.id === "b").x, 0);
 });
+
+test("undoing a delete brings the card back to the store, to be pushed", () => {
+  const { store, id, model, binding } = opened([card("a", 0)]);
+  model.perform("Delete", (b) => (b.cards = []));
+  binding.flush();
+  assert.equal(store.board(id).cards.length, 0);
+  // the delete went to the server
+  settle(store, 2);
+  model.undo();
+  binding.flush();
+  assert.deepEqual(store.board(id).cards.map((c) => c.text), ["x"]);
+  assert.deepEqual(store.pending().map((p) => p.id), ["a"]);
+});
+
+test("an edit to a card deleted elsewhere does not bring it back", () => {
+  const { store, id, model, binding } = opened([card("a", 0)]);
+  store.merge([{ id: "a", version: 2, record: { format: 1, kind: "card", deleted: true } }]);
+  model.perform("Colour", (b) => (b.cards[0].color = 3));
+  binding.flush();
+  assert.equal(store.board(id).cards.length, 0);
+});
