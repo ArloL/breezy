@@ -59,6 +59,7 @@ export class Hub {
 
   async start() {
     if (this.opts.plant) process.env.BREEZY_PLANT = this.opts.plant;
+    else delete process.env.BREEZY_PLANT;
     globalThis.__breezyPlant = this.opts.plant;
     V.reset();
     this.server = await Server.start(RELAY);

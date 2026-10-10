@@ -13,3 +13,9 @@ test("a planted bug fails the run, and shrinks", { skip: !existsSync(BINARY) && 
   const small = await shrink(opts, r.trace, { runs: 40 });
   assert.ok(small && small.entries <= 30, `${small?.entries} entries`);
 });
+
+// converging is not enough: a merge that drops one side's change converges too
+test("a merge that drops one side's change fails the merge probes", { timeout: 300_000 }, async () => {
+  const r = await new Hub({ seed: 1, web: 3, swift: 0, plant: "merge-local" }).run();
+  assert.ok(r.problems.some((p) => /lost in the merge/.test(p.problem)), JSON.stringify(r.problems));
+});
