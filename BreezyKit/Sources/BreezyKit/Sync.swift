@@ -416,7 +416,7 @@ public struct SyncStatus: Equatable, Sendable {
       return true
     }
     flushLocal?()
-    store.merge(page.compactMap { decode($0, keys) })
+    if !planted("pushed-skip") { store.merge(page.compactMap { decode($0, keys) }) }
     store.advance(to: last)
     onPulled?(store.state.cursor)
     return true

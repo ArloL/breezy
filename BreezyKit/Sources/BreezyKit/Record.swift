@@ -93,7 +93,7 @@ public enum Records {
   /// fields of the others, and deletions. `orders` holds the order keys the store has for its cards.
   public static func changes(from old: Board, to new: Board, board id: String, orders: [String: String]) -> [String: Change] {
     var out: [String: Change] = [:]
-    let keys = orderKeys(from: old, to: new, orders: orders)
+    let keys = planted("order-all") ? OrderKey.assign(new.cards.map(\.id), keeping: orders) : orderKeys(from: old, to: new, orders: orders)
     let oldCards = Dictionary(old.cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     for c in new.cards {
       let now = card(c, board: id, order: keys[c.id]!)

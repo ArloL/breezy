@@ -61,6 +61,7 @@ relay/test.sh                  # the relay under wrangler dev, with its tests; f
 npm --prefix relay run dev     # serves ws://127.0.0.1:58568/, which server/dev.sh names
 node scripts/direct-e2e.mjs    # starts wrangler, server/dev.sh and a web server on 58568, 58566, 58565; two headless Chromiums open a direct channel, then fall back to the relay, checking that both carry binary, compact bodies, one body a move. Needs Node 24, php, npm install --prefix relay, and Playwright's Chromium (or BREEZY_CHROMIUM; not ungoogled-chromium)
 node scripts/feel.mjs [--direct] [--only cursor,drag,colour,outage,silent,passive]   # the same setup with each browser behind a proxy that delays the relay 25 ms and the server 40 ms each way: how far a cursor and a drag trail, how long a recolour takes, and how long both take after a network change; 95 % CIs over --runs
+node scripts/fuzz.mjs --seeds 1-50 [--profile mixed|lan|office|train|tether|blocked-ws] [--web 2 --swift 2] [--shrink]   # web and Swift devices edit one board against sync.php, the relay's Durable Object and simulated direct channels, over simulated networks with faults, on virtual time; then all must end the same. A failure goes to build/fuzz/, replayable with --replay. Needs php and swift build --package-path BreezyKit --product breezy-sim; see the convergence fuzzing design
 ```
 
 ## Touch prototype

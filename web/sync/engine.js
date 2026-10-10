@@ -3,6 +3,7 @@
 import { SpaceKeys } from "./crypto.js";
 import { encode, decode } from "./base64.js";
 import { FORMAT } from "./records.js";
+import { planted } from "./plant.js";
 
 export const PAGE_SIZE = 500;
 export const MAX_BLOB = 65536;
@@ -344,7 +345,7 @@ export class SyncEngine {
         const decoded = await this.decodeAll(page, keys);
         this.flushLocal();
         if (same()) {
-          this.apply(decoded);
+          if (!planted("pushed-skip")) this.apply(decoded);
           this.store.advance(last);
           this.onPulled(this.store.state.cursor);
           ok = true;

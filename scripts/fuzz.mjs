@@ -2,18 +2,30 @@
 // Convergence fuzzing: web and Swift devices edit one board against sync.php, the relay and direct channels over
 // simulated networks, then must end the same. See docs/superpowers/specs/2026-10-10-breezy-convergence-fuzzing-design.md.
 //   node scripts/fuzz.mjs [--seeds 1-50] [--steps 300] [--web 2] [--swift 2] [--profile mixed] [--no-restore] [--no-faults]
-//                         [--plant NAME] [--replay build/fuzz/SEED.json] [--verbose]
-import { mkdirSync, writeFileSync } from "node:fs";
+//                         [--plant NAME] [--shrink] [--replay build/fuzz/FILE.json] [--verbose]
+// A failure is written to build/fuzz/; --shrink also writes the smallest trace that still fails the same way, and
+// --replay runs a written trace again.
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { Hub } from "./fuzz/hub.mjs";
+import { shrink } from "./fuzz/shrink.mjs";
 
 const { values: a } = parseArgs({
   options: {
     seeds: { type: "string", default: "1-10" }, steps: { type: "string", default: "300" }, web: { type: "string", default: "2" },
     swift: { type: "string", default: "2" }, profile: { type: "string", default: "mixed" }, "no-restore": { type: "boolean" },
-    "no-faults": { type: "boolean" }, plant: { type: "string" }, verbose: { type: "boolean" },
+    "no-faults": { type: "boolean" }, plant: { type: "string" }, verbose: { type: "boolean" }, shrink: { type: "boolean" },
+    replay: { type: "string" },
   },
 });
+
+if (a.replay) {
+  const saved = JSON.parse(readFileSync(a.replay, "utf8"));
+  const r = await new Hub({ ...saved.opts, seed: saved.seed, log: a.verbose ? (...x) => console.error(...x) : () => {}, replay: saved.trace }).run();
+  console.log(r.ok ? "replay converged" : "replay failed");
+  for (const p of r.problems.slice(0, 8)) console.log(`  ${JSON.stringify(p)}`);
+  process.exit(r.ok ? 0 : 1);
+}
 
 const seeds = a.seeds.split(",").flatMap((r) => {
   const [lo, hi = lo] = r.split("-").map(Number);
@@ -35,10 +47,19 @@ for (const seed of seeds) {
   }
   failed++;
   mkdirSync("build/fuzz", { recursive: true });
-  const file = `build/fuzz/${seed}.json`;
+  const file = `build/fuzz/${opts.profile}-${seed}${opts.plant ? `-${opts.plant}` : ""}.json`;
   writeFileSync(file, JSON.stringify({ seed, opts: { ...opts, log: undefined }, problems: r.problems, trace: r.trace }, null, 1));
   console.log(`seed ${seed}: FAILED in ${s} s, see ${file}`);
   for (const p of r.problems.slice(0, 8)) console.log(`  ${JSON.stringify(p)}`);
+  if (a.shrink) {
+    const small = await shrink({ ...opts, seed }, r.trace, { log: console.log });
+    if (!small) console.log("  the trace's replay converged: nothing to shrink");
+    else {
+      const out = file.replace(/\.json$/, "-shrunk.json");
+      writeFileSync(out, JSON.stringify({ seed, opts: { ...opts, log: undefined }, problems: small.problems, trace: small.trace }, null, 1));
+      console.log(`  shrunk to ${small.entries} entries in ${small.replays} replays: ${out}`);
+    }
+  }
 }
 console.log(`${seeds.length - failed} of ${seeds.length} seeds converged`);
 process.exitCode = failed ? 1 : 0;

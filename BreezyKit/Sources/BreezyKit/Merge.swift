@@ -14,6 +14,7 @@ public enum Merge {
   static let texts = ["text", "notes"]
 
   public static func record(base: Record?, local: Record, incoming: Record) -> MergeResult {
+    if planted("merge-local") { return MergeResult(record: local, copy: nil) }
     let base = base ?? Record([:])
     if incoming.deleted || local.deleted {
       let survivor = incoming.deleted ? (local.deleted ? nil : local) : incoming
