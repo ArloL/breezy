@@ -6,6 +6,8 @@ import { Mouse } from "./mouse.js";
 import { wheelAction } from "./wheel.js";
 import { command, perform } from "./keys.js";
 import { Library } from "./library.js";
+import { ownBoards } from "./owner.js";
+import { ask } from "./sheet.js";
 
 const params = new URLSearchParams(location.search);
 // ?stress and ?demo show boards that are not kept, as before
@@ -118,5 +120,11 @@ if (demo === "add") app.ui.act("add");
 
 if (!scratch) {
   document.body.dataset.screen = "boards";
+  let waited = false;
+  await ownBoards(navigator.locks, () => {
+    waited = true;
+    ask({ title: "Breezy is open in another tab", message: "Close it to use Breezy here.", ok: null, cancel: null });
+  });
+  if (waited) document.getElementById("sheet").hidden = true;
   await Library.open(app);
 }
