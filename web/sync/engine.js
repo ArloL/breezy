@@ -207,6 +207,7 @@ export class SyncEngine {
     const relay = typeof r === "string" && validRelay(r) ? r : null;
     if (relay === this.relay) return;
     this.relay = relay;
+    this.store.noteRelay(relay);
     this.onRelay(relay);
   }
 

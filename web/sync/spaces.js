@@ -94,6 +94,8 @@ export class Spaces {
     engine.onRelay = (relay) => this.setRelay(g, relay);
     engine.onPushed = (pushed) => g.live?.sendPushed(pushed);
     engine.onPulled = (cursor) => g.live?.noteCursor(cursor);
+    // the live layer connects at once rather than after the first sync names the relay
+    if (store.state.relay) engine.noteRelay(store.state.relay);
     return g;
   }
 
