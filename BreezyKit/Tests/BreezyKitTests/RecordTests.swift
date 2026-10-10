@@ -82,3 +82,20 @@ private func records(_ changes: [String: Change]) -> [String: Record] {
   #expect(Record(["format": .number(1e30)]).format > Record.format)
   #expect(Record(["format": .number(-1e30)]).format < Record.format)
 }
+
+private struct OrderCase: Decodable {
+  var name: String
+  var old: [String], now: [String]
+  var orders: [String: String], keys: [String: String]
+}
+
+@Test func orderWritesMatchTheSharedCases() throws {
+  let cases = try JSONDecoder().decode([OrderCase].self, from: fixture("order-writes.json"))
+  for c in cases {
+    let cards = { (ids: [String]) -> [Card] in ids.map { Card(id: $0, x: 0, y: 0, text: "t") } }
+    let out = Records.changes(from: board(cards(c.old)), to: board(cards(c.now)), board: "B", orders: c.orders)
+    var keys: [String: String] = [:]
+    for (id, change) in out { if case let .fields(f) = change, let k = f["order"]?.string { keys[id] = k } }
+    #expect(keys == c.keys, "\(c.name)")
+  }
+}
