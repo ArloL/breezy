@@ -107,3 +107,13 @@ import Testing
   binding.flush()
   #expect(store.board(id).cards.isEmpty)
 }
+
+@MainActor @Test func undoingADeleteOnABoardDeletedSinceBringsNothingBack() {
+  let (store, id, model, binding) = opened(board([card("a", 0, 0, "x")]))
+  model.perform("Delete") { $0.remove(["a"]) }
+  binding.flush()
+  store.deleteBoard(id)
+  model.undoManager.undo()
+  binding.flush()
+  #expect(store.state.records["a"]?.current.deleted == true)
+}

@@ -85,3 +85,13 @@ test("an edit to a card deleted elsewhere does not bring it back", () => {
   binding.flush();
   assert.equal(store.board(id).cards.length, 0);
 });
+
+test("undoing a delete on a board deleted since brings nothing back", () => {
+  const { store, id, model, binding } = opened([card("a", 0)]);
+  model.perform("Delete", (b) => (b.cards = []));
+  binding.flush();
+  store.deleteBoard(id);
+  model.undo();
+  binding.flush();
+  assert.equal(store.state.records.a.current.deleted, true);
+});
