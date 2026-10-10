@@ -1024,7 +1024,7 @@
       "name": "unknown field keys",
       "steps": [
         {
-          "receive": "9802010ac410606162636465666768696a6b6c6d6e6fc082c4100101010101010101010101010101010183050308a178099101c41002020202020202020202020202020202810801c0c0",
+          "receive": "9802010ac410606162636465666768696a6b6c6d6e6fc082c410010101010101010101010101010101018305030aa178099101c41002020202020202020202020202020202810a01c0c0",
           "decoded": {
             "t": "live",
             "seq": 1,
@@ -1036,7 +1036,8 @@
           }
         }
       ]
-    }
+    },
+    {"name":"an edit outside a gesture: a recolour, a deleted card and a new lane","steps":[{"now":0,"seq":1,"at":100,"live":{"board":"YGFiY2RlZmdoaWprbG1ubw","items":{"AQEBAQEBAQEBAQEBAQEBAQ":{"color":3},"AgICAgICAgICAgICAgICAg":{"gone":true},"AwMDAwMDAwMDAwMDAwMDAw":{"pos":[48,96],"size":[480,720],"title":"Lane","kind":"lane"}},"starts":{},"caret":null,"cursor":null},"hex":"980201cd03e8c410606162636465666768696a6b6c6d6e6fc083c41001010101010101010101010101010101810503c410020202020202020202020202020202028108c3c41003030303030303030303030303030303840092ca42400000ca42c000000192ca43f00000ca4434000006a44c616e650701c0c0","decoded":{"t":"live","seq":1,"at":100,"board":"YGFiY2RlZmdoaWprbG1ubw","items":{"AQEBAQEBAQEBAQEBAQEBAQ":{"color":3},"AgICAgICAgICAgICAgICAg":{"gone":true},"AwMDAwMDAwMDAwMDAwMDAw":{"pos":[48,96],"size":[480,720],"title":"Lane","kind":"lane"}},"caret":null,"cursor":null}}]}
   ],
   "malformed": [
     {"name":"not an array","hex":"c0"},

@@ -117,7 +117,7 @@ private func valid(_ x: Double) -> LiveBody {
   }
 
   @Test func fieldsAreKeyedByTheirIndex() {
-    #expect(Compact.fields == ["pos", "size", "w", "text", "notes", "color", "title", "kind"])
+    #expect(Compact.fields == ["pos", "size", "w", "text", "notes", "color", "title", "kind", "gone"])
     #expect(Compact.keyframe == 1)
   }
 }

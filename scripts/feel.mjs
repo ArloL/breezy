@@ -19,7 +19,7 @@ const { values: opt } = parseArgs({ options: {
   "server-ms": { type: "string", default: "40" },
   "jitter-ms": { type: "string", default: "0" },
   runs: { type: "string", default: "10" },
-  only: { type: "string", default: "cursor,drag,colour,type,create,outage,silent,passive" },
+  only: { type: "string", default: "cursor,drag,colour,type,create,delete,resume,outage,silent,passive" },
 } });
 const JITTER = Number(opt["jitter-ms"]);
 const RUNS = Number(opt.runs), only = new Set(opt.only.split(","));
@@ -383,6 +383,68 @@ if (only.has("create")) {
     await sleep(1500);
   }
   report("a new card shows on b", shown);
+}
+
+if (only.has("delete")) {
+  const gone = [];
+  for (let r = 0; r < RUNS; r++) {
+    const x = 450 + (r % 3) * 220, y = 520;
+    await a.mouse("mouseMoved", x, y);
+    for (const clickCount of [1, 2]) { await a.mouse("mousePressed", x, y, { clickCount }); await a.mouse("mouseReleased", x, y, { clickCount }); }
+    await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
+    await a.send("Input.dispatchKeyEvent", { type: "char", text: "d" });
+    await a.run(`document.activeElement.blur()`);
+    await a.mouse("mousePressed", 900, 700, { clickCount: 1 }); await a.mouse("mouseReleased", 900, 700, { clickCount: 1 });
+    await sleep(2000);
+    const at = await a.run(`(() => { const e = [...document.querySelectorAll(".card")].find((c) => c.querySelector(".front").textContent === "d"); const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    await a.mouse("mousePressed", at.x, at.y, { clickCount: 1 }); await a.mouse("mouseReleased", at.x, at.y, { clickCount: 1 });
+    await waitFor("the card selected", () => a.run(`!!document.querySelector(".card.selected")`));
+    await sleep(300);
+    const n0 = (await b.run("__frames.at(-1)"))[5];
+    await b.run("__frames.length = 0");
+    const t = await now();
+    await a.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+    await waitFor("b to drop the card", () => b.run(`__frames.some((f) => f[5] < ${n0})`), 15_000).catch(async (e) => {
+      console.log("  frames", n0, JSON.stringify((await b.run("__frames")).map((f) => f[5]).filter((v, i, xs) => v !== xs[i - 1])), await a.run(`document.querySelectorAll(".card").length`));
+      throw e;
+    });
+    gone.push((await b.run(`__frames.find((f) => f[5] < ${n0})[0]`)) - t);
+    await sleep(1500);
+  }
+  report("a deleted card goes on b", gone);
+}
+
+if (only.has("resume")) {
+  const cursorBack = [], colourBack = [];
+  const hide = (hidden) => b.run(`Object.defineProperty(document, "hidden", { configurable: true, get: () => ${hidden} }); Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "${hidden ? "hidden" : "visible"}" }); document.dispatchEvent(new Event("visibilitychange"))`);
+  for (let r = 0; r < RUNS; r++) {
+    const c = await cardAt(a);
+    await a.mouse("mousePressed", c.x, c.y, { clickCount: 1 }); await a.mouse("mouseReleased", c.x, c.y, { clickCount: 1 });
+    await sleep(1000);
+    // b goes to another app for 5 s, as a phone does, while a recolours
+    await hide(true);
+    await sleep(1000);
+    await a.key(r % 2 ? "3" : "2");
+    await sleep(4000);
+    const want = r % 2 ? 0 : 1;
+    await b.run("__frames.length = 0");
+    const t = await now();
+    await hide(false);
+    let cx = null, colour = null;
+    for (const end = Date.now() + 20_000; Date.now() < end && (cx === null || colour === null);) {
+      await a.mouse("mouseMoved", 300 + ((Date.now() / 3) % 400), 450);
+      await sleep(30);
+      const frames = await b.run("__frames.splice(0)");
+      const moving = frames.find((f, i) => i && f[1] !== null && frames[i - 1][1] !== null && f[1] !== frames[i - 1][1]);
+      if (cx === null && moving) cx = moving[0] - t;
+      const col = frames.find((f) => f[3] === want);
+      if (colour === null && col) colour = col[0] - t;
+    }
+    cursorBack.push(cx ?? 20_000); colourBack.push(colour ?? 20_000);
+    await sleep(1000);
+  }
+  report("back from the background: cursor on b", cursorBack);
+  report("back from the background: recolour on b", colourBack);
 }
 
 for (const [silent, who] of [[false, "a"], [true, "a"], [true, "b"]]) {

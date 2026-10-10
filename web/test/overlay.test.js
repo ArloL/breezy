@@ -42,3 +42,12 @@ test("an overlay is drawn over the board", () => {
   assert.equal(overlaid(b, new Map()), b);
   assert.equal(b.cards[0].x, 0);
 });
+
+test("a deleted item goes as gone, and an overlay takes it off the board and puts a new lane on it", () => {
+  const start = { cards: [card("a", 0, 0), card("b", 0, 96)], lanes: [lane("l", 0, 0)] };
+  const now = { cards: [start.cards[0]], lanes: [] };
+  assert.deepEqual(liveFields(start, now, new Set(["a", "b", "l"]), "B"), { b: { gone: true }, l: { gone: true } });
+  const shown = overlaid(start, new Map([["b", { gone: true }], ["m", { kind: "lane", pos: [24, 48], size: [480, 240], title: "New" }]]));
+  assert.deepEqual(shown.cards.map((c) => c.id), ["a"]);
+  assert.deepEqual(shown.lanes, [start.lanes[0], { id: "m", x: 24, y: 48, w: 480, h: 240, title: "New" }]);
+});

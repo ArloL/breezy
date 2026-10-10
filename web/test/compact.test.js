@@ -74,6 +74,6 @@ test("isCompact tells arrays from other bytes", () => {
 });
 
 test("fields are keyed by their index", () => {
-  assert.deepEqual(FIELDS, ["pos", "size", "w", "text", "notes", "color", "title", "kind"]);
+  assert.deepEqual(FIELDS, ["pos", "size", "w", "text", "notes", "color", "title", "kind", "gone"]);
   assert.equal(KEYFRAME_MS, 1000);
 });

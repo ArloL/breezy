@@ -39,3 +39,15 @@ import Testing
   #expect(shown.cards.count == 2 && shown.lanes.count == 1)
   #expect(b.overlaid([:]) == b)
 }
+
+@Test func aDeletedItemGoesAsGoneAndAnOverlayTakesItOffTheBoardAndPutsANewLaneOnIt() {
+  let start = board([card("a", 0, 0), card("b", 0, 96)], [lane("l", 0, 0)])
+  let now = board([start.cards[0]], [])
+  #expect(Records.liveFields(from: start, to: now, ids: ["a", "b", "l"], board: "B") == ["b": ["gone": .bool(true)], "l": ["gone": .bool(true)]])
+  let shown = start.overlaid([
+    "b": ["gone": .bool(true)],
+    "m": ["kind": .string("lane"), "pos": .array([.number(24), .number(48)]), "size": .array([.number(480), .number(240)]), "title": .string("New")],
+  ])
+  #expect(shown.cards.map(\.id) == ["a"])
+  #expect(shown.lanes == [start.lanes[0], Lane(id: "m", x: 24, y: 48, w: 480, h: 240, title: "New")])
+}

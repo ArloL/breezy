@@ -69,7 +69,7 @@ const personOf = (device, name) => ({ device, name, colour: colourOf(device) });
 const pointOf = (c) => (c && typeof c.board === "string" && Number.isFinite(c.x) && Number.isFinite(c.y) ? { board: c.board, x: clamp(c.x), y: clamp(c.y) } : null);
 const caretOf = (c) =>
   c && typeof c.id === "string" && typeof c.back === "boolean" && integral(c.at) && c.at >= 0 ? { id: c.id, back: c.back, at: c.at } : null;
-const pick = (f) => Object.fromEntries(Object.entries(f).filter(([k]) => k === "kind" || LIVE_FIELDS.includes(k)));
+const pick = (f) => Object.fromEntries(Object.entries(f).filter(([k]) => k === "kind" || (k === "gone" && f.gone === true) || LIVE_FIELDS.includes(k)));
 const holdsFrom = (h) => new Map(Object.entries(h ?? {}).filter(([, ids]) => Array.isArray(ids)).map(([k, ids]) => [k, new Set(ids)]));
 
 /** Runs `go` at most every `ms`: once the calls made meanwhile are done when it may, else once when it may again. */
@@ -779,7 +779,7 @@ export class Live {
   /** What an edit outside a gesture changed of items on `board`, such as a recolour, so that others show it at once
    * rather than after its push: one keyframe, holding nothing. */
   sendEdit(board, items) {
-    if (!this.roster.size || !Object.keys(items).length || this.mine.size) return;
+    if (!this.roster.size || !Object.keys(items).length) return;
     for (const p of this.pipes) p.restart();
     this.lastLive = { board, items: trimmed(items), caret: null, starts: {}, once: true };
     for (const p of this.pipes) {

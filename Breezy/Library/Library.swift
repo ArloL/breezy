@@ -187,7 +187,8 @@ extension Notification.Name {
       if !doc.model.inGesture, g.space != nil, doc.binding.flush() {
         Task { await g.engine.sync() }
         let b = doc.model.board
-        g.live?.sendEdit(board: id, items: Records.liveFields(from: before, to: b, ids: Set(b.cards.map(\.id) + b.lanes.map(\.id)), board: id))
+        let ids = Set(before.cards.map(\.id) + before.lanes.map(\.id) + b.cards.map(\.id) + b.lanes.map(\.id))
+        g.live?.sendEdit(board: id, items: Records.liveFields(from: before, to: b, ids: ids, board: id))
       }
       guard let live = g.live, !live.mine.isEmpty, let start = doc.model.gestureStartBoard else { return }
       live.sendLive(board: id, items: Records.liveFields(from: start, to: doc.model.board, ids: live.mine, board: id),

@@ -870,7 +870,7 @@ public struct Peer: Equatable, Sendable {
       p.overlayBoard = board
       for (id, f) in b["items"]?.object ?? [:] {
         guard let f = f.object else { continue }
-        p.overlay[id, default: [:]].merge(f.filter { Records.liveFieldNames.contains($0.key) || $0.key == "kind" }) { $1 }
+        p.overlay[id, default: [:]].merge(f.filter { Records.liveFieldNames.contains($0.key) || $0.key == "kind" || ($0.key == "gone" && $0.value == .bool(true)) }) { $1 }
         p.unheld[id] = holds[from]?.contains(id) == true ? nil : t
         for k in Self.moving {
           guard let v = Self.numbers(f[k]) else { continue }
@@ -1057,7 +1057,7 @@ public struct Peer: Equatable, Sendable {
   /// What an edit outside a gesture changed of items on `board`, such as a recolour, so that others show it at once
   /// rather than after its push: one keyframe, holding nothing.
   public func sendEdit(board: String, items: [String: LiveFields]) {
-    guard !roster.isEmpty, !items.isEmpty, mine.isEmpty else { return }
+    guard !roster.isEmpty, !items.isEmpty else { return }
     for p in pipes { p.restart() }
     lastLive = LiveState(board: board, items: Self.trimmed(items), caret: nil, starts: [:], once: true)
     for p in pipes {
