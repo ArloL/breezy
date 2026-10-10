@@ -750,11 +750,11 @@ export class Hub {
 
   // MARK: checks along the way
 
-  /** Every 5 s: holds no gesture explains, which keep the others from editing those items. A finish holds until its push
+  /** Every 15 s: holds no gesture explains, which keep the others from editing those items. A finish holds until its push
    * returns, which a dead network can take a while over, hence the margins. */
   watch() {
     this.violations ??= new Map();
-    this.at(V.now + 5000, "watch", async () => {
+    this.at(V.now + 15_000, "watch", async () => {
       const mine = new Map();
       for (const d of this.devices) {
         const s = await this.command(d, { cmd: "state" });
