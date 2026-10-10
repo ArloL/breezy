@@ -5,9 +5,10 @@ import { Binding } from "./binding.js";
 import { sampleBoard } from "./sample.js";
 import { ask } from "./sheet.js";
 import { chip } from "./presence.js";
-import { floated, liveFields, overlaid, startPositions } from "./sync/overlay.js";
+import { floated, liveFields, overlaid } from "./sync/overlay.js";
 import { statusLines } from "./sync/engine.js";
 import { GestureHolds } from "./sync/gesture-holds.js";
+import { Collab } from "./sync/collab.js";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
 import * as R from "./rules.js";
 
@@ -40,11 +41,12 @@ export class Library {
     this.id = null;
     this.group = null;
     this.binding = null;
+    /** The open board's Collab session. */
+    this.session = null;
     /** The space whose menu was opened last. */
     this.menuGroup = null;
     this.holds = new GestureHolds();
-    /** A gesture asked for holds and has not finished yet. */
-    this.unfinished = false;
+    this.collabs = new WeakMap();
     app.library = this;
     spaces.onChange = (group, boards, remote) => this.changed(group, boards, remote);
     spaces.onStatus = () => {
@@ -67,7 +69,7 @@ export class Library {
     app.model.onChange = () => {
       change();
       this.binding?.changed();
-      this.gestured();
+      this.session?.edited();
     };
     app.view.shown = () => (this.live && this.id ? overlaid(app.model.board, this.live.overlay(this.id)) : app.model.board);
     spaces.onRefused = (g, ids) => g === this.group && this.app.refused(ids);
@@ -96,6 +98,8 @@ export class Library {
   open(id) {
     this.binding?.flush();
     this.binding = null;
+    this.session?.close();
+    this.session = null;
     const group = this.spaces.groupOf(id);
     if (!group) return this.showList();
     this.id = id;
@@ -105,9 +109,11 @@ export class Library {
     document.body.dataset.screen = "board";
     this.app.load(b);
     this.binding = new Binding(group.store, this.app.model, id, this.restack);
-    this.binding.taken = () => this.live?.taken() ?? new Set();
-    // others follow a held gesture live, and see its intermediate states pushed as changes they restack around
-    group.engine.holdBack = () => this.busy(group) && this.live?.connected && this.live.mine.size > 0;
+    const s = this.app.state;
+    this.session = this.collab(group).open(id, this.app.model, this.binding, {
+      caret: () => this.app.caret(),
+      items: (start, board, mine, id) => floated(liveFields(start, board, mine, id), board, new Set([...s.held].filter((x) => mine.has(x))), s.float),
+    });
     this.app.ui.updateSync();
     group.engine.sync();
     this.updateLive();
@@ -118,6 +124,8 @@ export class Library {
     this.app.endEditing();
     this.binding?.flush();
     this.binding = null;
+    this.session?.close();
+    this.session = null;
     this.id = null;
     this.group = null;
     document.body.dataset.screen = "boards";
@@ -256,63 +264,18 @@ export class Library {
 
   /** Asks the open board's space to hold `ids` for the gesture starting. */
   hold(ids) {
-    if (!this.live) return;
-    this.unfinished = true;
-    this.live.hold(ids);
-    // what the gesture did before it held, such as making the card it edits, shows now rather than at its next change
-    this.gestured();
+    this.session?.hold(ids);
   }
 
-  /** While a gesture holds items, sends what it changed of them; when it ends, pushes at once, then lets go. Other edits push at once. */
-  gestured() {
-    const { live, id, group } = this;
-    const model = this.app.model;
-    if (model.inGesture) {
-      this.gesturing = true;
-      if (!live?.mine.size || !id) return;
-      const s = this.app.state;
-      const items = floated(liveFields(model.start, model.board, live.mine, id), model.board, new Set([...s.held].filter((x) => live.mine.has(x))), s.float);
-      live.sendLive(id, items, this.app.caret(), startPositions(model.start, live.mine));
-      return;
-    }
-    const ended = this.gesturing;
-    this.gesturing = false;
-    // a press asks for holds before any gesture, so an edit that ends none is told apart by the gesture
-    if (!ended || !this.unfinished) {
-      // an edit outside a held gesture, such as a recolour, goes out at once rather than with a later cycle, and shows
-      // on others' screens ahead of its push
-      const before = this.binding?.seen;
-      if (!this.binding?.flush() || !group?.space) return;
-      // shown only when its push goes now, as others would see it undone when the preview lapses
-      const now = group.engine.pushesNow();
-      group.engine.sync();
-      const ids = new Set([...before.cards, ...before.lanes, ...model.board.cards, ...model.board.lanes].map((x) => x.id));
-      if (live && id && now) live.sendEdit(id, liveFields(before, model.board, ids, id));
-      return;
-    }
-    this.unfinished = false;
-    if (!group?.space) return;
-    this.holds.finish(group.space, {
-      flush: () => this.binding?.flush(),
-      sync: () => group.engine.sync(),
-      busy: () => this.busy(group),
-      release: () => group.live?.release(),
-    });
+  /** `g`'s Collab, made on first use. */
+  collab(g) {
+    if (!this.collabs.has(g)) this.collabs.set(g, new Collab(g, this.holds));
+    return this.collabs.get(g);
   }
 
-  /** Whether a board of `g` is in a gesture. */
-  busy(g) {
-    return this.group === g && this.app.model.inGesture;
-  }
-
-  /** About once a second: each live layer's tick, and holds let go that no gesture or finish explains. */
+  /** About once a second, each space's Collab tick. */
   tick() {
-    for (const g of this.spaces.spaces) {
-      const live = g.live;
-      if (!live) continue;
-      live.tick();
-      this.holds.sweep(g.space, { holding: live.mine.size > 0, busy: this.busy(g), release: () => live.release() });
-    }
+    for (const g of this.spaces.spaces) this.collab(g).tick();
   }
 
   /** Each board row's initials of whoever is on it, in place, and only where they changed. */

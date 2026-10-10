@@ -7,6 +7,8 @@ final class BoardDocument: NSDocument {
   let boardID: String
   let model: BoardModel
   let binding: BoardBinding
+  /// Its space's Collab session, while open.
+  var session: Collab.Session?
 
   init(boardID: String, store: Store) {
     self.boardID = boardID
@@ -54,6 +56,7 @@ final class BoardDocument: NSDocument {
   override func close() {
     windowController?.canvas.endEditing()
     binding.flush()
+    session?.close()
     super.close()
   }
 }
