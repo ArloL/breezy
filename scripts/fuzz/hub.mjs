@@ -22,7 +22,7 @@ const unb64 = (s) => (s == null ? null : Buffer.from(s, "base64url"));
 const OPS = { addCard: 10, type: 10, color: 6, delete: 3, addLane: 2, drag: 12, dragLane: 3, undo: 4, redo: 2, hide: 3, retry: 1, resync: 0.5, bulk: 0.4, board: 0.5, cursor: 6 };
 const FAULTS = {
   lostResponse: 3, serverError: 2, portal: 2, truncated: 1, failFast: 1, relayDrop: 2, relayRestart: 1, relayEvict: 1,
-  directClose: 2, directSilent: 2, skew: 1, freeze: 2, outage: 2, restore: 0.3,
+  directClose: 2, directSilent: 2, directFail: 1, skew: 1, freeze: 2, outage: 2, restore: 0.3, absence: 0.3,
 };
 
 export class Hub {
@@ -38,7 +38,9 @@ export class Hub {
     this.conns = new Map();
     this.peers = new Map();
     this.devices = [];
-    this.stats = { requests: 0, frames: 0, channelMessages: 0, faults: {}, ops: {} };
+    this.stats = { requests: 0, frames: 0, channelMessages: 0, faults: {}, ops: {}, recovery: { sync: [], relay: [] } };
+    /** Device → when its network came back after a tunnel or a dead upstream, until it syncs and is welcomed. */
+    this.back = new Map();
   }
 
   log(...a) {
@@ -107,6 +109,18 @@ export class Hub {
   /** Something for device `d` arrives: now, or when it thaws. */
   async deliver(d, c) {
     if (d.frozen) return d.inbox.push(c);
+    const back = this.back.get(d.i);
+    if (back && !this.healing) {
+      if (!back.sync && c.cmd === "http" && c.status === 200) {
+        back.sync = true;
+        this.stats.recovery.sync.push(V.now - back.at);
+      }
+      if (!back.relay && c.cmd === "ws-msg" && c.text?.includes('"t":"welcome"')) {
+        back.relay = true;
+        this.stats.recovery.relay.push(V.now - back.at);
+      }
+      if (back.sync && back.relay) this.back.delete(d.i);
+    }
     await this.command(d, c);
   }
 
@@ -573,7 +587,7 @@ export class Hub {
 
   scheduleFaults() {
     const next = () =>
-      this.at(V.now + this.rngFault.between(0, 2 * FAULT_MEAN_MS), "fault", async () => {
+      this.at(V.now + this.rngFault.between(0, 2 * (this.opts.faultMean ?? FAULT_MEAN_MS)), "fault", async () => {
         if (this.opsLeft <= 0) return;
         await this.fault();
         next();
@@ -583,7 +597,7 @@ export class Hub {
 
   async fault() {
     const r = this.rngFault;
-    const weights = { ...FAULTS };
+    const weights = { ...FAULTS, ...this.opts.faultWeights };
     if (!this.opts.restore) weights.restore = 0;
     const f = r.weighted(weights);
     const d = r.pick(this.devices);
@@ -638,12 +652,37 @@ export class Hub {
       case "restore":
         this.note("fault", { fault: f, backup: !this.backedUp });
         return this.restore(!this.backedUp);
+      case "directFail": {
+        const ms = r.between(10_000, 60_000);
+        this.note("fault", { fault: f, ms: Math.round(ms) });
+        return this.directFail(ms);
+      }
+      case "absence": {
+        // one device is away while another adds more than a page of records, which it pages through on its return
+        const ms = r.between(10 * 60_000, 30 * 60_000);
+        const other = this.devices.find((x) => x !== d && x.joined && !x.frozen && x.opened);
+        if (!other || !d.joined) return;
+        this.note("fault", { fault: f, dev: d.i, ms: Math.round(ms) });
+        this.outage(d, "server", ms);
+        this.outage(d, "relay", ms);
+        this.at(V.now + r.between(60_000, ms / 2), "absence bulk", async () => {
+          for (let i = 0; i < 520 + r.int(200); i++) await this.op(other, { op: "addCard", x: (i % 30) * 264, y: 2400 + Math.floor(i / 30) * 120 });
+        });
+        return;
+      }
     }
   }
 
   async directClose(ep) {
     await this.deliver(this.devices[ep.dev], { cmd: "peer-state", peer: ep.peer, state: "closed" });
     this.closeChannel(ep, true);
+  }
+
+  directFail(ms) {
+    this.directFails = true;
+    this.at(V.now + ms, "direct works", () => {
+      this.directFails = false;
+    });
   }
 
   outage(d, dest, ms) {
@@ -685,6 +724,7 @@ export class Hub {
       const s = d.link.step(V.now);
       this.note("link", { dev: d.i, to: s.to, state: d.link.state, until: s.until, kills: s.kills, keeps: d.link.keeps, toldOffline: d.link.toldOffline });
       if (s.kills) this.kill(d);
+      if ((s.from === "tunnel" || s.from === "dead") && d.link.up) this.back.set(d.i, { at: V.now, sync: false, relay: false });
       if (s.to === "flapping") this.flap(d, s.until);
       if (s.tell) this.at(V.now + this.rngNet.between(0, 2000), "network event", () => !d.frozen && this.op(d, { op: "retry", changed: true }));
       this.at(Math.max(s.until, V.now + 1), "link", step);
@@ -748,6 +788,11 @@ export class Hub {
           return this.outage(d, e.dest, e.ms);
         case "restore":
           return this.restore(e.backup);
+        case "directFail":
+          return this.directFail(e.ms);
+        case "absence":
+          this.outage(d, "server", e.ms);
+          return this.outage(d, "relay", e.ms);
         default:
           this.httpFault = e.fault;
           return;

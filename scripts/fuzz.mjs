@@ -2,7 +2,7 @@
 // Convergence fuzzing: web and Swift devices edit one board against sync.php, the relay and direct channels over
 // simulated networks, then must end the same. See docs/superpowers/specs/2026-10-10-breezy-convergence-fuzzing-design.md.
 //   node scripts/fuzz.mjs [--seeds 1-50] [--steps 300] [--web 2] [--swift 2] [--profile mixed] [--no-restore] [--no-faults]
-//                         [--plant NAME] [--shrink] [--replay build/fuzz/FILE.json] [--verbose]
+//                         [--fault-mean MS] [--plant NAME] [--shrink] [--replay build/fuzz/FILE.json] [--verbose]
 // A failure is written to build/fuzz/; --shrink also writes the smallest trace that still fails the same way, and
 // --replay runs a written trace again.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -15,7 +15,7 @@ const { values: a } = parseArgs({
     seeds: { type: "string", default: "1-10" }, steps: { type: "string", default: "300" }, web: { type: "string", default: "2" },
     swift: { type: "string", default: "2" }, profile: { type: "string", default: "mixed" }, "no-restore": { type: "boolean" },
     "no-faults": { type: "boolean" }, plant: { type: "string" }, verbose: { type: "boolean" }, shrink: { type: "boolean" },
-    replay: { type: "string" },
+    replay: { type: "string" }, "fault-mean": { type: "string" },
   },
 });
 
@@ -33,14 +33,16 @@ const seeds = a.seeds.split(",").flatMap((r) => {
 });
 const opts = {
   steps: Number(a.steps), web: Number(a.web), swift: Number(a.swift), profile: a.profile, restore: !a["no-restore"], faults: !a["no-faults"],
-  plant: a.plant ?? null, log: a.verbose ? (...x) => console.error(...x) : () => {},
+  plant: a.plant ?? null, faultMean: a["fault-mean"] ? Number(a["fault-mean"]) : undefined, log: a.verbose ? (...x) => console.error(...x) : () => {},
 };
 
 let failed = 0;
+const recovery = { sync: [], relay: [] };
 for (const seed of seeds) {
   const started = performance.now();
   const r = await new Hub({ ...opts, seed }).run();
   const s = ((performance.now() - started) / 1000).toFixed(1);
+  for (const k of ["sync", "relay"]) recovery[k].push(...r.stats.recovery[k]);
   if (r.ok) {
     console.log(`seed ${seed}: ok in ${s} s, ${r.cards} cards, ${r.stats.requests} requests, ${r.stats.frames} frames, hash ${r.hash}`);
     continue;
@@ -62,4 +64,11 @@ for (const seed of seeds) {
   }
 }
 console.log(`${seeds.length - failed} of ${seeds.length} seeds converged`);
+/** Mean with a 95 % confidence interval, in s. */
+const ci = (xs) => {
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const sd = Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, xs.length - 1));
+  return `${(m / 1000).toFixed(2)} ± ${((1.96 * sd) / Math.sqrt(xs.length) / 1000).toFixed(2)} s (n = ${xs.length})`;
+};
+if (recovery.sync.length) console.log(`after a tunnel or a dead upstream: first sync ${ci(recovery.sync)}, relay welcome ${ci(recovery.relay)}`);
 process.exitCode = failed ? 1 : 0;
