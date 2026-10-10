@@ -17,9 +17,11 @@ const { values: opt } = parseArgs({ options: {
   direct: { type: "boolean", default: false },
   "relay-ms": { type: "string", default: "25" },
   "server-ms": { type: "string", default: "40" },
+  "jitter-ms": { type: "string", default: "0" },
   runs: { type: "string", default: "10" },
   only: { type: "string", default: "cursor,drag,colour,type,create,outage,silent,passive" },
 } });
+const JITTER = Number(opt["jitter-ms"]);
 const RUNS = Number(opt.runs), only = new Set(opt.only.split(","));
 const root = new URL("..", import.meta.url).pathname;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -59,7 +61,7 @@ function delayProxy(port, to, ms) {
   const pipe = (from, into, c) => {
     let due = 0;
     const later = (fn) => {
-      due = Math.max(due, Date.now() + ms);
+      due = Math.max(due, Date.now() + ms + Math.random() * JITTER);
       setTimeout(() => c.dead || into.destroyed || fn(), due - Date.now());
     };
     from.on("data", (chunk) => c.dead || later(() => into.write(chunk)));

@@ -106,6 +106,8 @@ export class Library {
     this.app.load(b);
     this.binding = new Binding(group.store, this.app.model, id, this.restack);
     this.binding.taken = () => this.live?.taken() ?? new Set();
+    // others follow a held gesture live, and see its intermediate states pushed as changes they restack around
+    group.engine.holdBack = () => this.busy(group) && this.live?.mine.size > 0;
     this.app.ui.updateSync();
     group.engine.sync();
     this.updateLive();

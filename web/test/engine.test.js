@@ -626,3 +626,35 @@ test("big requests go plain where deflate-raw is missing", async () => {
     assert.equal(s.body, JSON.stringify({ writes: big, since: 7 }));
   }
 });
+
+test("nothing is pushed while a gesture others follow is under way, and its changes wait for its end", async () => {
+  const { a, b, id } = await pair(newID);
+  let busy = true;
+  a.engine.holdBack = () => busy;
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  a.transport.log = [];
+  await a.engine.sync();
+  assert.ok(!a.transport.log.includes("push"));
+  busy = false;
+  await a.engine.sync();
+  assert.deepEqual(a.transport.log.slice(-1), ["push"]);
+  await b.engine.sync();
+  assert.equal(b.store.board(id).cards[0].color, 3);
+});
+
+test("a stalled request is sent again at once, twice, then backs off", async () => {
+  const { a, id } = await pair(newID);
+  a.edit(id, (x) => (x.cards[0].color = 3));
+  a.transport.failure = "stalled";
+  a.transport.calls = 0;
+  await a.engine.sync();
+  assert.equal(a.transport.calls, 3);
+  assert.equal(a.engine.status.state, "unreachable");
+  a.transport.failure = null;
+  await a.engine.sync();
+  assert.equal(a.transport.calls, 3);
+  // the network came back: no waiting out the back-off
+  await a.engine.retryNow();
+  assert.equal(a.engine.status.state, "synced");
+  assert.deepEqual(a.store.pending(), []);
+});

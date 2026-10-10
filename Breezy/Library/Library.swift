@@ -172,6 +172,13 @@ extension Notification.Name {
       doc?.binding.afterEdit?()
     }
     doc.binding.taken = { [weak self] in self?.spaces.group(of: id)?.live?.taken ?? [] }
+    // others follow a held gesture live, and see its intermediate states pushed as changes they restack around
+    if let g = spaces.group(of: id) {
+      g.engine.holdBack = { [weak self, weak g] in
+        guard let self, let g else { return false }
+        return inGesture(g) && g.live?.mine.isEmpty == false
+      }
+    }
     doc.binding.afterEdit = { [weak self, weak doc] in
       guard let self, let doc, let g = spaces.group(of: id) else { return }
       // an edit outside a gesture, such as a recolour, goes out at once rather than with a later cycle, and shows on
