@@ -1,6 +1,7 @@
 // The fuzzer's discrete-event simulation: devices of both kinds, the real sync.php, the relay's Durable Object and
 // direct channels, joined by simulated networks on virtual time. See the convergence fuzzing design.
 import { createHash } from "node:crypto";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
 import * as V from "./virtual.mjs";
 import { Rng } from "./rng.mjs";
 import { Relay } from "./relay.mjs";
@@ -32,6 +33,7 @@ export class Hub {
     this.rngOps = new Rng(this.rng.fork());
     this.rngNet = new Rng(this.rng.fork());
     this.rngFault = new Rng(this.rng.fork());
+    this.rngEpoch = new Rng(this.rng.fork());
     this.queue = [];
     this.seq = 0;
     this.trace = [];
@@ -196,7 +198,8 @@ export class Hub {
         if (fault === "portal") return answer(this.transit(d, "client", conn) ?? Infinity, { status: 200, body: b64(Buffer.from("<html><body>Log in to continue</body></html>")) });
         if (fault === "failFast") return answer(V.now + 1, { error: "unreachable" });
       }
-      const res = await this.server.send({ method: e.method, url: e.url, headers: e.headers, body: unb64(e.body) });
+      const res = await this.server.send({ method: e.method, url: e.url, headers: e.headers, body: this.epochs(unb64(e.body), e.headers, false) });
+      res.body = this.epochs(res.body, res.headers, true);
       if (fault === "lostResponse") return;
       let body = res.body;
       if (fault === "truncated") body = body.subarray(0, Math.floor(body.length / 2));
@@ -218,6 +221,26 @@ export class Hub {
       const back = this.transit(d, "client", conn);
       if (back !== null) this.at(back, "ws open", () => this.deliver(d, { cmd: "ws-open", sock: e.sock }));
     });
+  }
+
+  /** `body` with the server's epochs, which come from real random bytes, as seeded stand-ins on the way to a device
+   * (`out`) and back on the way to the server, so that a seed replays alike: they are compared only for equality, but
+   * they change the size of a deflated request, which a stall's timeout counts. */
+  epochs(body, headers, out) {
+    if (!body?.length) return body;
+    const deflated = Object.entries(headers ?? {}).some(([k, v]) => k.toLowerCase() === "content-encoding" && /deflate/.test(v));
+    let text = (deflated ? inflateRawSync(body) : body).toString();
+    this.epochMap ??= new Map();
+    if (out) {
+      text = text.replace(/"epoch":"([A-Za-z0-9_-]{22})"/g, (_, real) => {
+        if (!this.epochMap.has(real)) this.epochMap.set(real, b64(this.rngEpoch.bytes(16)));
+        return `"epoch":"${this.epochMap.get(real)}"`;
+      });
+    } else {
+      for (const [real, fake] of this.epochMap) text = text.replaceAll(`"epoch":"${fake}"`, `"epoch":"${real}"`);
+    }
+    const bytes = Buffer.from(text);
+    return deflated ? deflateRawSync(bytes) : bytes;
   }
 
   /** A frame or a close from a device's socket to the relay. */
