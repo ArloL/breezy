@@ -52,7 +52,8 @@ for (const seed of seeds) {
   const file = `build/fuzz/${opts.profile}-${seed}${opts.plant ? `-${opts.plant}` : ""}.json`;
   writeFileSync(file, JSON.stringify({ seed, opts: { ...opts, log: undefined }, problems: r.problems, trace: r.trace }, null, 1));
   console.log(`seed ${seed}: FAILED in ${s} s, see ${file}`);
-  for (const p of r.problems.slice(0, 8)) console.log(`  ${JSON.stringify(p)}`);
+  // the file has them whole
+  for (const p of r.problems.slice(0, 8)) console.log(`  ${JSON.stringify(p).slice(0, 300)}`);
   if (a.shrink) {
     const small = await shrink({ ...opts, seed }, r.trace, { log: console.log });
     if (!small) console.log("  the trace's replay converged: nothing to shrink");
