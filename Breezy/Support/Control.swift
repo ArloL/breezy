@@ -1,8 +1,9 @@
+#if DEBUG
 import AppKit
 import BreezyKit
 import Network
 
-/// -BreezyControl <port>: scenarios drive this app as a device, one JSON command a line on 127.0.0.1:<port>, each
+/// -BreezyControl <port>, in Debug builds only: scenarios drive this app as a device, one JSON command a line on 127.0.0.1:<port>, each
 /// answered with one line, `reply` or `error`. Input goes to the board window as events, as the self-tests send it;
 /// points are the board's screen points, from the top left of what the window shows. See scenarios/mac.ts.
 @MainActor final class Control {
@@ -158,3 +159,4 @@ import Network
     w.sendEvent(e)
   }
 }
+#endif
