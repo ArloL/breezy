@@ -1,0 +1,118 @@
+// The Debug Mac app as a scenario device: started with -BreezyControl in a store of its own, its input sent to the
+// board window as events and its scene read off the canvas. See Breezy/Support/Control.swift.
+import { spawn, type ChildProcess } from "node:child_process";
+import { connect, type Socket } from "node:net";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { Device, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
+import type { Point } from "../web/types.ts";
+
+const root = new URL("..", import.meta.url).pathname;
+export const MAC_APP = join(root, "build/Build/Products/Debug/Breezy.app/Contents/MacOS/Breezy");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export class MacDevice extends Device {
+  readonly kind = "mac";
+  private readonly app: ChildProcess;
+  private readonly store: string;
+  private socket!: Socket;
+  private buffer = "";
+  private waiting: ((line: string) => void)[] = [];
+
+  private constructor(app: ChildProcess, store: string) {
+    super();
+    this.app = app;
+    this.store = store;
+  }
+
+  /** The app on control port `port`, as device `name`. */
+  static async start(port: number, name: string): Promise<MacDevice> {
+    const store = mkdtempSync(join(tmpdir(), "breezy-scenario-mac-"));
+    const app = spawn(MAC_APP, [
+      "-ApplePersistenceIgnoreState", "YES", "-BreezyStore", store, "-BreezyControl", String(port),
+      "-BreezyDevice", randomBytes(16).toString("base64url"), "-BreezyName", name,
+    ], { stdio: "ignore" });
+    const d = new MacDevice(app, store);
+    for (let i = 0; ; i++) {
+      try {
+        d.socket = await new Promise<Socket>((resolve, reject) => {
+          const s = connect(port, "127.0.0.1", () => resolve(s));
+          s.once("error", reject);
+        });
+        break;
+      } catch (e) {
+        if (i > 100 || app.exitCode !== null) throw new Error(`the Mac app did not take commands: ${e}`);
+        await sleep(100);
+      }
+    }
+    d.socket.setEncoding("utf8");
+    d.socket.on("data", (chunk: string) => {
+      d.buffer += chunk;
+      for (let nl; (nl = d.buffer.indexOf("\n")) >= 0; ) {
+        const line = d.buffer.slice(0, nl);
+        d.buffer = d.buffer.slice(nl + 1);
+        d.waiting.shift()?.(line);
+      }
+    });
+    return d;
+  }
+
+  async command<T = unknown>(c: Record<string, unknown>): Promise<T> {
+    const line = new Promise<string>((r) => this.waiting.push(r));
+    this.socket.write(`${JSON.stringify(c)}\n`);
+    const answer = JSON.parse(await line) as { reply?: T; error?: string };
+    if (answer.error) throw new Error(`mac: ${answer.error}`);
+    return answer.reply as T;
+  }
+
+  async scene(): Promise<Scene> {
+    const s = await this.command<Scene | null>({ cmd: "scene" });
+    if (!s) throw new Error("the Mac shows no board");
+    return s;
+  }
+
+  async wait(ms: number) {
+    await sleep(ms);
+  }
+
+  async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
+    await this.command({ cmd: "pointer", phase, x: p.x, y: p.y, ...extra });
+  }
+
+  private async made(before: Scene, kind: "cards" | "lanes") {
+    const had = new Set(before[kind].map((x) => x.id));
+    for (const end = Date.now() + 5000; Date.now() < end; await sleep(50)) {
+      const id = (await this.scene())[kind].find((x) => !had.has(x.id))?.id;
+      if (id) return id;
+    }
+    throw new Error(`no new item in ${kind}`);
+  }
+
+  /** As a person makes one: a double-click, a title, and Esc. */
+  async addCard(x: number, y: number): Promise<string> {
+    const before = await this.scene();
+    const p = await this.screen({ x, y });
+    await this.pointer("down", p);
+    await this.pointer("up", p);
+    await this.pointer("down", p, { clicks: 2 });
+    await this.pointer("up", p, { clicks: 2 });
+    await this.command({ cmd: "type", text: "card" });
+    await this.command({ cmd: "key", chars: "\u001b", code: 53 });
+    return this.made(before, "cards");
+  }
+
+  /** The toolbar's New Lane, which puts it in the open spot nearest the middle of the view, wherever (x, y) is. */
+  async addLane(): Promise<string> {
+    const before = await this.scene();
+    await this.command({ cmd: "newLane" });
+    return this.made(before, "lanes");
+  }
+
+  stop() {
+    this.socket?.destroy();
+    this.app.kill();
+    rmSync(this.store, { recursive: true, force: true });
+  }
+}

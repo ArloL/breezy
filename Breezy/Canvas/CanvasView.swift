@@ -123,6 +123,11 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       onFloat?()
     }
     core.onLand = { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
+    core.camera = { [unowned self] in
+      guard let clip = enclosingScrollView?.contentView else { return Scene.Camera(x: 0, y: 0, zoom: 1) }
+      let z = Double(zoom)
+      return Scene.Camera(x: Double(Self.origin - clip.bounds.minX) * z, y: Double(Self.origin - clip.bounds.minY) * z, zoom: z)
+    }
     sync()
   }
 
