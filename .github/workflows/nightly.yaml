@@ -43,8 +43,8 @@ jobs:
       run: |
         npm ci
         npm ci --prefix relay
-    - name: Install Chromium and WebKit
-      run: npx playwright-core install chromium webkit
+    - name: Install Chromium, WebKit and Firefox
+      run: npx playwright-core install chromium webkit firefox
     # over the relay only: GitHub's macOS runners open no WebRTC channel
     - name: Measure
       run: |

@@ -1,5 +1,5 @@
 // The cases on real devices against server/dev.sh and the relay under wrangler dev: the web app as it ships in headless
-// Chromium and WebKit, and the Debug Mac app. Slower: run with
+// Chromium, WebKit and Firefox, and the Debug Mac app. Slower: run with
 //   node --test scenarios/browsers.e2e.ts
 import { test } from "node:test";
 import { existsSync } from "node:fs";
@@ -9,7 +9,7 @@ import { MAC_APP } from "./mac.ts";
 
 const noMac = !existsSync(MAC_APP) && "the Debug Mac app is not built";
 /** Each kind acts once and watches once, which a run of minutes can afford. */
-const pairs: [RealKind, RealKind][] = [["chromium", "webkit"], ["webkit", "mac"], ["mac", "chromium"]];
+const pairs: [RealKind, RealKind][] = [["chromium", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "chromium"]];
 
 for (const c of cases) {
   for (const [a, b] of pairs) {
