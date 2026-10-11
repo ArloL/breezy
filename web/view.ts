@@ -1,7 +1,7 @@
 import * as R from "./rules.ts";
 import { Camera, clampZoom } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
-import { DomField } from "./field.ts";
+import { DomField, fillFront, frontPoint } from "./field.ts";
 import type { Field } from "./ports.ts";
 import type { MotionValue } from "./motion.ts";
 import type { Model } from "./model.ts";
@@ -90,7 +90,7 @@ export class View {
     return this.cached(`f|${w}|${text}`, () => {
       this.mFront.style.width = `${w}px`;
       const f = this.mFront.querySelector<HTMLElement>(".front")!;
-      f.textContent = !text || text.endsWith("\n") ? text + "\u200b" : text;
+      fillFront(f, !text || text.endsWith("\n") ? text + "\u200b" : text);
       return Math.max(1, Math.ceil((f.offsetHeight - R.GRID) / R.GRID)) * R.GRID + R.GRID;
     });
   }
@@ -197,10 +197,11 @@ export class View {
   caretRect(id: string, back: boolean, at: number) {
     const e = this.els.get(id);
     if (!e || back !== (this.state.turned === id)) return null;
-    const node = e.el.querySelector(back ? ".notes" : ".front")?.firstChild;
-    if (node?.nodeType !== Node.TEXT_NODE) return null;
+    const side = e.el.querySelector<HTMLElement>(back ? ".notes" : ".front")!;
+    const [node, offset] = back ? [side.firstChild, at] : frontPoint(side, at);
+    if (!node || back && !(node instanceof Text)) return null;
     const r = document.createRange();
-    r.setStart(node, Math.min(at, (node as Text).length));
+    r.setStart(node, node instanceof Text ? Math.min(offset, node.length) : 0);
     r.collapse(true);
     const rect = r.getClientRects()[0] ?? r.getBoundingClientRect();
     if (!rect.height) return null;
@@ -315,7 +316,7 @@ export class View {
     sheet.className = `sheet c${c.color}`;
     const [front, back] = sheet.children;
     const [heading, notes] = back.children;
-    if (!editing || editing.back) front.textContent = c.text;
+    if (!editing || editing.back) fillFront(front as HTMLElement, c.text);
     heading.textContent = c.text.split("\n")[0];
     if (!editing || !editing.back) {
       notes.textContent = c.notes || PLACEHOLDER;
@@ -347,7 +348,7 @@ export class View {
 
   editorOf(id: string, back: boolean): Field | null {
     const el = this.els.get(id)?.el.querySelector<HTMLElement>(back ? ".notes" : ".front");
-    return el ? new DomField(el, "card") : null;
+    return el ? new DomField(el, back ? "notes" : "front") : null;
   }
 
   titleOf(id: string): Field | null {
