@@ -11,7 +11,14 @@ import BreezyKit
 enum DebugLaunch {
   private static let defaults = UserDefaults.standard
   static var board: String? { defaults.string(forKey: "BreezyBoard") }
-  static var control: UInt16? { defaults.string(forKey: "BreezyControl").flatMap { UInt16($0) } }
+  /// Release builds take no commands: the port answers anyone on this Mac.
+  static var control: UInt16? {
+    #if DEBUG
+    defaults.string(forKey: "BreezyControl").flatMap { UInt16($0) }
+    #else
+    nil
+    #endif
+  }
   static var active: Bool { board != nil || control != nil }
 
   /// Where the store lives: -BreezyStore <dir>, a fresh temporary folder for scripted checks, else
@@ -23,7 +30,9 @@ enum DebugLaunch {
   }()
 
   static func start() {
+    #if DEBUG
     if let control { MainActor.assumeIsolated { Control.start(port: control) } }
+    #endif
     guard let board else { return }
     let appearance = defaults.string(forKey: "BreezyAppearance")
     if appearance == "dark" { NSApp.appearance = NSAppearance(named: .darkAqua) }
