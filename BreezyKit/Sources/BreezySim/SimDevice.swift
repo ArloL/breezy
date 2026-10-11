@@ -237,7 +237,10 @@ import Foundation
       let b = model.board, canvas = open.canvas
       let (n, count) = (try o.int("n"), try o.int("count"))
       let p: Point
-      if o["lane"]?.bool == true {
+      if o["empty"]?.bool == true {
+        guard let s = spot("empty", n, in: open) else { break }
+        p = s
+      } else if o["lane"]?.bool == true {
         guard let lid = items(b.lanes.map(\.id), n, 1).first, let lane = b.lane(lid) else { break }
         p = Point(x: lane.x + Metrics.grid, y: lane.y + Metrics.grid)
       } else {
@@ -249,6 +252,10 @@ import Foundation
       }
       pressedAt = p
       canvas.press(at: p)
+    case "click":
+      guard !model.inGesture, let p = spot(try o.string("target"), try o.int("n"), in: open) else { break }
+      open.canvas.press(at: p, shift: o["shift"]?.bool == true)
+      open.canvas.release()
     case "drag":
       guard let p = pressedAt else { break }
       open.canvas.dragged(to: Point(x: p.x + (try o.number("dx")), y: p.y + (try o.number("dy"))))
@@ -293,6 +300,28 @@ import Foundation
     default: throw SimError("unknown op \(name)")
     }
     return .null
+  }
+
+  /// A point for `target`, as the web devices find one: the `n`th card's middle, the `n`th lane's header or corner, or the
+  /// first of a grid of points from the `n`th on that hits nothing; screen and world are the same here.
+  private func spot(_ target: String, _ n: Int, in open: Open) -> Point? {
+    let b = open.model.board, canvas = open.canvas
+    switch target {
+    case "card":
+      guard let c = items(b.cards.map(\.id), n, 1).first.flatMap(b.card) else { return nil }
+      let r = canvas.drawnRect(c)
+      return Point(x: r.x + r.w / 2, y: r.y + r.h / 2)
+    case "header", "corner":
+      guard let l = items(b.lanes.map(\.id), n, 1).first.flatMap(b.lane) else { return nil }
+      return target == "header" ? Point(x: l.x + l.w / 2, y: l.y + 12) : Point(x: l.x + l.w - 6, y: l.y + l.h - 6)
+    default:
+      for i in 0..<400 {
+        let k = (n + i) % 400
+        let p = Point(x: Double(k % 20) * 60 + 30, y: Double(k / 20) * 40 + 20)
+        if canvas.card(at: p) == nil && canvas.lane(at: p) == nil { return p }
+      }
+      return nil
+    }
   }
 
   /// `count` of `ids`, at most all, sorted, from the `n`th on, wrapping, so that both languages pick the same.
