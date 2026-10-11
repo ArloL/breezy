@@ -231,4 +231,69 @@ export const cases: Case[] = [
       assert.deepEqual(made.map((c) => c.text), ["from the phone"]);
     },
   },
+  {
+    name: "a lane renamed from its header has the new name on the other device",
+    input: "mouse",
+    edits: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane } = await laneAndCard(s);
+      await a.rename(lane, "Doing");
+      await s.settle();
+      assert.equal(item(await b.scene(), lane).title, "Doing");
+    },
+  },
+  {
+    name: "a box drawn on empty space selects the cards it touches, and the other device sees nothing move",
+    input: "mouse",
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      const c = item(await a.scene(), card), seen = item(await b.scene(), card);
+      await a.drag({ x: c.x + c.w + 60, y: c.y + c.h + 60 }, { x: c.x + 20, y: c.y + 20 });
+      assert.equal(item(await a.scene(), card).selected, true);
+      await s.settle();
+      assert.deepEqual({ x: item(await b.scene(), card).x, y: item(await b.scene(), card).y }, { x: seen.x, y: seen.y });
+    },
+  },
+  {
+    name: "Space turns the card under the pointer over, and again turns it back",
+    input: "mouse",
+    async run(s) {
+      const [a] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      const c = centre(item(await a.scene(), card));
+      await a.click(c);
+      await a.key(" ");
+      assert.equal((await a.scene()).turned, card);
+      await a.key(" ");
+      assert.equal((await a.scene()).turned, null);
+    },
+  },
+  {
+    name: "two fingers spreading apart zoom in about their middle",
+    input: "touch",
+    async run(s) {
+      const [a] = s.devices as [Device, Device];
+      await laneAndCard(s);
+      const before = (await a.scene()).camera;
+      const touch = (finger: number) => ({ kind: "touch" as const, finger });
+      await a.pointer("down", { x: 500, y: 400 }, touch(1));
+      await a.pointer("down", { x: 600, y: 400 }, touch(2));
+      for (let i = 1; i <= 10; i++) {
+        await a.wait(16);
+        await a.fingers("move", [[1, { x: 500 - 5 * i, y: 400 }], [2, { x: 600 + 5 * i, y: 400 }]]);
+      }
+      await a.pointer("up", { x: 450, y: 400 }, touch(1));
+      await a.pointer("up", { x: 650, y: 400 }, touch(2));
+      await a.wait(1500);
+      const { camera } = await a.scene();
+      const zoom = Math.min(2, before.zoom * 2);
+      assert.ok(Math.abs(camera.zoom - zoom) < 0.02, `zoom ${camera.zoom}, the fingers' spread doubled from ${before.zoom}`);
+      // the world point first under the fingers' middle stays there, within a few points: a browser hands the app one
+      // finger's move at a time, so the middle wobbles between them and the release may coast a little
+      const w0 = (550 - before.x) / before.zoom, w1 = (550 - camera.x) / camera.zoom;
+      assert.ok(Math.abs(w1 - w0) < 4, `world x ${w1} under the middle, was ${w0}`);
+    },
+  },
 ];

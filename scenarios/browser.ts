@@ -72,7 +72,7 @@ export class BrowserDevice extends Device {
   /** Chromium's DevTools session, which sends real touches; WebKit's touches are dispatched pointer events. */
   private cdp: CDPSession | null = null;
   /** The fingers down, by id, as a touch event lists them all. */
-  private fingers = new Map<number, Point>();
+  private down = new Map<number, Point>();
 
   constructor(kind: BrowserKind, page: Page) {
     super();
@@ -80,12 +80,18 @@ export class BrowserDevice extends Device {
     this.page = page;
   }
 
+  override async fingers(phase: PointerPhase, moves: [number, Point][]) {
+    if (this.kind !== "chromium" || phase !== "move") return super.fingers(phase, moves);
+    for (const [finger, p] of moves) this.down.set(finger, p);
+    await this.touch(phase, moves[0]![1], moves[0]![0]);
+  }
+
   private async touch(phase: PointerPhase, p: Point, finger: number) {
     this.cdp ??= await this.page.context().newCDPSession(this.page);
-    if (phase === "down" || phase === "move") this.fingers.set(finger, p);
-    else this.fingers.delete(finger);
+    if (phase === "down" || phase === "move") this.down.set(finger, p);
+    else this.down.delete(finger);
     const type = ({ down: "touchStart", move: "touchMove", up: "touchEnd", cancel: "touchCancel" } as const)[phase];
-    const touchPoints = [...this.fingers].map(([id, q]) => ({ x: q.x, y: q.y, id }));
+    const touchPoints = [...this.down].map(([id, q]) => ({ x: q.x, y: q.y, id }));
     await this.cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
   }
 
