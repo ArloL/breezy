@@ -16,7 +16,8 @@ on:
     - scripts/baselines/**
     - scripts/gate.ts
     - scripts/feel.ts
-    - scenarios/browsers.e2e.ts
+    - scenarios/**
+    - Breezy/Support/Control.swift
     - scripts/bench.sh
     - Breezy/Support/Bench.swift
 permissions: {}
@@ -63,7 +64,13 @@ jobs:
           exit 0
         fi
         node scripts/gate.ts build/feel.json "${baselines[@]}"
-    - name: Scenarios in real browsers
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    # the Mac app the scenarios drive through -BreezyControl
+    - name: Build the Mac app
+      run: |
+        xcodegen generate
+        xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
+    - name: Scenarios on real devices
       run: node --test scenarios/browsers.e2e.ts
   bench:
     runs-on: macos-latest
