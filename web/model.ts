@@ -1,8 +1,15 @@
-import { rebase } from "./rebase.js";
+import { rebase } from "./rebase.ts";
+import type { Board } from "./types.ts";
 
 export const UNDO_LIMIT = 100;
 
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+interface Step {
+  from: Board;
+  to: Board;
+  name: string;
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * The board being edited, with undo. A change goes through `perform`, or through a gesture
@@ -10,7 +17,13 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  * only when the board changed. A step undoes field by field, so changes from another device made since stay.
  */
 export class Model {
-  constructor(board) {
+  board: Board;
+  undos: Step[];
+  redos: Step[];
+  start: Board | null;
+  onChange: () => void;
+
+  constructor(board: Board) {
     this.board = board;
     this.undos = [];
     this.redos = [];
@@ -31,7 +44,7 @@ export class Model {
   }
 
   /** One change, one step; during a gesture it joins the gesture's step instead. */
-  perform(name, change) {
+  perform(name: string, change: (b: Board) => void) {
     if (this.inGesture) return this.update(change);
     const before = structuredClone(this.board);
     change(this.board);
@@ -45,12 +58,12 @@ export class Model {
   }
 
   /** A step within a gesture: notifies, but records nothing. */
-  update(change) {
+  update(change: (b: Board) => void) {
     change(this.board);
     this.onChange();
   }
 
-  end(name) {
+  end(name: string) {
     const start = this.start;
     if (!start) return;
     this.start = null;
@@ -74,23 +87,23 @@ export class Model {
     this.swap(this.redos, this.undos);
   }
 
-  swap(from, to) {
+  swap(from: Step[], to: Step[]) {
     if (this.inGesture || !from.length) return;
-    const step = from.pop();
+    const step = from.pop()!;
     to.push({ from: step.to, to: step.from, name: step.name });
     this.board = rebase(step.from, step.to, this.board);
     this.onChange();
   }
 
   /** Changes from another device, without a step; ignored during a gesture. */
-  applyRemote(board) {
+  applyRemote(board: Board) {
     if (this.inGesture) return;
     this.board = board;
     this.onChange();
   }
 
   /** Another board in place of this one, with no history. */
-  replace(board) {
+  replace(board: Board) {
     this.board = board;
     this.start = null;
     this.undos = [];
@@ -98,7 +111,7 @@ export class Model {
     this.onChange();
   }
 
-  record(before, name) {
+  record(before: Board, name: string) {
     this.undos.push({ from: structuredClone(this.board), to: before, name });
     if (this.undos.length > UNDO_LIMIT) this.undos.shift();
     this.redos = [];

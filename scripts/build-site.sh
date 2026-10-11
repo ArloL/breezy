@@ -5,15 +5,12 @@
 set -euo pipefail
 out=$1
 version=${2:-}
-rm -rf "$out"
-mkdir -p "$out"
-cp -R web/. "$out/"
-rm -r "$out/test" "$out/package.json"
+node scripts/build-web.ts "$out"
 if [[ -n $version ]]; then
   sed -i.orig "s/data-version=\"dev\"/data-version=\"${version}\"/" "$out/index.html"
   rm "$out/index.html.orig"
   grep --fixed-strings --quiet "data-version=\"${version}\"" "$out/index.html"
-  node scripts/make-web-version.mjs "$out" "$version"
+  node scripts/make-web-version.ts "$out" "$version"
 fi
 # after the version file, which lists what the service worker keeps offline: not these
 cp server/sync.php server/.htaccess "$out/"

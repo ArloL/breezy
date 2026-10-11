@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Camera, MIN_ZOOM, MAX_ZOOM } from "../camera.js";
-import { projection } from "../physics.js";
+import { Camera, MIN_ZOOM, MAX_ZOOM } from "../camera.ts";
+import { projection } from "../physics.ts";
+import type { Cam } from "../types.ts";
 
 /** A camera on a fake clock: `tick(ms)` advances time and runs one animation frame. */
-function setup(cam = { x: 0, y: 0, zoom: 1 }) {
+function setup(cam: Cam = { x: 0, y: 0, zoom: 1 }) {
   let t = 0;
-  let queue = [];
-  const applied = [];
+  let queue: ((t: number) => void)[] = [];
+  const applied: Cam[] = [];
   const c = new Camera((v) => applied.push({ ...v }), {
     now: () => t,
     raf: (fn) => queue.push(fn),
@@ -25,7 +26,7 @@ function setup(cam = { x: 0, y: 0, zoom: 1 }) {
   return { c, tick, applied };
 }
 
-const near = (a, b, e) => assert.ok(Math.abs(a - b) <= e, `${a} ≉ ${b} (±${e})`);
+const near = (a: number, b: number, e: number) => assert.ok(Math.abs(a - b) <= e, `${a} ≉ ${b} (±${e})`);
 
 test("a coast moves by UIKit's deceleration and stops by itself", () => {
   const { c, tick } = setup();
@@ -64,7 +65,7 @@ test("a spring carries the velocity it starts with", () => {
   const { c, tick, applied } = setup();
   c.springTo({ x: 0, y: 0, zoom: 1 }, { x: 2, y: 0, zoom: 0 });
   tick(16, 2);
-  assert.ok(applied.at(-1).x > 0, "it first keeps moving the way it was going");
+  assert.ok(applied.at(-1)!.x > 0, "it first keeps moving the way it was going");
   tick(16, 200);
   near(c.cam.x, 0, 0.05);
 });

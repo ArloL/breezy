@@ -1,23 +1,29 @@
-import { withFreshIDs } from "./sync/store.js";
-import { Spaces } from "./sync/spaces.js";
-import { storage } from "./sync/idb.js";
-import { Binding } from "./binding.js";
-import { sampleBoard } from "./sample.js";
-import { ask } from "./sheet.js";
-import { chip } from "./presence.js";
-import { floated, liveFields, overlaid } from "./sync/overlay.js";
-import { statusLines } from "./sync/engine.js";
-import { GestureHolds } from "./sync/gesture-holds.js";
-import { Collab } from "./sync/collab.js";
-import { inviteLink, parseInvite, validServer } from "./sync/crypto.js";
-import * as R from "./rules.js";
+import { withFreshIDs } from "./sync/store.ts";
+import { Spaces } from "./sync/spaces.ts";
+import { storage } from "./sync/idb.ts";
+import { Binding } from "./binding.ts";
+import { sampleBoard } from "./sample.ts";
+import { ask } from "./sheet.ts";
+import { chip } from "./presence.ts";
+import { floated, liveFields, overlaid } from "./sync/overlay.ts";
+import { statusLines } from "./sync/engine.ts";
+import { GestureHolds } from "./sync/gesture-holds.ts";
+import { Collab } from "./sync/collab.ts";
+import { inviteLink, parseInvite, validServer } from "./sync/crypto.ts";
+import * as R from "./rules.ts";
+import type { App } from "./app.ts";
+import type { Person } from "./presence.ts";
+import type { Board, Point } from "./types.ts";
+
+type Group = ReturnType<Spaces["groups"]>[number];
+type Session = ReturnType<Collab["open"]>;
 
 const MORE = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
 
 /** The boards on this device: their groups in IndexedDB, the board list and the open board. */
 export class Library {
-  static async open(app) {
-    let spaces;
+  static async open(app: App) {
+    let spaces: Spaces;
     try {
       spaces = await Spaces.open(storage);
     } catch (error) {
@@ -35,7 +41,23 @@ export class Library {
     return lib;
   }
 
-  constructor(app, spaces) {
+  app: App;
+  spaces: Spaces;
+  id: string | null;
+  group: Group | null;
+  binding: Binding | null;
+  session: Session | null;
+  menuGroup: Group | null;
+  holds: GestureHolds;
+  collabs: WeakMap<Group, Collab>;
+  restack: (b: Board) => void;
+  liveDirty?: boolean;
+  presenceKey?: string;
+  overlaySize?: number;
+  frame?: number | null;
+  touchTimer?: ReturnType<typeof setTimeout>;
+
+  constructor(app: App, spaces: Spaces) {
     this.app = app;
     this.spaces = spaces;
     this.id = null;
@@ -48,6 +70,7 @@ export class Library {
     this.holds = new GestureHolds();
     this.collabs = new WeakMap();
     app.library = this;
+    app.space = this;
     spaces.onChange = (group, boards, remote) => this.changed(group, boards, remote);
     spaces.onStatus = () => {
       this.renderStatus();
@@ -73,7 +96,7 @@ export class Library {
     };
     app.view.shown = () => (this.live && this.id ? overlaid(app.model.board, this.live.overlay(this.id)) : app.model.board);
     spaces.onRefused = (g, ids) => g === this.group && this.app.refused(ids);
-    this.restack = (b) => R.gravity(b, (id) => {
+    this.restack = (b: Board) => R.gravity(b, (id) => {
       const c = R.card(b, id);
       return c ? app.view.frontHeight(c.text, c.w) : 0;
     });
@@ -83,7 +106,7 @@ export class Library {
     };
     document.addEventListener("visibilitychange", () => document.hidden && hide());
     addEventListener("pagehide", hide);
-    document.querySelector('[data-act="boards"]').hidden = false;
+    document.querySelector<HTMLElement>('[data-act="boards"]')!.hidden = false;
   }
 
   /** Saves what is pending and stops saving and syncing, as another tab takes the boards over. */
@@ -93,16 +116,16 @@ export class Library {
     return this.spaces.stop();
   }
 
-  changed(group, boards, remote) {
+  changed(group: Group, boards: ReadonlySet<string>, remote: boolean) {
     if (this.id && group === this.group && boards.has(this.id)) {
       if (group.store.title(this.id) === null) return this.showList();
-      if (remote) this.binding.pull();
+      if (remote) this.binding!.pull();
     }
     if (!this.id) this.renderList();
     this.app.ui.updateSync();
   }
 
-  open(id) {
+  open(id: string) {
     this.binding?.flush();
     this.binding = null;
     this.session?.close();
@@ -146,12 +169,12 @@ export class Library {
   renderList() {
     const { spaces } = this;
     const shown = spaces.groups().filter((g) => g.space || !spaces.spaces.length || g.store.boards().length);
-    document.querySelector(".boards-groups").replaceChildren(...shown.map((g) => this.renderGroup(g)));
+    document.querySelector(".boards-groups")!.replaceChildren(...shown.map((g) => this.renderGroup(g)));
     this.renderStatus();
     this.renderPeople();
   }
 
-  renderGroup(g) {
+  renderGroup(g: Group) {
     const section = document.createElement("section");
     section.className = "boards-group";
     section.dataset.group = g.key;
@@ -169,7 +192,7 @@ export class Library {
       more.setAttribute("aria-label", `${g.name} options`);
       more.innerHTML = MORE;
       more.addEventListener("pointerdown", () => this.pointMenu(more, g));
-      this.app.ui.menus.attach(more, document.querySelector(".menu.space"));
+      this.app.ui.menus.attach(more, document.querySelector<HTMLElement>(".menu.space")!);
       header.append(more);
     }
     const ul = document.createElement("ul");
@@ -186,7 +209,7 @@ export class Library {
     return section;
   }
 
-  renderBoard(id, title) {
+  renderBoard(id: string, title: string) {
     const li = document.createElement("li");
     const open = document.createElement("button");
     open.className = "open";
@@ -233,10 +256,10 @@ export class Library {
   showPresence(force = false, inFrame = false) {
     const { live, id } = this;
     const s = this.app.state;
-    const taken = new Map(), seen = new Map();
+    const taken = new Map<string, Person>(), seen = new Map<string, string>();
     if (live && id) {
       for (const [item, p] of live.selections(id)) seen.set(item, p.colour);
-      for (const item of live.taken()) taken.set(item, live.holderOf(item));
+      for (const item of live.taken()) taken.set(item, live.holderOf(item)!);
     }
     const key = JSON.stringify([[...seen], [...taken].map(([item, p]) => [item, p.device, p.name])]);
     const overlay = live && id ? live.overlay(id).size : 0;
@@ -270,14 +293,18 @@ export class Library {
   }
 
   /** Asks the open board's space to hold `ids` for the gesture starting. */
-  hold(ids) {
+  hold(ids: Iterable<string>) {
     this.session?.hold(ids);
   }
 
+  edited() {
+    this.session?.edited();
+  }
+
   /** `g`'s Collab, made on first use. */
-  collab(g) {
+  collab(g: Group) {
     if (!this.collabs.has(g)) this.collabs.set(g, new Collab(g, this.holds));
-    return this.collabs.get(g);
+    return this.collabs.get(g)!;
   }
 
   /** About once a second, each space's Collab tick. */
@@ -289,7 +316,7 @@ export class Library {
   renderPeople() {
     for (const g of this.spaces.spaces) {
       for (const { id } of g.store.boards()) {
-        const span = document.querySelector(`.boards-list li[data-board="${id}"] .people`);
+        const span = document.querySelector<HTMLElement>(`.boards-list li[data-board="${id}"] .people`);
         const people = g.live?.people(id) ?? [];
         const key = people.map((p) => `${p.device} ${p.name}`).join("\n");
         if (!span || span.dataset.people === key) continue;
@@ -300,7 +327,7 @@ export class Library {
   }
 
   /** This device's pointer or last touch, in screen points, for the open board's cursor; null when it left. */
-  pointerAt(p) {
+  pointerAt(p: Point | null) {
     clearTimeout(this.touchTimer);
     if (!this.live || !this.id) return;
     if (!p) return this.live.sendCursor(this.id, null, null);
@@ -331,28 +358,28 @@ export class Library {
   }
 
   /** Puts the space menu under `button`, for `group`. */
-  pointMenu(button, group) {
+  pointMenu(button: HTMLElement, group: Group) {
     this.menuGroup = group;
     const r = button.getBoundingClientRect();
-    const menu = document.querySelector(".menu.space");
+    const menu = document.querySelector<HTMLElement>(".menu.space")!;
     menu.style.top = `${r.bottom + 6}px`;
     menu.style.right = `${innerWidth - r.right}px`;
   }
 
-  reveal(group) {
+  reveal(group: Group) {
     document.querySelector(`.boards-group[data-group="${group.key}"]`)?.scrollIntoView({ block: "nearest" });
   }
 
-  async newBoard(group) {
+  async newBoard(group: Group) {
     const r = await ask({ title: "New Board", value: "", placeholder: "Name", ok: "Create" });
     const title = r?.value?.trim();
     if (title && this.spaces.groups().includes(group)) this.open(group.store.createBoard(title));
   }
 
-  async edit(id) {
+  async edit(id: string) {
     const group = this.spaces.groupOf(id);
     const title = group?.store.title(id);
-    if (title == null) return;
+    if (title == null || !group) return;
     const others = this.spaces.groups().filter((g) => g !== group);
     const r = await ask({ title: "Rename Board", value: title, ok: "Rename", danger: "Delete Board", choices: others.length ? ["Move to…"] : [] });
     if (r?.choice === 0) return this.move(id, group, others);
@@ -366,10 +393,10 @@ export class Library {
     if (sure?.danger) group.store.deleteBoard(id);
   }
 
-  async move(id, group, others) {
+  async move(id: string, group: Group, others: Group[]) {
     const title = group.store.title(id);
     const r = await ask({ title: `Move “${title}” to`, choices: others.map((g) => g.name), ok: null });
-    const target = others[r?.choice];
+    const target = others[r?.choice ?? -1];
     if (!target || !this.spaces.groups().includes(target)) return;
     if (group.space) {
       const sure = await ask({ title: `Move “${title}” to “${target.name}”?`, message: `It is removed from “${group.name}” on every device.`, ok: "Move" });
@@ -405,7 +432,7 @@ export class Library {
   }
 
   /** Joins the space in `text`, a link opened or pasted, or asks for one; a link opened asks first. */
-  async join(text) {
+  async join(text?: string) {
     if (!this.spaces.me.name && !(await this.askName())) return;
     const opened = text !== undefined;
     if (!opened) {
@@ -413,7 +440,7 @@ export class Library {
       if (!r) return;
       text = r.value;
     }
-    const invite = parseInvite(text);
+    const invite = parseInvite(text!);
     if (!invite) return ask({ title: "That isn’t an invite link", message: "Copy the whole link from Share Invite on the other device.", cancel: null });
     const known = this.spaces.groupFor(invite.space);
     if (!known) {
@@ -456,7 +483,7 @@ export class Library {
       await navigator.share({ url: link });
       return;
     } catch (error) {
-      if (error?.name === "AbortError") return;
+      if ((error as Error | undefined)?.name === "AbortError") return;
     }
     try {
       await navigator.clipboard.writeText(link);

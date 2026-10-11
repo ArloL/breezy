@@ -1,4 +1,4 @@
-import { animate } from "./motion.js";
+import { animate } from "./motion.ts";
 
 const OPEN = { type: "spring", visualDuration: 0.35, bounce: 0.2 };
 const CLOSE = { type: "spring", visualDuration: 0.22, bounce: 0 };
@@ -9,8 +9,16 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
  * it can slide onto an item and lift to pick it; a tap anywhere outside only closes it. `pick(item)` runs an item;
  * `hover(item)` hears each item the finger slides onto.
  */
+type Item = (item: HTMLElement) => void;
+
 export class Menus {
-  constructor({ pick, hover = () => {} }) {
+  pick: Item;
+  hover: Item;
+  menu: HTMLElement | null;
+  opener: HTMLElement | null;
+  hot: HTMLElement | null;
+
+  constructor({ pick, hover = () => {} }: { pick: Item; hover?: Item }) {
     this.pick = pick;
     this.hover = hover;
     this.menu = null;
@@ -19,7 +27,7 @@ export class Menus {
     document.addEventListener(
       "pointerdown",
       (e) => {
-        if (!this.menu || this.menu.contains(e.target) || this.opener?.contains(e.target)) return;
+        if (!this.menu || this.menu.contains(e.target as Node) || this.opener?.contains(e.target as Node)) return;
         e.preventDefault();
         e.stopPropagation();
         this.close();
@@ -29,8 +37,8 @@ export class Menus {
   }
 
   /** Wires `opener` to open `menu` on touch-down and to pick by sliding while that finger stays down. */
-  attach(opener, menu) {
-    let sliding = null;
+  attach(opener: HTMLButtonElement, menu: HTMLElement) {
+    let sliding: number | null = null;
     opener.addEventListener("pointerdown", (e) => {
       if (opener.disabled) return;
       if (this.menu === menu) return this.close();
@@ -40,7 +48,7 @@ export class Menus {
     opener.addEventListener("pointermove", (e) => {
       if (e.pointerId === sliding) this.slide(e.clientX, e.clientY);
     });
-    const end = (e) => {
+    const end = (e: PointerEvent) => {
       if (e.pointerId !== sliding) return;
       sliding = null;
       const item = this.hot;
@@ -51,7 +59,7 @@ export class Menus {
     opener.addEventListener("pointercancel", end);
   }
 
-  open(opener, menu) {
+  open(opener: HTMLElement, menu: HTMLElement) {
     this.close(true);
     this.menu = menu;
     this.opener = opener;
@@ -74,12 +82,12 @@ export class Menus {
     });
   }
 
-  slide(x, y) {
+  slide(x: number, y: number) {
     const b = document.elementFromPoint(x, y)?.closest("button");
     this.highlight(b && this.menu?.contains(b) ? b : null);
   }
 
-  highlight(item) {
+  highlight(item: HTMLElement | null) {
     if (item === this.hot) return;
     this.hot?.classList.remove("hot");
     item?.classList.add("hot");

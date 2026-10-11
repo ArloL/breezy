@@ -1,14 +1,14 @@
 // Shrinks a failing trace by delta debugging: drops chunks of its run phase while a replay still fails the same way.
-import { Hub } from "./hub.mjs";
+import { Hub, type Entry, type HubOptions, type Problem } from "./hub.ts";
 
 /** What a failure is, without its numbers, so that a smaller trace failing otherwise does not count. */
-export const kindOf = (problems) => [...new Set(problems.map((p) => p.problem.replace(/[0-9]+/g, "N").replace(/ on .*/, "")))].sort().join("; ");
+export const kindOf = (problems: Problem[]) => [...new Set(problems.map((p) => p.problem.replace(/[0-9]+/g, "N").replace(/ on .*/, "")))].sort().join("; ");
 
 /** The smallest trace found within `runs` replays that still fails as `want` does; `log` hears of progress. */
-export async function shrink(opts, trace, { runs = 60, log = () => {} } = {}) {
+export async function shrink(opts: HubOptions, trace: Entry[], { runs = 60, log = () => {} }: { runs?: number; log?: (line: string) => void } = {}) {
   const fixed = trace.filter((e) => e.phase !== "run" || e.derived || !["op", "fault", "link"].includes(e.kind));
   let entries = trace.filter((e) => !fixed.includes(e));
-  const fails = async (candidate) => {
+  const fails = async (candidate: Entry[]) => {
     const r = await new Hub({ ...opts, replay: [...fixed, ...candidate] }).run();
     return r.ok ? null : r;
   };

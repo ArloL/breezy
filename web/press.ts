@@ -1,29 +1,33 @@
-import { animate } from "./motion.js";
+import { animate } from "./motion.ts";
+import type { Point } from "./types.ts";
 
 /** How far a finger can stray from a button and still press it, as UIControl allows. */
 export const SLOP = 70;
 
 /** Whether a press is still on its button: UIControl's touch tracking, without the DOM. */
 export class PressTracker {
-  constructor(rect) {
+  rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">;
+  inside: boolean;
+
+  constructor(rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">) {
     this.rect = rect;
     this.inside = true;
   }
 
-  within(p) {
+  within(p: Point) {
     const r = this.rect;
     return p.x >= r.left - SLOP && p.x <= r.right + SLOP && p.y >= r.top - SLOP && p.y <= r.bottom + SLOP;
   }
 
   /** "in" or "out" when the press crosses the edge of its reach, else null. */
-  move(p) {
+  move(p: Point): "in" | "out" | null {
     const inside = this.within(p);
     if (inside === this.inside) return null;
     this.inside = inside;
     return inside ? "in" : "out";
   }
 
-  up(p) {
+  up(p: Point) {
     return this.within(p);
   }
 }
@@ -36,9 +40,12 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
  * near. The glass capsule around it grows and brightens for as long as the finger is down, as Liquid Glass does.
  * Taps never take focus, so the editor keeps the keyboard. `down(e)` runs on touch-down; `act()` on a lift in reach.
  */
-export function track(el, { act, down = () => {} }) {
+export function track(
+  el: HTMLElement & { disabled?: boolean },
+  { act, down = () => {} }: { act: (e: PointerEvent) => void; down?: (e: PointerEvent) => void },
+) {
   const glass = el.closest(".pill, .selection, .plus");
-  let tracker = null;
+  let tracker: PressTracker | null = null;
   el.addEventListener("pointerdown", (e) => {
     if (el.disabled || tracker) return;
     tracker = new PressTracker(el.getBoundingClientRect());
@@ -53,7 +60,7 @@ export function track(el, { act, down = () => {} }) {
     const change = tracker?.move({ x: e.clientX, y: e.clientY });
     if (change) el.classList.toggle("hot", change === "in");
   });
-  const end = (e, cancelled) => {
+  const end = (e: PointerEvent, cancelled: boolean) => {
     if (!tracker) return;
     const inside = !cancelled && tracker.up({ x: e.clientX, y: e.clientY });
     tracker = null;

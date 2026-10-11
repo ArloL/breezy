@@ -2,24 +2,25 @@
 // both did; text or notes both sides changed differently, or changed on one side and deleted on the other, go into a
 // copy card so that nothing typed is lost.
 
-import { planted } from "./plant.js";
+import { planted } from "./plant.ts";
+import type { SyncRecord } from "./records.ts";
 
 const TEXTS = ["text", "notes"];
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-export function equalRecords(a, b) {
+export function equalRecords(a: SyncRecord | null | undefined, b: SyncRecord | null | undefined): boolean {
   if (!a || !b) return a === b;
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => k in b && same(a[k], b[k]));
 }
 
-function copyOf(r) {
+function copyOf(r: SyncRecord): SyncRecord {
   const c = structuredClone(r);
   if (Array.isArray(r.pos) && r.pos.length === 2) c.pos = [r.pos[0] + 24, r.pos[1] + 24];
   return c;
 }
 
-export function mergeRecord(base, local, incoming) {
+export function mergeRecord(base: SyncRecord | null | undefined, local: SyncRecord, incoming: SyncRecord): { record: SyncRecord; copy: SyncRecord | null } {
   if (planted("merge-local")) return { record: local, copy: null };
   base ??= {};
   if (incoming.deleted === true || local.deleted === true) {
@@ -28,7 +29,7 @@ export function mergeRecord(base, local, incoming) {
     const changed = survivor && TEXTS.some((k) => !same(survivor[k], base[k]));
     return { record: marker, copy: changed ? copyOf(survivor) : null };
   }
-  const record = {};
+  const record: SyncRecord = {};
   let conflict = false;
   for (const k of new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(incoming)])) {
     const b = base[k], l = local[k], i = incoming[k];

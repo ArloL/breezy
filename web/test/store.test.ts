@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Store, withFreshIDs } from "../sync/store.js";
-import { deletedRecord, spaceRecord } from "../sync/records.js";
-import { newID } from "../rules.js";
-import { settle } from "./helpers/store.js";
+import { Store, withFreshIDs } from "../sync/store.ts";
+import { deletedRecord, spaceRecord } from "../sync/records.ts";
+import { newID } from "../rules.ts";
+import { settle } from "./helpers/store.ts";
+import type { Card } from "../types.ts";
+import type { StoreState } from "../sync/store.ts";
 
-const card = (id, text = "t") => ({ id, x: 0, y: 0, w: 240, text, color: 1 });
+const card = (id: string, text = "t"): Card => ({ id, x: 0, y: 0, w: 240, text, color: 1 });
 
 test("a new board waits to be pushed", () => {
   const s = new Store();
@@ -29,7 +31,7 @@ test("edits and merges combine field by field", () => {
   const id = s.createBoard("Plans", { cards: [card("c", "x")], lanes: [] });
   settle(s);
   s.apply({ c: { fields: { color: 3 } } });
-  const heard = [];
+  const heard: [string[], boolean][] = [];
   s.onChange = (boards, remote) => heard.push([[...boards], remote]);
   s.merge([{ id: "c", version: 2, record: { ...s.state.records.c.base, text: "theirs" } }]);
   assert.equal(s.board(id).cards[0].color, 3);
@@ -129,7 +131,7 @@ test("a new epoch is taken and a changed one resyncs", () => {
 });
 
 test("a state saved before epochs takes one without resyncing", () => {
-  const s = new Store({ server: null, space: null, secret: null, cursor: 3, records: {}, held: {}, unreadable: 0 });
+  const s = new Store({ server: null, space: null, secret: null, cursor: 3, records: {}, held: {}, unreadable: 0 } as StoreState);
   assert.equal(s.noteEpoch("e1"), false);
   assert.equal(s.state.cursor, 3);
 });
@@ -175,7 +177,7 @@ test("a space is named by its record, else its invite", () => {
   assert.deepEqual(s.pending(), []);
   s.rename("Home");
   assert.equal(s.name, "Home");
-  assert.equal(s.invite.name, "Home");
+  assert.equal(s.invite!.name, "Home");
   assert.deepEqual(s.boards(), []);
   assert.deepEqual(s.pending().map((p) => [p.id, p.record]), [[space, spaceRecord("Home")]]);
 });
@@ -184,9 +186,9 @@ test("a merged name is reported", () => {
   const s = new Store();
   s.startSyncing("https://example.com/sync.php");
   const space = s.state.space;
-  let heard = null;
+  let heard: string[] | null = null;
   s.onChange = (boards) => (heard = [...boards]);
-  s.merge([{ id: space, version: 1, record: spaceRecord("Work") }]);
+  s.merge([{ id: space!, version: 1, record: spaceRecord("Work") }]);
   assert.equal(s.name, "Work");
   assert.deepEqual(heard, [space]);
 });

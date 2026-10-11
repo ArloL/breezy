@@ -1,12 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ownBoards } from "../owner.js";
+import { ownBoards } from "../owner.ts";
+
+type Ports = Parameters<typeof ownBoards>[0];
+type Grant = (lock: { name: string } | null) => unknown;
+type Tab = {
+  channel: { onmessage: ((e: { data: unknown }) => void) | null; postMessage: (data: unknown) => void };
+  locks: Pick<LockManager, "request">;
+};
+type Want = { tab: Tab; name: string; cb: Grant; resolve: (value: unknown) => void; reject: (reason: unknown) => void; stolen?: boolean };
+type Seen = { tab: Tab; owns: boolean; waited: boolean; events: string[]; useHere: () => void; saved: () => void };
 
 const aborted = () => new DOMException("aborted", "AbortError");
 
 /** Web Locks and a BroadcastChannel shared by a device's tabs, as browsers have them; `close` ends a tab and frees what it
  * held. */
 class Device {
+  held: Map<string, Want>;
+  queue: Want[];
+  tabs: Tab[];
+
   constructor() {
     this.held = new Map();
     this.queue = [];
@@ -14,19 +27,19 @@ class Device {
   }
 
   tab() {
-    const tab = { channel: { onmessage: null, postMessage: (data) => this.post(tab, data) } };
+    const tab = { channel: { onmessage: null, postMessage: (data: unknown) => this.post(tab, data) } } as Tab;
     tab.locks = {
-      request: (name, options, cb) => {
+      request: (name: string, options: LockOptions | Grant, cb?: Grant) => {
         if (typeof options === "function") [cb, options] = [options, {}];
-        return new Promise((resolve, reject) => {
-          const want = { tab, name, cb, resolve, reject };
+        return new Promise<unknown>((resolve, reject) => {
+          const want: Want = { tab, name, cb: cb!, resolve, reject };
           if (options.steal) {
             const old = this.held.get(name);
             if (old) (old.stolen = true), old.reject(aborted());
             return this.grant(want);
           }
           if (!this.held.has(name)) return this.grant(want);
-          if (options.ifAvailable) return resolve(cb(null));
+          if (options.ifAvailable) return resolve(cb!(null));
           options.signal?.addEventListener("abort", () => {
             if (!this.queue.includes(want)) return;
             this.queue = this.queue.filter((w) => w !== want);
@@ -35,16 +48,16 @@ class Device {
           this.queue.push(want);
         });
       },
-    };
+    } as Pick<LockManager, "request">;
     this.tabs.push(tab);
     return tab;
   }
 
-  post(from, data) {
+  post(from: Tab, data: unknown) {
     for (const t of this.tabs) if (t !== from) setTimeout(() => t.channel.onmessage?.({ data }));
   }
 
-  grant(want) {
+  grant(want: Want) {
     this.held.set(want.name, want);
     Promise.resolve(want.cb({ name: want.name })).then((r) => {
       if (want.stolen) return;
@@ -53,13 +66,13 @@ class Device {
     });
   }
 
-  release(name) {
+  release(name: string) {
     this.held.delete(name);
     const next = this.queue.findIndex((w) => w.name === name);
-    if (next >= 0) this.grant(...this.queue.splice(next, 1));
+    if (next >= 0) this.grant(...(this.queue.splice(next, 1) as [Want]));
   }
 
-  close(tab) {
+  close(tab: Tab) {
     this.tabs = this.tabs.filter((t) => t !== tab);
     this.queue = this.queue.filter((w) => w.tab !== tab);
     for (const [name, w] of this.held) if (w.tab === tab) this.release(name);
@@ -70,9 +83,9 @@ const settle = () => new Promise((r) => setTimeout(r, 5));
 
 /** Opens a tab: whether it owns the boards so far, whether it was told to wait, and what happened in order. A `slow` tab
  * saves on handing over only once `saved` is called. */
-function open(device, { slow = false } = {}) {
+function open(device: Device, { slow = false } = {}) {
   const tab = device.tab();
-  const seen = { tab, owns: false, waited: false, events: [] };
+  const seen = { tab, owns: false, waited: false, events: [] } as Partial<Seen> as Seen;
   ownBoards({
     locks: tab.locks,
     channel: tab.channel,
@@ -80,7 +93,7 @@ function open(device, { slow = false } = {}) {
       seen.waited = true;
       seen.useHere = useHere;
     },
-    handOver: () => new Promise((resolve) => {
+    handOver: () => new Promise<void>((resolve) => {
       seen.saved = () => {
         seen.events.push("saved");
         resolve();
@@ -94,7 +107,7 @@ function open(device, { slow = false } = {}) {
 
 test("without Web Locks, every tab owns the boards", async () => {
   let waited = false;
-  await ownBoards({ waiting: () => (waited = true) });
+  await ownBoards({ waiting: () => (waited = true) } as Partial<Ports> as Ports);
   assert.equal(waited, false);
 });
 

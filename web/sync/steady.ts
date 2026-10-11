@@ -3,7 +3,7 @@
 // more, as across sleep: taking the larger step every time would gain the wall clock's coarse ticks on each reading.
 const SLEEP_MS = 1000;
 
-export function steadyClock(wall = () => Date.now(), mono = () => performance.now()) {
+export function steadyClock(wall = () => Date.now(), mono = () => performance.now()): () => number {
   let [w0, m0] = [wall(), mono()];
   let t = m0;
   return () => {

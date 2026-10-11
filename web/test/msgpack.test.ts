@@ -1,21 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pack, unpack, Float32 } from "../sync/msgpack.js";
-import { encode, decode } from "../sync/base64.js";
-import { fixture } from "./helpers/fixture.js";
+import { pack, unpack, Float32 } from "../sync/msgpack.ts";
+import type { Packable } from "../sync/msgpack.ts";
+import { encode, decode } from "../sync/base64.ts";
+import { fixture } from "./helpers/fixture.ts";
 
-const { cases } = fixture("msgpack.json");
+type Spec = null | boolean | number | string | Spec[] | { f32: number } | { bin: string } | { mapRange: number } | { repeat: [Spec, number] } | { map: [Spec, Spec][] };
 
-const fromJSON = (v) => {
+const { cases }: { cases: { value: Spec; hex?: string; hexPrefix?: string; bytes?: number }[] } = fixture("msgpack.json");
+
+const fromJSON = (v: Spec): Packable => {
   if (Array.isArray(v)) return v.map(fromJSON);
   if (v !== null && typeof v === "object") {
     if ("f32" in v) return new Float32(v.f32);
-    if ("bin" in v) return decode(v.bin);
+    if ("bin" in v) return decode(v.bin)!;
     if ("mapRange" in v) return new Map(Array.from({ length: v.mapRange }, (_, i) => [i, i]));
     if ("repeat" in v) {
       const [unit, n] = v.repeat;
       if (typeof unit === "string") return unit.repeat(n);
-      if (unit !== null && typeof unit === "object" && "bin" in unit) return new Uint8Array(n * decode(unit.bin).length).fill(decode(unit.bin)[0]);
+      if (unit !== null && typeof unit === "object" && "bin" in unit) return new Uint8Array(n * decode(unit.bin)!.length).fill(decode(unit.bin)![0]);
       return Array.from({ length: n }, () => fromJSON(unit));
     }
     return new Map(v.map.map(([k, x]) => [fromJSON(k), fromJSON(x)]));
@@ -23,22 +26,22 @@ const fromJSON = (v) => {
   return v;
 };
 
-const toJSON = (v) => {
+const toJSON = (v: unknown): unknown => {
   if (Array.isArray(v)) return v.map(toJSON);
   if (v instanceof Uint8Array) return { bin: encode(v) };
   if (v instanceof Map) return { map: [...v].map(([k, x]) => [toJSON(k), toJSON(x)]) };
   return v;
 };
 
-const plain = (v) => {
+const plain = (v: unknown): unknown => {
   if (v instanceof Float32) return Math.fround(v.v);
   if (Array.isArray(v)) return v.map(plain);
   if (v instanceof Map) return new Map([...v].map(([k, x]) => [plain(k), plain(x)]));
   return v;
 };
 
-const bytes = (hex) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
-const hex = (b) => Buffer.from(b).toString("hex");
+const bytes = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
+const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
 const exact = cases.filter((c) => c.hex !== undefined);
 const sized = cases.filter((c) => c.hexPrefix !== undefined);
@@ -48,13 +51,13 @@ test("pack matches the shared hex", () => {
   for (const c of sized) {
     const b = pack(fromJSON(c.value));
     assert.equal(b.length, c.bytes, c.hexPrefix);
-    assert.equal(hex(b.subarray(0, c.hexPrefix.length / 2)), c.hexPrefix);
+    assert.equal(hex(b.subarray(0, c.hexPrefix!.length / 2)), c.hexPrefix);
   }
 });
 
 test("unpack matches the shared values", () => {
   for (const c of exact) {
-    assert.deepEqual(toJSON(unpack(bytes(c.hex))), toJSON(plain(fromJSON(c.value))), c.hex);
+    assert.deepEqual(toJSON(unpack(bytes(c.hex!))), toJSON(plain(fromJSON(c.value))), c.hex);
   }
   for (const c of sized) assert.deepEqual(unpack(pack(fromJSON(c.value))), fromJSON(c.value), c.hexPrefix);
 });
@@ -87,5 +90,5 @@ test("unpack reads from a view into a larger buffer", () => {
 
 test("packed values grow the writer past its first buffer", () => {
   const s = "x".repeat(100000);
-  assert.equal(unpack(pack([s, s])).join(""), s + s);
+  assert.equal((unpack(pack([s, s])) as string[]).join(""), s + s);
 });

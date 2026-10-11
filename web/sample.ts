@@ -1,10 +1,12 @@
-const lane = (id, x, title) => ({ id, x, y: 0, w: 288, h: 720, title });
+import type { Board, Card, Lane } from "./types.ts";
 
-function card(id, laneX, order, text, color, notes) {
+const lane = (id: string, x: number, title: string): Lane => ({ id, x, y: 0, w: 288, h: 720, title });
+
+function card(id: string, laneX: number, order: number, text: string, color: number, notes?: string): Card {
   return { id, x: laneX + 24, y: 72 + order * 96, w: 240, text, color, ...(notes ? { notes } : {}) };
 }
 
-export function sampleBoard() {
+export function sampleBoard(): Board {
   return {
     lanes: [lane("l-todo", 0, "To do"), lane("l-doing", 336, "Doing"), lane("l-done", 672, "Done")],
     cards: [
@@ -26,7 +28,7 @@ export function sampleBoard() {
   };
 }
 
-function random(seed) {
+function random(seed: number) {
   return () => {
     seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -36,14 +38,14 @@ function random(seed) {
 }
 
 /** 500 cards: ten lanes of 30 and 200 loose, as scripts/make-stress-board.py makes for the Mac. */
-export function stressBoard() {
+export function stressBoard(): Board {
   const r = random(1);
-  const int = (lo, hi) => lo + Math.floor(r() * (hi - lo + 1));
-  const pick = (a) => a[Math.floor(r() * a.length)];
+  const int = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1));
+  const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
   const words = "Kafka Task Matches Interview Firms View Training Trip Plan Review Budget Sprint Client Offer Release Bug Idea".split(" ");
-  const phrase = (n) => Array.from({ length: n }, () => pick(words)).join(" ");
-  const lanes = [];
-  const cards = [];
+  const phrase = (n: number) => Array.from({ length: n }, () => pick(words)).join(" ");
+  const lanes: Lane[] = [];
+  const cards: Card[] = [];
   for (let l = 0; l < 10; l++) {
     lanes.push({ id: `l${l}`, x: l * 504, y: 0, w: 288, h: 2400, title: `Lane ${l}` });
     let y = 72;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PressTracker, SLOP } from "../press.js";
+import { PressTracker, SLOP } from "../press.ts";
 
 const rect = { left: 100, top: 100, right: 144, bottom: 144 };
 

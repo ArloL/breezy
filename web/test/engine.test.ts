@@ -1,12 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.js";
-import { statusLines, TransportError, validRelay, HttpTransport, SyncEngine } from "../sync/engine.js";
-import { SpaceKeys } from "../sync/crypto.js";
-import { encode, decode } from "../sync/base64.js";
+import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.ts";
+import { statusLines, TransportError, validRelay, HttpTransport, SyncEngine } from "../sync/engine.ts";
+import type { Page } from "../sync/engine.ts";
+import { SpaceKeys } from "../sync/crypto.ts";
+import { encode, decode } from "../sync/base64.ts";
 import { inflateRawSync } from "node:zlib";
-import { newID } from "../rules.js";
-import * as R from "../rules.js";
+import { newID } from "../rules.ts";
+import * as R from "../rules.ts";
+import type { Board } from "../types.ts";
+
+type Sent = { headers: Record<string, string>; body: string | ArrayBuffer };
 
 test("a joining device gets the boards", async () => {
   const { a, b, id } = await pair(newID);
@@ -73,10 +77,10 @@ test("an unreadable record is skipped and counted", async () => {
 
 test("a record from a newer Breezy waits", async () => {
   const { server, a } = await pair(newID);
-  const keys = await SpaceKeys.create(decode(a.store.state.space), decode(a.store.state.secret));
+  const keys = await SpaceKeys.create(decode(a.store.state.space)!, decode(a.store.state.secret)!);
   const id = newID();
   const plain = new TextEncoder().encode(JSON.stringify({ format: 2, kind: "board", title: "Later" }));
-  server.put(id, encode(await keys.seal(plain, decode(id))));
+  server.put(id, encode(await keys.seal(plain, decode(id)!)));
   await a.engine.sync();
   assert.ok(a.store.state.held[id]);
   assert.ok(!a.store.boards().some((x) => x.title === "Later"));
@@ -112,7 +116,7 @@ test("four devices end the same", async () => {
   await first.engine.sync();
   const devices = [first, device(server, invite), device(server, invite), device(server, invite)];
   const rnd = mulberry(42);
-  const int = (n) => Math.floor(rnd() * n);
+  const int = (n: number) => Math.floor(rnd() * n);
   for (let step = 0; step < 300; step++) {
     const d = devices[int(4)];
     const roll = int(10);
@@ -150,9 +154,9 @@ test("a refusal we cannot read leaves the edit waiting", async () => {
   const { server, a, id } = await pair(newID);
   const c = a.store.board(id).cards[0].id;
   a.edit(id, (x) => (x.cards[0].text = "mine"));
-  const keys = await SpaceKeys.create(decode(a.store.state.space), decode(a.store.state.secret));
+  const keys = await SpaceKeys.create(decode(a.store.state.space)!, decode(a.store.state.secret)!);
   const plain = new TextEncoder().encode(JSON.stringify({ format: 2, kind: "card" }));
-  server.put(c, encode(await keys.seal(plain, decode(c))));
+  server.put(c, encode(await keys.seal(plain, decode(c)!)));
   await a.engine.sync();
   const unreadable = a.store.state.unreadable;
   await a.engine.sync();
@@ -176,7 +180,7 @@ test("a space joined mid-cycle gets nothing from the old one", async () => {
   const joiner = device(server, old);
   let calls = 0;
   joiner.engine.flushLocal = () => {
-    if (++calls === 2) joiner.store.join(invite);
+    if (++calls === 2) joiner.store.join(invite!);
   };
   await joiner.engine.sync();
   assert.equal(joiner.store.state.cursor, 0);
@@ -187,21 +191,21 @@ test("a space joined mid-cycle gets nothing from the old one", async () => {
  * Two synced devices, a backup, edits on both, the backup restored, more edits on both, then syncs in `order`
  * ("ab" or "ba"). When `behind`, a edits the card before the backup and b sees nothing after pairing until the restore.
  */
-async function restored(order, { behind = false, ids = newID } = {}) {
+async function restored(order: string, { behind = false, ids = newID }: { behind?: boolean; ids?: () => string } = {}) {
   const { server, a, b, id } = await pair(ids);
   const c = a.store.board(id).cards[0].id;
   if (behind) {
-    a.edit(id, (x) => (R.card(x, c).text = "seen by backup"));
+    a.edit(id, (x) => (R.card(x, c)!.text = "seen by backup"));
     await a.engine.sync();
   }
   const backup = server.snapshot();
   const added = [ids(), ids()];
-  const add = (n, y) => (x) => x.cards.push({ id: added[n], x: 0, y, w: 240, text: "", color: 1 });
+  const add = (n: number, y: number) => (x: Board) => x.cards.push({ id: added[n], x: 0, y, w: 240, text: "", color: 1 });
   a.edit(id, (x) => (x.cards[0].color = 3));
   b.edit(id, add(0, 100));
   for (const d of behind ? [a] : [a, b, a]) await d.engine.sync();
   server.restore(backup);
-  a.edit(id, (x) => (R.card(x, c).text = "after"));
+  a.edit(id, (x) => (R.card(x, c)!.text = "after"));
   b.edit(id, add(1, 200));
   for (let round = 0; round < 3; round++) for (const d of order === "ab" ? [a, b] : [b, a]) await d.engine.sync();
   return { a, b, id, c, added };
@@ -213,8 +217,8 @@ for (const order of ["ab", "ba"]) {
     const expected = a.store.board(id);
     assert.deepEqual(b.store.board(id), expected);
     assert.equal(expected.cards.length, 3);
-    assert.equal(R.card(expected, c).color, 3);
-    assert.equal(R.card(expected, c).text, "after");
+    assert.equal(R.card(expected, c)!.color, 3);
+    assert.equal(R.card(expected, c)!.text, "after");
     for (const card of added) assert.ok(R.card(expected, card));
     for (const d of [a, b]) {
       assert.deepEqual(d.store.pending(), []);
@@ -227,16 +231,16 @@ for (const order of ["ab", "ba"]) {
 test("a late resync keeps what others did since", async () => {
   const { server, a, b, id } = await pair(newID);
   const c = a.store.board(id).cards[0].id;
-  let d;
+  let d: string | undefined;
   a.edit(id, (x) => (d = R.addCard(x, 0, 100)));
   for (const x of [a, b]) await x.engine.sync();
   const backup = server.snapshot();
-  a.edit(id, (x) => (R.card(x, c).color = 3));
+  a.edit(id, (x) => (R.card(x, c)!.color = 3));
   for (const x of [a, b]) await x.engine.sync();
   server.restore(backup);
   for (let i = 0; i < 5; i++) await a.engine.sync();
   a.edit(id, (x) => {
-    R.card(x, c).text = "after";
+    R.card(x, c)!.text = "after";
     x.cards = x.cards.filter((k) => k.id !== d);
   });
   await a.engine.sync();
@@ -251,11 +255,11 @@ test("a late resync keeps what others did since", async () => {
 test("a device behind the backup keeps what it has", async () => {
   const { server, a, b, id } = await pair(newID);
   const c = a.store.board(id).cards[0].id;
-  let d;
+  let d: string | undefined;
   a.edit(id, (x) => (d = R.addCard(x, 0, 100)));
   for (const x of [a, b]) await x.engine.sync();
   a.edit(id, (x) => {
-    R.card(x, c).text = "seen by backup";
+    R.card(x, c)!.text = "seen by backup";
     x.cards = x.cards.filter((k) => k.id !== d);
   });
   await a.engine.sync();
@@ -312,7 +316,7 @@ test("restores end the same whatever the ids", async () => {
     const { a, b, id, c, added } = await restored(run % 2 ? "ba" : "ab", { behind: run % 4 >= 2, ids: seededIDs(run) });
     const expected = a.store.board(id);
     assert.deepEqual(b.store.board(id), expected, `run ${run}`);
-    assert.equal(R.card(expected, c).text, "after", `run ${run}`);
+    assert.equal(R.card(expected, c)!.text, "after", `run ${run}`);
     for (const card of added) assert.ok(R.card(expected, card), `run ${run}`);
     for (const d of [a, b]) {
       assert.deepEqual(d.store.pending(), [], `run ${run}`);
@@ -329,7 +333,7 @@ test("a failure in the old space leaves the new one free to sync", async () => {
   const a = device(new FakeServer());
   a.store.startSyncing(SERVER);
   a.transport.pull = async () => {
-    a.store.join(invite);
+    a.store.join(invite!);
     throw new TransportError("unreachable");
   };
   await a.engine.sync();
@@ -339,7 +343,7 @@ test("a failure in the old space leaves the new one free to sync", async () => {
   let pulled = false;
   a.transport.pull = async () => {
     pulled = true;
-    return { records: [], cursor: 0 };
+    return { records: [], cursor: 0 } as Partial<Page> as Page;
   };
   await a.engine.sync();
   assert.ok(pulled);
@@ -347,7 +351,7 @@ test("a failure in the old space leaves the new one free to sync", async () => {
 
 test("the engine learns the relay and reports pushes and pulls", async () => {
   const { server, a, b, id } = await pair(newID);
-  const relays = [], pushed = [], pulled = [];
+  const relays: (string | null)[] = [], pushed: number[] = [], pulled: number[] = [];
   a.engine.onRelay = (r) => relays.push(r);
   a.engine.onPushed = (p) => pushed.push(p.version);
   a.engine.onPulled = (c) => pulled.push(c);
@@ -386,10 +390,11 @@ test("an edit syncs in one request", async () => {
 
 test("a device never pulls back what it pushed", async () => {
   const { a, b, id } = await pair(newID);
-  const mine = new Set(), got = [];
-  for (const m of ["pull", "push"]) {
-    const f = a.transport[m].bind(a.transport);
-    a.transport[m] = async (...args) => {
+  const mine = new Set<number>(), got: number[] = [];
+  const t = a.transport as unknown as Record<"pull" | "push", (...args: unknown[]) => Promise<{ accepted?: { version: number }[]; records?: { version: number }[] }>>;
+  for (const m of ["pull", "push"] as const) {
+    const f = t[m].bind(a.transport);
+    t[m] = async (...args) => {
       const r = await f(...args);
       for (const x of r.accepted ?? []) mine.add(x.version);
       for (const p of r.records ?? []) got.push(p.version);
@@ -473,7 +478,7 @@ test("a resync does not combine", async () => {
   server.restore(backup);
   a.edit(id, (x) => (x.cards[0].color = 2));
   a.transport.log = [];
-  const sinces = [];
+  const sinces: (number | undefined)[] = [];
   const push = a.transport.push.bind(a.transport);
   a.transport.push = (w, since, epoch) => (sinces.push(since), push(w, since, epoch));
   await a.engine.sync();
@@ -483,12 +488,12 @@ test("a resync does not combine", async () => {
 });
 
 test("big requests go deflated and small ones plain", async () => {
-  const sent = [];
+  const sent: Sent[] = [];
   const real = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
+  globalThis.fetch = (async (url: unknown, init: Sent) => {
     sent.push(init);
     return { ok: true, status: 200, json: async () => ({}) };
-  };
+  }) as unknown as typeof fetch;
   try {
     const t = new HttpTransport("https://example.com/s.php", "sp", "tok");
     const big = [{ id: "a", base: 0, blob: "x".repeat(3000) }];
@@ -496,7 +501,7 @@ test("big requests go deflated and small ones plain", async () => {
     await t.push([{ id: "a", base: 0, blob: "y" }]);
     const [first, second] = sent;
     assert.equal(first.headers["Content-Encoding"], "deflate");
-    assert.deepEqual(JSON.parse(inflateRawSync(Buffer.from(first.body)).toString()), { writes: big, since: 7 });
+    assert.deepEqual(JSON.parse(inflateRawSync(Buffer.from(first.body as ArrayBuffer)).toString()), { writes: big, since: 7 });
     assert.equal(second.headers["Content-Encoding"], undefined);
     assert.equal(second.body, JSON.stringify({ writes: [{ id: "a", base: 0, blob: "y" }] }));
   } finally {
@@ -516,12 +521,12 @@ test("a full page that held this push's own write goes on pulling", async () => 
 });
 
 /** What `a` pushes for an edit, as `onPushed` reports it. */
-async function pushedBy(a, id, color = 3) {
-  let out;
+async function pushedBy(a: ReturnType<typeof device>, id: string, color = 3) {
+  let out: Parameters<SyncEngine["onPushed"]>[0] | undefined;
   a.engine.onPushed = (p) => (out = p);
   a.edit(id, (x) => (x.cards[0].color = color));
   await a.engine.sync();
-  return out;
+  return out!;
 }
 
 test("records another device just pushed are applied without a pull", async () => {
@@ -529,7 +534,7 @@ test("records another device just pushed are applied without a pull", async () =
   const p = await pushedBy(a, id);
   assert.equal(p.epoch, server.epoch);
   assert.deepEqual(p.records.map((r) => r.version), [server.version]);
-  const pulled = [];
+  const pulled: number[] = [];
   b.engine.onPulled = (c) => pulled.push(c);
   const calls = b.transport.calls;
   assert.equal(await b.engine.receivePushed(p), true);
@@ -573,7 +578,7 @@ test("pushed records this device already has still report its cursor", async () 
   const { a, b, id } = await pair(newID);
   const p = await pushedBy(a, id);
   await b.engine.sync();
-  const pulled = [];
+  const pulled: number[] = [];
   b.engine.onPulled = (c) => pulled.push(c);
   assert.equal(await b.engine.receivePushed(p), true);
   assert.deepEqual(pulled, [b.store.state.cursor]);
@@ -581,7 +586,7 @@ test("pushed records this device already has still report its cursor", async () 
 
 test("a combined cycle reports the cursor of the page it took before a later round fails", async () => {
   const { server, a, id } = await pair(newID);
-  const pulled = [];
+  const pulled: number[] = [];
   a.engine.onPulled = (c) => pulled.push(c);
   const push = a.transport.push.bind(a.transport);
   let n = 0;
@@ -599,30 +604,32 @@ test("a combined cycle reports the cursor of the page it took before a later rou
 });
 
 test("big requests go plain where deflate-raw is missing or fails", async () => {
-  const sent = [];
+  const sent: Sent[] = [];
   const [realFetch, realStream] = [globalThis.fetch, globalThis.CompressionStream];
-  globalThis.fetch = async (url, init) => {
+  globalThis.fetch = (async (url: unknown, init: Sent) => {
     sent.push(init);
     return { ok: true, status: 200, json: async () => ({}) };
-  };
+  }) as unknown as typeof fetch;
   const big = [{ id: "a", base: 0, blob: "x".repeat(3000) }];
   try {
     const t = new HttpTransport("https://example.com/s.php", "sp", "tok");
-    delete globalThis.CompressionStream;
+    delete (globalThis as { CompressionStream?: unknown }).CompressionStream;
     await t.push(big, 7);
     globalThis.CompressionStream = class {
-      constructor(format) {
+      constructor(format: string) {
         throw new TypeError(`unsupported ${format}`);
       }
-    };
+    } as unknown as typeof CompressionStream;
     await t.push(big, 7);
     // one that fails while it deflates
     globalThis.CompressionStream = class {
+      readable: ReadableStream;
+      writable: WritableStream;
       constructor() {
         const t = new TransformStream({ transform: () => Promise.reject(new Error("broken")) });
         [this.readable, this.writable] = [t.readable, t.writable];
       }
-    };
+    } as unknown as typeof CompressionStream;
     await t.push(big, 7);
   } finally {
     globalThis.fetch = realFetch;

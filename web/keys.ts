@@ -1,10 +1,46 @@
-const ANYWHERE = new Set(["find", "find-next", "find-previous", "zoom-in", "zoom-out", "zoom-reset"]);
+import type { Card, Point } from "./types.ts";
+
+export type Command =
+  | "undo" | "redo" | "select-all" | "find" | "find-next" | "find-previous" | "find-selection"
+  | "zoom-in" | "zoom-out" | "zoom-reset" | "end-edit" | "switch-side" | "turn" | "escape" | "delete" | "new-lane"
+  | `colour-${string}`;
+
+export type Typing = "card" | "lane" | "field" | null;
+
+export type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
+
+/** What `perform` uses of the app. */
+export interface KeyApp {
+  state: { selection: ReadonlySet<string>; turned: string | null };
+  ui: { openFind(text?: string): void; findStep(d: number): void };
+  view: { toWorld(p: Point): Point };
+  undo(): void;
+  redo(): void;
+  selectAll(): void;
+  endEditing(): void;
+  selectedCards(): Card[];
+  zoomBy(f: number): void;
+  zoomTo(z: number): void;
+  switchSide(): void;
+  turn(id: string | null): void;
+  select(ids: string[]): void;
+  removeSelection(): void;
+  newLane(p?: Point): void;
+  colour(n: number): void;
+}
+
+export interface KeyMouse {
+  pointer: Point | null;
+  hoveredCard(): string | null;
+}
+
+const ANYWHERE = new Set<Command>(["find", "find-next", "find-previous", "zoom-in", "zoom-out", "zoom-reset"]);
 
 /**
  * The command for key event `e`, as the Mac app's keys and menus have them, or null to leave the key alone. `typing` is
  * what has the keyboard: null for the board, "card", "lane" or "field" (the find field).
  */
-export function command(e, { mac, typing }) {
+export function command(e: KeyEvent, { mac, typing }: { mac: boolean; typing: Typing }): Command | null {
   const mod = mac ? e.metaKey : e.ctrlKey;
   const other = mac ? e.ctrlKey : e.metaKey;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -30,18 +66,19 @@ export function command(e, { mac, typing }) {
   return null;
 }
 
-function modified(k, shift) {
+function modified(k: string, shift: boolean): Command | null {
   if (k === "z") return shift ? "redo" : "undo";
   if (k === "g") return shift ? "find-previous" : "find-next";
   if (k === "=" || k === "+") return "zoom-in";
   if (k === "-" && !shift) return "zoom-out";
   if (k === "0" && !shift) return "zoom-reset";
   if (shift) return null;
-  return { a: "select-all", f: "find", e: "find-selection", Enter: "end-edit" }[k] ?? null;
+  const plain: Record<string, Command> = { a: "select-all", f: "find", e: "find-selection", Enter: "end-edit" };
+  return plain[k] ?? null;
 }
 
 /** Runs command `cmd`; `mouse` knows the card under the pointer and where the pointer is. */
-export function perform(app, cmd, mouse) {
+export function perform(app: KeyApp, cmd: Command, mouse: KeyMouse) {
   const s = app.state;
   const ui = app.ui;
   switch (cmd) {

@@ -1,18 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SpaceKeys, randomBytes, inviteLink, parseInvite, validServer, INVITE_PREFIX } from "../sync/crypto.js";
-import { encode, decode } from "../sync/base64.js";
-import { fixture } from "./helpers/fixture.js";
+import { SpaceKeys, randomBytes, inviteLink, parseInvite, validServer, INVITE_PREFIX } from "../sync/crypto.ts";
+import { encode, decode } from "../sync/base64.ts";
+import { fixture } from "./helpers/fixture.ts";
 
 const v = fixture("crypto.json");
 const enc = new TextEncoder();
 
 test("encryption matches the shared vector", async () => {
-  const keys = await SpaceKeys.create(decode(v.space), decode(v.secret));
+  const keys = await SpaceKeys.create(decode(v.space)!, decode(v.secret)!);
   assert.equal(encode(keys.token), v.token);
   assert.equal(encode(new Uint8Array(await crypto.subtle.digest("SHA-256", keys.token))), v.tokenHash);
-  assert.equal(encode(await keys.seal(enc.encode(v.plaintext), decode(v.id), decode(v.nonce))), v.blob);
-  assert.equal(new TextDecoder().decode(await keys.open(decode(v.blob), decode(v.id))), v.plaintext);
+  assert.equal(encode(await keys.seal(enc.encode(v.plaintext), decode(v.id)!, decode(v.nonce)!)), v.blob);
+  assert.equal(new TextDecoder().decode(await keys.open(decode(v.blob)!, decode(v.id)!)), v.plaintext);
 });
 
 test("a blob moved to another record does not open", async () => {
@@ -54,19 +54,19 @@ test("an invite may name its space", () => {
   const named = { server: v.server, space: v.space, secret: v.secret, name: "Home & Work" };
   assert.equal(inviteLink(named), v.namedInvite);
   assert.deepEqual(parseInvite(v.namedInvite), named);
-  assert.equal("name" in parseInvite(v.invite), false);
+  assert.equal("name" in parseInvite(v.invite)!, false);
 });
 
 test("live messages match the shared vector", async () => {
   const lv = fixture("live.json");
-  const keys = await SpaceKeys.create(decode(lv.space), decode(lv.secret));
-  assert.equal(encode(await keys.sealLive(enc.encode(lv.plaintext), decode(lv.nonce))), lv.body);
-  assert.equal(new TextDecoder().decode(await keys.openLive(decode(lv.body))), lv.plaintext);
+  const keys = await SpaceKeys.create(decode(lv.space)!, decode(lv.secret)!);
+  assert.equal(encode(await keys.sealLive(enc.encode(lv.plaintext), decode(lv.nonce)!)), lv.body);
+  assert.equal(new TextDecoder().decode(await keys.openLive(decode(lv.body)!)), lv.plaintext);
 });
 
 test("the relay gets a token of its own", async () => {
   const lv = fixture("live.json");
-  const keys = await SpaceKeys.create(decode(lv.space), decode(lv.secret));
+  const keys = await SpaceKeys.create(decode(lv.space)!, decode(lv.secret)!);
   assert.equal(encode(keys.relayToken), lv.relayToken);
   assert.notEqual(encode(keys.relayToken), encode(keys.token));
 });

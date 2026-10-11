@@ -4,6 +4,10 @@
 // neither a gesture nor a finish explains, as when a finish never ran.
 
 export class GestureHolds {
+  latest: Map<string, number>;
+  running: Map<string, number>;
+  idle: Set<string>;
+
   constructor() {
     this.latest = new Map();
     this.running = new Map();
@@ -12,7 +16,7 @@ export class GestureHolds {
 
   /** A gesture of `space` ended or was cancelled: `flush` now, then `sync`, then `release` unless a later finish of the
    * space came meanwhile or `busy` says one of its boards is in a gesture. */
-  async finish(space, { flush, sync, busy, release }) {
+  async finish(space: string, { flush, sync, busy, release }: { flush: () => void; sync: () => Promise<unknown>; busy: () => boolean; release: () => void }): Promise<void> {
     flush();
     const n = (this.latest.get(space) ?? 0) + 1;
     this.latest.set(space, n);
@@ -20,14 +24,14 @@ export class GestureHolds {
     try {
       await sync();
     } finally {
-      this.running.set(space, this.running.get(space) - 1);
+      this.running.set(space, this.running.get(space)! - 1);
     }
     if (this.latest.get(space) === n && !busy()) release();
   }
 
   /** About once a second for each space: lets go when it is `holding` but, on two ticks running, was not `busy` with a
    * gesture and had no finish under way. The second tick leaves room for a gesture that ended just now. */
-  sweep(space, { holding, busy, release }) {
+  sweep(space: string, { holding, busy, release }: { holding: boolean; busy: boolean; release: () => void }) {
     if (!holding || busy || this.running.get(space)) return this.idle.delete(space);
     if (!this.idle.has(space)) return this.idle.add(space);
     this.idle.delete(space);

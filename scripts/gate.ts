@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 // Fails when a measure got worse: its mean's 95 % CI lies wholly above the CI of every baseline, runs recorded on the same
 // kind of machine, whose spread from one machine to the next the envelope takes in. Every measure is lower-is-better.
-// Takes feel.mjs's output, whose last line holds its samples, or bench.sh's build/bench.jsonl, as the run and baselines.
-//   node scripts/gate.mjs RUN BASELINE...
+// Takes feel.ts's output, whose last line holds its samples, or bench.sh's build/bench.jsonl, as the run and baselines.
+//   node scripts/gate.ts RUN BASELINE...
 import { readFileSync } from "node:fs";
 
 // as bench-summary.py
 const BENCH = ["launch_ms", "idle.mb", "hidden.mb", "peak_mb", "zoom.p95_ms", "zoom.max_ms", "pan.p95_ms", "pan.max_ms", "drag.p95_ms", "drag.max_ms", "type.p95_ms", "type.max_ms", "zoom.cpu_ms"];
 
 /** Measure → samples. */
-function samples(path) {
+function samples(path: string): Record<string, number[]> {
   const lines = readFileSync(path, "utf8").trim().split("\n");
   if (path.endsWith(".jsonl")) {
-    const out = {};
+    const out: Record<string, number[]> = {};
     for (const { board, r } of lines.map((l) => JSON.parse(l)))
       for (const k of BENCH) {
         const [a, b] = k.split(".");
@@ -21,11 +21,11 @@ function samples(path) {
       }
     return out;
   }
-  return JSON.parse(lines.at(-1)).results;
+  return JSON.parse(lines.at(-1)!).results;
 }
 
 const T = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 2.18, 2.16, 2.14, 2.13, 2.12, 2.11, 2.10, 2.09, 2.09];
-function ci(xs) {
+function ci(xs: number[]) {
   const n = xs.length, m = xs.reduce((s, x) => s + x, 0) / n;
   const h = n < 2 ? 0 : ((T[n - 2] ?? 1.96) * Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / (n - 1))) / Math.sqrt(n);
   return { m, lo: m - h, hi: m + h, text: `${m.toFixed(1)} ± ${h.toFixed(1)}` };

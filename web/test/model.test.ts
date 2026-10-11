@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Model, UNDO_LIMIT } from "../model.js";
+import { Model, UNDO_LIMIT } from "../model.ts";
 
 const fresh = () => new Model({ cards: [{ id: "a", x: 0, y: 0, w: 240, text: "t", color: 1 }], lanes: [] });
-const x = (m) => m.board.cards[0].x;
+const x = (m: Model) => m.board.cards[0].x;
 
 test("perform records one step that undo and redo replay", () => {
   const m = fresh();

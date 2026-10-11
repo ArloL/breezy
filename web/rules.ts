@@ -1,4 +1,6 @@
-import { encode } from "./sync/base64.js";
+import { encode } from "./sync/base64.ts";
+import type { Board, Card, HeightOf, Lane, Rect } from "./types.ts";
+
 export const GRID = 24;
 export const CARD_W = 240;
 export const BACK_W = 480;
@@ -14,58 +16,58 @@ export const ROOM = GRID / 2;
 export const STACK_TOP = 3 * GRID;
 
 /** Rounds half away from zero, as Swift's `rounded()` does. */
-export function snap(v) {
+export function snap(v: number) {
   const r = Math.round(Math.abs(v) / GRID) * GRID;
   return v < 0 && r ? -r : r;
 }
 
-export const intersects = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-export const contains = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-export const containsCentre = (r, b) => contains(r, b.x + b.w / 2, b.y + b.h / 2);
+export const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+export const contains = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+export const containsCentre = (r: Rect, b: Rect) => contains(r, b.x + b.w / 2, b.y + b.h / 2);
 /** Whether the two overlap horizontally, as cards in one column of a lane do. */
-export const sharesColumn = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w;
+export const sharesColumn = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w;
 /** The first grid line at least `ROOM` below `r`. */
-export const lineBelow = (r) => Math.ceil((r.y + r.h + ROOM) / GRID) * GRID;
-export const cardRect = (c, h) => ({ x: c.x, y: c.y, w: c.w, h });
-export const laneRect = (l) => ({ x: l.x, y: l.y, w: l.w, h: l.h });
+export const lineBelow = (r: Rect) => Math.ceil((r.y + r.h + ROOM) / GRID) * GRID;
+export const cardRect = (c: Card, h: number): Rect => ({ x: c.x, y: c.y, w: c.w, h });
+export const laneRect = (l: Lane): Rect => ({ x: l.x, y: l.y, w: l.w, h: l.h });
 
 /** 16 random bytes: ids are made on every device and must not collide. */
-export function newID() {
+export function newID(): string {
   return encode(crypto.getRandomValues(new Uint8Array(16)));
 }
 
-export const card = (b, id) => b.cards.find((c) => c.id === id);
-export const lane = (b, id) => b.lanes.find((l) => l.id === id);
+export const card = (b: Board, id: string) => b.cards.find((c) => c.id === id);
+export const lane = (b: Board, id: string) => b.lanes.find((l) => l.id === id);
 
-export function addCard(b, x, y) {
-  const c = { id: newID(), x: snap(x), y: snap(y), w: CARD_W, text: "", color: 1 };
+export function addCard(b: Board, x: number, y: number) {
+  const c: Card = { id: newID(), x: snap(x), y: snap(y), w: CARD_W, text: "", color: 1 };
   b.cards.push(c);
   return c.id;
 }
 
-export function addLane(b, x, y) {
-  const l = { id: newID(), x: snap(x), y: snap(y), w: LANE_W, h: LANE_H, title: "Lane" };
+export function addLane(b: Board, x: number, y: number) {
+  const l: Lane = { id: newID(), x: snap(x), y: snap(y), w: LANE_W, h: LANE_H, title: "Lane" };
   b.lanes.push(l);
   return l.id;
 }
 
-export function setText(b, id, text) {
+export function setText(b: Board, id: string, text: string) {
   const c = card(b, id);
   if (c) c.text = text;
 }
 
-export function setNotes(b, id, notes) {
+export function setNotes(b: Board, id: string, notes: string) {
   const c = card(b, id);
   if (c) c.notes = notes;
 }
 
-export function setLaneTitle(b, id, title) {
+export function setLaneTitle(b: Board, id: string, title: string) {
   const l = lane(b, id);
   if (l) l.title = title;
 }
 
 /** Ends editing card `id`: trailing whitespace goes, and a card blank on both sides is removed. */
-export function finishEdit(b, id) {
+export function finishEdit(b: Board, id: string) {
   const i = b.cards.findIndex((c) => c.id === id);
   if (i < 0) return;
   const c = b.cards[i];
@@ -76,8 +78,26 @@ export function finishEdit(b, id) {
   if (!c.text && !notes) b.cards.splice(i, 1);
 }
 
+/** A card or lane where a drag found it. */
+export interface Origin {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/** Where everything not held stood when a drag began. */
+export interface Layout {
+  cardY: Map<string, number>;
+  laneH: Map<string, number>;
+}
+
+export interface Room {
+  heightOf: HeightOf;
+  base: Layout;
+}
+
 /** With `room` the cards are held in a drag and the others make room for them; see `settle`. */
-export function moveCards(b, origins, dx, dy, room) {
+export function moveCards(b: Board, origins: Origin[], dx: number, dy: number, room?: Room | null) {
   for (const o of origins) {
     const c = card(b, o.id);
     if (!c) continue;
@@ -87,32 +107,32 @@ export function moveCards(b, origins, dx, dy, room) {
   if (room) settle(b, room.heightOf, { held: new Set(origins.map((o) => o.id)), base: room.base });
 }
 
-export function setColor(b, ids, color) {
+export function setColor(b: Board, ids: ReadonlySet<string>, color: number) {
   for (const c of b.cards) if (ids.has(c.id)) c.color = color;
 }
 
-export function remove(b, ids) {
+export function remove(b: Board, ids: ReadonlySet<string>) {
   b.cards = b.cards.filter((c) => !ids.has(c.id));
   b.lanes = b.lanes.filter((l) => !ids.has(l.id));
 }
 
 /** The grid point nearest (`x`, `y`) where a `w` × `h` rect stays a grid clear of every card and lane. */
-export function openSpot(b, w, h, x, y, heightOf) {
+export function openSpot(b: Board, w: number, h: number, x: number, y: number, heightOf: HeightOf) {
   const g = GRID;
   const taken = [...b.cards.map((c) => cardRect(c, heightOf(c.id))), ...b.lanes.map(laneRect)];
-  const down = (v) => Math.floor(v / g) * g;
-  const up = (v) => Math.ceil(v / g) * g;
+  const down = (v: number) => Math.floor(v / g) * g;
+  const up = (v: number) => Math.ceil(v / g) * g;
   // The nearest spot lies at (x, y) or against an item on each axis.
   const xs = new Set([snap(x), ...taken.flatMap((r) => [down(r.x - g - w), up(r.x + r.w + g)])]);
   const ys = new Set([snap(y), ...taken.flatMap((r) => [down(r.y - g - h), up(r.y + r.h + g)])]);
   const spots = [...xs].flatMap((px) => [...ys].map((py) => ({ x: px, y: py, d: Math.hypot(px - x, py - y) })));
   spots.sort((p, q) => p.d - q.d || p.x - q.x || p.y - q.y);
   const s = spots.find((s) => !taken.some((r) => intersects(r, { x: s.x - g, y: s.y - g, w: w + 2 * g, h: h + 2 * g })));
-  return { x: s.x, y: s.y };
+  return { x: s!.x, y: s!.y };
 }
 
 /** Moves lane `origin.id` by the snapped delta and carries `carried` with it. */
-export function moveLane(b, origin, carried, dx, dy) {
+export function moveLane(b: Board, origin: Origin, carried: Origin[], dx: number, dy: number) {
   const l = lane(b, origin.id);
   if (!l) return;
   l.x = snap(origin.x + dx);
@@ -127,22 +147,22 @@ export function moveLane(b, origin, carried, dx, dy) {
   }
 }
 
-export function resizeLane(b, id, w, h) {
+export function resizeLane(b: Board, id: string, w: number, h: number) {
   const l = lane(b, id);
   if (!l) return;
   l.w = Math.max(LANE_MIN, snap(w));
   l.h = Math.max(LANE_MIN, snap(h));
 }
 
-export function cardsInLane(b, id, heightOf) {
+export function cardsInLane(b: Board, id: string, heightOf: HeightOf) {
   const l = lane(b, id);
   return l ? b.cards.filter((c) => containsCentre(l, cardRect(c, heightOf(c.id)))) : [];
 }
 
-export const cardsInRect = (b, r, heightOf) => b.cards.filter((c) => intersects(r, cardRect(c, heightOf(c.id))));
+export const cardsInRect = (b: Board, r: Rect, heightOf: HeightOf) => b.cards.filter((c) => intersects(r, cardRect(c, heightOf(c.id))));
 
 /** Card `id` and the cards below it in its lane's column; outside a lane, the card alone. */
-export function pile(b, id, heightOf) {
+export function pile(b: Board, id: string, heightOf: HeightOf): string[] {
   const c = card(b, id);
   if (!c) return [];
   const cr = cardRect(c, heightOf(id));
@@ -157,7 +177,7 @@ export function pile(b, id, heightOf) {
 }
 
 /** Where everything but cards `excluding` stands, for a drag's room. */
-export function layout(b, excluding) {
+export function layout(b: Board, excluding: ReadonlySet<string>): Layout {
   return {
     cardY: new Map(b.cards.filter((c) => !excluding.has(c.id)).map((c) => [c.id, c.y])),
     laneH: new Map(b.lanes.map((l) => [l.id, l.h])),
@@ -165,11 +185,17 @@ export function layout(b, excluding) {
 }
 
 /** Ends a drag: the held cards drop into the places kept for them. */
-export const land = (b, ids, room) => settle(b, room.heightOf, { held: ids, base: room.base, land: true });
+export const land = (b: Board, ids: ReadonlySet<string>, room: Room) => settle(b, room.heightOf, { held: ids, base: room.base, land: true });
 
-export const gravity = (b, heightOf) => settle(b, heightOf);
+export const gravity = (b: Board, heightOf: HeightOf) => settle(b, heightOf);
 
-function compare(a, b) {
+interface Box {
+  index: number;
+  rect: Rect;
+  held: boolean;
+}
+
+function compare(a: number[], b: number[]) {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
   return 0;
 }
@@ -178,7 +204,7 @@ function compare(a, b) {
  * Where across lane `l` a card `r` goes: centred in the column under its centre, or in the lane
  * when wider than a column. Columns share the width, as many as fit a card and a grid.
  */
-function column(l, r) {
+function column(l: Lane, r: Rect) {
   const n = Math.max(1, Math.floor((l.w - GRID) / (CARD_W + GRID)));
   const cw = l.w / n;
   if (r.w > cw) return l.x + (l.w - r.w) / 2;
@@ -192,21 +218,25 @@ function column(l, r) {
  * keep their places free, centred in the column under them; `land` moves them in. With `base` the others start from where they
  * stood when the drag began, so dragging away gives cards back their places.
  */
-export function settle(b, heightOf, { held = new Set(), base = null, land = false } = {}) {
+export function settle(
+  b: Board,
+  heightOf: HeightOf,
+  { held = new Set(), base = null, land = false }: { held?: ReadonlySet<string>; base?: Layout | null; land?: boolean } = {},
+) {
   if (base) {
-    for (const c of b.cards) if (base.cardY.has(c.id)) c.y = base.cardY.get(c.id);
-    for (const l of b.lanes) if (base.laneH.has(l.id)) l.h = base.laneH.get(l.id);
+    for (const c of b.cards) if (base.cardY.has(c.id)) c.y = base.cardY.get(c.id)!;
+    for (const l of b.lanes) if (base.laneH.has(l.id)) l.h = base.laneH.get(l.id)!;
   }
   const boxes = b.cards.map((c, index) => ({ index, rect: cardRect(c, heightOf(c.id)), held: held.has(c.id) }));
-  const done = new Set();
+  const done = new Set<number>();
   for (const l of b.lanes) {
     const members = boxes.filter((x) => !done.has(x.index) && containsCentre(l, x.rect));
     for (const x of members) done.add(x.index);
-    const top = members.filter((x) => x.held).reduce((t, x) => (!t || x.rect.y < t.rect.y ? x : t), null);
-    const key = (x) =>
-      x.held ? [top.rect.y + top.rect.h / 2, 0, x.rect.y, x.index] : [x.rect.y + x.rect.h / 2, 1, x.rect.y, x.index];
+    const top = members.filter((x) => x.held).reduce<Box | null>((t, x) => (!t || x.rect.y < t.rect.y ? x : t), null);
+    const key = (x: Box) =>
+      x.held ? [top!.rect.y + top!.rect.h / 2, 0, x.rect.y, x.index] : [x.rect.y + x.rect.h / 2, 1, x.rect.y, x.index];
     members.sort((p, q) => compare(key(p), key(q)));
-    const placed = [];
+    const placed: Rect[] = [];
     for (const x of members) {
       const r = { ...x.rect, x: x.held ? column(l, x.rect) : x.rect.x, y: l.y + STACK_TOP };
       for (const p of placed) if (sharesColumn(p, r)) r.y = Math.max(r.y, lineBelow(p));
@@ -217,16 +247,22 @@ export function settle(b, heightOf, { held = new Set(), base = null, land = fals
   }
 }
 
+export interface Match {
+  id: string;
+  side: "title" | "front" | "back";
+}
+
 /** Lane titles, card fronts and card backs containing `query`, in reading order. */
-export function search(b, query) {
+export function search(b: Board, query: string): Match[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
+  type Item = { x: number; y: number; parts: (Match & { text: string })[] };
   const items = [
-    ...b.lanes.map((l) => ({ x: l.x, y: l.y, parts: [{ id: l.id, side: "title", text: l.title }] })),
-    ...b.cards.map((c) => ({
+    ...b.lanes.map((l): Item => ({ x: l.x, y: l.y, parts: [{ id: l.id, side: "title", text: l.title }] })),
+    ...b.cards.map((c): Item => ({
       x: c.x,
       y: c.y,
-      parts: [{ id: c.id, side: "front", text: c.text }, ...(c.notes ? [{ id: c.id, side: "back", text: c.notes }] : [])],
+      parts: [{ id: c.id, side: "front", text: c.text }, ...(c.notes ? [{ id: c.id, side: "back" as const, text: c.notes }] : [])],
     })),
   ];
   items.sort((p, q2) => p.y - q2.y || p.x - q2.x);

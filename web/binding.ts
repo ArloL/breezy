@@ -1,4 +1,15 @@
-import { changes } from "./sync/records.js";
+import { changes } from "./sync/records.ts";
+import type { Model } from "./model.ts";
+import type { Edits } from "./sync/records.ts";
+import type { Orders } from "./sync/order-key.ts";
+import type { Board } from "./types.ts";
+
+/** What `Binding` uses of the store. */
+export interface BindingStore {
+  orders(board: string): Orders;
+  apply(edits: Edits): void;
+  board(id: string): Board;
+}
 
 /**
  * Keeps the open board's model and the store in step, as BreezyKit's BoardBinding. Local edits go into the store field
@@ -7,7 +18,16 @@ import { changes } from "./sync/records.js";
  * text differently and would push each other's layouts forever.
  */
 export class Binding {
-  constructor(store, model, id, restack) {
+  store: BindingStore;
+  model: Model;
+  id: string;
+  restack: (b: Board) => void;
+  seen: Board;
+  waiting: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  taken: () => ReadonlySet<string>;
+
+  constructor(store: BindingStore, model: Model, id: string, restack: (b: Board) => void) {
     this.store = store;
     this.model = model;
     this.id = id;
@@ -15,7 +35,7 @@ export class Binding {
     /** The board as last given to or taken from the store, stacked as shown. */
     this.seen = structuredClone(model.board);
     this.waiting = false;
-    this.timer = null;
+    this.timer = undefined;
     /** Items someone else holds: local changes to them are not written, as the holder's are the ones that count. */
     this.taken = () => new Set();
   }

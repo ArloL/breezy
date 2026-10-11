@@ -1,14 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Gestures, HOLD_MS } from "../gestures.js";
+import { Gestures, HOLD_MS } from "../gestures.ts";
+import type { GestureHandler } from "../gestures.ts";
+import type { Point } from "../types.ts";
 
 function setup() {
-  const log = [];
-  const h = new Proxy({}, { get: (_, name) => (...args) => log.push([name, ...args]) });
-  return { g: new Gestures(h), log, names: () => log.map((e) => e[0]) };
+  const log: [string | symbol, ...unknown[]][] = [];
+  const h = new Proxy({}, { get: (_, name) => (...args: unknown[]) => log.push([name, ...args]) });
+  return { g: new Gestures(h as GestureHandler), log, names: () => log.map((e) => e[0]) };
 }
 
-const P = (x, y) => ({ x, y });
+const P = (x: number, y: number): Point => ({ x, y });
 
 test("a quick touch is a tap", () => {
   const { g, log } = setup();
@@ -131,12 +133,12 @@ test("velocity is measured over the last 80 ms and is zero after a pause", () =>
   g.down(1, 0, 0, 0);
   for (let t = 10; t <= 100; t += 10) g.move(1, t, 0, t);
   g.up(1, 100, 0, 100);
-  assert.ok(Math.abs(log.at(-1)[2].x - 1) < 1e-9);
+  assert.ok(Math.abs((log.at(-1)![2] as Point).x - 1) < 1e-9);
   const s = setup();
   s.g.down(1, 0, 0, 0);
   for (let t = 10; t <= 100; t += 10) s.g.move(1, t, 0, t);
   s.g.up(1, 100, 0, 300);
-  assert.deepEqual(s.log.at(-1)[2], P(0, 0));
+  assert.deepEqual(s.log.at(-1)![2], P(0, 0));
 });
 
 test("a cancelled drag is undone, and the touch's lift is ignored", () => {

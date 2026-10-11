@@ -4,15 +4,32 @@ const LOCK = "breezy-boards";
 /** How long a tab that handed the boards over waits for the asking tab to take the lock before letting it go anyway. */
 const TAKE_MS = 2000;
 
+interface Message {
+  want?: string;
+  take?: string;
+}
+
 /**
  * Resolves once this tab owns the boards, holding the lock until the tab closes or another asks for them: then
  * `handOver` saves what is pending and stops, the other tab takes the lock, and `handedOver` follows. If another tab
  * owns them, calls `waiting` first with a function that asks it for them. Without Web Locks every tab owns them.
  */
-export function ownBoards({ locks, channel, waiting, handOver, handedOver }) {
+export function ownBoards({
+  locks,
+  channel,
+  waiting,
+  handOver,
+  handedOver,
+}: {
+  locks: Pick<LockManager, "request"> | undefined;
+  channel: Pick<BroadcastChannel, "onmessage" | "postMessage">;
+  waiting: (useHere: () => void) => unknown;
+  handOver: () => Promise<unknown>;
+  handedOver: () => void;
+}): Promise<void> {
   if (!locks) return Promise.resolve();
   const me = crypto.randomUUID();
-  return new Promise((owned) => {
+  return new Promise<void>((owned) => {
     let owns = false, left = false;
     const leave = () => {
       if (!left) handedOver();
@@ -24,7 +41,7 @@ export function ownBoards({ locks, channel, waiting, handOver, handedOver }) {
       owns = true;
       owned();
       let handing = false;
-      channel.onmessage = async ({ data }) => {
+      channel.onmessage = async ({ data }: MessageEvent<Message>) => {
         if (!data.want || handing) return;
         handing = true;
         await handOver();
@@ -37,7 +54,7 @@ export function ownBoards({ locks, channel, waiting, handOver, handedOver }) {
       if (lock) return hold();
       const queued = new AbortController();
       locks.request(LOCK, { signal: queued.signal }, hold).catch(lost);
-      channel.onmessage = ({ data }) => {
+      channel.onmessage = ({ data }: MessageEvent<Message>) => {
         if (data.take !== me) return;
         queued.abort();
         // ahead of any tab that waited longer

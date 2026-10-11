@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import * as web from "../sync/frames.js";
+import * as web from "../sync/frames.ts";
 import * as relay from "../../relay/src/frames.js";
 
 const numbers = [0, 1, 127, 128, 300, 16383, 16384, 2 ** 31, 2 ** 32 - 1, 2 ** 32];

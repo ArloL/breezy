@@ -123,7 +123,7 @@ jobs:
     - name: Make sure build did not change anything
       run: git diff --exit-code
   # the server and the relay under their tests, then web and Swift devices fuzzed against both: fixed seeds, so a failure
-  # replays with the same command. direct-e2e.mjs stays local: GitHub's macOS runners open no WebRTC channel
+  # replays with the same command. direct-e2e.ts stays local: GitHub's macOS runners open no WebRTC channel
   sync:
     needs: version
     runs-on: macos-latest
@@ -148,9 +148,9 @@ jobs:
     - name: Build breezy-sim
       run: swift build --package-path BreezyKit --product breezy-sim
     - name: Test the fuzzer
-      run: node --test scripts/fuzz/test/*.test.mjs
+      run: node --test scripts/fuzz/test/*.test.ts
     - name: Fuzz convergence
-      run: node scripts/fuzz.mjs --seeds 1-10 --steps 200
+      run: node scripts/fuzz.ts --seeds 1-10 --steps 200
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       if: ${{ failure() }}
       with:
@@ -169,8 +169,12 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
+    - name: Install the web toolchain
+      run: npm ci
+    - name: Check types
+      run: npm run check
     - name: Test the touch prototype
-      run: node --test web/test/*.test.js
+      run: npm test
     - name: Test the relay's hold rules
       run: node --test relay/test/holds.test.mjs
     # Off main there is no tag, so the page's own placeholder version stays.

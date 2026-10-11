@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import * as V from "../virtual.mjs";
+import * as V from "../virtual.ts";
 
 V.install();
 
 test("timers under a context fire in virtual order, and a context's clock carries its skew", () => {
   const a = new V.Context(0, 1), b = new V.Context(1, 2);
   b.skew = 5000;
-  const seen = [];
+  const seen: string[] = [];
   V.run(a, () => {
     setTimeout(() => seen.push("a300"), 300);
     setTimeout(() => seen.push("a100"), 100);
@@ -25,7 +25,7 @@ test("timers under a context fire in virtual order, and a context's clock carrie
 
 test("cleared timers do not fire, and timers set while firing for now fire too", () => {
   const a = new V.Context(0, 1);
-  const seen = [];
+  const seen: string[] = [];
   V.run(a, () => {
     const t = setTimeout(() => seen.push("no"), 10);
     clearTimeout(t);
@@ -37,7 +37,7 @@ test("cleared timers do not fire, and timers set while firing for now fire too",
 });
 
 test("random bytes are seeded per context", () => {
-  const draw = (seed) => V.run(new V.Context(0, seed), () => crypto.getRandomValues(new Uint8Array(8)).join());
+  const draw = (seed: number) => V.run(new V.Context(0, seed), () => crypto.getRandomValues(new Uint8Array(8)).join());
   assert.equal(draw(7), draw(7));
   assert.notEqual(draw(7), draw(8));
 });

@@ -1,16 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import * as R from "../rules.js";
+import * as R from "../rules.ts";
+import type { Board, Card, Lane } from "../types.ts";
 
-const board = (cards = [], lanes = []) => ({ cards, lanes });
-const card = (id, x, y, text = "t") => ({ id, x, y, w: 240, text, color: 1 });
-const lane = (id, x, y, w = 480, h = 720) => ({ id, x, y, w, h, title: "Lane" });
+const board = (cards: Card[] = [], lanes: Lane[] = []): Board => ({ cards, lanes });
+const card = (id: string, x: number, y: number, text = "t"): Card => ({ id, x, y, w: 240, text, color: 1 });
+const lane = (id: string, x: number, y: number, w = 480, h = 720): Lane => ({ id, x, y, w, h, title: "Lane" });
 const h48 = () => 48;
-const ys = (b, ...ids) => ids.map((id) => R.card(b, id).y);
+const ys = (b: Board, ...ids: string[]) => ids.map((id) => R.card(b, id)!.y);
 
-function drag(b, ids) {
+function drag(b: Board, ids: string[]) {
   return {
-    origins: ids.map((id) => ({ id, x: R.card(b, id).x, y: R.card(b, id).y })),
+    origins: ids.map((id) => ({ id, x: R.card(b, id)!.x, y: R.card(b, id)!.y })),
     room: { base: R.layout(b, new Set(ids)), heightOf: h48 },
   };
 }
@@ -23,20 +24,20 @@ test("snap rounds to the nearest grid line, halves away from zero", () => {
 
 test("addCard snaps and starts empty", () => {
   const b = board();
-  const c = R.card(b, R.addCard(b, 40, 56));
+  const c = R.card(b, R.addCard(b, 40, 56))!;
   assert.deepEqual([c.x, c.y, c.w, c.text, c.notes, c.color], [48, 48, 240, "", undefined, 1]);
 });
 
 test("moveCards snaps relative to the drag origins", () => {
   const b = board([card("a", 0, 0), card("b", 48, 24)]);
   R.moveCards(b, [{ id: "a", x: 0, y: 0 }, { id: "b", x: 48, y: 24 }], 32, 10);
-  assert.deepEqual([R.card(b, "a").x, R.card(b, "a").y, R.card(b, "b").x, R.card(b, "b").y], [24, 0, 72, 24]);
+  assert.deepEqual([R.card(b, "a")!.x, R.card(b, "a")!.y, R.card(b, "b")!.x, R.card(b, "b")!.y], [24, 0, 72, 24]);
 });
 
 test("finishEdit trims trailing whitespace", () => {
   const b = board([card("a", 0, 0, "Idea\nmore\n\n")]);
   R.finishEdit(b, "a");
-  assert.equal(R.card(b, "a").text, "Idea\nmore");
+  assert.equal(R.card(b, "a")!.text, "Idea\nmore");
 });
 
 test("finishEdit trims notes and drops blank ones", () => {
@@ -45,8 +46,8 @@ test("finishEdit trims notes and drops blank ones", () => {
   R.setNotes(b, "b", " \n");
   R.finishEdit(b, "a");
   R.finishEdit(b, "b");
-  assert.equal(R.card(b, "a").notes, "As a user");
-  assert.equal("notes" in R.card(b, "b"), false);
+  assert.equal(R.card(b, "a")!.notes, "As a user");
+  assert.equal("notes" in R.card(b, "b")!, false);
 });
 
 test("a card with only notes is kept; one blank on both sides is removed", () => {
@@ -60,8 +61,8 @@ test("a card with only notes is kept; one blank on both sides is removed", () =>
 test("setColor changes cards only", () => {
   const b = board([card("a", 0, 0)], [lane("l", 0, 0)]);
   R.setColor(b, new Set(["a", "l"]), 4);
-  assert.equal(R.card(b, "a").color, 4);
-  assert.equal("color" in R.lane(b, "l"), false);
+  assert.equal(R.card(b, "a")!.color, 4);
+  assert.equal("color" in R.lane(b, "l")!, false);
 });
 
 test("remove deletes a lane but not the cards on it", () => {
@@ -80,13 +81,13 @@ test("cardsInLane counts cards whose centre is inside", () => {
 test("moveLane carries its cards by the snapped delta", () => {
   const b = board([card("a", 24, 72)], [lane("l", 0, 0)]);
   R.moveLane(b, { id: "l", x: 0, y: 0 }, [{ id: "a", x: 24, y: 72 }], 61, -14);
-  assert.deepEqual([R.lane(b, "l").x, R.lane(b, "l").y, R.card(b, "a").x, R.card(b, "a").y], [72, -24, 96, 48]);
+  assert.deepEqual([R.lane(b, "l")!.x, R.lane(b, "l")!.y, R.card(b, "a")!.x, R.card(b, "a")!.y], [72, -24, 96, 48]);
 });
 
 test("resizeLane snaps and keeps a minimum size", () => {
   const b = board([], [lane("l", 0, 0)]);
   R.resizeLane(b, "l", 520, 10);
-  assert.deepEqual([R.lane(b, "l").w, R.lane(b, "l").h], [528, 96]);
+  assert.deepEqual([R.lane(b, "l")!.w, R.lane(b, "l")!.h], [528, 96]);
 });
 
 test("cardsInRect finds overlapping cards", () => {
@@ -140,9 +141,9 @@ test("a lane grows to fit its stack and shrinks back", () => {
   const b = stackBoard(240);
   const d = drag(b, ["d"]);
   R.moveCards(b, d.origins, -576, 0, d.room);
-  assert.equal(R.lane(b, "l").h, 288);
+  assert.equal(R.lane(b, "l")!.h, 288);
   R.moveCards(b, d.origins, 0, 0, d.room);
-  assert.equal(R.lane(b, "l").h, 240);
+  assert.equal(R.lane(b, "l")!.h, 240);
 });
 
 test("search finds fronts, backs and lane titles in reading order, ignoring case", () => {
@@ -175,7 +176,7 @@ test("a card dropped in a lane lands centred in it", () => {
   const d = drag(b, ["d"]);
   R.moveCards(b, d.origins, -528, 0, d.room);
   R.land(b, new Set(["d"]), d.room);
-  assert.equal(R.card(b, "d").x, 120);
+  assert.equal(R.card(b, "d")!.x, 120);
 });
 
 test("a card dropped in a wide lane lands centred in the column under it", () => {
@@ -183,7 +184,7 @@ test("a card dropped in a wide lane lands centred in the column under it", () =>
   const d = drag(b, ["d"]);
   R.moveCards(b, d.origins, -264, 0, d.room);
   R.land(b, new Set(["d"]), d.room);
-  assert.equal(R.card(b, "d").x, 312);
+  assert.equal(R.card(b, "d")!.x, 312);
 });
 
 test("openSpot is the nearest place a grid clear of everything", () => {

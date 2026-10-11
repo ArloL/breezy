@@ -2,13 +2,262 @@
 // direct channels, joined by simulated networks on virtual time. See the convergence fuzzing design.
 import { createHash } from "node:crypto";
 import { deflateRawSync, inflateRawSync } from "node:zlib";
-import * as V from "./virtual.mjs";
-import { Rng } from "./rng.mjs";
-import { Relay } from "./relay.mjs";
-import { Server } from "./server.mjs";
-import { Link } from "./links.mjs";
-import { WebDevices } from "./web-device.mjs";
-import { SwiftDevices } from "./swift-devices.mjs";
+import * as V from "./virtual.ts";
+import { Rng } from "./rng.ts";
+import { Relay } from "./relay.ts";
+import { Server } from "./server.ts";
+import { Link } from "./links.ts";
+import { WebDevices } from "./web-device.ts";
+import { SwiftDevices } from "./swift-devices.ts";
+import type { IncomingHttpHeaders, OutgoingHttpHeaders } from "node:http";
+import type { ServerSocket } from "./cloudflare-shim.ts";
+import type { Attachment } from "./relay.ts";
+import type { Dest, State as LinkState } from "./links.ts";
+import type { Invite } from "../../web/sync/crypto.ts";
+
+export interface Me {
+  device: string;
+  name: string;
+}
+
+/** A mouse or finger event at a screen point: down, move, up or cancel. */
+export interface Pointer {
+  op: "pointer";
+  phase: "down" | "move" | "up" | "cancel";
+  x: number;
+  y: number;
+  /** A mouse by default. */
+  kind?: "mouse" | "touch";
+  /** Which finger, for touches. */
+  finger?: number;
+  shift?: boolean;
+  option?: boolean;
+  /** 2 for the second press of a double-click. */
+  clicks?: number;
+}
+
+export type Op =
+  | { op: "newSpace"; server: string; name: string }
+  | { op: "createBoard"; title: string }
+  | { op: "open"; board: string }
+  | { op: "join"; invite: Invite }
+  | { op: "show"; visible: boolean }
+  | { op: "retry"; changed: boolean }
+  | { op: "resync" | "release" | "cancel" | "undo" | "redo" }
+  | { op: "cursor"; x: number | null; y: number | null }
+  | { op: "addCard" | "addLane"; x: number; y: number }
+  | { op: "color"; n: number; count: number; color: number }
+  | { op: "delete"; n: number; count: number }
+  | { op: "type"; n: number; text: string; back?: boolean }
+  | { op: "newCard"; x: number; y: number; text: string }
+  | { op: "laneTitle"; n: number; text: string }
+  | { op: "resize"; n: number; dw: number; dh: number }
+  | { op: "press"; n: number; count: number; lane: boolean }
+  | { op: "drag"; dx: number; dy: number }
+  | Pointer;
+
+interface Replies {
+  newSpace: { invite: Invite };
+  createBoard: { board: string };
+  open: { opened: boolean } | null;
+}
+type ReplyOf<O extends Op> = O["op"] extends keyof Replies ? Replies[O["op"]] : unknown;
+
+export interface Candidate {
+  candidate: string;
+  mid: string;
+  index: number;
+}
+
+/** What reaches a device from the network. */
+export type Message =
+  | { cmd: "http"; req: number; status?: number; body?: string | null; error?: string }
+  | { cmd: "ws-open"; sock: number }
+  | { cmd: "ws-msg"; sock: number; text?: string; bytes?: string }
+  | { cmd: "ws-close"; sock: number; code: number }
+  | { cmd: "peer-done"; call: number; value: unknown }
+  | { cmd: "peer-state"; peer: string; state: "open" | "closed" | "failed" }
+  | { cmd: "peer-msg"; peer: string; text?: string; bytes?: string }
+  | { cmd: "peer-candidate"; peer: string; candidate: Candidate | null };
+
+export type DeviceCommand = Message | { cmd: "op"; op: Op } | { cmd: "fire" } | { cmd: "state" } | { cmd: "scene" } | { cmd: "new"; me: Me; seed: number };
+
+export type Command = (DeviceCommand & { dev: number }) | { cmd: "time"; t: number; skew: Record<string, number> };
+
+export interface PeerEvent {
+  ev: "peer-create" | "peer-offer" | "peer-answer" | "peer-accept" | "peer-add" | "peer-send" | "peer-close";
+  peer: string;
+  call?: number;
+  restart?: boolean;
+  sdp?: unknown;
+  candidate?: unknown;
+  text?: string;
+  bytes?: string;
+}
+
+/** What a device sends out. */
+export type Event = { dev: number } & (
+  | { ev: "http"; req: number; method: string; url: string; headers: Record<string, string>; body: string | null }
+  | { ev: "http-cancel"; req: number }
+  | { ev: "ws-connect"; sock: number; url: string }
+  | { ev: "ws-send"; sock: number; text?: string; bytes?: string }
+  | { ev: "ws-close"; sock: number }
+  | PeerEvent
+);
+
+export interface Reply {
+  out?: Event[];
+  next?: Record<string, number | null>;
+  reply?: unknown;
+  error?: string;
+}
+
+export interface Backend {
+  command(c: Command): Promise<Reply>;
+}
+
+export interface CardSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  text: string;
+  notes: string;
+  color: number;
+}
+
+export interface LaneSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  title: string;
+}
+
+export interface Snapshot {
+  boards: Record<string, { title: string; cards: CardSnapshot[]; lanes: LaneSnapshot[] }>;
+  pending: number;
+  overlays: Record<string, number>;
+  mine: number;
+  connected: boolean;
+  seen: string[];
+  status: string;
+  shown?: { board: string; same: boolean } | null;
+}
+
+export interface Device {
+  i: number;
+  kind: "web" | "swift";
+  backend: Backend;
+  next: number | null;
+  frozen: boolean;
+  inbox: Message[];
+  skew: number;
+  me: Me;
+  board: string | null;
+  opened: boolean;
+  gesture: boolean | null;
+  hidden: boolean;
+  link: Link;
+  joined: boolean;
+  gestureAt?: number;
+  thawedAt?: number;
+}
+
+interface ConnBase {
+  dev: number;
+  dead: boolean;
+  cancelled?: boolean;
+  lastDown?: number;
+  lastUp?: number;
+}
+
+interface HttpConn extends ConnBase {
+  kind: "http";
+  req: number;
+}
+
+interface WsConn extends ConnBase {
+  kind: "ws";
+  sock: number;
+  open: boolean;
+  closing?: boolean;
+  server?: ServerSocket<WsConn>;
+  idleHolds?: number | null;
+}
+
+type Conn = HttpConn | WsConn;
+
+interface Endpoint {
+  dev: number;
+  peer: string;
+  other: string | null;
+  open: boolean;
+  silent: boolean;
+  gen: number;
+}
+
+type ReplayEntry = Extract<Entry, { kind: "op" | "fault" | "link" }>;
+type Phase = "setup" | "run" | "heal" | "done";
+type HttpFault = "lostResponse" | "serverError" | "portal" | "truncated" | "failFast";
+type Fault = keyof typeof FAULTS;
+
+interface FaultBase {
+  kind: "fault";
+  dev?: number;
+  peer?: string;
+}
+
+type FaultEntry = FaultBase &
+  (
+    | { fault: HttpFault | "relayRestart" | "relayEvict" | "relayDrop" | "directClose" | "directSilent" }
+    | { fault: "skew"; skew: number }
+    | { fault: "freeze" | "directFail" | "absence"; ms: number }
+    | { fault: "outage"; dest: "server" | "relay"; ms: number }
+    | { fault: "restore"; backup: boolean }
+  );
+
+/** A trace's entry, as replay reads it. */
+export type Entry = { t: number; phase: Phase; derived?: boolean } & (
+  | { kind: "op"; dev: number; op: Op; boardIndex?: number }
+  | { kind: "link"; dev: number; to: string; state?: LinkState; until?: number; kills: boolean; keeps?: boolean; toldOffline?: boolean }
+  | FaultEntry
+  | { kind: "hit" | "violation" | "heal"; dev?: number }
+);
+
+export interface Problem {
+  dev?: number;
+  problem: string;
+  diff?: Diff | null;
+}
+
+type Diff = { path: string; want: unknown; got: unknown } | { path: string; missing: unknown[]; extra: unknown[] };
+
+export interface HubOptions {
+  seed: number;
+  steps?: number;
+  web?: number;
+  swift?: number;
+  profile?: string;
+  restore?: boolean;
+  faults?: boolean;
+  plant?: string | null;
+  log?: (...a: unknown[]) => void;
+  replay?: Entry[];
+  faultMean?: number;
+  faultWeights?: Partial<Record<Fault, number>>;
+  probes?: number;
+}
+
+export interface Result {
+  ok: boolean;
+  problems: Problem[];
+  hash: string;
+  trace: Entry[];
+  stats: Hub["stats"];
+  cards: number;
+}
 
 const RELAY = "ws://127.0.0.1:9/";
 /** How long after the last operation the hub lets everything settle before it checks. */
@@ -16,8 +265,8 @@ const HEAL_MS = Number(process.env.HEAL_MS ?? 90_000);
 const OP_MEAN_MS = 700;
 const FAULT_MEAN_MS = 6_000;
 
-const b64 = (bytes) => Buffer.from(bytes).toString("base64url");
-const unb64 = (s) => (s == null ? null : Buffer.from(s, "base64url"));
+const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
+const unb64 = (s: string | null | undefined) => (s == null ? null : Buffer.from(s, "base64url"));
 
 /** Operation weights; a gesture is press, drags, then release or cancel. */
 const OPS = { addCard: 10, type: 10, color: 6, delete: 3, addLane: 2, drag: 12, dragLane: 3, undo: 4, redo: 2, hide: 3, retry: 1, resync: 0.5, bulk: 0.4, board: 0.5, cursor: 6, newCard: 6, laneTitle: 1.5, resize: 1.5 };
@@ -27,7 +276,39 @@ const FAULTS = {
 };
 
 export class Hub {
-  constructor(opts) {
+  opts: HubOptions & Required<Pick<HubOptions, "steps" | "web" | "swift" | "profile" | "restore" | "faults" | "plant" | "log">>;
+  rng: Rng;
+  rngOps: Rng;
+  rngNet: Rng;
+  rngFault: Rng;
+  rngEpoch: Rng;
+  queue: { t: number; seq: number; what: string; fn: () => unknown }[];
+  seq: number;
+  trace: Entry[];
+  conns: Map<string, Conn>;
+  peers: Map<string, Endpoint>;
+  devices: Device[];
+  stats: { requests: number; frames: number; channelMessages: number; faults: Partial<Record<Fault, number>>; ops: Partial<Record<Op["op"], number>>; recovery: { sync: number[]; relay: number[] } };
+  back: Map<number, { at: number; sync: boolean; relay: boolean }>;
+  declare phase: Phase;
+  declare server: Server;
+  declare relayCtx: V.Context;
+  declare relay: Relay<WsConn>;
+  declare web: WebDevices;
+  declare swift: SwiftDevices | null;
+  declare boards: string[];
+  declare invite: Invite;
+  declare opsLeft: number;
+  declare gestures: number;
+  declare httpFault: string | null | undefined;
+  declare epochMap: Map<string, string>;
+  declare healing: boolean | undefined;
+  declare directFails: boolean | undefined;
+  declare backedUp: boolean | undefined;
+  declare violations: Map<string, Problem>;
+  declare probes: number | undefined;
+
+  constructor(opts: HubOptions) {
     this.opts = { steps: 300, web: 2, swift: 2, profile: "mixed", restore: true, faults: true, plant: null, log: () => {}, ...opts };
     this.rng = new Rng(this.opts.seed);
     this.rngOps = new Rng(this.rng.fork());
@@ -45,24 +326,24 @@ export class Hub {
     this.back = new Map();
   }
 
-  log(...a) {
+  log(...a: unknown[]) {
     this.opts.log(`[${(V.now / 1000).toFixed(3)}]`, ...a);
   }
 
-  note(kind, detail) {
+  note(kind: Entry["kind"], detail: object) {
     // the server's port changes from run to run
     const entry = JSON.parse(JSON.stringify({ t: Math.round(V.now * 1000) / 1000, kind, phase: this.phase, ...detail }).replaceAll(this.server?.url ?? "\0", "SERVER"));
     this.trace.push(entry);
   }
 
-  at(t, what, fn) {
+  at(t: number, what: string, fn: () => unknown) {
     this.queue.push({ t: Math.max(t, V.now), seq: ++this.seq, what, fn });
   }
 
   async start() {
     if (this.opts.plant) process.env.BREEZY_PLANT = this.opts.plant;
     else delete process.env.BREEZY_PLANT;
-    globalThis.__breezyPlant = this.opts.plant;
+    globalThis.__breezyPlant = this.opts.plant ?? undefined;
     V.reset();
     this.server = await Server.start(RELAY);
     this.relayCtx = new V.Context("relay", this.rng.fork());
@@ -74,14 +355,14 @@ export class Hub {
     this.web.log = (...a) => this.log(...a);
     this.swift = this.opts.swift > 0 ? await SwiftDevices.start() : null;
     // the kinds interleave, so that the first two differ when both run
-    const order = [];
+    const order: ("web" | "swift")[] = [];
     for (let i = 0; order.length < this.opts.web + this.opts.swift; i++) {
       if (i < this.opts.web) order.push("web");
       if (i < this.opts.swift) order.push("swift");
     }
     for (const [i, kind] of order.entries()) {
-      const d = {
-        i, kind, backend: kind === "web" ? this.web : this.swift, next: null, frozen: false, inbox: [], skew: 0,
+      const d: Device = {
+        i, kind, backend: kind === "web" ? this.web : this.swift!, next: null, frozen: false, inbox: [], skew: 0,
         me: { device: b64(this.rng.bytes(16)), name: `d${i}` }, board: null, opened: false, gesture: null, hidden: false,
         link: new Link(new Rng(this.rng.fork()), this.opts.profile), joined: false,
       };
@@ -98,7 +379,9 @@ export class Hub {
   // MARK: devices
 
   /** Sends a command to `d`'s backend and takes what it emitted. */
-  async command(d, c) {
+  async command(d: Device, c: { cmd: "state" }): Promise<Snapshot>;
+  async command(d: Device, c: DeviceCommand): Promise<unknown>;
+  async command(d: Device, c: DeviceCommand) {
     const r = await d.backend.command({ ...c, dev: d.i });
     if (r.error) throw new Error(`device ${d.i} (${d.kind}): ${r.error}`);
     for (const [i, t] of Object.entries(r.next ?? {})) {
@@ -110,7 +393,7 @@ export class Hub {
   }
 
   /** Something for device `d` arrives: now, or when it thaws. */
-  async deliver(d, c) {
+  async deliver(d: Device, c: Message) {
     if (d.frozen) return d.inbox.push(c);
     const back = this.back.get(d.i);
     if (back && !this.healing) {
@@ -127,17 +410,17 @@ export class Hub {
     await this.command(d, c);
   }
 
-  async op(d, o, extra = {}) {
+  async op<O extends Op>(d: Device, o: O, extra = {}): Promise<ReplyOf<O>> {
     this.stats.ops[o.op] = (this.stats.ops[o.op] ?? 0) + 1;
     if (["press", "drag", "release", "cancel", "type", "newCard", "laneTitle", "resize"].includes(o.op)) d.gestureAt = V.now;
     this.note("op", { dev: d.i, op: o, ...extra });
-    return this.command(d, { cmd: "op", op: o });
+    return this.command(d, { cmd: "op", op: o }) as Promise<ReplyOf<O>>;
   }
 
   // MARK: network
 
   /** When a message `d` sends to `dest` now on `conn` arrives, or null when it is lost. */
-  transit(d, dest, conn) {
+  transit(d: Device, dest: Dest | "peer", conn?: Conn) {
     if (conn?.dead) return null;
     const link = d.link;
     let ms = link.latency(dest, dest !== "peer");
@@ -155,7 +438,7 @@ export class Hub {
     return t;
   }
 
-  emitted(e) {
+  emitted(e: Event) {
     const d = this.devices[e.dev];
     switch (e.ev) {
       case "http":
@@ -176,11 +459,11 @@ export class Hub {
     }
   }
 
-  http(d, e) {
+  http(d: Device, e: Extract<Event, { ev: "http" }>) {
     this.stats.requests++;
-    const conn = { kind: "http", dev: d.i, req: e.req, dead: false };
+    const conn: HttpConn = { kind: "http", dev: d.i, req: e.req, dead: false };
     this.conns.set(`http ${d.i} ${e.req}`, conn);
-    const answer = (t, a) => this.at(t, "http answer", async () => {
+    const answer = (t: number, a: { status?: number; body?: string | null; error?: string }) => this.at(t, "http answer", async () => {
       this.conns.delete(`http ${d.i} ${e.req}`);
       if (conn.dead || conn.cancelled) return;
       await this.deliver(d, { cmd: "http", req: e.req, ...a });
@@ -208,8 +491,8 @@ export class Hub {
     });
   }
 
-  wsConnect(d, e) {
-    const conn = { kind: "ws", dev: d.i, sock: e.sock, dead: false, open: false };
+  wsConnect(d: Device, e: Extract<Event, { ev: "ws-connect" }>) {
+    const conn: WsConn = { kind: "ws", dev: d.i, sock: e.sock, dead: false, open: false };
     this.conns.set(`ws ${d.i} ${e.sock}`, conn);
     if (d.link.toldOffline) return this.at(V.now + 1, "ws refused", () => this.deliver(d, { cmd: "ws-close", sock: e.sock, code: 1006 }));
     const t = this.transit(d, "relay", conn);
@@ -226,13 +509,15 @@ export class Hub {
   /** `body` with the server's epochs, which come from real random bytes, as seeded stand-ins on the way to a device
    * (`out`) and back on the way to the server, so that a seed replays alike: they are compared only for equality, but
    * they change the size of a deflated request, which a stall's timeout counts. */
-  epochs(body, headers, out) {
+  epochs(body: Buffer, headers: OutgoingHttpHeaders | IncomingHttpHeaders, out: boolean): Buffer;
+  epochs(body: Buffer | null, headers: OutgoingHttpHeaders | IncomingHttpHeaders, out: boolean): Buffer | null;
+  epochs(body: Buffer | null, headers: OutgoingHttpHeaders | IncomingHttpHeaders, out: boolean) {
     if (!body?.length) return body;
-    const deflated = Object.entries(headers ?? {}).some(([k, v]) => k.toLowerCase() === "content-encoding" && /deflate/.test(v));
+    const deflated = Object.entries(headers ?? {}).some(([k, v]) => k.toLowerCase() === "content-encoding" && /deflate/.test(String(v)));
     let text = (deflated ? inflateRawSync(body) : body).toString();
     this.epochMap ??= new Map();
     if (out) {
-      text = text.replace(/"epoch":"([A-Za-z0-9_-]{22})"/g, (_, real) => {
+      text = text.replace(/"epoch":"([A-Za-z0-9_-]{22})"/g, (_, real: string) => {
         if (!this.epochMap.has(real)) this.epochMap.set(real, b64(this.rngEpoch.bytes(16)));
         return `"epoch":"${this.epochMap.get(real)}"`;
       });
@@ -244,8 +529,8 @@ export class Hub {
   }
 
   /** A frame or a close from a device's socket to the relay. */
-  wsUp(d, e) {
-    const conn = this.conns.get(`ws ${d.i} ${e.sock}`);
+  wsUp(d: Device, e: Extract<Event, { ev: "ws-send" | "ws-close" }>) {
+    const conn = this.conns.get(`ws ${d.i} ${e.sock}`) as WsConn | undefined;
     if (!conn) return;
     if (e.ev === "ws-close") conn.closing = true;
     const t = this.transit(d, "relay", conn);
@@ -260,12 +545,12 @@ export class Hub {
         if (back !== null) this.at(back, "ws closed", () => this.deliver(d, { cmd: "ws-close", sock: e.sock, code: 1000 }));
         return;
       }
-      await this.relay.message(conn, e.text ?? new Uint8Array(unb64(e.bytes)));
+      await this.relay.message(conn, e.text ?? new Uint8Array(unb64(e.bytes)!));
     });
   }
 
   /** The relay sends `conn`'s device a frame or a close. */
-  down(conn, m) {
+  down(conn: WsConn, m: { text?: string; bytes?: string; close?: number }) {
     const d = this.devices[conn.dev];
     const t = this.transit(d, "client", conn);
     if (t === null) return;
@@ -285,7 +570,7 @@ export class Hub {
 
   /** `d` lost its connections without a word, as on a network change: a dead socket stays at the relay until TCP
    * gives up on it. */
-  kill(d) {
+  kill(d: Device) {
     for (const [k, c] of this.conns) {
       if (c.dev !== d.i || c.dead) continue;
       c.dead = true;
@@ -297,16 +582,16 @@ export class Hub {
 
   // MARK: direct channels
 
-  endpoint(d, peer) {
+  endpoint(d: Device, peer: string): Endpoint {
     const k = `${d.i} ${peer}`;
     if (!this.peers.has(k)) this.peers.set(k, { dev: d.i, peer, other: null, open: false, silent: false, gen: 0 });
-    return this.peers.get(k);
+    return this.peers.get(k)!;
   }
 
-  peer(d, e) {
+  peer(d: Device, e: PeerEvent) {
     const ep = this.endpoint(d, e.peer);
     const soon = () => V.now + this.rngNet.between(1, 20);
-    const done = (value) => this.at(soon(), "peer done", () => this.deliver(d, { cmd: "peer-done", call: e.call, value }));
+    const done = (value: unknown) => this.at(soon(), "peer done", () => this.deliver(d, { cmd: "peer-done", call: e.call!, value }));
     const candidates = () =>
       this.at(soon(), "candidates", async () => {
         await this.deliver(d, { cmd: "peer-candidate", peer: e.peer, candidate: { candidate: `candidate:sim ${d.i}`, mid: "0", index: 0 } });
@@ -341,8 +626,8 @@ export class Hub {
     }
   }
 
-  tryOpen(a) {
-    const b = this.peers.get(a.other);
+  tryOpen(a: Endpoint) {
+    const b = this.peers.get(a.other!);
     if (!b || b.other !== `${a.dev} ${a.peer}`) return;
     const da = this.devices[a.dev], db = this.devices[b.dev];
     if (this.directFails || !da.link.up || !db.link.up) return;
@@ -357,8 +642,8 @@ export class Hub {
     });
   }
 
-  channelSend(a, e) {
-    const b = this.peers.get(a.other);
+  channelSend(a: Endpoint, e: PeerEvent) {
+    const b = this.peers.get(a.other!);
     if (!a.open || !b?.open || a.silent) return;
     const da = this.devices[a.dev], db = this.devices[b.dev];
     const up = da.link.latency("peer", false), down = db.link.latency("peer", false);
@@ -369,8 +654,8 @@ export class Hub {
   }
 
   /** `ep`'s channel closes; the other end hears of it unless `local` only. */
-  closeChannel(ep, tell) {
-    const other = ep.other && this.peers.get(ep.other);
+  closeChannel(ep: Endpoint, tell: boolean) {
+    const other = ep.other ? this.peers.get(ep.other) : null;
     ep.open = false;
     if (tell && other?.open) {
       other.open = false;
@@ -381,13 +666,13 @@ export class Hub {
   }
 
   /** The channel stops carrying anything; ICE notices a few seconds on and both ends close. */
-  silence(ep) {
-    const other = ep.other && this.peers.get(ep.other);
+  silence(ep: Endpoint) {
+    const other = ep.other ? this.peers.get(ep.other) : null;
     if (!ep.open || !other) return;
     ep.silent = other.silent = true;
     const gens = [ep.gen, other.gen];
     this.at(V.now + this.rngNet.between(5_000, 30_000), "ice gives up", async () => {
-      for (const [x, g] of [[ep, gens[0]], [other, gens[1]]]) {
+      for (const [x, g] of [[ep, gens[0]], [other, gens[1]]] as const) {
         if (x.gen !== g || !x.open) continue;
         x.open = false;
         await this.deliver(this.devices[x.dev], { cmd: "peer-state", peer: x.peer, state: "failed" });
@@ -398,7 +683,7 @@ export class Hub {
   // MARK: the run
 
   /** Moves to `t`, then runs whatever is due there: queued events, device timers and the relay's. */
-  async advance(t) {
+  async advance(t: number) {
     V.setTime(t);
     const skew = Object.fromEntries(this.devices.map((d) => [d.i, d.skew]));
     await this.web.command({ cmd: "time", t, skew });
@@ -406,7 +691,7 @@ export class Hub {
     for (;;) {
       this.queue.sort((a, b) => a.t - b.t || a.seq - b.seq);
       if (this.queue.length && this.queue[0].t <= t) {
-        const e = this.queue.shift();
+        const e = this.queue.shift()!;
         await e.fn();
         continue;
       }
@@ -434,7 +719,7 @@ export class Hub {
     return t;
   }
 
-  async runUntil(end) {
+  async runUntil(end: number) {
     for (;;) {
       const t = this.nextTime();
       if (t > end) break;
@@ -488,7 +773,7 @@ export class Hub {
     });
   }
 
-  async openBoard(d, index = this.rngOps.int(this.boards.length)) {
+  async openBoard(d: Device, index = this.rngOps.int(this.boards.length)) {
     const board = this.boards[index];
     if (!board) return;
     const r = await this.op(d, { op: "open", board }, { boardIndex: index });
@@ -502,7 +787,7 @@ export class Hub {
     for (const d of this.devices) this.nextOp(d);
   }
 
-  nextOp(d) {
+  nextOp(d: Device) {
     if (this.opsLeft <= 0) return;
     this.at(V.now + this.rngOps.between(0, 2 * OP_MEAN_MS), "op", async () => {
       if (this.opsLeft <= 0) return;
@@ -514,7 +799,7 @@ export class Hub {
     });
   }
 
-  async randomOp(d) {
+  async randomOp(d: Device) {
     const r = this.rngOps;
     if (!d.opened) return this.openBoard(d);
     const kind = r.weighted(OPS);
@@ -591,7 +876,7 @@ export class Hub {
   }
 
   /** A press, moves every 16–80 ms, then a release, or now and then a cancel. */
-  async gesture(d, press) {
+  async gesture(d: Device, press: Extract<Op, { op: "press" }>) {
     const r = this.rngOps;
     d.gesture = true;
     this.gestures++;
@@ -633,7 +918,7 @@ export class Hub {
     const r = this.rngFault;
     const weights = { ...FAULTS, ...this.opts.faultWeights };
     if (!this.opts.restore) weights.restore = 0;
-    const f = r.weighted(weights);
+    const f = r.weighted(weights)!;
     const d = r.pick(this.devices);
     this.stats.faults[f] = (this.stats.faults[f] ?? 0) + 1;
     switch (f) {
@@ -678,7 +963,7 @@ export class Hub {
       case "freeze":
         return this.freeze(d, r.chance(0.7) ? r.between(5_000, 60_000) : r.between(60_000, 8 * 3_600_000));
       case "outage": {
-        const dest = r.pick(["server", "relay"]);
+        const dest = r.pick(["server", "relay"] as const);
         const ms = r.between(10_000, 60_000);
         this.note("fault", { fault: f, dev: d.i, dest, ms: Math.round(ms) });
         return this.outage(d, dest, ms);
@@ -709,33 +994,33 @@ export class Hub {
     }
   }
 
-  async directClose(ep) {
+  async directClose(ep: Endpoint) {
     await this.deliver(this.devices[ep.dev], { cmd: "peer-state", peer: ep.peer, state: "closed" });
     this.closeChannel(ep, true);
   }
 
-  directFail(ms) {
+  directFail(ms: number) {
     this.directFails = true;
     this.at(V.now + ms, "direct works", () => {
       this.directFails = false;
     });
   }
 
-  outage(d, dest, ms) {
+  outage(d: Device, dest: "server" | "relay", ms: number) {
     d.link.blocked[dest] = true;
     this.at(V.now + ms, "outage ends", () => {
       d.link.blocked[dest] = !this.healing && d.link.profile.relayBlocked && dest === "relay";
     });
   }
 
-  restore(backup) {
+  restore(backup: boolean) {
     if (backup) {
       this.server.backup();
       this.backedUp = true;
     } else if (this.backedUp) this.server.restore();
   }
 
-  async freeze(d, ms) {
+  async freeze(d: Device, ms: number) {
     if (d.frozen) return;
     this.note("fault", { fault: "freeze", dev: d.i, ms: Math.round(ms) });
     d.frozen = true;
@@ -744,7 +1029,7 @@ export class Hub {
     this.at(V.now + ms, "thaw", () => this.thaw(d));
   }
 
-  async thaw(d) {
+  async thaw(d: Device) {
     if (!d.frozen) return;
     d.frozen = false;
     d.thawedAt = V.now;
@@ -755,7 +1040,7 @@ export class Hub {
     if (!d.hidden) await this.op(d, { op: "show", visible: true }, { derived: true });
   }
 
-  scheduleLink(d) {
+  scheduleLink(d: Device) {
     const step = () => {
       if (this.healing) return;
       const s = d.link.step(V.now);
@@ -769,7 +1054,7 @@ export class Hub {
     this.at(V.now + this.rngNet.between(0, 10_000), "link", step);
   }
 
-  flap(d, until) {
+  flap(d: Device, until: number) {
     const t = V.now + this.rngNet.between(200, 2000);
     if (t >= until) return;
     this.at(t, "flap", async () => {
@@ -798,7 +1083,7 @@ export class Hub {
         }
       }
       for (const ws of this.relay.state.sockets) {
-        const a = ws.deserializeAttachment();
+        const a = ws.deserializeAttachment() as Attachment | null;
         if (!a?.authed || a.left || !a.holds.length || mine.get(ws.conn.dev) > 0) {
           if (ws.conn) ws.conn.idleHolds = null;
           continue;
@@ -810,7 +1095,7 @@ export class Hub {
     });
   }
 
-  violation(dev, kind, problem) {
+  violation(dev: number, kind: string, problem: string) {
     const k = `${dev} ${kind}`;
     if (this.violations.has(k)) return;
     this.violations.set(k, { dev, problem: `${problem} (at ${(V.now / 1000).toFixed(1)} s)` });
@@ -820,8 +1105,8 @@ export class Hub {
   // MARK: replay
 
   /** Runs the run phase's entries of a trace at their times instead of drawing operations, faults and links. */
-  scheduleReplay(trace) {
-    const entries = trace.filter((e) => e.phase === "run" && !e.derived && ["op", "fault", "link"].includes(e.kind));
+  scheduleReplay(trace: Entry[]) {
+    const entries = trace.filter((e): e is ReplayEntry => e.phase === "run" && !e.derived && ["op", "fault", "link"].includes(e.kind));
     this.opsLeft = entries.length;
     this.gestures = 0;
     for (const e of entries) this.at(e.t, "replay", async () => {
@@ -830,8 +1115,8 @@ export class Hub {
     });
   }
 
-  async replayEntry(e) {
-    const d = this.devices[e.dev];
+  async replayEntry(e: ReplayEntry) {
+    const d = this.devices[e.dev!];
     if (e.kind === "link") {
       if (e.to === "flap") return this.kill(d);
       Object.assign(d.link, { state: e.state, until: e.until, keeps: e.keeps, toldOffline: e.toldOffline });
@@ -849,9 +1134,9 @@ export class Hub {
         case "relayEvict":
           return this.relay.evict();
         case "directClose":
-          return ep()?.open && this.directClose(ep());
+          return ep()?.open && this.directClose(ep()!);
         case "directSilent":
-          return ep()?.open && this.silence(ep());
+          return ep()?.open && this.silence(ep()!);
         case "skew":
           d.skew = e.skew;
           return;
@@ -940,19 +1225,19 @@ export class Hub {
   /** Two devices edit one card while both are cut off, then come back: a recolour on one and text on the other must
    * both stay (`disjoint`); text on both must stay, the second in a copy, as merging promises. Converging is not enough:
    * a merge that drops one side's change converges too. */
-  async probe(disjoint) {
+  async probe(disjoint: boolean) {
     const r = this.rngOps;
     const snaps = await Promise.all(this.devices.map((d) => this.command(d, { cmd: "state" })));
     const open = this.devices.filter((d, i) => snaps[i].shown?.same && snaps[i].shown.board);
-    const board = open[0] && snaps[open[0].i].shown.board;
-    const pair = open.filter((d) => snaps[d.i].shown.board === board);
+    const board = open[0] && snaps[open[0].i].shown!.board;
+    const pair = open.filter((d) => snaps[d.i].shown!.board === board);
     if (pair.length < 2) return;
     const [a, b] = [r.pick(pair), r.pick(pair.filter((d) => d !== pair[0]))].sort((x, y) => x.i - y.i);
     if (a === b) return;
     const cards = snaps[a.i].boards[board]?.cards ?? [];
     if (!cards.length) return;
     const ids = cards.map((c) => c.id).sort();
-    const n = r.int(ids.length), id = ids[n], card = cards.find((c) => c.id === id);
+    const n = r.int(ids.length), id = ids[n], card = cards.find((c) => c.id === id)!;
     const color = 1 + ((card.color ?? 1) % 5), ta = `probe a ${r.int(1e6)}`, tb = `probe b ${r.int(1e6)}`;
     for (const d of [a, b]) d.link.blocked = { server: true, relay: true };
     await this.op(a, disjoint ? { op: "color", n, count: 1, color } : { op: "type", n, text: ta });
@@ -974,8 +1259,8 @@ export class Hub {
     this.phase = "done";
     const snaps = [];
     for (const d of this.devices) snaps.push(await this.command(d, { cmd: "state" }));
-    const problems = [];
-    const canon = (s) => stable(s.boards);
+    const problems: Problem[] = [];
+    const canon = (s: Snapshot) => stable(s.boards);
     const want = canon(snaps[0]);
     const ids = this.devices.map((d) => d.me.device);
     for (const [i, s] of snaps.entries()) {
@@ -1000,13 +1285,13 @@ export class Hub {
 }
 
 /** JSON with every object's keys sorted, as the two kinds of device order them differently. */
-function stable(v) {
+function stable(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
-  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(",")}}`;
   return JSON.stringify(v);
 }
 
-function firstDiff(a, b, path = "") {
+function firstDiff(a: unknown, b: unknown, path = ""): Diff | null {
   if (JSON.stringify(a) === JSON.stringify(b)) return null;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return { path, want: a, got: b };
   if (Array.isArray(a) && Array.isArray(b) && a.length !== b.length) {
@@ -1014,7 +1299,7 @@ function firstDiff(a, b, path = "") {
     return { path, missing: [...ka].filter((x) => !kb.has(x)), extra: [...kb].filter((x) => !ka.has(x)) };
   }
   for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    const d = firstDiff(a[k], b[k], `${path}/${k}`);
+    const d = firstDiff((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}/${k}`);
     if (d) return d;
   }
   return null;

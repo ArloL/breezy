@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { Hub } from "../hub.mjs";
-import { BINARY } from "../swift-devices.mjs";
+import { Hub } from "../hub.ts";
+import { BINARY } from "../swift-devices.ts";
 
 test("web devices converge, and a seed replays to the same trace", async () => {
   const run = () => new Hub({ seed: 3, web: 3, swift: 0, steps: 150 }).run();

@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { liveFields, overlaid, startPositions } from "../sync/overlay.js";
+import { liveFields, overlaid, startPositions } from "../sync/overlay.ts";
+import type { Card, Lane } from "../types.ts";
+import type { Fields } from "../sync/overlay.ts";
 
-const card = (id, x, y, text = "t") => ({ id, x, y, w: 240, text, color: 1 });
-const lane = (id, x, y) => ({ id, x, y, w: 480, h: 720, title: "Lane" });
+const card = (id: string, x: number, y: number, text = "t"): Card => ({ id, x, y, w: 240, text, color: 1 });
+const lane = (id: string, x: number, y: number): Lane => ({ id, x, y, w: 480, h: 720, title: "Lane" });
 
 test("live fields are what a gesture changed of its items", () => {
   const start = { cards: [card("a", 0, 0, "x"), card("b", 0, 96)], lanes: [lane("l", 0, 0)] };
@@ -18,7 +20,7 @@ test("live fields are what a gesture changed of its items", () => {
   assert.deepEqual(f.l, { size: [720, 720] });
   assert.equal(f.n.kind, "card");
   assert.equal(f.n.text, "new");
-  assert.equal(f.n.order, undefined);
+  assert.equal((f.n as Fields).order, undefined);
 });
 
 test("start positions are where the held cards and lanes were when the gesture began", () => {
@@ -48,6 +50,6 @@ test("a deleted item goes as gone, and an overlay takes it off the board and put
   const now = { cards: [start.cards[0]], lanes: [] };
   assert.deepEqual(liveFields(start, now, new Set(["a", "b", "l"]), "B"), { b: { gone: true }, l: { gone: true } });
   const shown = overlaid(start, new Map([["b", { gone: true }], ["m", { kind: "lane", pos: [24, 48], size: [480, 240], title: "New" }]]));
-  assert.deepEqual(shown.cards.map((c) => c.id), ["a"]);
+  assert.deepEqual(shown.cards.map((c: Card) => c.id), ["a"]);
   assert.deepEqual(shown.lanes, [start.lanes[0], { id: "m", x: 24, y: 48, w: 480, h: 240, title: "New" }]);
 });

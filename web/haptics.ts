@@ -1,4 +1,4 @@
-let label;
+let label: HTMLLabelElement | undefined;
 
 /**
  * A light tap of the Taptic Engine, where iOS would give one. Safari 18 and later play it when a switch is toggled

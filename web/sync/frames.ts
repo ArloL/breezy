@@ -4,8 +4,8 @@
 const MAX_LEB_BYTES = 5;
 
 /** Unsigned LEB128, low group first. */
-export function leb(n) {
-  const out = [];
+export function leb(n: number): Uint8Array {
+  const out: number[] = [];
   while (n >= 0x80) {
     out.push((n % 0x80) | 0x80);
     n = Math.floor(n / 0x80);
@@ -15,7 +15,7 @@ export function leb(n) {
 }
 
 /** {value, next} for the LEB128 at `i`; null if truncated, over 5 bytes or above 2^32. */
-export function readLeb(bytes, i) {
+export function readLeb(bytes: Uint8Array, i: number): { value: number; next: number } | null {
   let value = 0;
   for (let k = 0; k < MAX_LEB_BYTES; k++) {
     if (i + k >= bytes.length) return null;
@@ -27,7 +27,7 @@ export function readLeb(bytes, i) {
 }
 
 /** The frame that sends `body` to connection number `to`, or to everyone else when `to` is null. */
-export function relayFrame(to, body) {
+export function relayFrame(to: number | null, body: Uint8Array): Uint8Array<ArrayBuffer> {
   const head = to === null ? Uint8Array.of(0) : Uint8Array.of(1, ...leb(to));
   const out = new Uint8Array(head.length + body.length);
   out.set(head);
@@ -36,7 +36,7 @@ export function relayFrame(to, body) {
 }
 
 /** {from, body} from a frame the relay forwarded; null if malformed. */
-export function parseRelayFrame(bytes) {
+export function parseRelayFrame(bytes: Uint8Array): { from: number; body: Uint8Array } | null {
   const r = readLeb(bytes, 0);
   return r && { from: r.value, body: bytes.subarray(r.next) };
 }

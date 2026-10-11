@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { between, valid, assign } from "../sync/order-key.js";
-import { fixture } from "./helpers/fixture.js";
+import { between, valid, assign } from "../sync/order-key.ts";
+import { fixture } from "./helpers/fixture.ts";
 
 const cases = fixture("order-key.json");
 

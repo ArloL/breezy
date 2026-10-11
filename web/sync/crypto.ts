@@ -1,14 +1,24 @@
 // A space's key and token, sealed records and invites, as BreezyKit's SpaceKeys and Invite.
-import { encode, decode } from "./base64.js";
+import { encode, decode } from "./base64.ts";
 
 const enc = new TextEncoder();
+
+/** A space's server, id and secret, and maybe its name: what an invite carries. */
+export interface Invite {
+  server: string;
+  space: string;
+  secret: string;
+  name?: string;
+}
+
+type Bytes = Uint8Array<ArrayBuffer>;
 export const INVITE_PREFIX = "https://breezy.k5d.de/#join=";
-export const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));
+export const randomBytes = (n: number): Uint8Array<ArrayBuffer> => crypto.getRandomValues(new Uint8Array(n));
 
 export class SpaceKeys {
-  static async create(space, secret) {
+  static async create(space: Bytes, secret: Bytes): Promise<SpaceKeys> {
     const base = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveKey", "deriveBits"]);
-    const info = (s) => ({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: enc.encode(s) });
+    const info = (s: string) => ({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: enc.encode(s) });
     const key = await crypto.subtle.deriveKey(info("breezy key"), base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
     const token = new Uint8Array(await crypto.subtle.deriveBits(info("breezy token"), base, 256));
     const relayToken = new Uint8Array(await crypto.subtle.deriveBits(info("breezy relay"), base, 256));
@@ -16,14 +26,19 @@ export class SpaceKeys {
   }
 
   /** `token` is for the server; `relayToken` for the relay, so that the relay never learns one it could use there. */
-  constructor(space, key, token, relayToken) {
+  space: Bytes;
+  key: CryptoKey;
+  token: Bytes;
+  relayToken: Bytes;
+
+  constructor(space: Bytes, key: CryptoKey, token: Bytes, relayToken: Bytes) {
     this.space = space;
     this.key = key;
     this.token = token;
     this.relayToken = relayToken;
   }
 
-  aad(id) {
+  aad(id: Uint8Array): Bytes {
     const a = new Uint8Array(this.space.length + id.length);
     a.set(this.space);
     a.set(id, this.space.length);
@@ -31,7 +46,7 @@ export class SpaceKeys {
   }
 
   /** Nonce, ciphertext and tag; the space and record ids are bound in, so the blob opens nowhere else. */
-  async seal(plain, id, nonce = randomBytes(12)) {
+  async seal(plain: Bytes, id: Uint8Array, nonce = randomBytes(12)): Promise<Bytes> {
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: this.aad(id) }, this.key, plain));
     const out = new Uint8Array(nonce.length + ct.length);
     out.set(nonce);
@@ -39,13 +54,13 @@ export class SpaceKeys {
     return out;
   }
 
-  async open(blob, id) {
+  async open(blob: Uint8Array, id: Uint8Array): Promise<Bytes> {
     const iv = blob.slice(0, 12);
     return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: this.aad(id) }, this.key, blob.slice(12)));
   }
 
   /** A live message's body: bound to the space, and marked live so that it never passes for a record. */
-  async sealLive(plain, nonce = randomBytes(12)) {
+  async sealLive(plain: Bytes, nonce = randomBytes(12)): Promise<Bytes> {
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: this.liveAad() }, this.key, plain));
     const out = new Uint8Array(nonce.length + ct.length);
     out.set(nonce);
@@ -53,11 +68,11 @@ export class SpaceKeys {
     return out;
   }
 
-  async openLive(body) {
+  async openLive(body: Uint8Array): Promise<Bytes> {
     return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: body.slice(0, 12), additionalData: this.liveAad() }, this.key, body.slice(12)));
   }
 
-  liveAad() {
+  liveAad(): Bytes {
     const a = new Uint8Array(4 + this.space.length);
     a.set(enc.encode("live"));
     a.set(this.space, 4);
@@ -66,7 +81,7 @@ export class SpaceKeys {
 }
 
 /** HTTPS, or plain HTTP to this computer for trying the server out. */
-export function validServer(s) {
+export function validServer(s: string): boolean {
   try {
     const u = new URL(s);
     return u.protocol === "https:" || (u.protocol === "http:" && ["localhost", "127.0.0.1"].includes(u.hostname));
@@ -75,14 +90,14 @@ export function validServer(s) {
   }
 }
 
-export const inviteLink = ({ server, space, secret, name }) =>
+export const inviteLink = ({ server, space, secret, name }: Invite): string =>
   INVITE_PREFIX + encode(enc.encode(JSON.stringify({ ...(name ? { name } : {}), secret, server, space })));
 
 /** The invite in pasted text, which may hold more than the link. */
-export function parseInvite(text) {
+export function parseInvite(text: string): Invite | null {
   const at = text.indexOf("#join=");
   if (at < 0) return null;
-  const bytes = decode(text.slice(at + 6).match(/^[A-Za-z0-9_-]*/)[0]);
+  const bytes = decode(text.slice(at + 6).match(/^[A-Za-z0-9_-]*/)![0]);
   if (!bytes) return null;
   try {
     const { server, space, secret, name } = JSON.parse(new TextDecoder().decode(bytes));

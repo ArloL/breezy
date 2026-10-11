@@ -134,8 +134,8 @@ test("only the app's pages may call from a browser", async () => {
 });
 
 test("the web app's engine syncs through the server", async () => {
-  const { Store } = await import("../../web/sync/store.js");
-  const { SyncEngine } = await import("../../web/sync/engine.js");
+  const { Store } = await import("../../web/sync/store.ts");
+  const { SyncEngine } = await import("../../web/sync/engine.ts");
   const a = new Store();
   const invite = a.startSyncing(URL_);
   const id = a.createBoard("Over HTTP");

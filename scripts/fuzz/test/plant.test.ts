@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { Hub } from "../hub.mjs";
-import { BINARY } from "../swift-devices.mjs";
-import { shrink } from "../shrink.mjs";
+import { Hub } from "../hub.ts";
+import { BINARY } from "../swift-devices.ts";
+import { shrink } from "../shrink.ts";
 
 // the fuzzer must find a planted bug within a small budget, and shrink it
 test("a planted bug fails the run, and shrinks", { skip: !existsSync(BINARY) && "breezy-sim is not built", timeout: 600_000 }, async () => {
