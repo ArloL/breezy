@@ -48,3 +48,20 @@ test("a lane deleted elsewhere between the press and the drag is not dragged", (
   mouse.up({ x: 200, y: 50 });
   assert.equal(a.model.inGesture, false);
 });
+
+test("a held card deleted elsewhere before the drag is not left lifted", () => {
+  const { app: a } = app();
+  a.input.hold({ x: 700, y: 100 });
+  assert.deepEqual([...a.state.lifted], ["a"]);
+  a.model.applyRemote({ cards: [], lanes: board().lanes });
+  a.input.dragStart({ x: 700, y: 100 }, { x: 650, y: 150 }, true);
+  assert.deepEqual([...a.state.lifted], []);
+});
+
+test("a held card someone else holds is not left lifted when the drag cannot start", () => {
+  const { app: a } = app();
+  a.input.hold({ x: 700, y: 100 });
+  a.state.taken = new Map([["a", { device: "d", name: "Bo", colour: "red" }]]);
+  a.input.dragStart({ x: 700, y: 100 }, { x: 650, y: 150 }, true);
+  assert.deepEqual([...a.state.lifted], []);
+});
