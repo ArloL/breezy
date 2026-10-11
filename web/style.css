@@ -121,7 +121,7 @@ body {
 .card.turned .ear { display: block; width: 24px; height: 24px; }
 
 .front { padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink2); outline: none; }
-.front::first-line { font-weight: 600; color: var(--ink); }
+.headline { font-weight: 600; color: var(--ink); }
 .back {
   display: none; position: absolute; inset: 0; padding: 24px;
   background: repeating-linear-gradient(to bottom, transparent 0 23px, var(--hairline) 23px 24px) content-box;
