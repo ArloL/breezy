@@ -100,6 +100,35 @@ final class Servers {
   #expect(again.group(of: id)?.space == g.space)
 }
 
+@MainActor @Test func anUnreadableSpaceFileIsSetAsideAndTheOthersOpen() throws {
+  let dir = tempDirectory()
+  let spaces = try Spaces(directory: dir)
+  _ = spaces.newSpace(server: testServer, name: "Work")
+  let id = spaces.local.store.createBoard(title: "Mine")
+  spaces.saveNow()
+  let broken = dir.appendingPathComponent("Spaces/broken.json")
+  try Data("{\"records\":".utf8).write(to: broken)
+  let again = try Spaces(directory: dir)
+  #expect(again.spaces.map(\.name) == ["Work"])
+  #expect(again.group(of: id) === again.local)
+  #expect(again.unreadable.count == 1)
+  #expect(try Data(contentsOf: again.unreadable[0]) == Data("{\"records\":".utf8))
+  #expect(!FileManager.default.fileExists(atPath: broken.path))
+}
+
+@MainActor @Test func anUnreadableLocalFileIsSetAsideAndTheSpacesOpen() throws {
+  let dir = tempDirectory()
+  let spaces = try Spaces(directory: dir)
+  _ = spaces.newSpace(server: testServer, name: "Work")
+  spaces.saveNow()
+  try Data("not json".utf8).write(to: dir.appendingPathComponent("Spaces/local.json"))
+  let again = try Spaces(directory: dir)
+  #expect(again.spaces.map(\.name) == ["Work"])
+  #expect(again.local.store.boards.isEmpty)
+  #expect(again.unreadable.map { $0.lastPathComponent.hasPrefix("local.json") } == [true])
+  #expect(try Data(contentsOf: again.unreadable[0]) == Data("not json".utf8))
+}
+
 @MainActor @Test func joiningASpaceAlreadyJoinedGivesItsGroup() throws {
   let spaces = try Spaces(directory: tempDirectory())
   let invite = Invite(server: testServer, space: newID(), secret: Base64URL.encode(randomBytes(32)), name: "Ours")
