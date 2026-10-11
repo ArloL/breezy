@@ -38,10 +38,11 @@ import Foundation
     var model: BoardModel
     var binding: BoardBinding
     var session: Collab.Session
+    var canvas: CanvasCore
   }
   private var open: Open?
-  /// Where a press's items stood: a lane and the cards it carries, or cards.
-  private var pressed: (lane: Origin?, cards: [Origin], room: Room?)?
+  /// Where the press that started the drag under way was.
+  private var pressedAt: Point?
   private var visible = true
 
   init(_ index: Int, me: Person, seed: UInt64, directory: URL, host: SimHost) throws {
@@ -231,44 +232,43 @@ import Foundation
       }
       model.end(name == "laneTitle" ? "Rename Lane" : "Resize Lane")
     case "press":
+      // as a mouse does it: the press goes where the item is drawn, and the core decides what it hits
       guard !model.inGesture else { break }
-      let taken = open.group.live?.taken ?? []
-      let b = model.board
+      let b = model.board, canvas = open.canvas
       let (n, count) = (try o.int("n"), try o.int("count"))
-      let ids: [String]
+      let p: Point
       if o["lane"]?.bool == true {
         guard let lid = items(b.lanes.map(\.id), n, 1).first, let lane = b.lane(lid) else { break }
-        let carried = b.cardsInLane(lid, heightOf: heights(b))
-        ids = [lid] + carried.map(\.id)
-        guard !ids.contains(where: taken.contains) else { break }
-        pressed = (Origin(id: lid, x: lane.x, y: lane.y), carried.map { Origin(id: $0.id, x: $0.x, y: $0.y) }, nil)
+        p = Point(x: lane.x + Metrics.grid, y: lane.y + Metrics.grid)
       } else {
-        ids = items(b.cards.map(\.id), n, count)
-        guard let first = ids.first, !taken.contains(first) else { break }
-        // others make way while the cards move, and they land on release, as in the apps
-        let room = Room(base: b.layout(excluding: Set(ids)), heightOf: heights(b))
-        pressed = (nil, ids.compactMap { b.card($0) }.map { Origin(id: $0.id, x: $0.x, y: $0.y) }, room)
+        let ids = items(b.cards.map(\.id), n, count)
+        guard let first = ids.first.flatMap(b.card) else { break }
+        canvas.selection = Set(ids)
+        let r = canvas.drawnRect(first)
+        p = Point(x: r.x + r.w / 2, y: r.y + r.h / 2)
       }
-      model.begin()
-      open.session.hold(Set(ids))
+      pressedAt = p
+      canvas.press(at: p)
     case "drag":
-      guard model.inGesture, let pressed else { break }
-      let (dx, dy) = (try o.number("dx"), try o.number("dy"))
-      model.update { b in
-        if let lane = pressed.lane {
-          b.moveLane(lane, cards: pressed.cards, dx: dx, dy: dy)
-        } else {
-          b.moveCards(pressed.cards, dx: dx, dy: dy, room: pressed.room)
-        }
-      }
+      guard let p = pressedAt else { break }
+      open.canvas.dragged(to: Point(x: p.x + (try o.number("dx")), y: p.y + (try o.number("dy"))))
     case "release":
-      let p = pressed
-      pressed = nil
-      if let p, let room = p.room, model.inGesture { model.update { $0.land(Set(p.cards.map(\.id)), room: room) } }
-      model.end(p?.lane == nil ? "Move" : "Move Lane")
+      pressedAt = nil
+      open.canvas.release()
     case "cancel":
-      pressed = nil
-      model.cancel()
+      pressedAt = nil
+      open.canvas.cancel()
+    case "pointer":
+      let canvas = open.canvas
+      let p = Point(x: try o.number("x"), y: try o.number("y"))
+      switch try o.string("phase") {
+      case "down":
+        canvas.press(at: p, clickCount: o["clicks"]?.int ?? 1, shift: o["shift"]?.bool == true, option: o["option"]?.bool == true)
+      case "move": canvas.dragged(to: p)
+      case "up": canvas.release()
+      case "cancel": canvas.cancel()
+      case let phase: throw SimError("unknown phase \(phase)")
+      }
     case "cursor": open.group.live?.sendCursor(board: open.id, x: o["x"]?.number, y: o["y"]?.number)
     case "undo": if model.undoManager.canUndo { model.undoManager.undo() }
     case "redo": if model.undoManager.canRedo { model.undoManager.redo() }
@@ -310,7 +310,15 @@ import Foundation
       guard let self else { return }
       b.gravity(heights(b))
     }
-    open = Open(id: id, group: g, model: model, binding: binding, session: collab(g).open(id, model: model, binding: binding))
+    let session = collab(g).open(id, model: model, binding: binding)
+    let canvas = CanvasCore(model: model)
+    // read from a copy, as the Mac measures: stacking asks for heights while the board changes
+    var heights = self.heights(model.board)
+    model.onChange = { [unowned model, unowned self] _ in heights = self.heights(model.board) }
+    canvas.heightOf = { heights($0) }
+    canvas.taken = { g.live?.taken ?? [] }
+    canvas.hold = { session.hold($0) }
+    open = Open(id: id, group: g, model: model, binding: binding, session: session, canvas: canvas)
     showLive(g)
     // as the apps do on opening a board
     Task { await g.engine.sync() }
@@ -320,7 +328,7 @@ import Foundation
   private func close() {
     guard let o = open else { return }
     open = nil
-    pressed = nil
+    pressedAt = nil
     o.binding.flush()
     o.session.close()
     showLive(o.group)
@@ -345,6 +353,12 @@ import Foundation
   // MARK: state
 
   func snapshot() -> JSONValue { Snapshot.of(spaces, shown: open.map { ($0.id, $0.model, $0.group.store) }) }
+
+  /// What the open board shows; null without one.
+  func scene() throws -> JSONValue {
+    guard let open else { return .null }
+    return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(open.canvas.scene))
+  }
 
   private static func json(_ invite: Invite?) throws -> JSONValue {
     guard let i = invite else { throw SimError("not syncing") }
