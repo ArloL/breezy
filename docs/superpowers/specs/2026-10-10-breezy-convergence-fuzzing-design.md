@@ -52,12 +52,13 @@ Swift seams, each defaulting to what the app does now:
 
 ## Operations
 
-4 devices by default, 2 web and 2 Swift (`--web N --swift N`). One makes the space; the others join at random times, some after edits exist. Operations, with seeded weights, go through `BoardModel`, the binding and `Collab` as the apps do:
+4 devices by default, 2 web and 2 Swift (`--web N --swift N`). One makes the space; the others join at random times, some after edits exist. Operations, with seeded weights, go through `BoardModel`, the binding and `Collab` as the apps do. Input goes through each app's own handling, as in the testability design: web devices run the app's core on fakes of its ports, Swift devices `CanvasCore`.
 
-- add, type into, recolour or delete a card; add or move a lane;
+- add, type into, recolour or delete a card; add, move, resize or rename a lane; on web devices typing and renaming go through the app's editing;
 - select 50–300 cards and move, recolour or delete them at once, whose live bodies pass the relay's 64 KB limit;
 - undo and redo;
-- a drag: press (holds), moves over virtual time, then release or cancel;
+- a drag: a mouse press where the item is drawn (holds), moves over virtual time, then release or cancel; or a selection box from a spot clear of everything;
+- a click on a card, a lane's header or corner, or empty space, now and then with ⇧; a board key: a colour, ⌫, Space, Esc, ⌘Z or ⇧⌘Z, which acts on what the clicks selected;
 - show or hide the app, which connects or closes `Live`;
 - freeze for 5 s to 8 h, as iOS suspends a web app in the background or a Mac sleeps: nothing reaches the device and none of its timers fire, then everything due fires late at once;
 - a full resync.

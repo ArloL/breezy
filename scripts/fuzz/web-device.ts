@@ -16,7 +16,7 @@ import * as R from "../../web/rules.ts";
 import type { Board } from "../../web/types.ts";
 import { encode, decode } from "../../web/sync/base64.ts";
 import type { Ice, LinkState, PeerTransport } from "../../web/sync/direct.ts";
-import type { Command, DeviceCommand, Event, Me, Op, Pointer, Reply, Snapshot } from "./hub.ts";
+import type { Command, DeviceCommand, Event, Me, Op, Pointer, Reply, Snapshot, Target } from "./hub.ts";
 
 type Group = Spaces["spaces"][number];
 type Session = ReturnType<Collab["open"]>;
@@ -334,17 +334,35 @@ class WebDevice {
         this.open!.app.newCard({ x: o.x, y: o.y }, "corner");
         return this.typeAndFinish(o.text);
       }
-      case "laneTitle":
+      case "laneTitle": {
+        // as a person renames one through the app: its title typed over, then Return
+        const [lid] = this.items("lanes", o.n);
+        if (!lid || m.inGesture) return null;
+        const a = this.open!.app;
+        this.noteTaken();
+        a.beginRename(lid);
+        const f = (a.view as FakeView).focused;
+        if (a.state.renaming !== lid || !f) return null;
+        f.key("a", true);
+        f.type(o.text);
+        f.key("Enter", false);
+        return null;
+      }
       case "resize": {
         const [lid] = this.items("lanes", o.n);
         if (!lid || m.inGesture || this.taken().has(lid)) return null;
         const l = R.lane(m.board, lid)!;
         m.begin();
         this.open!.session.hold(new Set([lid]));
-        if (o.op === "laneTitle") m.update((b) => R.setLaneTitle(b, lid, o.text));
-        else m.update((b) => R.resizeLane(b, lid, l.w + o.dw, l.h + o.dh));
-        m.end(o.op === "laneTitle" ? "Rename Lane" : "Resize Lane");
+        m.update((b) => R.resizeLane(b, lid, l.w + o.dw, l.h + o.dh));
+        m.end("Resize Lane");
         return null;
+      }
+      case "click": {
+        const p = this.spot(o.target, o.n);
+        if (!p || m.inGesture) return null;
+        this.pointer({ phase: "down", ...p, shift: o.shift });
+        return this.pointer({ phase: "up", ...p });
       }
       case "press": {
         // as a mouse does it: the press goes where the item is drawn, and the app decides what it hits
@@ -352,7 +370,11 @@ class WebDevice {
         const o0 = this.open!;
         const b = m.board;
         let p: { x: number; y: number };
-        if (o.lane) {
+        if (o.empty) {
+          const s = this.spot("empty", o.n);
+          if (!s) return null;
+          p = s;
+        } else if (o.lane) {
           const [lid] = this.items("lanes", o.n);
           const l = lid && R.lane(b, lid);
           if (!l) return null;
@@ -401,6 +423,31 @@ class WebDevice {
         return m.redo();
     }
     throw new Error(`unknown op ${o.op}`);
+  }
+
+  /** A screen point for `target`, as breezy-sim's `spot` finds one; null when there is none. */
+  spot(target: Target, n: number): { x: number; y: number } | null {
+    const a = this.open!.app, b = a.model.board, v = a.view;
+    if (target === "card") {
+      const [id] = this.items("cards", n);
+      const c = id && R.card(b, id);
+      if (!c) return null;
+      const r = v.rectOf(c);
+      return v.toScreen({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+    }
+    if (target === "header" || target === "corner") {
+      const [id] = this.items("lanes", n);
+      const l = id && R.lane(b, id);
+      if (!l) return null;
+      return v.toScreen(target === "header" ? { x: l.x + l.w / 2, y: l.y + 12 } : { x: l.x + l.w - 6, y: l.y + l.h - 6 });
+    }
+    // a grid of points from the `n`th on, the first that hits nothing
+    for (let i = 0; i < 400; i++) {
+      const k = (n + i) % 400;
+      const w = { x: (k % 20) * 60 + 30, y: Math.floor(k / 20) * 40 + 20 };
+      if (a.input.hit(v.toScreen(w), false).kind === "empty") return v.toScreen(w);
+    }
+    return null;
   }
 
   /** What others hold, as library.ts gives it to the app. */

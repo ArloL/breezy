@@ -20,6 +20,9 @@ export interface Me {
   name: string;
 }
 
+/** Where a click goes: the `n`th card's middle, the `n`th lane's header or corner, or a spot clear of everything. */
+export type Target = "card" | "header" | "corner" | "empty";
+
 /** A mouse or finger event at a screen point: down, move, up or cancel. */
 export interface Pointer {
   op: "pointer";
@@ -52,7 +55,8 @@ export type Op =
   | { op: "newCard"; x: number; y: number; text: string }
   | { op: "laneTitle"; n: number; text: string }
   | { op: "resize"; n: number; dw: number; dh: number }
-  | { op: "press"; n: number; count: number; lane: boolean }
+  | { op: "press"; n: number; count: number; lane: boolean; empty?: boolean }
+  | { op: "click"; target: Target; n: number; shift?: boolean }
   | { op: "drag"; dx: number; dy: number }
   | Pointer
   | { op: "key"; key: string; meta?: boolean; shift?: boolean }
@@ -271,7 +275,12 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 const unb64 = (s: string | null | undefined) => (s == null ? null : Buffer.from(s, "base64url"));
 
 /** Operation weights; a gesture is press, drags, then release or cancel. */
-const OPS = { addCard: 10, type: 10, color: 6, delete: 3, addLane: 2, drag: 12, dragLane: 3, undo: 4, redo: 2, hide: 3, retry: 1, resync: 0.5, bulk: 0.4, board: 0.5, cursor: 6, newCard: 6, laneTitle: 1.5, resize: 1.5 };
+const OPS = { addCard: 10, type: 10, color: 6, delete: 3, addLane: 2, drag: 12, dragLane: 3, undo: 4, redo: 2, hide: 3, retry: 1, resync: 0.5, bulk: 0.4, board: 0.5, cursor: 6, newCard: 6, laneTitle: 1.5, resize: 1.5, click: 6, key: 5, box: 1.5 };
+/** The board's keys a person presses, through each app's own key handling. */
+const KEYS: { key: string; meta?: boolean; shift?: boolean }[] = [
+  { key: "1" }, { key: "2" }, { key: "3" }, { key: "4" }, { key: "5" }, { key: "Backspace" }, { key: " " }, { key: "Escape" },
+  { key: "z", meta: true }, { key: "z", meta: true, shift: true },
+];
 const FAULTS = {
   lostResponse: 3, serverError: 2, portal: 2, truncated: 1, failFast: 1, relayDrop: 2, relayRestart: 1, relayEvict: 1,
   directClose: 2, directSilent: 2, directFail: 1, skew: 1, freeze: 2, outage: 2, restore: 0.3, absence: 0.3,
@@ -874,6 +883,12 @@ export class Hub {
       }
       case "dragLane":
         return this.gesture(d, { op: "press", n, count: 1, lane: true });
+      case "click":
+        return this.op(d, { op: "click", target: r.pick(["card", "card", "card", "header", "corner", "empty"] as const), n, shift: r.chance(0.15) });
+      case "key":
+        return this.op(d, { op: "key", ...r.pick(KEYS) });
+      case "box":
+        return this.gesture(d, { op: "press", n, count: 1, lane: false, empty: true });
     }
   }
 
