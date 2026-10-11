@@ -355,7 +355,7 @@ import Foundation
     let binding = BoardBinding(id: id, model: model, store: g.store) { [weak self] delay, work in self?.after(delay * 1000, work) }
     binding.restack = { [weak self] b in
       guard let self else { return }
-      b.gravity(heights(b))
+      b.gravity(self.heights(b))
     }
     let session = collab(g).open(id, model: model, binding: binding)
     let canvas = CanvasCore(model: model)
