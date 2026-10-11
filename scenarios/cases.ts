@@ -217,4 +217,23 @@ export const cases: Case[] = [
       assert.deepEqual(await within(a, lane, card), { x: 24, y: 72 });
     },
   },
+  {
+    name: "a card made with a double tap and typed into on a phone shows its text on the other device",
+    input: "touch",
+    edits: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane } = await laneAndCard(s);
+      const l = item(await a.scene(), lane);
+      const had = new Set((await a.scene()).cards.map((c) => c.id));
+      await a.doubleTap({ x: l.x + l.w + 150, y: l.y + 450 });
+      await a.wait(300);
+      await a.type("from the phone");
+      // a tap on the board ends the edit, as there is no Esc on a phone
+      await a.tap({ x: l.x + l.w + 500, y: l.y + 600 });
+      await s.settle();
+      const made = (await b.scene()).cards.filter((c) => !had.has(c.id));
+      assert.deepEqual(made.map((c) => c.text), ["from the phone"]);
+    },
+  },
 ];

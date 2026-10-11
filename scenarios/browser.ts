@@ -117,6 +117,10 @@ export class BrowserDevice extends Device {
     return true;
   }
 
+  override async type(text: string) {
+    await this.page.keyboard.type(text);
+  }
+
   override async typeInto(id: string, text: string) {
     const r = (await this.scene()).cards.find((c) => c.id === id);
     if (!r) throw new Error(`nothing shows ${id}`);

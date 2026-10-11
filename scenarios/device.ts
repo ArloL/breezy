@@ -43,6 +43,11 @@ export abstract class Device {
     return false;
   }
 
+  /** Types `text` into whatever has the keyboard. */
+  async type(_text: string): Promise<void> {
+    throw new Error(`${this.kind} devices cannot edit`);
+  }
+
   /** Types `text` at the end of card `id`'s front, as a person does: a double-click, the keys, and Esc. */
   async typeInto(_id: string, _text: string): Promise<void> {
     throw new Error(`${this.kind} devices cannot edit`);
@@ -82,6 +87,17 @@ export abstract class Device {
     await this.wait(hold ? 400 : ms);
     await this.moveAlong(a, b, steps, ms, (p) => this.pointer("move", p, touch));
     await this.pointer("up", b, touch);
+  }
+
+  /** Two taps at world point `p`, as quick as a double tap. */
+  async doubleTap(p: Point) {
+    const s = await this.screen(p);
+    for (let i = 0; i < 2; i++) {
+      await this.pointer("down", s, { kind: "touch" });
+      await this.wait(40);
+      await this.pointer("up", s, { kind: "touch" });
+      await this.wait(60);
+    }
   }
 
   async tap(p: Point) {
