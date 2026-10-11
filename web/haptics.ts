@@ -12,5 +12,11 @@ export function haptic() {
     label.style.cssText = "position: fixed; left: -100px; top: 0; opacity: 0; pointer-events: none;";
     document.body.append(label);
   }
+  // the click focuses the switch, which would take the keyboard from the board: it goes back where it was
+  const before = document.activeElement;
   label.click();
+  const box = label.firstElementChild as HTMLElement;
+  if (document.activeElement !== box) return;
+  box.blur();
+  if (before instanceof HTMLElement && before !== document.body) before.focus({ preventScroll: true });
 }
