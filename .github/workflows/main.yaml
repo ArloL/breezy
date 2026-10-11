@@ -137,6 +137,7 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
     - name: Install PHP
       run: command -v php || brew install php
     - name: Test the server
