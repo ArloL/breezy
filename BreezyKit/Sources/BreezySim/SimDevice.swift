@@ -258,7 +258,7 @@ import Foundation
     case "cancel":
       pressedAt = nil
       open.canvas.cancel()
-    case "key": throw SimError("the Mac's keys are in its app, not in BreezyKit yet")
+    case "key", "text": throw SimError("the Mac's keys and editing are in its app, not in BreezyKit yet")
     case "pointer":
       // the Mac takes a mouse; its view does not move, so screen points are world points
       if o["kind"]?.string == "touch" { throw SimError("the Mac has no touch") }

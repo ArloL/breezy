@@ -4,7 +4,7 @@ import * as R from "../rules.ts";
 import { sceneOf } from "../scene.ts";
 import type { App } from "../app.ts";
 import type { Area, Shown } from "../view.ts";
-import type { Ports, PresencePort, UIPort, ViewPort } from "../ports.ts";
+import type { Field, FieldEvents, Ports, PresencePort, UIPort, ViewPort } from "../ports.ts";
 import type { Board, Cam, Card, Point, Rect } from "../types.ts";
 
 /** Card heights as both device kinds measure them in tests: 24 + 24 per line, as the Mac and browsers draw text too
@@ -12,6 +12,52 @@ import type { Board, Cam, Card, Point, Rect } from "../types.ts";
 export const fakeHeight = (text: string | undefined) => 24 + 24 * Math.max(1, String(text ?? "").split("\n").length);
 
 export const AREA: Area = { top: 0, bottom: 800, left: 0, right: 1200 };
+
+/** A field as a string with the caret at its end; typing goes to the one the view says has the keyboard. */
+export class FakeField implements Field {
+  view: FakeView;
+  value = "";
+  on: FieldEvents | null = null;
+
+  constructor(view: FakeView) {
+    this.view = view;
+  }
+
+  open(text: string, on: FieldEvents) {
+    this.value = text;
+    this.on = on;
+    this.view.focus(this);
+  }
+
+  text() {
+    return this.value;
+  }
+
+  caret() {
+    return this.view.focused === this ? this.value.length : null;
+  }
+
+  detach() {
+    this.on = null;
+  }
+
+  close() {
+    this.detach();
+    if (this.view.focused === this) this.view.focused = null;
+  }
+
+  /** Keys typed at the caret; Return ends a field that Return ends. */
+  type(keys: string) {
+    for (const k of keys) {
+      if (k === "\n" && this.on?.enter) {
+        this.on.enter();
+        continue;
+      }
+      this.value += k;
+      this.on?.input();
+    }
+  }
+}
 
 export class FakeView implements ViewPort {
   app: App;
@@ -94,12 +140,29 @@ export class FakeView implements ViewPort {
     change();
   }
 
-  editorOf(): HTMLElement {
-    throw new Error("editing needs an editor port, which the fakes do not have yet");
+  fields = new Map<string, FakeField>();
+  /** The field with the keyboard. */
+  focused: FakeField | null = null;
+
+  /** Gives `f` the keyboard; the one that had it loses it, as a blur in a browser. */
+  focus(f: FakeField) {
+    const was = this.focused;
+    this.focused = f;
+    if (was && was !== f) was.on?.done();
   }
 
-  titleOf(): HTMLElement {
-    throw new Error("renaming needs an editor port, which the fakes do not have yet");
+  private field(key: string) {
+    let f = this.fields.get(key);
+    if (!f) this.fields.set(key, (f = new FakeField(this)));
+    return f;
+  }
+
+  editorOf(id: string, back: boolean) {
+    return R.card(this.shown(), id) ? this.field(`${id} ${back}`) : null;
+  }
+
+  titleOf(id: string) {
+    return R.lane(this.shown(), id) ? this.field(`${id} title`) : null;
   }
 
   scene() {

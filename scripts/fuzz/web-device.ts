@@ -399,6 +399,11 @@ class WebDevice {
       }
       case "pointer":
         return this.pointer(o);
+      case "text": {
+        const f = (this.open!.app.view as FakeView).focused;
+        if (!f) throw new Error("nothing has the keyboard");
+        return f.type(o.text);
+      }
       case "key": {
         // as main.ts hands a key to the app, on a Mac
         const a = this.open!.app, s = a.state;

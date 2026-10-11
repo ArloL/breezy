@@ -1,6 +1,8 @@
 import * as R from "./rules.ts";
 import { Camera, clampZoom } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
+import { DomField } from "./field.ts";
+import type { Field } from "./ports.ts";
 import type { MotionValue } from "./motion.ts";
 import type { Model } from "./model.ts";
 import type { State } from "./app.ts";
@@ -343,12 +345,14 @@ export class View {
     if (!renaming) el.querySelector(".title")!.textContent = l.title;
   }
 
-  editorOf(id: string, back: boolean) {
-    return this.els.get(id)?.el.querySelector<HTMLElement>(back ? ".notes" : ".front");
+  editorOf(id: string, back: boolean): Field | null {
+    const el = this.els.get(id)?.el.querySelector<HTMLElement>(back ? ".notes" : ".front");
+    return el ? new DomField(el, "card") : null;
   }
 
-  titleOf(id: string) {
-    return this.els.get(id)?.el.querySelector<HTMLElement>(".title");
+  titleOf(id: string): Field | null {
+    const el = this.els.get(id)?.el.querySelector<HTMLElement>(".title");
+    return el ? new DomField(el, "title") : null;
   }
 
   /** Runs `change` at once and renders; the card flips over in one springy turn, showing the new face past halfway. */
