@@ -92,6 +92,22 @@ export class MacDevice extends Device {
     throw new Error(`no new item in ${kind}`);
   }
 
+  override get edits() {
+    return true;
+  }
+
+  override async typeInto(id: string, text: string) {
+    const r = (await this.scene()).cards.find((c) => c.id === id);
+    if (!r) throw new Error(`nothing shows ${id}`);
+    const p = await this.screen({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+    await this.pointer("down", p);
+    await this.pointer("up", p);
+    await this.pointer("down", p, { clicks: 2 });
+    await this.pointer("up", p, { clicks: 2 });
+    await this.command({ cmd: "type", text, atEnd: true });
+    await this.command({ cmd: "key", chars: "\u001b", code: 53 });
+  }
+
   /** As a person makes one: a double-click, a title, and Esc. */
   async addCard(x: number, y: number): Promise<string> {
     const before = await this.scene();

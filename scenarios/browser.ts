@@ -109,6 +109,19 @@ export class BrowserDevice extends Device {
     return until(`a new item in ${kind}`, async () => (await this.scene())[kind].find((x) => !had.has(x.id))?.id);
   }
 
+  override get edits() {
+    return true;
+  }
+
+  override async typeInto(id: string, text: string) {
+    const r = (await this.scene()).cards.find((c) => c.id === id);
+    if (!r) throw new Error(`nothing shows ${id}`);
+    const p = await this.screen({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+    await this.page.mouse.dblclick(p.x, p.y);
+    await this.page.keyboard.type(text);
+    await this.page.keyboard.press("Escape");
+  }
+
   /** As a person makes one: a double-click, a title, and Esc. */
   async addCard(x: number, y: number): Promise<string> {
     const before = await this.scene();
