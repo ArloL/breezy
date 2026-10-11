@@ -1,6 +1,7 @@
 // Devices that share a space, on the fuzz hub's virtual time with a good network, for scenarios: one device acts as a
 // person would, through its input, and the test looks at what another one shows.
 import { Hub, type Device as HubDevice, type Op } from "../scripts/fuzz/hub.ts";
+import { LANE_H, LANE_W } from "../web/rules.ts";
 import * as V from "../scripts/fuzz/virtual.ts";
 import type { Board, Point } from "../web/types.ts";
 import type { Invite } from "../web/sync/crypto.ts";
@@ -11,13 +12,13 @@ export * from "./device.ts";
 export type Kind = "web" | "swift";
 
 export class SimDevice extends Device {
-  readonly world: World;
+  readonly sim: World;
   readonly hub: Hub;
   readonly d: HubDevice;
 
   constructor(world: World, d: HubDevice) {
     super();
-    this.world = world;
+    this.sim = world;
     this.hub = world.hub;
     this.d = d;
   }
@@ -27,7 +28,7 @@ export class SimDevice extends Device {
   }
 
   async wait(ms: number) {
-    await this.world.wait(ms);
+    await this.sim.wait(ms);
   }
 
   async op<T = unknown>(o: Op): Promise<T> {
@@ -39,7 +40,8 @@ export class SimDevice extends Device {
   }
 
   async addLane(x: number, y: number): Promise<string> {
-    return (await this.op<{ id: string }>({ op: "addLane", x, y })).id;
+    // the op takes the top left
+    return (await this.op<{ id: string }>({ op: "addLane", x: x - LANE_W / 2, y: y - LANE_H / 2 })).id;
   }
 
   async scene(): Promise<Scene> {
@@ -50,7 +52,7 @@ export class SimDevice extends Device {
 
   async board(): Promise<Board> {
     const snap = await this.hub.command(this.d, { cmd: "state" });
-    return snap.boards[this.world.boardID] as Board;
+    return snap.boards[this.sim.boardID] as Board;
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {

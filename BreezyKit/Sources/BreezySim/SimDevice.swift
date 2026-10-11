@@ -5,8 +5,8 @@ import Foundation
 /// direct channels through the hub, and at most one board open, as the apps run it with `Collab`. Its ids, secrets and
 /// nonces come from its seed.
 @MainActor final class SimDevice {
-  /// What the fuzzer's checks need of a card's height, the same in both languages: 72 + 24 per line of its text.
-  static func height(_ text: String) -> Double { 72 + 24 * Double(text.utf16.filter { $0 == 10 }.count + 1) }
+  /// A card's height, the same in both languages: 24 + 24 per line of its text, as the apps draw text too short to wrap.
+  static func height(_ text: String) -> Double { 24 + 24 * Double(text.utf16.filter { $0 == 10 }.count + 1) }
 
   let index: Int
   private unowned let host: SimHost

@@ -7,8 +7,9 @@ import type { Area, Shown } from "../view.ts";
 import type { Ports, PresencePort, UIPort, ViewPort } from "../ports.ts";
 import type { Board, Cam, Card, Point, Rect } from "../types.ts";
 
-/** Card heights as both device kinds measure them in tests: 72 + 24 per line. */
-export const fakeHeight = (text: string | undefined) => 72 + 24 * Math.max(1, String(text ?? "").split("\n").length);
+/** Card heights as both device kinds measure them in tests: 24 + 24 per line, as the Mac and browsers draw text too
+ * short to wrap. */
+export const fakeHeight = (text: string | undefined) => 24 + 24 * Math.max(1, String(text ?? "").split("\n").length);
 
 export const AREA: Area = { top: 0, bottom: 800, left: 0, right: 1200 };
 

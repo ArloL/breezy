@@ -27,13 +27,19 @@ export abstract class Device {
   abstract wait(ms: number): Promise<void>;
   /** A card at world point (x, y), made as this kind of device makes one; its id. */
   abstract addCard(x: number, y: number): Promise<string>;
-  /** A lane near world point (x, y); its id. */
+  /** A lane centred near world point (x, y), where this kind of device puts one; its id. */
   abstract addLane(x: number, y: number): Promise<string>;
 
   /** Where world point `p` is on this device's screen now. */
   async screen(p: Point): Promise<Point> {
     const { camera: c } = await this.scene();
     return { x: p.x * c.zoom + c.x, y: p.y * c.zoom + c.y };
+  }
+
+  /** The world point at screen point `p` now. */
+  async world(p: Point): Promise<Point> {
+    const { camera: c } = await this.scene();
+    return { x: (p.x - c.x) / c.zoom, y: (p.y - c.y) / c.zoom };
   }
 
   /** A mouse pressed at world point `from`, moved to `to` in `steps`, and let go. */
