@@ -3,7 +3,8 @@ export const GRID = 24;
 export const CARD_W = 240;
 export const BACK_W = 480;
 export const BACK_MIN_H = 12 * GRID;
-export const LANE_W = 480;
+/** A card with a grid either side. */
+export const LANE_W = CARD_W + 2 * GRID;
 export const LANE_H = 720;
 export const LANE_MIN = 4 * GRID;
 export const LANE_HEADER = 2 * GRID;
@@ -95,6 +96,21 @@ export function remove(b, ids) {
   b.lanes = b.lanes.filter((l) => !ids.has(l.id));
 }
 
+/** The grid point nearest (`x`, `y`) where a `w` × `h` rect stays a grid clear of every card and lane. */
+export function openSpot(b, w, h, x, y, heightOf) {
+  const g = GRID;
+  const taken = [...b.cards.map((c) => cardRect(c, heightOf(c.id))), ...b.lanes.map(laneRect)];
+  const down = (v) => Math.floor(v / g) * g;
+  const up = (v) => Math.ceil(v / g) * g;
+  // The nearest spot lies at (x, y) or against an item on each axis.
+  const xs = new Set([snap(x), ...taken.flatMap((r) => [down(r.x - g - w), up(r.x + r.w + g)])]);
+  const ys = new Set([snap(y), ...taken.flatMap((r) => [down(r.y - g - h), up(r.y + r.h + g)])]);
+  const spots = [...xs].flatMap((px) => [...ys].map((py) => ({ x: px, y: py, d: Math.hypot(px - x, py - y) })));
+  spots.sort((p, q) => p.d - q.d || p.x - q.x || p.y - q.y);
+  const s = spots.find((s) => !taken.some((r) => intersects(r, { x: s.x - g, y: s.y - g, w: w + 2 * g, h: h + 2 * g })));
+  return { x: s.x, y: s.y };
+}
+
 /** Moves lane `origin.id` by the snapped delta and carries `carried` with it. */
 export function moveLane(b, origin, carried, dx, dy) {
   const l = lane(b, origin.id);
@@ -159,9 +175,21 @@ function compare(a, b) {
 }
 
 /**
+ * Where across lane `l` a card `r` goes: centred in the column under its centre, or in the lane
+ * when wider than a column. Columns share the width, as many as fit a card and a grid.
+ */
+function column(l, r) {
+  const n = Math.max(1, Math.floor((l.w - GRID) / (CARD_W + GRID)));
+  const cw = l.w / n;
+  if (r.w > cw) return l.x + (l.w - r.w) / 2;
+  const i = Math.min(Math.max(Math.floor((r.x + r.w / 2 - l.x) / cw), 0), n - 1);
+  return l.x + i * cw + (cw - r.w) / 2;
+}
+
+/**
  * Floats the cards in each lane up their columns in order of their centres; lanes grow to fit.
  * Cards `held` in a drag stay where they are but are ordered as a block by their top card and
- * keep their places free; `land` moves them in. With `base` the others start from where they
+ * keep their places free, centred in the column under them; `land` moves them in. With `base` the others start from where they
  * stood when the drag began, so dragging away gives cards back their places.
  */
 export function settle(b, heightOf, { held = new Set(), base = null, land = false } = {}) {
@@ -180,11 +208,10 @@ export function settle(b, heightOf, { held = new Set(), base = null, land = fals
     members.sort((p, q) => compare(key(p), key(q)));
     const placed = [];
     for (const x of members) {
-      let y = l.y + STACK_TOP;
-      for (const p of placed) if (sharesColumn(p, x.rect)) y = Math.max(y, lineBelow(p));
-      const r = { ...x.rect, y };
+      const r = { ...x.rect, x: x.held ? column(l, x.rect) : x.rect.x, y: l.y + STACK_TOP };
+      for (const p of placed) if (sharesColumn(p, r)) r.y = Math.max(r.y, lineBelow(p));
       placed.push(r);
-      if (!x.held || land) b.cards[x.index].y = y;
+      if (!x.held || land) Object.assign(b.cards[x.index], { x: r.x, y: r.y });
       l.h = Math.max(l.h, lineBelow(r) - l.y);
     }
   }

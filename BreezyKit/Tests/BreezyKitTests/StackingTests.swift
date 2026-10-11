@@ -70,3 +70,19 @@ private func stackBoard(_ h: Double = 480) -> Board {
   #expect(b.pile("b", heightOf: h48) == ["b", "c"])
   #expect(b.pile("free", heightOf: h48) == ["free"])
 }
+
+@Test func aCardDroppedInALaneLandsCentredInIt() {
+  var b = stackBoard()
+  let d = drag(b, ["d"])
+  b.moveCards(d.origins, dx: -528, dy: 0, room: d.room)
+  b.land(["d"], room: d.room)
+  #expect(b.card("d")!.x == 120)
+}
+
+@Test func aCardDroppedInAWideLaneLandsCentredInTheColumnUnderIt() {
+  var b = board([card("d", 600, 72)], [lane("l", 0, 0, 576, 480)])
+  let d = drag(b, ["d"])
+  b.moveCards(d.origins, dx: -264, dy: 0, room: d.room)
+  b.land(["d"], room: d.room)
+  #expect(b.card("d")!.x == 312)
+}

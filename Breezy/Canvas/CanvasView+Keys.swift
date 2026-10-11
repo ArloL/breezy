@@ -44,7 +44,10 @@ extension CanvasView {
 
   func addLane(at p: NSPoint) {
     var id = ""
-    model.perform("New Lane") { id = $0.addLane(x: Double(p.x) - Metrics.laneWidth / 2, y: Double(p.y) - Metrics.laneHeight / 2) }
+    model.perform("New Lane") { b in
+      let s = b.openSpot(w: Metrics.laneWidth, h: Metrics.laneHeight, near: Double(p.x) - Metrics.laneWidth / 2, Double(p.y) - Metrics.laneHeight / 2, heightOf: height)
+      id = b.addLane(x: s.x, y: s.y)
+    }
     selection = [id]
   }
 

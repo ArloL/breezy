@@ -121,7 +121,8 @@ export class App {
     this.endEditing();
     let id;
     this.model.perform("New Lane", (b) => {
-      id = R.addLane(b, p.x - R.LANE_W / 2, p.y - R.LANE_H / 2);
+      const s = R.openSpot(b, R.LANE_W, R.LANE_H, p.x - R.LANE_W / 2, p.y - R.LANE_H / 2, this.heightOf);
+      id = R.addLane(b, s.x, s.y);
       R.gravity(b, this.heightOf);
     });
     this.select([id]);

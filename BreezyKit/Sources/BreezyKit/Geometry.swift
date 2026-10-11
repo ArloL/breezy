@@ -5,7 +5,8 @@ public enum Metrics {
   public static let cardWidth = 240.0
   public static let backWidth = 480.0
   public static let backMinHeight = 12 * grid
-  public static let laneWidth = 480.0
+  /// A card with a grid either side.
+  public static let laneWidth = cardWidth + 2 * grid
   public static let laneHeight = 720.0
   public static let laneMin = 4 * grid
   public static let laneHeader = 2 * grid
