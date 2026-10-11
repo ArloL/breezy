@@ -169,3 +169,25 @@ test("outside a lane a card piles alone", () => {
   const b = board([card("a", 1000, 0), card("b", 1000, 72)]);
   assert.deepEqual(R.pile(b, "a", h48), ["a"]);
 });
+
+test("a card dropped in a lane lands centred in it", () => {
+  const b = stackBoard();
+  const d = drag(b, ["d"]);
+  R.moveCards(b, d.origins, -528, 0, d.room);
+  R.land(b, new Set(["d"]), d.room);
+  assert.equal(R.card(b, "d").x, 120);
+});
+
+test("a card dropped in a wide lane lands centred in the column under it", () => {
+  const b = board([card("d", 600, 72)], [lane("l", 0, 0, 576, 480)]);
+  const d = drag(b, ["d"]);
+  R.moveCards(b, d.origins, -264, 0, d.room);
+  R.land(b, new Set(["d"]), d.room);
+  assert.equal(R.card(b, "d").x, 312);
+});
+
+test("openSpot is the nearest place a grid clear of everything", () => {
+  const b = board([card("a", 600, 0)], [lane("l", 0, 0, 480, 720)]);
+  assert.deepEqual(R.openSpot(b, 288, 720, 120, 0, h48), { x: 504, y: 72 });
+  assert.deepEqual(R.openSpot(b, 288, 720, 130, 1000, h48), { x: 120, y: 1008 });
+});

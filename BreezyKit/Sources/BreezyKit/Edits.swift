@@ -72,6 +72,20 @@ extension Board {
     return lane.id
   }
 
+  /// The grid point nearest (`x`, `y`) where a `w` × `h` rect stays a grid clear of every card and lane.
+  public func openSpot(w: Double, h: Double, near x: Double, _ y: Double, heightOf: HeightOf) -> (x: Double, y: Double) {
+    let g = Metrics.grid
+    let taken = cards.map { $0.rect(height: heightOf($0.id)) } + lanes.map(\.rect)
+    func down(_ v: Double) -> Double { (v / g).rounded(.down) * g }
+    func up(_ v: Double) -> Double { (v / g).rounded(.up) * g }
+    // The nearest spot lies at (x, y) or against an item on each axis.
+    let xs = Set([snap(x)] + taken.flatMap { [down($0.x - g - w), up($0.x + $0.w + g)] })
+    let ys = Set([snap(y)] + taken.flatMap { [down($0.y - g - h), up($0.y + $0.h + g)] })
+    let spots = xs.flatMap { px in ys.map { (x: px, y: $0) } }
+      .sorted { (hypot($0.x - x, $0.y - y), $0.x, $0.y) < (hypot($1.x - x, $1.y - y), $1.x, $1.y) }
+    return spots.first { s in !taken.contains { $0.intersects(Rect(x: s.x - g, y: s.y - g, w: w + 2 * g, h: h + 2 * g)) } }!
+  }
+
   /// Moves lane `origin.id` by the snapped delta and carries `carried` with it.
   public mutating func moveLane(_ origin: Origin, cards carried: [Origin], dx: Double, dy: Double) {
     guard let li = laneIndex(origin.id) else { return }

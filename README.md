@@ -26,10 +26,10 @@ Releases update themselves with [Sparkle](https://sparkle-project.org): they dow
 | New card | double-click empty space |
 | Edit card | double-click it; Esc or ⌘↩ to finish; the first line is the title |
 | Card back | Space over a card or its folded corner turns it over; Tab while editing turns it too |
-| Stack | cards in a lane float up their column and make room where you drag one in; ⌥-drag takes a card with those below it |
+| Stack | cards in a lane float up their column and make room where you drag one in, which lands centred in its column; ⌥-drag takes a card with those below it |
 | Colour | `1`–`5` |
 | Delete | ⌫ |
-| New lane | `L` at the pointer, or New Lane in the toolbar |
+| New lane | `L` at the pointer, or New Lane in the toolbar; it goes in the nearest space clear of cards and lanes |
 | Lane | drag the header to move it with its cards, the corner to resize, double-click the header to rename |
 | Find | ⌘F searches fronts, backs and lane titles |
 | Undo / redo | ⌘Z / ⇧⌘Z |

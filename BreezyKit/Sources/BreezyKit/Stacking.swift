@@ -18,7 +18,7 @@ extension Board {
 
   /// Floats the cards in each lane up their columns in order of their centres; lanes grow to fit.
   /// Cards `held` in a drag stay where they are but are ordered as a block by their top card and
-  /// keep their places free; `land` moves them in. With `base` the others start from where they
+  /// keep their places free, centred in the column under them; `land` moves them in. With `base` the others start from where they
   /// stood when the drag began, so dragging away gives cards back their places.
   mutating func settle(_ heightOf: HeightOf, held: Set<String> = [], base: Layout? = nil, land: Bool = false) {
     if let base {
@@ -44,11 +44,12 @@ extension Board {
       }
       var placed: [Rect] = []
       for b in members.sorted(by: { key($0) < key($1) }) {
+        let x = b.held ? lanes[li].column(for: b.rect) : b.rect.x
         var y = lanes[li].y + Metrics.stackTop
-        for p in placed where p.sharesColumn(with: b.rect) { y = max(y, p.lineBelow) }
-        let r = Rect(x: b.rect.x, y: y, w: b.rect.w, h: b.rect.h)
+        for p in placed where p.sharesColumn(with: Rect(x: x, y: 0, w: b.rect.w, h: 0)) { y = max(y, p.lineBelow) }
+        let r = Rect(x: x, y: y, w: b.rect.w, h: b.rect.h)
         placed.append(r)
-        if !b.held || land { cards[b.index].y = y }
+        if !b.held || land { (cards[b.index].x, cards[b.index].y) = (x, y) }
         lanes[li].h = max(lanes[li].h, r.lineBelow - lanes[li].y)
       }
     }
@@ -63,5 +64,17 @@ extension Board {
       let xr = x.rect(height: heightOf(x.id))
       return x.id == id || (x.y > c.y && cr.sharesColumn(with: xr) && lane.rect.containsCentre(of: xr))
     }.map(\.id)
+  }
+}
+
+extension Lane {
+  /// Where across this lane a card `r` goes: centred in the column under its centre, or in the
+  /// lane when wider than a column. Columns share the width, as many as fit a card and a grid.
+  func column(for r: Rect) -> Double {
+    let n = max(1, ((w - Metrics.grid) / (Metrics.cardWidth + Metrics.grid)).rounded(.down))
+    let cw = w / n
+    guard r.w <= cw else { return x + (w - r.w) / 2 }
+    let i = min(max(((r.x + r.w / 2 - x) / cw).rounded(.down), 0), n - 1)
+    return x + i * cw + (cw - r.w) / 2
   }
 }

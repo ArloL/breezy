@@ -85,3 +85,11 @@ import Testing
   let b = board([card("a", 0, 0), card("b", 480, 480)])
   #expect(b.cardsInRect(Rect(x: 228, y: 36, w: 60, h: 60), heightOf: h48).map(\.id) == ["a"])
 }
+
+@Test func openSpotIsTheNearestPlaceAGridClearOfEverything() {
+  let b = board([card("a", 600, 0)], [lane("l", 0, 0, 480, 720)])
+  let s = b.openSpot(w: 288, h: 720, near: 120, 0, heightOf: h48)
+  #expect([s.x, s.y] == [504, 72])
+  let free = b.openSpot(w: 288, h: 720, near: 130, 1000, heightOf: h48)
+  #expect([free.x, free.y] == [120, 1008])
+}
