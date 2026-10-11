@@ -30,6 +30,16 @@ export abstract class Device {
   /** A lane centred near world point (x, y), where this kind of device puts one; its id. */
   abstract addLane(x: number, y: number): Promise<string>;
 
+  /** Whether `typeInto` works: the hub's fakes have no editor yet. */
+  get edits() {
+    return false;
+  }
+
+  /** Types `text` at the end of card `id`'s front, as a person does: a double-click, the keys, and Esc. */
+  async typeInto(_id: string, _text: string): Promise<void> {
+    throw new Error(`${this.kind} devices cannot edit`);
+  }
+
   /** Where world point `p` is on this device's screen now. */
   async screen(p: Point): Promise<Point> {
     const { camera: c } = await this.scene();

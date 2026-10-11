@@ -13,6 +13,8 @@ export interface Case {
   name: string;
   /** What the first device's input must be. */
   input: "mouse" | "touch";
+  /** Whether the first device must edit text, which the hub's fakes cannot yet. */
+  edits?: boolean;
   run(s: Stage): Promise<void>;
 }
 
@@ -95,6 +97,19 @@ export const cases: Case[] = [
       assert.notDeepEqual(after.camera, before.camera, "the camera moved");
       assert.deepEqual({ x: item(after, card).x, y: item(after, card).y }, { x: c.x, y: c.y }, "the card did not");
       assert.deepEqual({ x: item(await b.scene(), card).x, y: item(await b.scene(), card).y }, { x: seen.x, y: seen.y });
+    },
+  },
+  {
+    name: "text typed into a card shows on the other device",
+    input: "mouse",
+    edits: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      const before = item(await a.scene(), card).text;
+      await a.typeInto(card, " and more");
+      await s.settle();
+      assert.equal(item(await b.scene(), card).text, `${before} and more`);
     },
   },
 ];

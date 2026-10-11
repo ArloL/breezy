@@ -8,6 +8,8 @@ const kinds: Kind[] = ["swift", "web"];
 for (const c of cases) {
   for (const a of kinds) {
     if (c.input === "touch" && a === "swift") continue;
+    // the fakes have no editor yet
+    if (c.edits) continue;
     for (const b of kinds) {
       test(`${c.name} (${a} → ${b})`, async () => {
         const w = await World.start([a, b]);

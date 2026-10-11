@@ -58,7 +58,7 @@ import Network
     var link, board, title, phase, kind, chars, text: String?
     var x, y: Double?
     var code, clicks: Int?
-    var shift, option: Bool?
+    var shift, option, atEnd: Bool?
 
     func need<T>(_ v: T?, _ name: String) throws -> T {
       guard let v else { throw Failure(description: "\(cmd) needs \(name)") }
@@ -102,6 +102,7 @@ import Network
       wc.newLane(nil)
     case "type":
       guard let tv = window?.window?.firstResponder as? NSTextView else { throw Failure(description: "nothing is being edited") }
+      if c.atEnd == true { tv.moveToEndOfDocument(nil) }
       tv.insertText(try c.need(c.text, "text"), replacementRange: NSRange(location: NSNotFound, length: 0))
     case "scene":
       guard let wc = window else { return .null }
