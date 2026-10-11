@@ -2,14 +2,6 @@ import AppKit
 import BreezyKit
 import IOSurface
 
-/// The cards or lane a drag holds, and how far they are drawn from where the board keeps them.
-struct Held: Equatable {
-  var ids: Set<String> = []
-  var offset = CGSize.zero
-  /// A resized lane's size beyond the grid.
-  var growth = CGSize.zero
-}
-
 /// The scroll view's document view: draws the board held by `model` and turns pointer and key
 /// input into changes on it. World coordinates, as stored in the board, are offset by `origin`.
 final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
@@ -17,27 +9,22 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   static let size: CGFloat = 2 * origin
 
   let model: BoardModel
+  /// What a press, drag and release do; this view turns events into calls on it and draws what it holds.
+  let core: CanvasCore
   var board: Board { model.board }
   /// Called after every board change, for the find bar.
   var onBoardChange: (() -> Void)?
 
-  var selection: Set<String> = [] {
-    didSet {
-      // what someone else holds can't be selected
-      if !selection.isDisjoint(with: presence.taken.keys) { selection.subtract(presence.taken.keys) }
-      guard selection != oldValue else { return }
-      for (id, v) in laneViews { v.selected = selection.contains(id) }
-      layoutCards()
-      onSelection?()
-    }
+  var selection: Set<String> {
+    get { core.selection }
+    set { core.selection = newValue }
   }
-  /// The card showing its back.
-  var turned: String?
-  /// Cards lifted by a drag: above the others, a little larger.
-  var raised: Set<String> = []
-  /// What the pointer holds, which follows it exactly; the board keeps it on the grid, where it
-  /// lands on release.
-  var held = Held()
+  var turned: String? {
+    get { core.turned }
+    set { core.turned = newValue }
+  }
+  var raised: Set<String> { core.raised }
+  var held: Grip { core.held }
   /// Cards just added to the board, which grow in when they first show.
   var appearing: Set<String> = []
   var heights: [String: Double] = [:]
@@ -49,7 +36,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var editing: CardEditing?
   var renaming: (id: String, field: NSTextField)?
   var editingID: String? { editing?.id }
-  var drag: Drag?
+  var drag: Drag? { core.drag }
   /// Where the pointer is during a drag, in window coordinates.
   var dragPoint: NSPoint?
   var edgeScrolling: (link: CADisplayLink, since: CFTimeInterval, last: CFTimeInterval)?
@@ -102,16 +89,11 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var onFloat: (() -> Void)?
 
   /// How far what the pointer holds floats off the grid, as this Mac draws it.
-  var floating: Records.Floating? {
-    switch drag?.kind {
-    case .cards?, .lane?: .moved(held.offset.width, held.offset.height)
-    case .resize?: .resized(held.growth.width, held.growth.height)
-    default: nil
-    }
-  }
+  var floating: Records.Floating? { core.floating }
 
   init(model: BoardModel) {
     self.model = model
+    core = CanvasCore(model: model)
     super.init(frame: NSRect(x: 0, y: 0, width: Self.size, height: Self.size))
     host.frame = bounds
     addSubview(host)
@@ -123,6 +105,24 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     addSubview(presenceView)
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     model.onChange = { [weak self] before in self?.boardChanged(from: before) }
+    core.taken = { [unowned self] in Set(presence.taken.keys) }
+    core.zoom = { [unowned self] in Double(zoom) }
+    core.heightOf = { [unowned self] in height($0) }
+    core.drawnRect = { [unowned self] in drawnRect($0) }
+    core.turn = { [unowned self] in turn($0) }
+    core.onDoubleClick = { [unowned self] in doubleClick(at: NSPoint(x: $0.x, y: $0.y)) }
+    core.hold = { [unowned self] in hold?($0) }
+    core.onSelection = { [unowned self] in
+      for (id, v) in laneViews { v.selected = selection.contains(id) }
+      layoutCards()
+      onSelection?()
+    }
+    core.onFloat = { [unowned self] in
+      placeLanes()
+      layoutCards()
+      onFloat?()
+    }
+    core.onLand = { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
     sync()
   }
 
@@ -183,12 +183,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     c.id == turned ? Rect(x: c.x, y: c.y, w: Metrics.backWidth, h: Double(TextMetrics.backHeight(c))) : frontRect(c)
   }
 
-  func card(at p: NSPoint) -> Card? {
-    if let t = turned, let c = board.card(t), drawnRect(c).contains(p.x, p.y) { return c }
-    return board.cards.last { $0.id != turned && drawnRect($0).contains(p.x, p.y) }
-  }
+  func card(at p: NSPoint) -> Card? { core.card(at: Point(p)) }
 
-  func lane(at p: NSPoint) -> Lane? { board.lanes.last { $0.rect.contains(p.x, p.y) } }
+  func lane(at p: NSPoint) -> Lane? { core.lane(at: Point(p)) }
 
   // MARK: rendering
 
@@ -261,8 +258,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   func laneFrame(_ l: Lane) -> NSRect {
     guard held.ids.contains(l.id) else { return doc(l.rect) }
     let r = doc(l.rect)
-    return NSRect(x: r.minX + held.offset.width, y: r.minY + held.offset.height,
-                  width: r.width + held.growth.width, height: r.height + held.growth.height)
+    return NSRect(x: r.minX + held.offset.dx, y: r.minY + held.offset.dy,
+                  width: r.width + held.growth.dx, height: r.height + held.growth.dy)
   }
 
   private func makeLaneView(_ l: Lane) -> LaneView {
@@ -305,7 +302,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     for (i, c) in shown.cards.enumerated() {
       var r = doc(drawnRect(c))
       let isHeld = held.ids.contains(c.id)
-      if isHeld { r = r.offsetBy(dx: held.offset.width, dy: held.offset.height) }
+      if isHeld { r = r.offsetBy(dx: held.offset.dx, dy: held.offset.dy) }
       guard r.intersects(near) else { continue }
       live.insert(c.id)
       let isNew = cardLayers[c.id] == nil

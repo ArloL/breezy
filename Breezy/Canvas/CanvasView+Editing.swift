@@ -152,14 +152,10 @@ extension CanvasView {
       if drag == nil, let id = editing?.id ?? renaming?.id, ids.contains(id) { cancelEditing() }
       return
     }
-    guard !ids.isDisjoint(with: held.ids.union(d.origins.map(\.id)).union([d.id].compactMap { $0 })) else { return }
-    drag = nil
+    guard core.refused(ids) else { return }
     dragPoint = nil
     stopEdgeScroll()
     marquee.isHidden = true
-    raised = []
-    held = Held()
-    model.cancel()
     placeLanes()
     layoutCards()
   }
