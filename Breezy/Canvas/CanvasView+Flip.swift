@@ -3,11 +3,7 @@ import BreezyKit
 
 extension CanvasView {
   /// Space: turns over the card under the pointer, else the selected one; turns back the one in hand.
-  func turnCard() {
-    let ids = Array(selection)
-    let id = hovered ?? (ids.count == 1 && board.card(ids[0]) != nil ? ids[0] : nil)
-    turn(id == turned ? nil : id)
-  }
+  func turnCard() { core.turnCard() }
 
   /// Lifts card `id` and turns it over, putting back the one in hand; nil just puts it back. The
   /// state changes at once so an editor can take focus; the card turns in one springy flip, copies

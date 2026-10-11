@@ -92,6 +92,8 @@ public struct Drag {
   public var drag: Drag?
   /// The selection box being drawn.
   public private(set) var marquee: Rect?
+  /// The card under the pointer, for Space.
+  public var hovered: String?
 
   public init(model: BoardModel) {
     self.model = model
@@ -259,6 +261,45 @@ public struct Drag {
     case .resize: model.end("Resize Lane")
     case .marquee: break
     }
+  }
+
+  /// The pointer moved to `p` without a press, or left the board with nil.
+  public func hover(at p: Point?) { hovered = p.flatMap { card(at: $0)?.id } }
+
+  // MARK: keys
+
+  /// A key on the board, by AppKit's key code or by character; false when the board does not take it.
+  @discardableResult public func key(code: UInt16, chars: String) -> Bool {
+    switch (code, chars) {
+    case (49, _): turnCard()
+    case (53, _): if turned != nil { turn(nil) } else { selection = [] }
+    case (51, _), (117, _): deleteSelection()
+    case (_, "1"), (_, "2"), (_, "3"), (_, "4"), (_, "5"): setColor(Int(chars)!)
+    default: return false
+    }
+    return true
+  }
+
+  /// Space: turns over the card under the pointer, else the selected one; turns back the one in hand.
+  public func turnCard() {
+    let ids = Array(selection)
+    let id = hovered ?? (ids.count == 1 && board.card(ids[0]) != nil ? ids[0] : nil)
+    turn(id == turned ? nil : id)
+  }
+
+  public func deleteSelection() {
+    guard !selection.isEmpty else { return }
+    let ids = selection
+    model.begin()
+    model.update { $0.remove(ids) }
+    model.update { $0.gravity(heightOf) }
+    model.end("Delete")
+    selection = []
+  }
+
+  public func setColor(_ color: Int) {
+    let ids = selection
+    model.perform("Colour") { $0.setColor(ids, color) }
   }
 
   /// Someone else got there first with `ids`: a drag holding any of them goes back as it began. False when no drag

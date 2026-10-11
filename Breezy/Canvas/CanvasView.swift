@@ -41,7 +41,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var dragPoint: NSPoint?
   var edgeScrolling: (link: CADisplayLink, since: CFTimeInterval, last: CFTimeInterval)?
   /// The card under the pointer, for Space.
-  var hovered: String?
+  var hovered: String? {
+    get { core.hovered }
+    set { core.hovered = newValue }
+  }
   /// Brings cards to the exact scale once a zoom has settled.
   var settling: DispatchWorkItem?
   /// The zoom of the last layout pass; when it changes, a zoom is under way.

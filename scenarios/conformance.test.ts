@@ -69,3 +69,24 @@ agree("a click selects, another elsewhere clears", laneAndCards, async (d, made)
   const s = await d.scene();
   await d.click(centre(item(s, made[1]!)));
 });
+
+agree("a colour key recolours the card clicked, and ⌫ deletes another", laneAndCards, async (d, made) => {
+  const s = await d.scene();
+  await d.click(centre(item(s, made[1]!)));
+  await d.key("4");
+  await d.click(centre(item(s, made[3]!)));
+  await d.key("Backspace");
+});
+
+agree("Space turns the card clicked over", laneAndCards, async (d, made) => {
+  const s = await d.scene();
+  await d.click(centre(item(s, made[2]!)));
+  await d.key(" ");
+});
+
+agree("⌘Z undoes a drag into a lane, and ⇧⌘Z does it again", laneAndCards, async (d, made) => {
+  const s = await d.scene();
+  await d.drag(centre(item(s, made[1]!)), centre(item(s, made[0]!)));
+  await d.key("z", { meta: true });
+  await d.key("z", { meta: true, shift: true });
+});

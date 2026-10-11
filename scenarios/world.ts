@@ -55,10 +55,6 @@ export class SimDevice extends Device {
     return snap.boards[this.sim.boardID] as Board;
   }
 
-  override get keys() {
-    return this.kind === "web";
-  }
-
   override get edits() {
     return this.kind === "web";
   }
