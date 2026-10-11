@@ -15,8 +15,6 @@ export interface Case {
   input: "mouse" | "touch";
   /** Whether the first device must edit text, which the hub's fakes cannot yet. */
   edits?: boolean;
-  /** Whether the first device must take keys, which the hub's Swift devices cannot yet. */
-  keys?: boolean;
   run(s: Stage): Promise<void>;
 }
 
@@ -117,7 +115,6 @@ export const cases: Case[] = [
   {
     name: "a colour key recolours the card clicked on the other device",
     input: "mouse",
-    keys: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
@@ -130,7 +127,6 @@ export const cases: Case[] = [
   {
     name: "⌫ deletes the card clicked, on the other device too",
     input: "mouse",
-    keys: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
@@ -143,7 +139,6 @@ export const cases: Case[] = [
   {
     name: "⌘Z puts a card dragged into a lane back where it was, on the other device too",
     input: "mouse",
-    keys: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);

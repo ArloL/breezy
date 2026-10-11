@@ -258,7 +258,22 @@ import Foundation
     case "cancel":
       pressedAt = nil
       open.canvas.cancel()
-    case "key", "text": throw SimError("the Mac's keys and editing are in its app, not in BreezyKit yet")
+    case "key":
+      // by name, as scenarios give them; ⌘Z and ⇧⌘Z as the Mac's Edit menu has them
+      let key = try o.string("key"), shift = o["shift"]?.bool == true
+      if o["meta"]?.bool == true {
+        guard key == "z" else { throw SimError("no ⌘\(key) on the board") }
+        let u = model.undoManager
+        if shift { if u.canRedo { u.redo() } } else if u.canUndo { u.undo() }
+        break
+      }
+      let codes: [String: (UInt16, String)] = [
+        " ": (49, " "), "Escape": (53, "\u{1b}"), "Backspace": (51, "\u{7f}"), "1": (18, "1"), "2": (19, "2"), "3": (20, "3"),
+        "4": (21, "4"), "5": (23, "5"),
+      ]
+      guard let (code, chars) = codes[key] else { throw SimError("no key code for \(key)") }
+      open.canvas.key(code: code, chars: chars)
+    case "text": throw SimError("the Mac's editing is in its app, not in BreezyKit yet")
     case "pointer":
       // the Mac takes a mouse; its view does not move, so screen points are world points
       if o["kind"]?.string == "touch" { throw SimError("the Mac has no touch") }
@@ -267,7 +282,7 @@ import Foundation
       switch try o.string("phase") {
       case "down":
         canvas.press(at: p, clickCount: o["clicks"]?.int ?? 1, shift: o["shift"]?.bool == true, option: o["option"]?.bool == true)
-      case "move": canvas.dragged(to: p)
+      case "move": if canvas.drag == nil { canvas.hover(at: p) } else { canvas.dragged(to: p) }
       case "up": canvas.release()
       case "cancel": canvas.cancel()
       case let phase: throw SimError("unknown phase \(phase)")

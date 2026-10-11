@@ -30,11 +30,6 @@ export abstract class Device {
   /** A lane centred near world point (x, y), where this kind of device puts one; its id. */
   abstract addLane(x: number, y: number): Promise<string>;
 
-  /** Whether `key` works: the Mac's keys are not in its core yet, so the hub's Swift devices have none. */
-  get keys() {
-    return true;
-  }
-
   /** A key as Playwright names it ("3", "Backspace", " ", "z"), with ⌘ (`meta`) or ⇧ held. */
   abstract key(key: string, mods?: { meta?: boolean; shift?: boolean }): Promise<void>;
 

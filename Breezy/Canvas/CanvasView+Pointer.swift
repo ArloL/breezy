@@ -7,7 +7,7 @@ extension Point {
 
 extension CanvasView {
   override func mouseMoved(with event: NSEvent) {
-    hovered = card(at: world(event))?.id
+    core.hover(at: Point(world(event)))
     onPointer?(world(event))
   }
 
