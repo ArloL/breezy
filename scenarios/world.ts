@@ -55,6 +55,14 @@ export class SimDevice extends Device {
     return snap.boards[this.sim.boardID] as Board;
   }
 
+  override get keys() {
+    return this.kind === "web";
+  }
+
+  async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
+    await this.op({ op: "key", key, ...mods });
+  }
+
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
     await this.op({ op: "pointer", phase, x: p.x, y: p.y, ...extra });
   }

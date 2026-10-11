@@ -109,6 +109,10 @@ export class BrowserDevice extends Device {
     return until(`a new item in ${kind}`, async () => (await this.scene())[kind].find((x) => !had.has(x.id))?.id);
   }
 
+  async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
+    await this.page.keyboard.press(`${mods.meta ? "Meta+" : ""}${mods.shift ? "Shift+" : ""}${key}`);
+  }
+
   override get edits() {
     return true;
   }
