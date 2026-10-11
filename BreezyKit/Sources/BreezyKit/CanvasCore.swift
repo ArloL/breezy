@@ -60,6 +60,8 @@ public struct Drag {
   public var zoom: () -> Double = { 1 }
   /// A card's front height, which stacking uses for turned cards too.
   public var heightOf: HeightOf = { _ in 2 * Metrics.grid }
+  /// Where the view looks, for the scene.
+  public var camera: () -> Scene.Camera = { Scene.Camera(x: 0, y: 0, zoom: 1) }
   /// Where card `c` is drawn; a turned card shows its back.
   public var drawnRect: (Card) -> Rect
   /// Turns a card over, or puts it back with nil; the app animates it.
@@ -296,18 +298,33 @@ public struct Scene: Codable, Equatable, Sendable {
     public var title: String?
   }
 
+  /// Where the view looks: the screen point of the world's origin, and the zoom.
+  public struct Camera: Codable, Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var zoom: Double
+
+    public init(x: Double, y: Double, zoom: Double) {
+      self.x = x
+      self.y = y
+      self.zoom = zoom
+    }
+  }
+
   public var cards: [Item]
   public var lanes: [Item]
   public var turned: String?
   public var marquee: Rect?
+  public var camera: Camera
 
-  enum CodingKeys: String, CodingKey { case cards, lanes, turned, marquee }
+  enum CodingKeys: String, CodingKey { case cards, lanes, turned, marquee, camera }
 
-  public init(cards: [Item], lanes: [Item], turned: String?, marquee: Rect?) {
+  public init(cards: [Item], lanes: [Item], turned: String?, marquee: Rect?, camera: Camera) {
     self.cards = cards
     self.lanes = lanes
     self.turned = turned
     self.marquee = marquee
+    self.camera = camera
   }
 
   /// `turned` and `marquee` as null when there is none, as the web has them.
@@ -317,6 +334,7 @@ public struct Scene: Codable, Equatable, Sendable {
     try c.encode(lanes, forKey: .lanes)
     try c.encode(turned, forKey: .turned)
     try c.encode(marquee, forKey: .marquee)
+    try c.encode(camera, forKey: .camera)
   }
 }
 
@@ -357,6 +375,6 @@ extension CanvasCore {
       return Scene.Item(id: l.id, x: l.x + o.dx, y: l.y + o.dy, w: l.w + g.dx, h: l.h + g.dy, selected: selection.contains(l.id),
                         held: isHeld, title: l.title)
     }
-    return Scene(cards: cards, lanes: lanes, turned: turned, marquee: marquee)
+    return Scene(cards: cards, lanes: lanes, turned: turned, marquee: marquee, camera: camera())
   }
 }
