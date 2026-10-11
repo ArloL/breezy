@@ -3,8 +3,9 @@ import BreezyKit
 import IOSurface
 
 /// -BreezySelfTest <check>: the UI tests' scenarios driven in-process with synthetic events, for
-/// when XCUITest cannot run (it cannot activate the app while the screen is locked). Prints PASS
-/// or FAIL with a reason and quits with 0 or 1. scripts/selftest.sh runs them all.
+/// when XCUITest cannot run (it cannot activate the app while the screen is locked). Prints PASS,
+/// FAIL with a reason, or SKIP when it could not look, and quits with 0, 1 or 2. scripts/selftest.sh
+/// runs them all.
 enum SelfTest {
   static func run(_ name: String, _ wc: BoardWindowController) {
     let d = Driver(wc)
@@ -35,6 +36,14 @@ enum SelfTest {
     }
   }
 
+  /// A check of pixels needs the window on screen; behind a locked or sleeping screen nothing is drawn to compare.
+  static func skipUnlessVisible(_ name: String, _ d: Driver) {
+    guard !d.window.occlusionState.contains(.visible) else { return }
+    print("SKIP \(name): the window is out of sight, so nothing is drawn to check")
+    fflush(stdout)
+    exit(2)
+  }
+
   static func finish(_ name: String, _ failure: String?) -> Never {
     print(failure.map { "FAIL \(name): \($0)" } ?? "PASS \(name)")
     fflush(stdout)
@@ -45,10 +54,7 @@ enum SelfTest {
   /// the stretched one that stood in while it was drawn.
   private static func zoomSharp(_ d: Driver) {
     let name = "zoom-sharp"
-    guard d.window.occlusionState.contains(.visible) else {
-      print("PASS \(name) (window out of sight: not checked)")
-      exit(0)
-    }
+    skipUnlessVisible(name, d)
     let centre = NSPoint(x: CanvasView.origin + 264, y: CanvasView.origin + 180)
     func check(_ zoom: CGFloat, then next: @escaping () -> Void) {
       d.wc.place(origin: NSPoint(x: centre.x - 450 / zoom, y: centre.y - 300 / zoom), zoom: zoom)
@@ -282,10 +288,7 @@ extension SelfTest {
   /// dark, at zooms that put the card between pixels.
   fileprivate static func editInPlace(_ d: Driver) {
     let name = "edit-in-place"
-    guard d.window.occlusionState.contains(.visible) else {
-      print("PASS \(name) (window out of sight: not checked)")
-      exit(0)
-    }
+    skipUnlessVisible(name, d)
     var steps: [(zoom: CGFloat, dark: Bool, back: Bool)] = []
     for zoom in [0.89, 1, 1.3] as [CGFloat] { for dark in [false, true] { for back in [false, true] { steps.append((zoom, dark, back)) } } }
     func next() {
