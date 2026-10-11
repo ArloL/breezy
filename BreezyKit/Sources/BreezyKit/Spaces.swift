@@ -28,6 +28,8 @@ import Foundation
   public let directory: URL
   public private(set) var local: Group!
   public private(set) var spaces: [Group] = []
+  /// Store files that could not be read, moved aside so that nothing writes over them.
+  public private(set) var unreadable: [URL] = []
   /// After a change to what a group's boards show, with the boards concerned and whether it came from the server.
   public var onChange: ((Group, Set<String>, Bool) -> Void)?
   public var onStatus: ((Group) -> Void)?
@@ -69,10 +71,22 @@ import Foundation
       if try target.load() == nil { try target.saveNow(state) }
       try FileManager.default.removeItem(at: old.url)
     }
-    local = make(Store(state: try file(for: nil).load() ?? SpaceState()))
+    local = make(Store(state: try read(file(for: nil)) ?? SpaceState()))
     let urls = (try? FileManager.default.contentsOfDirectory(at: self.directory, includingPropertiesForKeys: nil)) ?? []
     for url in urls.sorted(by: { $0.path < $1.path }) where url.pathExtension == "json" && url.lastPathComponent != "local.json" {
-      if let state = try StoreFile(url: url).load(), state.space != nil { spaces.append(make(Store(state: state))) }
+      if let state = try read(StoreFile(url: url)), state.space != nil { spaces.append(make(Store(state: state))) }
+    }
+  }
+
+  /// Nil for a file that does not decode, after moving it aside.
+  private func read(_ file: StoreFile) throws -> SpaceState? {
+    do {
+      return try file.load()
+    } catch is DecodingError {
+      let aside = file.url.appendingPathExtension("\(newID()).unreadable")
+      try FileManager.default.moveItem(at: file.url, to: aside)
+      unreadable.append(aside)
+      return nil
     }
   }
 

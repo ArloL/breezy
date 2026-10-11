@@ -22,6 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   func applicationDidFinishLaunching(_ notification: Notification) {
     DebugLaunch.start()
     if !DebugLaunch.active && Library.shared.documents.isEmpty { BoardsWindowController.shared.showWindow(nil) }
+    let unreadable = Library.shared.spaces.unreadable
+    if !DebugLaunch.active && !unreadable.isEmpty {
+      let alert = NSAlert()
+      alert.messageText = "Breezy can’t read some of its boards"
+      alert.informativeText = "The rest open as usual. The files are kept as they were:\n\n" + unreadable.map(\.path).joined(separator: "\n")
+      alert.runModal()
+    }
     Library.shared.syncNow()
   }
 
