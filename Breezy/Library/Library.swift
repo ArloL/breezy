@@ -191,7 +191,8 @@ extension Notification.Name {
   /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front
   /// and which show.
   func updateLive() {
-    let visible = NSApp.isHidden ? [] : NSApp.windows.filter { $0.occlusionState.contains(.visible) }
+    // a scenario drives the windows as a person looking at them would, whether or not the screen shows them
+    let visible = DebugLaunch.control != nil ? NSApp.windows : NSApp.isHidden ? [] : NSApp.windows.filter { $0.occlusionState.contains(.visible) }
     let listShown = visible.contains { $0.windowController is BoardsWindowController }
     let shown = visible.compactMap { ($0.windowController?.document as? BoardDocument)?.boardID }
     let key = (NSApp.keyWindow?.windowController?.document as? BoardDocument)?.boardID

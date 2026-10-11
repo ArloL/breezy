@@ -10,11 +10,13 @@ import { chromium, webkit, type Browser, type Page } from "playwright-core";
 import { buildWeb } from "../scripts/build-web.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
+import { MacDevice } from "./mac.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
 
 export type BrowserKind = "chromium" | "webkit";
+export type RealKind = BrowserKind | "mac";
 
 const root = new URL("..", import.meta.url).pathname;
 const WEB = 58565, SERVER = 58566, RELAY = 58568;
@@ -127,21 +129,31 @@ export class BrowserDevice extends Device {
   }
 }
 
-export class BrowserWorld {
-  readonly devices: BrowserDevice[] = [];
+export class RealWorld {
+  readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
   private readonly children: ChildProcess[] = [];
   private readonly dirs: string[] = [];
   private web?: ReturnType<typeof createServer>;
 
-  /** Browsers of `kinds`, in one space with one board that all of them show. */
-  static async start(kinds: BrowserKind[]): Promise<BrowserWorld> {
-    const w = new BrowserWorld();
+  /** Browsers and Macs of `kinds`, in one space with one board that all of them show. */
+  static async start(kinds: RealKind[]): Promise<RealWorld> {
+    const w = new RealWorld();
     try {
       await w.serve();
       const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
       const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
       for (const [i, kind] of kinds.entries()) {
+        if (kind === "mac") {
+          const mac = await MacDevice.start(58570 + i, `d${i}`);
+          w.devices.push(mac);
+          await mac.command({ cmd: "join", link });
+          const board = i === 0
+            ? await mac.command<string>({ cmd: "createBoard", title: "Board" })
+            : await until("the board on the Mac", async () => (await mac.command<string[]>({ cmd: "boards" }))[0]);
+          await mac.command({ cmd: "open", board });
+          continue;
+        }
         const browser = await (kind === "chromium" ? chromium : webkit).launch();
         w.browsers.push(browser);
         const page = await (await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" })).newPage();
@@ -201,6 +213,7 @@ export class BrowserWorld {
 
   async stop() {
     for (const b of this.browsers) await b.close().catch(() => {});
+    for (const d of this.devices) if (d instanceof MacDevice) d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();

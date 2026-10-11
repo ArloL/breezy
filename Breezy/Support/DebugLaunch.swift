@@ -6,11 +6,13 @@ import BreezyKit
 /// -BreezyCapture <png> writes a window capture after 1.5 s and quits; -BreezyBench <json> runs the
 /// benchmark and quits; -BreezyAppearance light|dark|switch fixes the appearance, or starts light
 /// and switches to dark before the capture; -BreezyTurn any turns over the first card with notes;
-/// -BreezyEdit any starts editing the first card; -BreezySelfTest <check> runs a SelfTest check.
+/// -BreezyEdit any starts editing the first card; -BreezySelfTest <check> runs a SelfTest check; -BreezyControl <port>
+/// takes scenario commands on that port, with no board open, in a fresh store as the others.
 enum DebugLaunch {
   private static let defaults = UserDefaults.standard
   static var board: String? { defaults.string(forKey: "BreezyBoard") }
-  static var active: Bool { board != nil }
+  static var control: UInt16? { defaults.string(forKey: "BreezyControl").flatMap { UInt16($0) } }
+  static var active: Bool { board != nil || control != nil }
 
   /// Where the store lives: -BreezyStore <dir>, a fresh temporary folder for scripted checks, else
   /// Application Support.
@@ -21,6 +23,7 @@ enum DebugLaunch {
   }()
 
   static func start() {
+    if let control { MainActor.assumeIsolated { Control.start(port: control) } }
     guard let board else { return }
     let appearance = defaults.string(forKey: "BreezyAppearance")
     if appearance == "dark" { NSApp.appearance = NSAppearance(named: .darkAqua) }
