@@ -262,7 +262,7 @@ import Foundation
       // by name, as scenarios give them; ⌘Z and ⇧⌘Z as the Mac's Edit menu has them
       let key = try o.string("key"), shift = o["shift"]?.bool == true
       if o["meta"]?.bool == true {
-        guard key == "z" else { throw SimError("no ⌘\(key) on the board") }
+        guard key == "z" else { throw SimError("no ⌘\(key) on the board here") }
         let u = model.undoManager
         if shift { if u.canRedo { u.redo() } } else if u.canUndo { u.undo() }
         break

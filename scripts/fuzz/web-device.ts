@@ -388,6 +388,8 @@ class WebDevice {
       case "key": {
         // as main.ts hands a key to the app, on a Mac
         const a = this.open!.app, s = a.state;
+        // the field with the keyboard takes its keys first, as the focused element does in a browser
+        if ((a.view as FakeView).focused?.key(o.key, !!o.meta)) return null;
         const typing = s.editing ? "card" : s.renaming ? "lane" : null;
         const e = { key: o.key, code: o.key === "0" ? "Digit0" : "", metaKey: !!o.meta, shiftKey: !!o.shift, ctrlKey: false, altKey: false };
         const cmd = command(e, { mac: true, typing });

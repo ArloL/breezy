@@ -18,6 +18,8 @@ export class FakeField implements Field {
   view: FakeView;
   value = "";
   on: FieldEvents | null = null;
+  /** Whether all of it is selected, so that typing replaces it. */
+  selected = false;
 
   constructor(view: FakeView) {
     this.view = view;
@@ -25,6 +27,7 @@ export class FakeField implements Field {
 
   open(text: string, on: FieldEvents) {
     this.value = text;
+    this.selected = false;
     this.on = on;
     this.view.focus(this);
   }
@@ -46,16 +49,27 @@ export class FakeField implements Field {
     if (this.view.focused === this) this.view.focused = null;
   }
 
-  /** Keys typed at the caret; Return ends a field that Return ends. */
+  /** Keys typed at the caret, over the text when it is all selected; Return ends a field that Return ends. */
   type(keys: string) {
     for (const k of keys) {
       if (k === "\n" && this.on?.enter) {
         this.on.enter();
         continue;
       }
-      this.value += k;
+      this.value = (this.selected ? "" : this.value) + k;
+      this.selected = false;
       this.on?.input();
     }
+  }
+
+  /** A key the field takes before the board, as a browser gives the focused element its keys first; false if not. */
+  key(key: string, meta: boolean) {
+    if (meta && key === "a") return (this.selected = true);
+    if (!meta && key === "Enter" && this.on?.enter) {
+      this.type("\n");
+      return true;
+    }
+    return false;
   }
 }
 

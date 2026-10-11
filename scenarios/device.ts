@@ -84,6 +84,35 @@ export abstract class Device {
     await this.pointer("up", b, touch);
   }
 
+  /** A double-click at world point `p`. */
+  async doubleClick(p: Point) {
+    const s = await this.screen(p);
+    await this.pointer("down", s);
+    await this.pointer("up", s);
+    await this.pointer("down", s, { clicks: 2 });
+    await this.pointer("up", s, { clicks: 2 });
+  }
+
+  /** Renames lane `id` as a person does: a double-click on its header, the name over the old one, and Return. */
+  async rename(id: string, title: string) {
+    const l = (await this.scene()).lanes.find((x) => x.id === id);
+    if (!l) throw new Error(`nothing shows ${id}`);
+    await this.doubleClick({ x: l.x + l.w / 2, y: l.y + 12 });
+    await this.selectAll();
+    await this.type(title);
+    await this.key("Enter");
+  }
+
+  /** Selects all of what has the keyboard, as ⌘A does in a text field. */
+  async selectAll() {
+    await this.key("a", { meta: true });
+  }
+
+  /** Fingers moving together, as a phone reports them in one touch event: finger and screen point each. */
+  async fingers(phase: PointerPhase, moves: [number, Point][]) {
+    for (const [finger, p] of moves) await this.pointer(phase, p, { kind: "touch", finger });
+  }
+
   /** Two taps at world point `p`, as quick as a double tap. */
   async doubleTap(p: Point) {
     const s = await this.screen(p);
