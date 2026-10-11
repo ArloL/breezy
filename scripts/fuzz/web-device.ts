@@ -221,18 +221,6 @@ class WebDevice {
     return this._collab;
   }
 
-  /** Types `text` into card `id`'s front, or its back, in two steps, then finishes as the app does. */
-  edit(id: string, text: string, back?: boolean) {
-    const m = this.open!.model;
-    const set = back ? R.setNotes : R.setText;
-    m.update((b) => set(b, id, text.slice(0, Math.ceil(text.length / 2))));
-    m.update((b) => set(b, id, text));
-    m.update((b) => {
-      R.finishEdit(b, id);
-      this.restack(b);
-    });
-  }
-
   taken() {
     return this.group?.live?.taken() ?? new Set();
   }
@@ -330,28 +318,21 @@ class WebDevice {
           this.restack(b);
         });
       case "type": {
+        // as a person edits through the app: the side wanted turned up, its text typed over, then finished
         const [id] = this.items("cards", o.n);
-        // as the apps, which begin, then hold, and edit nothing someone else holds
-        if (!id || m.inGesture || this.taken().has(id)) return null;
-        m.begin();
-        this.open!.session.hold(new Set([id]));
-        this.edit(id, o.text, o.back);
-        m.end("Edit Card");
-        return null;
+        if (!id || m.inGesture) return null;
+        const a = this.open!.app;
+        this.noteTaken();
+        a.turn(o.back ? id : null);
+        a.beginEdit(id);
+        return this.typeAndFinish(o.text);
       }
       case "newCard": {
+        // as a double-click makes one: its top left where the pointer is, typed into, then finished
         if (m.inGesture) return null;
-        // as the app makes one: added and stacked, held, typed into, then finished, which takes an empty one away
-        m.begin();
-        let id!: string;
-        m.update((b) => {
-          id = R.addCard(b, o.x, o.y);
-          this.restack(b);
-        });
-        this.open!.session.hold(new Set([id]));
-        this.edit(id, o.text, false);
-        m.end("New Card");
-        return null;
+        this.noteTaken();
+        this.open!.app.newCard({ x: o.x, y: o.y }, "corner");
+        return this.typeAndFinish(o.text);
       }
       case "laneTitle":
       case "resize": {
@@ -420,12 +401,28 @@ class WebDevice {
     throw new Error(`unknown op ${o.op}`);
   }
 
+  /** What others hold, as library.ts gives it to the app. */
+  noteTaken() {
+    const live = this.group?.live;
+    this.open!.app.state.taken = new Map<string, Person>([...(live?.taken() ?? [])].map((id) => [id, live!.holderOf(id)!]));
+  }
+
+  /** Types `text` key by key over what the field with the keyboard holds, then ends the edit; nothing when no edit began. */
+  typeAndFinish(text: string) {
+    const a = this.open!.app;
+    const f = (a.view as FakeView).focused;
+    if (!a.state.editing || !f) return null;
+    f.value = "";
+    f.type(text);
+    a.endEditing();
+    return null;
+  }
+
   /** A mouse or finger event at screen point (x, y), as main.ts hands it to the app. */
   pointer(e: Omit<Pointer, "op">) {
     const o = this.open;
     if (!o) return null;
-    const live = this.group?.live;
-    o.app.state.taken = new Map<string, Person>([...(live?.taken() ?? [])].map((id) => [id, live!.holderOf(id)!]));
+    this.noteTaken();
     const p = { x: e.x, y: e.y };
     const t = performance.now();
     if (e.kind === "touch") {
