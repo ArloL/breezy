@@ -43,7 +43,10 @@ const board = document.getElementById("board")!;
 const gestures = new Gestures(app.input);
 const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
+/** A mouse press that began on the board, not in an editor, though its double-click may have opened one under it. */
+let boardClick = false;
 board.addEventListener("pointerdown", (e) => {
+  boardClick = e.pointerType === "mouse" && !editor(e);
   if (editor(e)) return;
   app.touching = e.pointerType !== "mouse";
   app.library?.pointerAt({ x: e.clientX, y: e.clientY });
@@ -58,8 +61,9 @@ board.addEventListener("pointerdown", (e) => {
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
   setTimeout(() => gestures.tick(performance.now()), HOLD_MS + 10);
 });
-// A touch's compatibility mousedown comes after pointerup and would take focus from an editor that tap just opened.
-board.addEventListener("mousedown", (e) => editor(e) || e.preventDefault());
+// A touch's compatibility mousedown comes after pointerup and would take focus from an editor that tap just opened. The
+// mousedown of a double-click that opened an editor would select the word under the pointer, which typing replaces.
+board.addEventListener("mousedown", (e) => (editor(e) && !boardClick) || e.preventDefault());
 // Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
 board.addEventListener("touchstart", (e) => editor(e) || e.preventDefault(), { passive: false });
 addEventListener("pointermove", (e) => {
