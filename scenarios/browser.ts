@@ -1,4 +1,4 @@
-// The web app built as it ships, in headless Chromium and WebKit, against sync.php and the relay under wrangler dev,
+// The web app built as it ships, in headless Chromium, WebKit and Firefox, against sync.php and the relay under wrangler dev,
 // on the wall clock: the same scenarios as on the hub, through the browsers' own input and the DOM.
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { chromium, webkit, type Browser, type CDPSession, type Page } from "playwright-core";
+import { chromium, firefox, webkit, type Browser, type CDPSession, type Page } from "playwright-core";
 import { buildWeb } from "../scripts/build-web.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
@@ -15,7 +15,7 @@ import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
 
-export type BrowserKind = "chromium" | "webkit";
+export type BrowserKind = "chromium" | "webkit" | "firefox";
 export type RealKind = BrowserKind | "mac";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -69,7 +69,7 @@ function touchEvent([type, x, y, finger]: [string, number, number, number]) {
 export class BrowserDevice extends Device {
   readonly kind: BrowserKind;
   readonly page: Page;
-  /** Chromium's DevTools session, which sends real touches; WebKit's touches are dispatched pointer events. */
+  /** Chromium's DevTools session, which sends real touches; WebKit's and Firefox's touches are dispatched pointer events. */
   private cdp: CDPSession | null = null;
   /** The fingers down, by id, as a touch event lists them all. */
   private down = new Map<number, Point>();
@@ -195,7 +195,7 @@ export class RealWorld {
           await mac.command({ cmd: "open", board });
           continue;
         }
-        const browser = await (kind === "chromium" ? chromium : webkit).launch();
+        const browser = await { chromium, webkit, firefox }[kind].launch();
         w.browsers.push(browser);
         const page = await (await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" })).newPage();
         const d = new BrowserDevice(kind, page);
