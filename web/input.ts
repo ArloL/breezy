@@ -139,6 +139,8 @@ export class Input {
     const b = app.model.board;
     // what someone else holds stays where it is
     if (["move", "lane", "resize"].includes(action) && s.taken.has(h.id!)) return;
+    // what someone else deleted since the press is not there to drag
+    if (action === "move" ? !R.card(b, h.id!) : (action === "lane" || action === "resize") && !R.lane(b, h.id!)) return;
     if (action !== "pan") {
       app.endEditing();
       if (s.turned && h.id !== s.turned) app.turn(null);
