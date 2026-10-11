@@ -259,6 +259,8 @@ import Foundation
       pressedAt = nil
       open.canvas.cancel()
     case "pointer":
+      // the Mac takes a mouse; its view does not move, so screen points are world points
+      if o["kind"]?.string == "touch" { throw SimError("the Mac has no touch") }
       let canvas = open.canvas
       let p = Point(x: try o.number("x"), y: try o.number("y"))
       switch try o.string("phase") {
@@ -368,7 +370,7 @@ import Foundation
   }
 }
 
-/// SplitMix64, as the hub's rng.mjs and the tests have it.
+/// SplitMix64, as the hub's rng.ts and the tests have it.
 final class SplitMix: @unchecked Sendable {
   private var state: UInt64
 

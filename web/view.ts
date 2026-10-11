@@ -278,6 +278,7 @@ export class View {
     let e = this.els.get(id);
     if (!e) {
       const el = document.createElement("div");
+      el.dataset.id = id;
       el.innerHTML = html;
       parent.append(el);
       e = { el, key: "" };

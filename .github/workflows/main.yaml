@@ -149,6 +149,8 @@ jobs:
       run: swift build --package-path BreezyKit --product breezy-sim
     - name: Test the fuzzer
       run: node --test scripts/fuzz/test/*.test.ts
+    - name: Scenarios
+      run: node --test scenarios/*.test.ts
     - name: Fuzz convergence
       run: node scripts/fuzz.ts --seeds 1-10 --steps 200
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
