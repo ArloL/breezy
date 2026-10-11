@@ -156,4 +156,65 @@ export const cases: Case[] = [
       assert.deepEqual({ x: now.x, y: now.y }, { x: was.x, y: was.y });
     },
   },
+  {
+    name: "a lane resized by its corner has that size on the other device",
+    input: "mouse",
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane } = await laneAndCard(s);
+      const l = item(await a.scene(), lane);
+      await a.drag({ x: l.x + l.w - 6, y: l.y + l.h - 6 }, { x: l.x + l.w + 90, y: l.y + l.h - 102 });
+      await s.settle();
+      const seen = item(await b.scene(), lane);
+      assert.deepEqual({ w: seen.w, h: seen.h }, { w: l.w + 96, h: l.h - 96 });
+    },
+  },
+  {
+    name: "a card dragged out of a stack lets the one below it close up, on the other device too",
+    input: "mouse",
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      let at = await a.scene();
+      await a.drag(centre(item(at, card)), centre(item(at, lane)));
+      const l = item(at, lane);
+      const second = await a.addCard(l.x + l.w + 200, l.y + 400);
+      await s.settle();
+      at = await a.scene();
+      await a.drag(centre(item(at, second)), centre(item(at, lane)));
+      await s.settle();
+      assert.deepEqual(await within(b, lane, second), { x: 24, y: 72 + item(await b.scene(), card).h + 24 }, "stacked below the first");
+      at = await a.scene();
+      await a.drag(centre(item(at, card)), { x: l.x + l.w + 300, y: l.y + 100 });
+      await s.settle();
+      assert.deepEqual(await within(b, lane, second), { x: 24, y: 72 }, "closed up to the top");
+    },
+  },
+  {
+    name: "a card one device holds stays where it holds it when the other drags it",
+    input: "mouse",
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      const at = await a.scene();
+      const c = centre(item(at, card)), l = centre(item(at, lane));
+      const [pa, pl] = [await a.screen(c), await a.screen(l)];
+      await a.pointer("down", pa);
+      await a.pointer("move", { x: pa.x - 20, y: pa.y + 20 });
+      await a.wait(100);
+      await s.settle();
+      const bs = await b.scene();
+      const target = { x: item(bs, card).x + 300, y: item(bs, card).y + 300 };
+      await b.drag(centre(item(bs, card)), target);
+      await b.wait(100);
+      const tried = item(await b.scene(), card);
+      assert.ok(Math.abs(tried.x - target.x) > 100, `the other device could not move it (at ${tried.x}, dragged to about ${target.x})`);
+      await a.pointer("move", pl);
+      await a.wait(50);
+      await a.pointer("up", pl);
+      await s.settle();
+      assert.deepEqual(await within(b, lane, card), { x: 24, y: 72 }, "where the holder put it");
+      assert.deepEqual(await within(a, lane, card), { x: 24, y: 72 });
+    },
+  },
 ];
