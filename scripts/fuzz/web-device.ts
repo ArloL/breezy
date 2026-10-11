@@ -7,6 +7,7 @@ import { Collab } from "../../web/sync/collab.ts";
 import { App } from "../../web/app.ts";
 import { Mouse } from "../../web/mouse.ts";
 import { Gestures, HOLD_MS } from "../../web/gestures.ts";
+import { command, perform } from "../../web/keys.ts";
 import { FakeView, fakeHeight, fakePorts } from "../../web/test/fakes.ts";
 import type { Person } from "../../web/presence.ts";
 import type { Model } from "../../web/model.ts";
@@ -398,6 +399,14 @@ class WebDevice {
       }
       case "pointer":
         return this.pointer(o);
+      case "key": {
+        // as main.ts hands a key to the app, on a Mac
+        const a = this.open!.app, s = a.state;
+        const typing = s.editing ? "card" : s.renaming ? "lane" : null;
+        const e = { key: o.key, code: o.key === "0" ? "Digit0" : "", metaKey: !!o.meta, shiftKey: !!o.shift, ctrlKey: false, altKey: false };
+        const cmd = command(e, { mac: true, typing });
+        return cmd && perform(a, cmd, this.open!.mouse);
+      }
       case "undo":
         return m.undo();
       case "redo":

@@ -92,6 +92,18 @@ export class MacDevice extends Device {
     throw new Error(`no new item in ${kind}`);
   }
 
+  /** By key code, as AppKit has them on a US layout. */
+  static readonly codes: Record<string, [string, number]> = {
+    "1": ["1", 18], "2": ["2", 19], "3": ["3", 20], "4": ["4", 21], "5": ["5", 23], " ": [" ", 49], Backspace: ["\u007f", 51],
+    Escape: ["\u001b", 53], z: ["z", 6], l: ["l", 37],
+  };
+
+  async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
+    const k = MacDevice.codes[key];
+    if (!k) throw new Error(`no key code for ${key}`);
+    await this.command({ cmd: "key", chars: k[0], code: k[1], command: !!mods.meta, shift: !!mods.shift });
+  }
+
   override get edits() {
     return true;
   }

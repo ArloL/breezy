@@ -58,7 +58,7 @@ import Network
     var link, board, title, phase, kind, chars, text: String?
     var x, y: Double?
     var code, clicks: Int?
-    var shift, option, atEnd: Bool?
+    var shift, option, atEnd, command: Bool?
 
     func need<T>(_ v: T?, _ name: String) throws -> T {
       guard let v else { throw Failure(description: "\(cmd) needs \(name)") }
@@ -89,8 +89,17 @@ import Network
     case "key":
       guard let wc = window, let w = wc.window else { throw Failure(description: "no board open") }
       let chars = try c.need(c.chars, "chars")
+      var mods: NSEvent.ModifierFlags = []
+      if c.shift == true { mods.insert(.shift) }
+      if c.command == true {
+        // the menu's action along the window's responder chain, as AppKit does for the key window, which nobody makes key
+        mods.insert(.command)
+        guard let item = menuItem(chars, mods, in: NSApp.mainMenu!), let action = item.action else { throw Failure(description: "no menu item for ⌘\(chars)") }
+        _ = w.firstResponder?.tryToPerform(action, with: item)
+        return .null
+      }
       let e = NSEvent.keyEvent(
-        with: .keyDown, location: w.mouseLocationOutsideOfEventStream, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        with: .keyDown, location: w.mouseLocationOutsideOfEventStream, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
         windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false,
         keyCode: UInt16(try c.need(c.code, "code")))!
       w.sendEvent(e)
@@ -110,6 +119,14 @@ import Network
     default: throw Failure(description: "unknown command \(c.cmd)")
     }
     return .null
+  }
+
+  private static func menuItem(_ key: String, _ mods: NSEvent.ModifierFlags, in menu: NSMenu) -> NSMenuItem? {
+    for item in menu.items {
+      if let sub = item.submenu, let found = menuItem(key, mods, in: sub) { return found }
+      if item.keyEquivalent == key && item.keyEquivalentModifierMask == mods { return item }
+    }
+    return nil
   }
 
   /// A mouse event at a screen point of the board: down, move, up or cancel.

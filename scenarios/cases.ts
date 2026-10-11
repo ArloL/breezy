@@ -15,6 +15,8 @@ export interface Case {
   input: "mouse" | "touch";
   /** Whether the first device must edit text, which the hub's fakes cannot yet. */
   edits?: boolean;
+  /** Whether the first device must take keys, which the hub's Swift devices cannot yet. */
+  keys?: boolean;
   run(s: Stage): Promise<void>;
 }
 
@@ -110,6 +112,48 @@ export const cases: Case[] = [
       await a.typeInto(card, " and more");
       await s.settle();
       assert.equal(item(await b.scene(), card).text, `${before} and more`);
+    },
+  },
+  {
+    name: "a colour key recolours the card clicked on the other device",
+    input: "mouse",
+    keys: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      await a.click(centre(item(await a.scene(), card)));
+      await a.key("3");
+      await s.settle();
+      assert.equal(item(await b.scene(), card).color, 3);
+    },
+  },
+  {
+    name: "⌫ deletes the card clicked, on the other device too",
+    input: "mouse",
+    keys: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      await a.click(centre(item(await a.scene(), card)));
+      await a.key("Backspace");
+      await s.settle();
+      assert.equal((await b.scene()).cards.some((c) => c.id === card), false);
+    },
+  },
+  {
+    name: "⌘Z puts a card dragged into a lane back where it was, on the other device too",
+    input: "mouse",
+    keys: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      const at = await a.scene(), was = item(await b.scene(), card);
+      await a.drag(centre(item(at, card)), centre(item(at, lane)));
+      await s.settle();
+      await a.key("z", { meta: true });
+      await s.settle();
+      const now = item(await b.scene(), card);
+      assert.deepEqual({ x: now.x, y: now.y }, { x: was.x, y: was.y });
     },
   },
 ];
