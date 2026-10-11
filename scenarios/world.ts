@@ -59,6 +59,27 @@ export class SimDevice extends Device {
     return this.kind === "web";
   }
 
+  override get edits() {
+    return this.kind === "web";
+  }
+
+  override async type(text: string) {
+    await this.op({ op: "text", text });
+  }
+
+  /** As a person edits one with a mouse: a double-click, the keys, and Esc. */
+  override async typeInto(id: string, text: string) {
+    const r = (await this.scene()).cards.find((c) => c.id === id);
+    if (!r) throw new Error(`nothing shows ${id}`);
+    const p = await this.screen({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+    await this.pointer("down", p);
+    await this.pointer("up", p);
+    await this.pointer("down", p, { clicks: 2 });
+    await this.pointer("up", p, { clicks: 2 });
+    await this.type(text);
+    await this.key("Escape");
+  }
+
   async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
     await this.op({ op: "key", key, ...mods });
   }

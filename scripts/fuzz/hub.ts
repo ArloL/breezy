@@ -55,7 +55,8 @@ export type Op =
   | { op: "press"; n: number; count: number; lane: boolean }
   | { op: "drag"; dx: number; dy: number }
   | Pointer
-  | { op: "key"; key: string; meta?: boolean; shift?: boolean };
+  | { op: "key"; key: string; meta?: boolean; shift?: boolean }
+  | { op: "text"; text: string };
 
 interface Replies {
   newSpace: { invite: Invite };

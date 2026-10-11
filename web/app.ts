@@ -38,30 +38,6 @@ export interface Match {
   side?: string;
 }
 
-function caretToEnd(el: HTMLElement) {
-  const r = document.createRange();
-  r.selectNodeContents(el);
-  r.collapse(false);
-  const s = getSelection()!;
-  s.removeAllRanges();
-  s.addRange(r);
-}
-
-/**
- * Firefox draws an empty last line with a <br> after the newline, and the caret before that <br> at the end of the
- * line above. A second newline, as Chrome uses, draws the line; the caret goes at the start of its own text node, as
- * at the end of a text node it is drawn at the end of the title's ::first-line.
- */
-function newlineForBreak(el: HTMLElement) {
-  const br = el.lastChild;
-  if (br?.nodeName !== "BR") return;
-  const sel = getSelection()!;
-  const atEnd = sel.anchorNode === el && sel.anchorOffset >= el.childNodes.length - 1;
-  const nl = document.createTextNode("\n");
-  br.replaceWith(nl);
-  if (atEnd) sel.collapse(nl, 0);
-}
-
 /** The board, what is selected, turned and being edited, and every action on them. */
 export class App {
   touching: boolean;
@@ -206,13 +182,9 @@ export class App {
     const s = this.state;
     const id = s.editing?.id ?? s.renaming;
     if (!id) return;
-    const el = s.editing ? this.view.editorOf(s.editing.id, s.editing.back) : this.view.titleOf(s.renaming!);
+    const f = s.editing ? this.view.editorOf(s.editing.id, s.editing.back) : this.view.titleOf(s.renaming!);
     s.editing = s.renaming = null;
-    if (el) {
-      el.onblur = el.oninput = el.onkeydown = null;
-      el.blur();
-      el.contentEditable = "false";
-    }
+    f?.close();
     // the editor's text is the typed one; drawing afresh puts the board's back
     const e = this.view.els.get(id);
     if (e) e.key = "";
@@ -223,13 +195,8 @@ export class App {
   /** Where the caret is in the card being edited, for others to draw. */
   caret() {
     const e = this.state.editing;
-    const el = e && this.view.editorOf(e.id, e.back);
-    const sel = getSelection()!;
-    if (!el || !sel.rangeCount || !el.contains(sel.focusNode)) return null;
-    const r = document.createRange();
-    r.selectNodeContents(el);
-    r.setEnd(sel.focusNode!, sel.focusOffset);
-    return { id: e.id, back: e.back, at: r.toString().replace(/\u200b/g, "").length };
+    const at = e && this.view.editorOf(e.id, e.back)?.caret();
+    return e && at != null ? { id: e.id, back: e.back, at } : null;
   }
 
   /** Edits the side of card `id` facing up; focus stays synchronous so iOS shows the keyboard. */
@@ -243,14 +210,7 @@ export class App {
     const back = this.state.turned === id;
     this.state.editing = { id, back, name };
     this.view.render();
-    const el = this.view.editorOf(id, back)!;
-    el.textContent = back ? (c.notes ?? "") : c.text;
-    el.classList.remove("placeholder");
-    el.contentEditable = "plaintext-only";
-    el.oninput = () => this.edited();
-    el.onblur = () => this.endEditing();
-    el.focus({ preventScroll: true });
-    caretToEnd(el);
+    this.view.editorOf(id, back)!.open(back ? (c.notes ?? "") : c.text, { input: () => this.edited(), done: () => this.endEditing() });
     // fingers need the text larger to edit it; a pointer edits at any zoom, as on the Mac
     if (this.touching && this.view.cam.zoom < 1) this.view.zoomAround(this.view.toScreen({ x: c.x + c.w / 2, y: c.y }), 1, true);
     this.ui.update();
@@ -260,11 +220,7 @@ export class App {
   edited() {
     const e = this.state.editing;
     if (!e) return;
-    const el = this.view.editorOf(e.id, e.back)!;
-    newlineForBreak(el);
-    // An empty last line is drawn from two newlines; the last one is not part of the text.
-    const raw = el.innerText.replace(/\u200b/g, "");
-    const text = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
+    const text = this.view.editorOf(e.id, e.back)!.text();
     this.model.update((b) => {
       if (e.back) return R.setNotes(b, e.id, text);
       R.setText(b, e.id, text);
@@ -279,25 +235,16 @@ export class App {
     if (s.renaming) {
       const id = s.renaming;
       s.renaming = null;
-      const el = this.view.titleOf(id);
-      const title = el?.textContent.trim() || "Lane";
-      if (el) {
-        el.onblur = el.oninput = el.onkeydown = null;
-        el.blur();
-        el.contentEditable = "false";
-      }
+      const f = this.view.titleOf(id);
+      const title = f?.text().trim() || "Lane";
+      f?.close();
       this.model.update((b) => R.setLaneTitle(b, id, title));
       this.model.end("Rename Lane");
     }
     const e = s.editing;
     if (e) {
       s.editing = null;
-      const el = this.view.editorOf(e.id, e.back);
-      if (el) {
-        el.onblur = el.oninput = null;
-        el.blur();
-        el.contentEditable = "false";
-      }
+      this.view.editorOf(e.id, e.back)?.close();
       this.model.update((b) => {
         R.finishEdit(b, e.id);
         R.gravity(b, this.heightOf);
@@ -312,11 +259,11 @@ export class App {
     const e = this.state.editing;
     if (!e) return;
     const old = this.view.editorOf(e.id, e.back)!;
-    old.oninput = old.onblur = null;
+    old.detach();
     this.state.editing = null;
     this.turn(e.back ? null : e.id);
     this.beginEdit(e.id, e.name);
-    old.contentEditable = "false";
+    old.close();
   }
 
   beginRename(id: string) {
@@ -328,18 +275,12 @@ export class App {
     this.hold([id]);
     this.state.renaming = id;
     this.view.render();
-    const el = this.view.titleOf(id)!;
-    el.textContent = l.title;
-    el.contentEditable = "plaintext-only";
-    el.oninput = () => this.model.update((b) => R.setLaneTitle(b, id, el.textContent));
-    el.onkeydown = (ev) => {
-      if (ev.key !== "Enter") return;
-      ev.preventDefault();
-      this.endEditing();
-    };
-    el.onblur = () => this.endEditing();
-    el.focus({ preventScroll: true });
-    caretToEnd(el);
+    const f = this.view.titleOf(id)!;
+    f.open(l.title, {
+      input: () => this.model.update((b) => R.setLaneTitle(b, id, f.text())),
+      done: () => this.endEditing(),
+      enter: () => this.endEditing(),
+    });
     this.ui.update();
   }
 
