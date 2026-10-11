@@ -225,9 +225,9 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   }
 }
 
-/// Scripted checks keep their size on a screen smaller than it, so that what a check points at shows.
+/// Scenarios keep their size on a screen smaller than it, so that what a case points at shows.
 final class BoardWindow: NSWindow {
   override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-    DebugLaunch.active ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    DebugLaunch.control != nil ? frameRect : super.constrainFrameRect(frameRect, to: screen)
   }
 }
