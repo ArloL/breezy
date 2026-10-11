@@ -20,9 +20,9 @@ Every interaction, dragging included, is tested without a hand on the Mac or the
 
 | Kind | Input | Scene | Edits | Keys |
 |---|---|---|---|---|
-| `swift` | mouse, through `CanvasCore` | `CanvasCore.scene` | no | no |
-| `web` | mouse through `Mouse`, touch through `Gestures`, as `main.ts` hands them | `sceneOf` on the fake view | no | through `keys.ts` |
-| `chromium`, `webkit` | the browser's own mouse; touch as `PointerEvent`s | read back off the DOM | yes | yes |
+| `swift` | mouse, through `CanvasCore` | `CanvasCore.scene` | no | through `CanvasCore.key`, ⌘Z as the Edit menu |
+| `web` | mouse through `Mouse`, touch through `Gestures`, as `main.ts` hands them | `sceneOf` on the fake view | into a `FakeField` | through `keys.ts` |
+| `chromium`, `webkit` | the browser's own mouse; Chromium's own touch, WebKit's as `PointerEvent`s | read back off the DOM | yes | yes |
 | `mac` | `NSEvent`s sent to the board window | `CanvasCore.scene`, camera from the scroll view | yes | yes, ⌘ through the menu |
 
 A case says what it needs of the first device (touch, editing, keys); the runners skip the pairs that lack it.
@@ -35,8 +35,8 @@ A scene is what a device draws: each card and lane with its world frame, whether
 
 | Core | Where | Ports |
 |---|---|---|
-| Mac | `BreezyKit/CanvasCore.swift`: hits, the drag threshold, selection, the box, what a drag moves and where it lands | closures for heights, drawn rects, what others hold, zoom, camera, turning, holding; `CanvasView` turns events into calls and draws what the core holds |
-| web | `App`, `Input`, `Mouse`, `Gestures`, `keys.ts` | `web/ports.ts`: the view, the UI, presence and the open board's space; `main.ts` gives the DOM ones, `web/test/fakes.ts` the fakes |
+| Mac | `BreezyKit/CanvasCore.swift`: hits, the drag threshold, selection, the box, what a drag moves and where it lands, the board's keys | closures for heights, drawn rects, what others hold, zoom, camera, turning, holding; `CanvasView` turns events into calls and draws what the core holds |
+| web | `App`, `Input`, `Mouse`, `Gestures`, `keys.ts` | `web/ports.ts`: the view with its editable fields, the UI, presence and the open board's space; `main.ts` gives the DOM ones (`web/field.ts` for fields), `web/test/fakes.ts` the fakes |
 
 Fakes measure a card as 24 + 24 pt per line, as Chromium, WebKit and the Mac draw text too short to wrap.
 
@@ -53,8 +53,8 @@ The hub's devices answer the fuzzer's commands plus `pointer`, `key` and `scene`
 
 | What | Why it matters |
 |---|---|
-| Editing on the hub: an editor port for `App`, and the Mac's editing in BreezyKit | cases that type run only on real devices |
-| The Mac's keys, turning, zoom and edge scroll in `CanvasCore` | the hub's Swift devices take no keys; conformance covers the pointer only |
+| The Mac's editing in BreezyKit | cases that type run on the hub's web devices and on real devices, not on the hub's Swift ones |
+| Zoom, pan and edge scroll in `CanvasCore` | the hub's Swift devices have a fixed camera, so cases keep to what one screen shows |
 | Replacing the rules tests mirrored by hand between `rules.test.ts` and `StackingTests`/`EditsTests` with conformance cases | one change, one test |
 | Contract suites per port, beside the cases: scenes applied to the DOM view and read back; native events against what the fakes inject | a fake that drifts shows as a contract failure, not as a case that passes on fakes alone |
 | Touch through the browsers' own touch input rather than `PointerEvent`s | iOS's compatibility mouse events come only from real touches |
