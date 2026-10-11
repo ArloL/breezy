@@ -1,11 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CursorEncoder, LiveEncoder, LiveDecoder, fnv1a, splice, isCompact, FIELDS, KEYFRAME_MS } from "../sync/compact.js";
-import { fixture } from "./helpers/fixture.js";
+import { CursorEncoder, LiveEncoder, LiveDecoder, fnv1a, splice, isCompact, FIELDS, KEYFRAME_MS } from "../sync/compact.ts";
+import { fixture } from "./helpers/fixture.ts";
+import type { Fields } from "../sync/overlay.ts";
 
-const data = fixture("live2.json");
-const bytes = (hex) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
-const hex = (b) => Buffer.from(b).toString("hex");
+type Step = {
+  redeliver?: number;
+  receive?: string;
+  cursor?: Parameters<CursorEncoder["encode"]>[0];
+  live?: Parameters<LiveEncoder["encode"]>[0];
+  reset?: boolean;
+  seq: number;
+  at: number;
+  now: number;
+  hex: string;
+  lost?: boolean;
+  overlay?: Record<string, Fields>;
+  decoded: unknown;
+};
+
+const data: { fnv1a: [string, number][]; splice: [string, string, unknown][]; cases: { name: string; steps: Step[] }[]; malformed: { name: string; hex: string }[] } = fixture("live2.json");
+const bytes = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
+const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
 test("fnv1a hashes UTF-16 code units", () => {
   for (const [text, hash] of data.fnv1a) assert.equal(fnv1a(text), hash, text);
@@ -18,16 +34,15 @@ test("splice keeps the common prefix and suffix whole", () => {
 for (const c of data.cases) {
   test(`live2: ${c.name}`, () => {
     const cursor = new CursorEncoder(), live = new LiveEncoder(), decoder = new LiveDecoder();
-    let overlay = new Map();
+    let overlay = new Map<string, Fields>();
     c.steps.forEach((s, i) => {
       const at = `${c.name} step ${i}`;
       let wire;
-      if ("redeliver" in s) wire = bytes(c.steps[s.redeliver].hex);
-      else if ("receive" in s) wire = bytes(s.receive);
+      if ("redeliver" in s) wire = bytes(c.steps[s.redeliver!].hex);
+      else if ("receive" in s) wire = bytes(s.receive!);
       else {
-        const enc = s.cursor ? cursor : live;
-        if (s.reset) enc.reset();
-        wire = enc.encode(s.cursor ?? s.live, { seq: s.seq, at: s.at, now: s.now });
+        if (s.reset) (s.cursor ? cursor : live).reset();
+        wire = s.cursor ? cursor.encode(s.cursor, { seq: s.seq, at: s.at, now: s.now }) : live.encode(s.live!, { seq: s.seq, at: s.at, now: s.now });
         assert.equal(hex(wire), s.hex, at);
         assert.ok(isCompact(wire), at);
       }
@@ -35,7 +50,7 @@ for (const c of data.cases) {
       if (s.overlay) overlay = new Map(Object.entries(s.overlay));
       const got = decoder.decode(wire, overlay);
       assert.deepEqual(got, s.decoded, at);
-      for (const [id, f] of Object.entries(got?.items ?? {})) overlay.set(id, { ...overlay.get(id), ...f });
+      for (const [id, f] of Object.entries(got && "items" in got ? got.items : {})) overlay.set(id, { ...overlay.get(id), ...f });
     });
   });
 }
@@ -45,10 +60,10 @@ test("malformed bodies decode to null", () => {
 });
 
 const B1 = "YGFiY2RlZmdoaWprbG1ubw", A = "AQEBAQEBAQEBAQEBAQEBAQ";
-const valid = (now) => ({ board: B1, items: { [A]: { pos: [now, 0], kind: "card" } }, starts: {}, caret: { id: A, back: false, at: 0 }, cursor: null });
+const valid = (now: number) => ({ board: B1, items: { [A]: { pos: [now, 0], kind: "card" } }, starts: {}, caret: { id: A, back: false, at: 0 }, cursor: null });
 
 test("an encoder that throws on a bad input is left as it was", () => {
-  const bad = [
+  const bad: Parameters<LiveEncoder["encode"]>[0][] = [
     { ...valid(1), board: "short" },
     { ...valid(1), items: { short: { pos: [1, 0] } } },
     { ...valid(1), items: { [A]: { kind: "note" } } },

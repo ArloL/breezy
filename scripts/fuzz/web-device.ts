@@ -1,27 +1,48 @@
 // Web devices in the hub's process, answering the same commands as breezy-sim: each is the web app's Spaces, model,
 // binding and Collab with its I/O carried by the hub, on virtual time.
-import * as V from "./virtual.mjs";
-import { Spaces } from "../../web/sync/spaces.js";
-import { GestureHolds } from "../../web/sync/gesture-holds.js";
-import { Collab } from "../../web/sync/collab.js";
-import { Model } from "../../web/model.js";
-import { Binding } from "../../web/binding.js";
-import * as R from "../../web/rules.js";
-import { encode, decode } from "../../web/sync/base64.js";
+import * as V from "./virtual.ts";
+import { Spaces } from "../../web/sync/spaces.ts";
+import { GestureHolds } from "../../web/sync/gesture-holds.ts";
+import { Collab } from "../../web/sync/collab.ts";
+import { App } from "../../web/app.ts";
+import { Mouse } from "../../web/mouse.ts";
+import { Gestures, HOLD_MS } from "../../web/gestures.ts";
+import { FakeView, fakeHeight, fakePorts } from "../../web/test/fakes.ts";
+import type { Person } from "../../web/presence.ts";
+import type { Model } from "../../web/model.ts";
+import { Binding } from "../../web/binding.ts";
+import * as R from "../../web/rules.ts";
+import type { Board } from "../../web/types.ts";
+import { encode, decode } from "../../web/sync/base64.ts";
+import type { Ice, LinkState, PeerTransport } from "../../web/sync/direct.ts";
+import type { Command, DeviceCommand, Event, Me, Op, Pointer, Reply, Snapshot } from "./hub.ts";
+
+type Group = Spaces["spaces"][number];
+type Session = ReturnType<Collab["open"]>;
+type Payload<E> = E extends unknown ? Omit<E, "dev"> : never;
 
 /** Card heights as both device kinds measure them here: restacking stays local, so they need only be stable. */
-export const heightOf = (text) => 72 + 24 * Math.max(1, String(text ?? "").split("\n").length);
+export const heightOf = (text: string | null | undefined) => fakeHeight(text ?? undefined);
 
-const bytesOf = (data) => (data instanceof Uint8Array ? data : new Uint8Array(data));
+const bytesOf = (data: Uint8Array | ArrayBuffer) => (data instanceof Uint8Array ? data : new Uint8Array(data));
 
 class Socket {
-  constructor(device, sock, url) {
+  declare device: WebDevice;
+  declare sock: number;
+  declare url: string;
+  declare readyState: 0 | 1 | 2 | 3;
+  declare binaryType: BinaryType;
+  declare onopen: ((e: object) => void) | null;
+  declare onmessage: ((e: { data: string | ArrayBuffer }) => void) | null;
+  declare onclose: ((e: { code: number }) => void) | null;
+
+  constructor(device: WebDevice, sock: number, url: string) {
     Object.assign(this, { device, sock, url, readyState: 0, binaryType: "blob", onopen: null, onmessage: null, onclose: null });
   }
 
-  send(data) {
+  send(data: Parameters<WebSocket["send"]>[0]) {
     if (this.readyState !== 1) return;
-    this.device.emit(typeof data === "string" ? { ev: "ws-send", sock: this.sock, text: data } : { ev: "ws-send", sock: this.sock, bytes: encode(bytesOf(data)) });
+    this.device.emit(typeof data === "string" ? { ev: "ws-send", sock: this.sock, text: data } : { ev: "ws-send", sock: this.sock, bytes: encode(bytesOf(data as Uint8Array | ArrayBuffer)) });
   }
 
   close() {
@@ -32,8 +53,15 @@ class Socket {
 }
 
 /** Direct's transport, with the channels the hub simulates. */
-class Peer {
-  constructor(device) {
+class Peer implements PeerTransport {
+  device: WebDevice;
+  open: Set<string>;
+  calls: Map<number, unknown>;
+  onCandidate: PeerTransport["onCandidate"];
+  onState: PeerTransport["onState"];
+  onMessage: PeerTransport["onMessage"];
+
+  constructor(device: WebDevice) {
     this.device = device;
     this.open = new Set();
     this.calls = new Map();
@@ -42,53 +70,74 @@ class Peer {
     this.onMessage = () => {};
   }
 
-  call(ev, peer, extra) {
+  call<T>(ev: "peer-offer" | "peer-answer" | "peer-accept", peer: string, extra: { restart?: boolean; sdp?: string }) {
     const call = ++this.device.calls;
     this.device.emit({ ev, peer, call, ...extra });
-    return new Promise((resolve) => this.device.peerCalls.set(call, resolve));
+    return new Promise<T>((resolve) => this.device.peerCalls.set(call, resolve as (v: unknown) => void));
   }
 
-  create(peer) {
+  create(peer: string) {
     this.open.delete(peer);
     this.device.emit({ ev: "peer-create", peer });
   }
 
-  offer(peer, restart) {
-    return this.call("peer-offer", peer, { restart: !!restart });
+  offer(peer: string, restart: boolean) {
+    return this.call<string>("peer-offer", peer, { restart: !!restart });
   }
 
-  answer(peer, sdp) {
-    return this.call("peer-answer", peer, { sdp });
+  answer(peer: string, sdp: string) {
+    return this.call<string>("peer-answer", peer, { sdp });
   }
 
-  async accept(peer, sdp) {
+  async accept(peer: string, sdp: string) {
     await this.call("peer-accept", peer, { sdp });
   }
 
-  add(peer, candidate) {
+  add(peer: string, candidate: Ice) {
     this.device.emit({ ev: "peer-add", peer, candidate });
   }
 
-  send(peer, text) {
+  send(peer: string, text: string) {
     if (!this.open.has(peer)) return false;
     this.device.emit({ ev: "peer-send", peer, text });
     return true;
   }
 
-  sendBytes(peer, bytes) {
+  sendBytes(peer: string, bytes: Uint8Array<ArrayBuffer>) {
     if (!this.open.has(peer)) return false;
     this.device.emit({ ev: "peer-send", peer, bytes: encode(bytesOf(bytes)) });
     return true;
   }
 
-  close(peer) {
+  close(peer: string) {
     this.open.delete(peer);
     this.device.emit({ ev: "peer-close", peer });
   }
 }
 
 class WebDevice {
-  constructor(index, me, seed) {
+  index: number;
+  ctx: V.Context;
+  out: Event[];
+  requests: Map<number, { resolve: (r: Response) => void; reject: (e: unknown) => void; done: () => void }>;
+  sockets: Map<number, Socket>;
+  peerCalls: Map<number, (v: unknown) => void>;
+  calls: number;
+  nextReq: number;
+  nextSock: number;
+  visible: boolean;
+  peer: Peer | null;
+  open: { id: string; app: App; model: Model; binding: Binding; session: Session; mouse: Mouse; gestures: Gestures } | null;
+  holds: GestureHolds;
+  declare spaces: Spaces;
+  declare collabOf: Group | undefined;
+  declare _collab: Collab;
+  /** Where the fuzzer's press went down. */
+  pressedAt: { x: number; y: number } | null = null;
+  /** The time a mouse event carries, which tells a double-click from two clicks. */
+  clicks = 0;
+
+  constructor(index: number, me: Me, seed: number) {
     this.index = index;
     this.ctx = new V.Context(index, seed);
     this.out = [];
@@ -105,7 +154,7 @@ class WebDevice {
     const storage = { loadAll: async () => ({}), save: async () => {}, remove: async () => {} };
     V.run(this.ctx, () => {
       this.spaces = new Spaces(storage, { me }, {
-        socket: (url) => {
+        socket: (url: string) => {
           const s = new Socket(this, ++this.nextSock, url);
           this.sockets.set(s.sock, s);
           this.emit({ ev: "ws-connect", sock: s.sock, url });
@@ -125,7 +174,7 @@ class WebDevice {
     });
   }
 
-  emit(e) {
+  emit(e: Payload<Event>) {
     this.out.push({ ...e, dev: this.index });
   }
 
@@ -134,12 +183,12 @@ class WebDevice {
   }
 
   /** What the hub's `fetch` does for this device: the request goes out, its answer comes with an `http` command. */
-  fetch(url, init = {}) {
+  fetch(url: string | URL | Request, init: RequestInit = {}) {
     this.ctx.online = true;
     const req = ++this.nextReq;
-    const body = init.body == null ? null : encode(typeof init.body === "string" ? new TextEncoder().encode(init.body) : bytesOf(init.body));
-    this.emit({ ev: "http", req, method: init.method ?? "GET", url: String(url), headers: init.headers ?? {}, body });
-    return new Promise((resolve, reject) => {
+    const body = init.body == null ? null : encode(typeof init.body === "string" ? new TextEncoder().encode(init.body) : bytesOf(init.body as Uint8Array | ArrayBuffer));
+    this.emit({ ev: "http", req, method: init.method ?? "GET", url: String(url), headers: (init.headers ?? {}) as Record<string, string>, body });
+    return new Promise<Response>((resolve, reject) => {
       const signal = init.signal;
       const abort = () => {
         if (!this.requests.delete(req)) return;
@@ -172,8 +221,8 @@ class WebDevice {
   }
 
   /** Types `text` into card `id`'s front, or its back, in two steps, then finishes as the app does. */
-  edit(id, text, back) {
-    const m = this.open.model;
+  edit(id: string, text: string, back?: boolean) {
+    const m = this.open!.model;
     const set = back ? R.setNotes : R.setText;
     m.update((b) => set(b, id, text.slice(0, Math.ceil(text.length / 2))));
     m.update((b) => set(b, id, text));
@@ -187,25 +236,30 @@ class WebDevice {
     return this.group?.live?.taken() ?? new Set();
   }
 
-  restack(b) {
+  restack(b: Board) {
     R.gravity(b, (id) => heightOf(R.card(b, id)?.text));
   }
 
-  openBoard(id) {
+  openBoard(id: string | null | undefined) {
     this.close();
     const g = this.group;
     if (!g || id == null || g.store.title(id) === null) return;
     const b = g.store.board(id);
     this.restack(b);
-    const model = new Model(b);
+    // the app's core, drawn by fakes: input goes through it as in a browser
+    const app = new App(b, fakePorts);
+    const model = app.model;
     const binding = new Binding(g.store, model, id, (x) => this.restack(x));
     binding.taken = () => g.live?.taken() ?? new Set();
-    const session = this.collab.open(id, model, binding);
+    const session = this.collab!.open(id, model, binding);
+    app.space = { hold: (ids) => session.hold(new Set(ids)), edited: () => session.edited() };
+    const drawn = model.onChange;
     model.onChange = () => {
+      drawn();
       binding.changed();
       session.edited();
     };
-    this.open = { id, model, binding, session };
+    this.open = { id, app, model, binding, session, mouse: new Mouse(app), gestures: new Gestures(app.input) };
     this.updateLive();
     g.engine.sync();
   }
@@ -215,17 +269,18 @@ class WebDevice {
     this.open.binding.flush();
     this.open.session.close();
     this.open = null;
+    this.pressedAt = null;
     this.updateLive();
   }
 
   /** `count` of the open board's items of `kind`, from item `n` on, in id order. */
-  items(kind, n, count = 1) {
-    const ids = this.open.model.board[kind].map((x) => x.id).sort();
+  items(kind: "cards" | "lanes", n: number, count = 1) {
+    const ids = this.open!.model.board[kind].map((x) => x.id).sort();
     if (!ids.length) return [];
     return Array.from({ length: Math.min(count, ids.length) }, (_, i) => ids[(n + i) % ids.length]);
   }
 
-  op(o) {
+  op(o: Op) {
     const g = this.group;
     const m = this.open?.model;
     switch (o.op) {
@@ -259,11 +314,13 @@ class WebDevice {
     if (!m) return null;
     switch (o.op) {
       case "cursor":
-        return g?.live?.sendCursor(this.open.id, o.x, o.y);
+        return g?.live?.sendCursor(this.open!.id, o.x, o.y);
       case "addCard":
-        return m.perform("New Card", (b) => R.addCard(b, o.x, o.y));
-      case "addLane":
-        return m.perform("New Lane", (b) => R.addLane(b, o.x, o.y));
+      case "addLane": {
+        let id = "";
+        m.perform(o.op === "addCard" ? "New Card" : "New Lane", (b) => (id = (o.op === "addCard" ? R.addCard : R.addLane)(b, o.x, o.y)));
+        return { id };
+      }
       case "color":
         return m.perform("Colour", (b) => R.setColor(b, new Set(this.items("cards", o.n, o.count)), o.color));
       case "delete":
@@ -276,7 +333,7 @@ class WebDevice {
         // as the apps, which begin, then hold, and edit nothing someone else holds
         if (!id || m.inGesture || this.taken().has(id)) return null;
         m.begin();
-        this.open.session.hold(new Set([id]));
+        this.open!.session.hold(new Set([id]));
         this.edit(id, o.text, o.back);
         m.end("Edit Card");
         return null;
@@ -285,12 +342,12 @@ class WebDevice {
         if (m.inGesture) return null;
         // as the app makes one: added and stacked, held, typed into, then finished, which takes an empty one away
         m.begin();
-        let id;
+        let id!: string;
         m.update((b) => {
           id = R.addCard(b, o.x, o.y);
           this.restack(b);
         });
-        this.open.session.hold(new Set([id]));
+        this.open!.session.hold(new Set([id]));
         this.edit(id, o.text, false);
         m.end("New Card");
         return null;
@@ -299,58 +356,48 @@ class WebDevice {
       case "resize": {
         const [lid] = this.items("lanes", o.n);
         if (!lid || m.inGesture || this.taken().has(lid)) return null;
-        const l = R.lane(m.board, lid);
+        const l = R.lane(m.board, lid)!;
         m.begin();
-        this.open.session.hold(new Set([lid]));
+        this.open!.session.hold(new Set([lid]));
         if (o.op === "laneTitle") m.update((b) => R.setLaneTitle(b, lid, o.text));
         else m.update((b) => R.resizeLane(b, lid, l.w + o.dw, l.h + o.dh));
         m.end(o.op === "laneTitle" ? "Rename Lane" : "Resize Lane");
         return null;
       }
       case "press": {
+        // as a mouse does it: the press goes where the item is drawn, and the app decides what it hits
         if (m.inGesture) return null;
+        const o0 = this.open!;
         const b = m.board;
-        let ids;
+        let p: { x: number; y: number };
         if (o.lane) {
           const [lid] = this.items("lanes", o.n);
-          if (!lid) return null;
-          const carried = R.cardsInLane(b, lid, (c) => heightOf(c.text)).map((c) => c.id);
-          ids = [lid, ...carried];
-          if (ids.some((x) => this.taken().has(x))) return null;
-          this.gesture = { lane: lid, carried };
+          const l = lid && R.lane(b, lid);
+          if (!l) return null;
+          p = { x: l.x + R.GRID, y: l.y + R.GRID };
         } else {
-          ids = this.items("cards", o.n, o.count);
-          if (!ids.length || this.taken().has(ids[0])) return null;
-          // others make way while the cards move, and they land on release, as in the apps
-          this.gesture = { cards: ids, room: { base: R.layout(b, new Set(ids)), heightOf: (id) => heightOf(R.card(m.board, id)?.text) } };
+          const ids = this.items("cards", o.n, o.count);
+          const c = ids[0] && R.card(b, ids[0]);
+          if (!c) return null;
+          o0.app.select(ids);
+          const r = o0.app.view.rectOf(c);
+          p = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
         }
-        m.begin();
-        this.open.session.hold(new Set(ids));
-        return null;
+        this.pressedAt = p;
+        return this.pointer({ phase: "down", ...p });
       }
       case "drag": {
-        if (!m.inGesture || !this.gesture) return null;
-        const start = m.start, gs = this.gesture;
-        return m.update((b) => {
-          const origin = (id) => {
-            const x = R.card(start, id) ?? R.lane(start, id);
-            return x && { id, x: x.x, y: x.y };
-          };
-          if (gs.lane) {
-            const o0 = origin(gs.lane);
-            if (o0) R.moveLane(b, o0, gs.carried.map(origin).filter(Boolean), o.dx, o.dy);
-          } else R.moveCards(b, gs.cards.map(origin).filter(Boolean), o.dx, o.dy, gs.room);
-        });
+        const p = this.pressedAt;
+        return p ? this.pointer({ phase: "move", x: p.x + o.dx, y: p.y + o.dy }) : null;
       }
-      case "release": {
-        const gs = this.gesture;
-        this.gesture = null;
-        if (gs?.cards && m.inGesture) m.update((b) => R.land(b, new Set(gs.cards), gs.room));
-        return m.end(gs?.lane ? "Move Lane" : "Move");
+      case "release":
+      case "cancel": {
+        const p = this.pressedAt;
+        this.pressedAt = null;
+        return this.pointer({ phase: o.op === "release" ? "up" : "cancel", x: p?.x ?? 0, y: p?.y ?? 0 });
       }
-      case "cancel":
-        this.gesture = null;
-        return m.cancel();
+      case "pointer":
+        return this.pointer(o);
       case "undo":
         return m.undo();
       case "redo":
@@ -359,7 +406,43 @@ class WebDevice {
     throw new Error(`unknown op ${o.op}`);
   }
 
-  handle(c) {
+  /** A mouse or finger event at screen point (x, y), as main.ts hands it to the app. */
+  pointer(e: Omit<Pointer, "op">) {
+    const o = this.open;
+    if (!o) return null;
+    const live = this.group?.live;
+    o.app.state.taken = new Map<string, Person>([...(live?.taken() ?? [])].map((id) => [id, live!.holderOf(id)!]));
+    const p = { x: e.x, y: e.y };
+    const t = performance.now();
+    if (e.kind === "touch") {
+      const id = e.finger ?? 0;
+      if (e.phase === "down") {
+        o.app.touching = true;
+        o.app.input.touchStart();
+        o.gestures.down(id, p.x, p.y, t);
+        setTimeout(() => this.open?.gestures.tick(performance.now()), HOLD_MS + 10);
+        return null;
+      }
+      if (e.phase === "move") return o.gestures.move(id, p.x, p.y, t);
+      if (e.phase === "up") return o.gestures.up(id, p.x, p.y, t);
+      return o.gestures.cancel(id);
+    }
+    o.app.touching = false;
+    if (e.phase === "down") {
+      // a second click comes at once, a first long after the last
+      this.clicks += e.clicks === 2 ? 1 : 10_000;
+      return o.mouse.down({ ...p, shiftKey: !!e.shift, altKey: !!e.option }, this.clicks);
+    }
+    if (e.phase === "move") return o.mouse.move(p);
+    if (e.phase === "up") return o.mouse.up(p);
+    return o.mouse.cancel();
+  }
+
+  scene() {
+    return this.open ? (this.open.app.view as FakeView).scene() : null;
+  }
+
+  handle(c: DeviceCommand) {
     switch (c.cmd) {
       case "op":
         return this.op(c.op);
@@ -384,7 +467,7 @@ class WebDevice {
       case "ws-msg": {
         const s = this.sockets.get(c.sock);
         if (!s || s.readyState !== 1) return;
-        return s.onmessage?.({ data: c.text ?? decode(c.bytes).buffer });
+        return s.onmessage?.({ data: c.text ?? decode(c.bytes)!.buffer });
       }
       case "ws-close": {
         const s = this.sockets.get(c.sock);
@@ -404,19 +487,21 @@ class WebDevice {
         else this.peer.open.delete(c.peer);
         return this.peer.onState(c.peer, c.state);
       case "peer-msg":
-        return this.peer?.open.has(c.peer) && this.peer.onMessage(c.peer, c.text ?? decode(c.bytes));
+        return this.peer?.open.has(c.peer) && this.peer.onMessage(c.peer, c.text ?? decode(c.bytes)!);
       case "peer-candidate":
         return this.peer?.onCandidate(c.peer, c.candidate);
       case "state":
         return this.snapshot();
+      case "scene":
+        return this.scene();
     }
     throw new Error(`unknown command ${c.cmd}`);
   }
 
-  snapshot() {
+  snapshot(): Snapshot {
     const g = this.group;
     if (!g) return { boards: {}, pending: 0, overlays: {}, mine: 0, connected: false, seen: [], status: "local" };
-    const boards = {}, overlays = {};
+    const boards: Snapshot["boards"] = {}, overlays: Snapshot["overlays"] = {};
     for (const { id, title } of g.store.boards()) {
       const b = g.store.board(id);
       boards[id] = {
@@ -426,12 +511,12 @@ class WebDevice {
       };
       overlays[id] = g.live?.overlay(id).size ?? 0;
     }
-    const seen = [...new Set([...(g.live?.peers.values() ?? [])].map((p) => p.person?.device).filter(Boolean))].sort();
+    const seen = [...new Set([...(g.live?.peers.values() ?? [])].map((p) => p.person?.device).filter(Boolean) as string[])].sort();
     // what the open board shows: its store's
-    let shown = null;
+    let shown: Snapshot["shown"] = null;
     if (this.open && !this.open.model.inGesture) {
       // but for where stacking puts cards and how tall lanes grow, which stay local, and lanes' order, which a pull sets
-      const content = (b) => JSON.stringify([...b.cards.map((c) => [c.id, c.x, c.w, c.color, c.text, c.notes ?? ""]), ...[...b.lanes].sort((x, y) => (x.id < y.id ? -1 : 1)).map((l) => [l.id, l.x, l.y, l.w, l.title])]);
+      const content = (b: Board) => JSON.stringify([...b.cards.map((c) => [c.id, c.x, c.w, c.color, c.text, c.notes ?? ""]), ...[...b.lanes].sort((x, y) => (x.id < y.id ? -1 : 1)).map((l) => [l.id, l.x, l.y, l.w, l.title])]);
       shown = { board: this.open.id, same: content(g.store.board(this.open.id)) === content(this.open.model.board) };
     }
     return { boards, pending: g.store.pending().length, overlays, mine: g.live?.mine.size ?? 0, connected: !!g.live?.connected, seen, status: g.engine.status.state, shown };
@@ -439,7 +524,7 @@ class WebDevice {
 }
 
 /** The run's web devices: `fetch` and warnings under a device's context go to it. */
-let active = null;
+let active: WebDevices | null = null;
 let hooked = false;
 
 function hook() {
@@ -448,9 +533,9 @@ function hook() {
   V.install();
   // devices' warnings, such as a captive portal's page failing to parse, go to the hub's log
   const warn = console.warn;
-  console.warn = (...a) => (V.current() && active ? active.log(`device ${V.current().name}:`, ...a) : warn(...a));
+  console.warn = (...a) => (V.current() && active ? active.log(`device ${V.current()!.name}:`, ...a) : warn(...a));
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (url, init) => {
+  globalThis.fetch = (url: string | URL | Request, init?: RequestInit) => {
     const ctx = V.current();
     const d = ctx && active?.devices.get(ctx.name);
     return d ? d.fetch(url, init) : realFetch(url, init);
@@ -459,6 +544,9 @@ function hook() {
 
 /** The web devices, behind the interface breezy-sim has; one run's at a time. */
 export class WebDevices {
+  devices: Map<V.Context["name"], WebDevice>;
+  log: (...a: unknown[]) => void;
+
   constructor() {
     hook();
     active = this;
@@ -467,7 +555,7 @@ export class WebDevices {
   }
 
   /** A command; answers once every web device is idle. */
-  async command(c) {
+  async command(c: Command): Promise<Reply> {
     if (c.cmd === "time") {
       V.setTime(c.t);
       for (const [i, d] of this.devices) d.ctx.skew = c.skew?.[i] ?? 0;
@@ -478,15 +566,15 @@ export class WebDevices {
       await V.settle();
       return { out: this.drain(), next: this.next() };
     }
-    const d = this.devices.get(c.dev);
-    let reply;
+    const d = this.devices.get(c.dev)!;
+    let reply: unknown;
     V.run(d.ctx, () => (reply = d.handle(c)));
     await V.settle();
     return { out: this.drain(), next: this.next(), reply: reply ?? null };
   }
 
   drain() {
-    const out = [];
+    const out: Event[] = [];
     for (const d of this.devices.values()) out.push(...d.out.splice(0));
     return out;
   }

@@ -1,9 +1,30 @@
-import { initials } from "./sync/live.js";
+import { initials } from "./sync/live.ts";
+import type { Point } from "./types.ts";
+import type { ViewPort } from "./ports.ts";
+
+export interface Person {
+  device: string;
+  name: string;
+  colour: string;
+}
+
+export interface Cursor extends Point {
+  key: string;
+  person: Person;
+}
+
+export interface Caret {
+  key: string;
+  person: Person;
+  id: string;
+  back: boolean;
+  at: number;
+}
 
 const ARROW = '<svg viewBox="0 0 16 16"><path d="M2 1.5 13.5 8 8.2 9.2 5.6 14.5Z"/></svg>';
 
 /** A person's initials in their colour, as the top bar and the board list show them. */
-export function chip(person) {
+export function chip(person: Person) {
   const s = document.createElement("span");
   s.className = "person";
   s.style.setProperty("--who", person.colour);
@@ -17,17 +38,25 @@ export function chip(person) {
  * row of initials in the top bar.
  */
 export class Presence {
-  constructor(view) {
+  view: ViewPort;
+  layer: HTMLElement;
+  row: HTMLElement;
+  els: Map<string, HTMLElement>;
+  cursors: Cursor[];
+  carets: Caret[];
+  people: string | undefined;
+
+  constructor(view: ViewPort) {
     this.view = view;
-    this.layer = document.querySelector("#board .presence");
-    this.row = document.querySelector("#top .people");
+    this.layer = document.querySelector<HTMLElement>("#board .presence")!;
+    this.row = document.querySelector<HTMLElement>("#top .people")!;
     this.els = new Map();
     this.cursors = [];
     this.carets = [];
   }
 
   /** `cursors`: [{ key, person, x, y }] in world points; `carets`: [{ key, person, id, back, at }]; `people`: who else is on the board. */
-  show({ cursors, carets = [], people }) {
+  show({ cursors, carets = [], people }: { cursors: Cursor[]; carets?: Caret[]; people: Person[] }) {
     this.cursors = cursors;
     this.carets = carets;
     const key = people.map((p) => `${p.device} ${p.name}`).join("\n");
@@ -46,7 +75,7 @@ export class Presence {
       live.add(c.key);
       const el = this.element(c.key, "cursor", `${ARROW}<span></span>`);
       el.style.setProperty("--who", c.person.colour);
-      el.lastChild.textContent = c.person.name;
+      el.lastChild!.textContent = c.person.name;
       const p = this.view.toScreen(c);
       el.style.transform = `translate(${p.x}px, ${p.y}px)`;
     }
@@ -67,7 +96,7 @@ export class Presence {
     }
   }
 
-  element(key, cls, html) {
+  element(key: string, cls: string, html: string) {
     let el = this.els.get(key);
     if (!el) {
       el = document.createElement("div");

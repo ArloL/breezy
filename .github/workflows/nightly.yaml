@@ -14,8 +14,8 @@ on:
     paths:
     - .github/workflows/nightly.yaml
     - scripts/baselines/**
-    - scripts/gate.mjs
-    - scripts/feel.mjs
+    - scripts/gate.ts
+    - scripts/feel.ts
     - scripts/bench.sh
     - Breezy/Support/Bench.swift
 permissions: {}
@@ -36,8 +36,10 @@ jobs:
         package-manager-cache: false
     - name: Install PHP
       run: command -v php || brew install php
-    - name: Install the relay
-      run: npm ci --prefix relay
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
     - name: Install Chromium
       env:
         # renovate: datasource=npm depName=playwright
@@ -48,7 +50,7 @@ jobs:
       run: |
         set -o pipefail
         mkdir -p build
-        node scripts/feel.mjs | tee build/feel.txt
+        node scripts/feel.ts | tee build/feel.txt
         tail -n 1 build/feel.txt > build/feel.json
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
@@ -62,7 +64,7 @@ jobs:
           echo "::notice::No baselines in scripts/baselines/feel/: this run's artifact can be one"
           exit 0
         fi
-        node scripts/gate.mjs build/feel.json "${baselines[@]}"
+        node scripts/gate.ts build/feel.json "${baselines[@]}"
   bench:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -101,4 +103,4 @@ jobs:
           echo "::notice::No baselines in scripts/baselines/bench/: this run's artifact can be one"
           exit 0
         fi
-        node scripts/gate.mjs build/bench.jsonl "${baselines[@]}"
+        node scripts/gate.ts build/bench.jsonl "${baselines[@]}"

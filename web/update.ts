@@ -1,15 +1,23 @@
 // The page's side of sw.js: registers it, asks it to check for updates, and reloads into a downloaded version.
 
+import type { App } from "./app.ts";
+
+/** What sw.js runs and has downloaded to run next. */
+interface Versions {
+  current: string | null;
+  next: string | null;
+}
+
 export const RELOAD_AFTER_MS = 5 * 60 * 1000;
 
 /** Whether coming back from the background should reload into the latest downloaded version. */
-export function shouldReload({ running, latest, hiddenFor, editing }) {
+export function shouldReload({ running, latest, hiddenFor, editing }: { running: string | undefined; latest: string | null; hiddenFor: number; editing: boolean }) {
   return !!latest && latest !== running && !editing && hiddenFor >= RELOAD_AFTER_MS;
 }
 
 /** Asks the worker; resolves to null when it does not answer in time. */
-function ask(type, ms) {
-  return new Promise((resolve) => {
+function ask(type: string, ms: number) {
+  return new Promise<Versions | null>((resolve) => {
     setTimeout(() => resolve(null), ms);
     navigator.serviceWorker.ready.then((reg) => {
       const channel = new MessageChannel();
@@ -19,14 +27,14 @@ function ask(type, ms) {
   });
 }
 
-export function startUpdates(app) {
-  const button = document.querySelector('[data-act="version"]');
+export function startUpdates(app: App) {
+  const button = document.querySelector<HTMLElement>('[data-act="version"]')!;
   const running = button.dataset.version;
   if (running === "dev" || !("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("sw.js").catch((error) => console.warn("service worker not registered", error));
   navigator.storage?.persist?.().catch(() => {});
 
-  const latest = (s) => s && (s.next ?? s.current);
+  const latest = (s: Versions | null) => s && (s.next ?? s.current);
   const check = async () => {
     const v = latest(await ask("check", 120_000));
     button.dataset.next = v && v !== running ? v : "";

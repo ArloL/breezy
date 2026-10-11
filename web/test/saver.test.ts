@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Saver } from "../sync/saver.js";
+import { Saver } from "../sync/saver.ts";
 
 test("schedule waits for the delay, once", async () => {
   let saves = 0;
@@ -33,11 +33,11 @@ test("a disabled saver writes nothing", async () => {
 
 test("a failed save is reported, and tried again on the next flush", async () => {
   let fail = true;
-  const errors = [];
+  const errors: string[] = [];
   const s = new Saver(async () => {
     if (fail) throw new Error("closed");
   }, 10_000);
-  s.onError = (error) => errors.push(error.message);
+  s.onError = (error) => errors.push((error as Error).message);
   s.schedule();
   await s.flush();
   assert.deepEqual(errors, ["closed"]);

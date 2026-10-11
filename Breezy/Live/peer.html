@@ -3,7 +3,7 @@
 <title>Breezy peers</title>
 <script>
 // Direct channels for the Mac app, which has no RTCPeerConnection of its own: WebPeerTransport calls these functions
-// and hears back through the "peer" message handler. web/sync/rtc.js is its twin; see the WebRTC design.
+// and hears back through the "peer" message handler. web/sync/rtc.ts is its twin; see the WebRTC design.
 const ICE_SERVERS = [{ urls: "stun:stun.cloudflare.com:3478" }];
 const peers = new Map();
 const post = (m) => webkit.messageHandlers.peer.postMessage(m);

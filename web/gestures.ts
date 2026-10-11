@@ -1,3 +1,5 @@
+import type { Point } from "./types.ts";
+
 export const HOLD_MS = 300;
 export const SLOP = 8;
 export const DOUBLE_MS = 300;
@@ -5,10 +7,14 @@ export const DOUBLE_SLOP = 32;
 const VELOCITY_MS = 80;
 
 const ZERO = Object.freeze({ x: 0, y: 0 });
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid = (a: Point, b: Point) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-function velocity(track, t) {
+interface Sample extends Point {
+  t: number;
+}
+
+function velocity(track: Sample[], t: number): Point {
   const recent = track.filter((s) => t - s.t <= VELOCITY_MS);
   if (recent.length < 2) return { ...ZERO };
   const a = recent[0];
@@ -21,16 +27,52 @@ function velocity(track, t) {
  * Turns pointer events into taps, holds, drags and two-finger pinches for `h`; times in ms. A tap
  * followed by a touch that moves zooms with one finger, as in Maps.
  */
+export interface GestureHandler {
+  tap(p: Point): void;
+  doubleTap(p: Point): void;
+  hold(p: Point): void;
+  holdEnd(p: Point): void;
+  holdCancel(): void;
+  dragStart(p0: Point, p: Point, held: boolean): void;
+  dragMove(p: Point): void;
+  dragEnd(p: Point, v: Point): void;
+  dragCancel(): void;
+  pinchStart(c: Point): void;
+  pinch(c: Point, scale: number): void;
+  pinchEnd(v: Point): void;
+  pinchCancel(): void;
+  zoomDragStart(p: Point): void;
+  zoomDrag(dy: number): void;
+  zoomDragEnd(): void;
+  zoomDragCancel(): void;
+}
+
+interface One {
+  id: number;
+  start: Point;
+  last: Point;
+  t: number;
+  state: "pending" | "held" | "drag" | "zoom";
+  double: boolean;
+  track: Sample[];
+}
+
 export class Gestures {
-  constructor(h) {
+  h: GestureHandler;
+  points: Map<number, Point>;
+  one: One | null;
+  two: { d: number; track: Sample[] } | null;
+  lastTap: Sample | null;
+
+  constructor(h: GestureHandler) {
     this.h = h;
-    this.points = new Map();
+    this.points = new Map<number, Point>();
     this.one = null;
     this.two = null;
     this.lastTap = null;
   }
 
-  down(id, x, y, t) {
+  down(id: number, x: number, y: number, t: number) {
     const p = { x, y };
     this.points.set(id, p);
     if (this.points.size === 1) {
@@ -53,7 +95,7 @@ export class Gestures {
    * Reports a hold once the finger has stayed put for `HOLD_MS`; the page calls it from a timer. The
    * second touch of a double tap waits instead to zoom.
    */
-  tick(t) {
+  tick(t: number) {
     const o = this.one;
     if (o?.state === "pending" && !o.double && t - o.t >= HOLD_MS) {
       o.state = "held";
@@ -62,7 +104,7 @@ export class Gestures {
     }
   }
 
-  move(id, x, y, t) {
+  move(id: number, x: number, y: number, t: number) {
     if (!this.points.has(id)) return;
     const p = { x, y };
     this.points.set(id, p);
@@ -94,7 +136,7 @@ export class Gestures {
     this.h.dragStart(o.start, p, held);
   }
 
-  up(id, x, y, t) {
+  up(id: number, x: number, y: number, t: number) {
     if (!this.points.has(id)) return;
     this.points.delete(id);
     if (this.two) {
@@ -123,7 +165,7 @@ export class Gestures {
   }
 
   /** The system took the touch, as when swiping home: what it was doing is undone. */
-  cancel(id) {
+  cancel(id: number) {
     if (!this.points.has(id)) return;
     this.points.delete(id);
     if (this.two) {

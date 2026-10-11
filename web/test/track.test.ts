@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Track } from "../sync/track.js";
-import { fixture } from "./helpers/fixture.js";
+import { Track } from "../sync/track.ts";
+import { fixture } from "./helpers/fixture.ts";
 
 for (const c of fixture("track.json").cases) {
   test(`track: ${c.name}`, () => {

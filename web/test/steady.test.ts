@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { steadyClock } from "../sync/steady.js";
+import { steadyClock } from "../sync/steady.ts";
 
 test("the steady clock follows the monotonic clock when the wall clock goes back, and the wall clock across sleep", () => {
   let wall = 1_000_000, mono = 50;

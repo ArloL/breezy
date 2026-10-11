@@ -3,19 +3,32 @@ import assert from "node:assert/strict";
 
 class FakeChannel {
   readyState = "connecting";
-  send(data) {
+  binaryType?: string;
+  sent?: string | Uint8Array;
+  onmessage?: (e: { data: string | ArrayBuffer }) => void;
+  send(data: string | Uint8Array) {
     this.sent = data;
   }
 }
 
 class FakePC {
-  static made = [];
+  static made: FakePC[] = [];
   connectionState = "new";
-  constructor(config) {
+  config: RTCConfiguration;
+  options?: RTCDataChannelInit;
+  channel!: FakeChannel;
+  restarted?: boolean;
+  localDescription?: { sdp: string };
+  remote?: RTCSessionDescriptionInit;
+  added?: RTCIceCandidateInit;
+  closed?: boolean;
+  onconnectionstatechange?: () => void;
+  onicecandidate?: (e: { candidate: RTCIceCandidateInit | null }) => void;
+  constructor(config: RTCConfiguration) {
     this.config = config;
     FakePC.made.push(this);
   }
-  createDataChannel(label, options) {
+  createDataChannel(label: string, options: RTCDataChannelInit) {
     this.options = options;
     return (this.channel = new FakeChannel());
   }
@@ -25,27 +38,27 @@ class FakePC {
   async setLocalDescription() {
     this.localDescription = { sdp: this.remote ? "answer" : "offer" };
   }
-  async setRemoteDescription(d) {
+  async setRemoteDescription(d: RTCSessionDescriptionInit) {
     this.remote = d;
   }
-  async addIceCandidate(c) {
+  async addIceCandidate(c: RTCIceCandidateInit) {
     this.added = c;
   }
   close() {
     this.closed = true;
   }
-  set(state, channel) {
+  set(state: string, channel: string) {
     this.connectionState = state;
     this.channel.readyState = channel;
     this.onconnectionstatechange?.();
   }
 }
-globalThis.RTCPeerConnection = FakePC;
-const { RTCTransport, ICE_SERVERS } = await import("../sync/rtc.js");
+globalThis.RTCPeerConnection = FakePC as unknown as typeof RTCPeerConnection;
+const { RTCTransport, ICE_SERVERS } = await import("../sync/rtc.ts");
 
 test("each peer gets a negotiated, unordered channel without retransmits, over Cloudflare's STUN", () => {
   new RTCTransport().create("p1");
-  const pc = FakePC.made.at(-1);
+  const pc = FakePC.made.at(-1)!;
   assert.deepEqual(pc.config, { iceServers: ICE_SERVERS });
   assert.deepEqual(ICE_SERVERS, [{ urls: "stun:stun.cloudflare.com:3478" }]);
   assert.deepEqual(pc.options, { negotiated: true, id: 0, ordered: false, maxRetransmits: 0 });
@@ -53,28 +66,28 @@ test("each peer gets a negotiated, unordered channel without retransmits, over C
 });
 
 test("offers, answers, candidates and messages pass through", async () => {
-  const t = new RTCTransport(), got = [];
+  const t = new RTCTransport(), got: [string, unknown][] = [];
   t.onMessage = (id, text) => got.push([id, text]);
   t.onCandidate = (id, c) => got.push([id, c]);
   t.create("p1");
-  const pc = FakePC.made.at(-1);
+  const pc = FakePC.made.at(-1)!;
   assert.equal(await t.offer("p1", false), "offer");
   await t.accept("p1", "remote");
   assert.deepEqual(pc.remote, { type: "answer", sdp: "remote" });
   t.add("p1", { candidate: "c", mid: "0", index: 0 });
   assert.deepEqual(pc.added, { candidate: "c", sdpMid: "0", sdpMLineIndex: 0 });
-  pc.onicecandidate({ candidate: { candidate: "x", sdpMid: "0", sdpMLineIndex: 0 } });
-  pc.onicecandidate({ candidate: null });
-  pc.channel.onmessage({ data: "hi" });
-  pc.channel.onmessage({ data: new Uint8Array([1, 2]).buffer });
+  pc.onicecandidate!({ candidate: { candidate: "x", sdpMid: "0", sdpMLineIndex: 0 } });
+  pc.onicecandidate!({ candidate: null });
+  pc.channel.onmessage!({ data: "hi" });
+  pc.channel.onmessage!({ data: new Uint8Array([1, 2]).buffer });
   assert.deepEqual(got, [["p1", { candidate: "x", mid: "0", index: 0 }], ["p1", null], ["p1", "hi"], ["p1", new Uint8Array([1, 2])]]);
 });
 
 test("a connection that recovers after a restart reports open again, though its channel never closed", async () => {
-  const t = new RTCTransport(), states = [];
+  const t = new RTCTransport(), states: string[] = [];
   t.onState = (id, s) => states.push(s);
   t.create("p1");
-  const pc = FakePC.made.at(-1);
+  const pc = FakePC.made.at(-1)!;
   pc.set("connected", "open");
   pc.set("failed", "open");
   await t.offer("p1", true);
@@ -86,7 +99,7 @@ test("a connection that recovers after a restart reports open again, though its 
 test("send says whether it went; close forgets the peer", () => {
   const t = new RTCTransport();
   t.create("p1");
-  const pc = FakePC.made.at(-1);
+  const pc = FakePC.made.at(-1)!;
   assert.equal(t.send("p1", "x"), false);
   pc.set("connected", "open");
   assert.equal(t.send("p1", "x"), true);

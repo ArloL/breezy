@@ -1,14 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Store } from "../sync/store.js";
-import { Model } from "../model.js";
-import { Binding } from "../binding.js";
-import { cardRecord } from "../sync/records.js";
-import { settle } from "./helpers/store.js";
+import { Store } from "../sync/store.ts";
+import { Model } from "../model.ts";
+import { Binding } from "../binding.ts";
+import { cardRecord } from "../sync/records.ts";
+import { settle } from "./helpers/store.ts";
+import type { Board, Card } from "../types.ts";
 
-const card = (id, y, text = "x") => ({ id, x: 0, y, w: 240, text, color: 1 });
+const card = (id: string, y: number, text = "x"): Card => ({ id, x: 0, y, w: 240, text, color: 1 });
 
-function opened(cards) {
+function opened(cards: Card[]) {
   const store = new Store();
   const id = store.createBoard("B", { cards, lanes: [] });
   settle(store);
@@ -34,7 +35,7 @@ test("a merge during a gesture waits and keeps the typed text", () => {
 
 test("restacking a merge is shown but not written", () => {
   const { store, id, model, binding } = opened([card("a", 0)]);
-  binding.restack = (b) => b.cards.forEach((c) => (c.y += 24));
+  binding.restack = (b: Board) => b.cards.forEach((c) => (c.y += 24));
   store.merge([{ id: "a", version: 2, record: { ...store.state.records.a.current, color: 3 } }]);
   binding.pull();
   assert.equal(model.board.cards[0].y, 24);
@@ -61,8 +62,8 @@ test("changes to items others hold are not written", () => {
     b.cards[1].x = 480;
   });
   binding.flush();
-  assert.equal(store.board(id).cards.find((c) => c.id === "a").x, 48);
-  assert.equal(store.board(id).cards.find((c) => c.id === "b").x, 0);
+  assert.equal(store.board(id).cards.find((c) => c.id === "a")!.x, 48);
+  assert.equal(store.board(id).cards.find((c) => c.id === "b")!.x, 0);
 });
 
 test("undoing a delete brings the card back to the store, to be pushed", () => {

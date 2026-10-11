@@ -5,7 +5,7 @@ const ZOOM_PER_PT = 0.01;
 const MAX_ZOOM_DELTA = 25;
 
 /** What a wheel event does: a pinch (⌃, as browsers send it) or ⌘-scroll zooms about the pointer; any other scroll pans. */
-export function wheelAction({ deltaX, deltaY, deltaMode, ctrlKey, metaKey }) {
+export function wheelAction({ deltaX, deltaY, deltaMode, ctrlKey, metaKey }: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "metaKey">) {
   const unit = [1, LINE, PAGE][deltaMode] ?? 1;
   if (ctrlKey || metaKey) {
     const d = Math.max(-MAX_ZOOM_DELTA, Math.min(MAX_ZOOM_DELTA, deltaY * unit));

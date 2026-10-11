@@ -1,26 +1,48 @@
-import { App } from "./app.js";
-import { Gestures, HOLD_MS } from "./gestures.js";
-import { sampleBoard, stressBoard } from "./sample.js";
-import { startUpdates } from "./update.js";
-import { Mouse } from "./mouse.js";
-import { wheelAction } from "./wheel.js";
-import { command, perform } from "./keys.js";
-import { Library } from "./library.js";
-import { ownBoards } from "./owner.js";
-import { ask } from "./sheet.js";
+import { App } from "./app.ts";
+import { Gestures, HOLD_MS } from "./gestures.ts";
+import { sampleBoard, stressBoard } from "./sample.ts";
+import { startUpdates } from "./update.ts";
+import { Mouse } from "./mouse.ts";
+import { wheelAction } from "./wheel.ts";
+import { command, perform } from "./keys.ts";
+import { Library } from "./library.ts";
+import { ownBoards } from "./owner.ts";
+import { ask } from "./sheet.ts";
+import { View } from "./view.ts";
+import { UI } from "./ui.ts";
+import { Presence } from "./presence.ts";
+
+/** Safari's trackpad pinch. */
+interface GestureEvent extends UIEvent {
+  scale: number;
+  clientX: number;
+  clientY: number;
+}
+
+declare global {
+  interface DocumentEventMap {
+    gesturestart: GestureEvent;
+    gesturechange: GestureEvent;
+    gestureend: GestureEvent;
+  }
+}
 
 const params = new URLSearchParams(location.search);
 // ?stress and ?demo show boards that are not kept, as before
 const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : null;
-const app = new App(scratch ?? { cards: [], lanes: [] });
+const app = new App(scratch ?? { cards: [], lanes: [] }, {
+  view: (app) => new View(document.getElementById("board")!, app.model, app.state),
+  presence: (view) => new Presence(view),
+  ui: (app) => new UI(app),
+});
 app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
 
-const board = document.getElementById("board");
+const board = document.getElementById("board")!;
 const gestures = new Gestures(app.input);
 const mouse = new Mouse(app);
-const editor = (e) => e.target.closest?.('[contenteditable="plaintext-only"]');
+const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
 board.addEventListener("pointerdown", (e) => {
   if (editor(e)) return;
   app.touching = e.pointerType !== "mouse";
@@ -66,7 +88,7 @@ addEventListener("wheel", (e) => {
   const a = wheelAction(e);
   const view = app.view;
   if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
-  else view.setCamera({ ...view.cam, x: view.cam.x + a.pan.x, y: view.cam.y + a.pan.y });
+  else view.setCamera({ ...view.cam, x: view.cam.x + a.pan!.x, y: view.cam.y + a.pan!.y });
   // what a held drag is over has moved
   if (app.input.drag) app.input.dragMove(app.input.drag.last);
 }, { passive: false });
@@ -75,7 +97,7 @@ const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 addEventListener("keydown", (e) => {
   if (document.body.dataset.screen === "boards") return;
   const s = app.state;
-  const typing = s.editing ? "card" : s.renaming ? "lane" : e.target.closest?.("input, textarea") ? "field" : null;
+  const typing = s.editing ? "card" : s.renaming ? "lane" : (e.target as Element).closest?.("input, textarea") ? "field" : null;
   const cmd = command(e, { mac, typing });
   if (!cmd) return;
   e.preventDefault();
@@ -84,7 +106,7 @@ addEventListener("keydown", (e) => {
 // iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
 // Safari reports a trackpad pinch as gesture events, their scale counting from the pinch's start; a touch pinch comes as pointers.
-let pinch = null;
+let pinch: number | null = null;
 document.addEventListener("gesturestart", (e) => {
   e.preventDefault();
   if (!gestures.points.size) pinch = app.view.cam.zoom;
@@ -113,14 +135,14 @@ if (demo === "lift") {
 }
 if (demo === "find") {
   app.ui.openFind();
-  document.querySelector("#find input").value = "plan";
+  document.querySelector<HTMLInputElement>("#find input")!.value = "plan";
   app.ui.find("plan");
 }
 if (demo === "add") app.ui.act("add");
 
 if (!scratch) {
   document.body.dataset.screen = "boards";
-  let waited = false, opened;
+  let waited = false, opened: Promise<Library>;
   await ownBoards({
     locks: globalThis.BroadcastChannel && navigator.locks,
     channel: globalThis.BroadcastChannel && new BroadcastChannel("breezy-boards"),
@@ -135,7 +157,7 @@ if (!scratch) {
     handOver: () => opened.then((library) => library.handOver()),
     handedOver: () => location.reload(),
   });
-  if (waited) document.getElementById("sheet").hidden = true;
+  if (waited) document.getElementById("sheet")!.hidden = true;
   opened = Library.open(app);
   await opened;
 }

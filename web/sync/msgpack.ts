@@ -2,7 +2,9 @@
 
 /** Marks a number to pack as float32. */
 export class Float32 {
-  constructor(v) {
+  v: number;
+
+  constructor(v: number) {
     this.v = v;
   }
 }
@@ -10,37 +12,49 @@ export class Float32 {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
+/** What `pack` takes. */
+export type Packable = null | boolean | number | Float32 | string | Uint8Array | Packable[] | Map<Packable, Packable>;
+/** What `unpack` gives. */
+export type Unpacked = null | boolean | number | string | Uint8Array<ArrayBuffer> | Unpacked[] | Map<Unpacked, Unpacked>;
+
+type Setter<T> = (this: DataView, at: number, v: T) => void;
+type Getter<T> = (this: DataView, at: number) => T;
+
 class Writer {
+  bytes: Uint8Array<ArrayBuffer>;
+  view: DataView;
+  n: number;
+
   constructor() {
     this.bytes = new Uint8Array(256);
     this.view = new DataView(this.bytes.buffer);
     this.n = 0;
   }
-  room(k) {
+  room(k: number): void {
     if (this.n + k <= this.bytes.length) return;
     const next = new Uint8Array(Math.max(this.bytes.length * 2, this.n + k));
     next.set(this.bytes.subarray(0, this.n));
     this.bytes = next;
     this.view = new DataView(next.buffer);
   }
-  u8(b) {
+  u8(b: number): void {
     this.room(1);
     this.bytes[this.n++] = b;
   }
-  put(tag, size, set, v) {
+  put<T>(tag: number, size: number, set: Setter<T>, v: T): void {
     this.room(1 + size);
     this.bytes[this.n++] = tag;
     set.call(this.view, this.n, v);
     this.n += size;
   }
-  raw(b) {
+  raw(b: Uint8Array): void {
     this.room(b.length);
     this.bytes.set(b, this.n);
     this.n += b.length;
   }
 }
 
-function header(w, n, fix, fixMax, tags) {
+function header(w: Writer, n: number, fix: number, fixMax: number, tags: [number | null, number, number]): void {
   if (n <= fixMax) w.u8(fix | n);
   else if (tags[0] !== null && n < 0x100) w.put(tags[0], 1, DataView.prototype.setUint8, n);
   else if (n < 0x10000) w.put(tags[1], 2, DataView.prototype.setUint16, n);
@@ -48,7 +62,7 @@ function header(w, n, fix, fixMax, tags) {
   else throw new RangeError("msgpack: too long");
 }
 
-function int(w, v) {
+function int(w: Writer, v: number): void {
   if (v >= 0) {
     if (v < 0x80) w.u8(v);
     else if (v < 0x100) w.put(0xcc, 1, DataView.prototype.setUint8, v);
@@ -62,7 +76,7 @@ function int(w, v) {
   else w.put(0xd3, 8, DataView.prototype.setBigInt64, BigInt(v));
 }
 
-function write(w, v) {
+function write(w: Writer, v: Packable): void {
   if (v === null) w.u8(0xc0);
   else if (v === true) w.u8(0xc3);
   else if (v === false) w.u8(0xc2);
@@ -90,47 +104,51 @@ function write(w, v) {
   } else throw new TypeError("msgpack: unsupported value");
 }
 
-export function pack(value) {
+export function pack(value: Packable): Uint8Array<ArrayBuffer> {
   const w = new Writer();
   write(w, value);
   return w.bytes.slice(0, w.n);
 }
 
 class Reader {
-  constructor(bytes) {
+  bytes: Uint8Array;
+  view: DataView;
+  n: number;
+
+  constructor(bytes: Uint8Array) {
     this.bytes = bytes;
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     this.n = 0;
   }
-  take(k) {
+  take(k: number): number {
     if (this.n + k > this.bytes.length) throw new RangeError("msgpack: truncated");
     const at = this.n;
     this.n += k;
     return at;
   }
-  num(size, get) {
+  num(size: number, get: Getter<number>): number {
     return get.call(this.view, this.take(size));
   }
-  big(get) {
+  big(get: Getter<bigint>): number {
     const v = get.call(this.view, this.take(8));
     if (v > BigInt(Number.MAX_SAFE_INTEGER) || v < BigInt(Number.MIN_SAFE_INTEGER)) throw new RangeError("msgpack: integer outside the safe range");
     return Number(v);
   }
-  raw(k) {
+  raw(k: number): Uint8Array<ArrayBuffer> {
     const at = this.take(k);
     return this.bytes.slice(at, at + k);
   }
-  str(k) {
+  str(k: number): string {
     const at = this.take(k);
     return decoder.decode(this.bytes.subarray(at, at + k));
   }
-  list(k) {
-    const out = [];
+  list(k: number): Unpacked[] {
+    const out: Unpacked[] = [];
     for (let i = 0; i < k; i++) out.push(read(this));
     return out;
   }
-  map(k) {
-    const out = new Map();
+  map(k: number): Map<Unpacked, Unpacked> {
+    const out = new Map<Unpacked, Unpacked>();
     for (let i = 0; i < k; i++) {
       const key = read(this);
       out.set(key, read(this));
@@ -143,7 +161,7 @@ const U8 = DataView.prototype.getUint8;
 const U16 = DataView.prototype.getUint16;
 const U32 = DataView.prototype.getUint32;
 
-function read(r) {
+function read(r: Reader): Unpacked {
   const t = r.num(1, U8);
   if (t < 0x80) return t;
   if (t >= 0xe0) return t - 0x100;
@@ -178,7 +196,7 @@ function read(r) {
   }
 }
 
-export function unpack(bytes) {
+export function unpack(bytes: Uint8Array): Unpacked {
   const r = new Reader(bytes);
   const v = read(r);
   if (r.n !== bytes.length) throw new RangeError("msgpack: trailing bytes");

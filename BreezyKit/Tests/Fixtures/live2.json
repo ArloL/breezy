@@ -1,6 +1,6 @@
 {
   "about": [
-    "Compact cursor and live bodies (web/sync/compact.js, BreezyKit's port). Each case runs fresh: one CursorEncoder, one LiveEncoder and one LiveDecoder.",
+    "Compact cursor and live bodies (web/sync/compact.ts, BreezyKit's port). Each case runs fresh: one CursorEncoder, one LiveEncoder and one LiveDecoder.",
     "A step encodes its cursor or live input with seq, at and now, after reset() when reset is true, and must give hex.",
     "Unless lost, the decoder then reads those bytes with the receiver's overlay and must give decoded. redeliver feeds an earlier step's hex again instead; receive feeds its own hex, with no encoder.",
     "The overlay starts empty; overlay replaces it before decoding; after each decode each item's fields merge into it.",

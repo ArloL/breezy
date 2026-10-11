@@ -1,8 +1,12 @@
-import * as R from "./rules.js";
-import { Camera, clampZoom } from "./camera.js";
-import { animate, motionValue } from "./motion.js";
+import * as R from "./rules.ts";
+import { Camera, clampZoom } from "./camera.ts";
+import { animate, motionValue } from "./motion.ts";
+import type { MotionValue } from "./motion.ts";
+import type { Model } from "./model.ts";
+import type { State } from "./app.ts";
+import type { Board, Cam, Card, HeightOf, Lane, Point, Rect } from "./types.ts";
 
-export { MIN_ZOOM, MAX_ZOOM, clampZoom } from "./camera.js";
+export { MIN_ZOOM, MAX_ZOOM, clampZoom } from "./camera.ts";
 
 const SHEET = '<div class="sheet"><div class="front"></div><div class="back"><div class="heading"></div><div class="notes"></div></div><div class="ear"></div></div>';
 const PLACEHOLDER = "Double-tap to write on the back";
@@ -11,19 +15,57 @@ const SETTLE = { type: "spring", visualDuration: 0.35, bounce: 0 };
 const LIFT = { type: "spring", visualDuration: 0.25, bounce: 0.35 };
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** The part of the screen the board shows through, in screen points. */
+export interface Area {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/** A card or lane as drawn, and where it is going. */
+export interface Shown {
+  el: HTMLElement;
+  key: string;
+  mx?: MotionValue;
+  my?: MotionValue;
+  ms?: MotionValue;
+  to?: { x: number; y: number; scale: number };
+}
+
 /** Draws the board as DOM in a world layer moved by the camera; measures card heights with the same CSS. */
 export class View {
-  constructor(root, model, state) {
+  root: HTMLElement;
+  model: Model;
+  state: State;
+  world: HTMLElement;
+  lanesEl: HTMLElement;
+  cardsEl: HTMLElement;
+  marqueeEl: HTMLElement;
+  mFront: HTMLElement;
+  mBack: HTMLElement;
+  camera: Camera;
+  els: Map<string, Shown>;
+  sizes: Map<string, number>;
+  frame: number;
+  ready: boolean;
+  area: () => Area;
+  onCamera: () => void;
+  onRender: () => void;
+  shown: () => Board;
+  heightOf: HeightOf;
+
+  constructor(root: HTMLElement, model: Model, state: State) {
     this.root = root;
     this.model = model;
     this.state = state;
-    this.world = root.querySelector(".world");
-    this.lanesEl = root.querySelector(".lanes");
-    this.cardsEl = root.querySelector(".cards");
-    this.marqueeEl = root.querySelector(".marquee");
-    const m = document.querySelector(".measure");
+    this.world = root.querySelector<HTMLElement>(".world")!;
+    this.lanesEl = root.querySelector<HTMLElement>(".lanes")!;
+    this.cardsEl = root.querySelector<HTMLElement>(".cards")!;
+    this.marqueeEl = root.querySelector<HTMLElement>(".marquee")!;
+    const m = document.querySelector<HTMLElement>(".measure")!;
     m.innerHTML = `<div class="card">${SHEET}</div><div class="card turned">${SHEET}</div>`;
-    [this.mFront, this.mBack] = m.children;
+    [this.mFront, this.mBack] = m.children as HTMLCollectionOf<HTMLElement>;
     this.camera = new Camera((c) => this.apply(c));
     this.els = new Map();
     this.sizes = new Map();
@@ -42,29 +84,29 @@ export class View {
   }
 
   /** A trailing newline counts as a line, as the editor shows it. */
-  frontHeight(text, w) {
+  frontHeight(text: string, w: number) {
     return this.cached(`f|${w}|${text}`, () => {
       this.mFront.style.width = `${w}px`;
-      const f = this.mFront.querySelector(".front");
+      const f = this.mFront.querySelector<HTMLElement>(".front")!;
       f.textContent = !text || text.endsWith("\n") ? text + "\u200b" : text;
       return Math.max(1, Math.ceil((f.offsetHeight - R.GRID) / R.GRID)) * R.GRID + R.GRID;
     });
   }
 
-  backHeight(c, w) {
+  backHeight(c: Card, w: number) {
     const title = c.text.split("\n")[0];
     const notes = c.notes || PLACEHOLDER;
     return this.cached(`b|${w}|${title}|${notes}`, () => {
       this.mBack.style.width = `${w}px`;
-      const head = this.mBack.querySelector(".heading");
-      const body = this.mBack.querySelector(".notes");
+      const head = this.mBack.querySelector<HTMLElement>(".heading")!;
+      const body = this.mBack.querySelector<HTMLElement>(".notes")!;
       head.textContent = title || "\u200b";
       body.textContent = notes.endsWith("\n") ? notes + "\u200b" : notes;
       return Math.max(R.BACK_MIN_H, Math.ceil((head.offsetHeight + body.offsetHeight) / R.GRID) * R.GRID + 2 * R.GRID);
     });
   }
 
-  cached(key, measure) {
+  cached(key: string, measure: () => number) {
     let h = this.sizes.get(key);
     if (h === undefined) {
       if (this.sizes.size > 10000) this.sizes.clear();
@@ -79,33 +121,33 @@ export class View {
     return Math.max(R.CARD_W, Math.min(R.BACK_W, (innerWidth - 32) / this.cam.zoom));
   }
 
-  rectOf(c) {
+  rectOf(c: Card): Rect {
     if (c.id !== this.state.turned) return R.cardRect(c, this.frontHeight(c.text, c.w));
     const w = this.backWidth();
     return { x: c.x, y: c.y, w, h: this.backHeight(c, w) };
   }
 
-  toWorld(p) {
+  toWorld(p: Point): Point {
     const { x, y, zoom } = this.cam;
     return { x: (p.x - x) / zoom, y: (p.y - y) / zoom };
   }
 
-  toScreen(p) {
+  toScreen(p: Point): Point {
     const { x, y, zoom } = this.cam;
     return { x: p.x * zoom + x, y: p.y * zoom + y };
   }
 
-  get cam() {
+  get cam(): Cam {
     return this.camera.cam;
   }
 
   /** Moves the camera at once, or with a spring that a touch can catch. Gestures pass zooms past the limits on purpose. */
-  setCamera(cam, animate = false) {
+  setCamera(cam: Cam, animate = false) {
     if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) this.camera.springTo({ ...cam, zoom: clampZoom(cam.zoom) });
     else this.camera.set(animate ? { ...cam, zoom: clampZoom(cam.zoom) } : cam);
   }
 
-  apply({ x, y, zoom }) {
+  apply({ x, y, zoom }: Cam) {
     this.world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
     const t = R.GRID * zoom;
     this.root.style.backgroundSize = `${t}px ${t}px`;
@@ -115,19 +157,19 @@ export class View {
   }
 
   /** Zooms keeping the world point under screen point `c` in place. */
-  zoomAround(c, zoom, animate = false) {
+  zoomAround(c: Point, zoom: number, animate = false) {
     const z = clampZoom(zoom);
     const w = this.toWorld(c);
     this.setCamera({ x: c.x - w.x * z, y: c.y - w.y * z, zoom: z }, animate);
   }
 
-  centre() {
+  centre(): Point {
     const a = this.area();
     return { x: (a.left + a.right) / 2, y: (a.top + a.bottom) / 2 };
   }
 
   /** Pans the least needed to show world rect `r`; a rect too tall to fit shows its `prefer` edge. */
-  reveal(r, prefer = "top") {
+  reveal(r: Rect, prefer: "top" | "bottom" = "top") {
     const a = this.area();
     const pad = 16;
     const { zoom } = this.cam;
@@ -143,20 +185,20 @@ export class View {
     if (x !== this.cam.x || y !== this.cam.y) this.setCamera({ x, y, zoom }, true);
   }
 
-  centreOn(r) {
+  centreOn(r: Rect) {
     const c = this.centre();
     const { zoom } = this.cam;
     this.setCamera({ zoom, x: c.x - (r.x + r.w / 2) * zoom, y: c.y - (r.y + r.h / 2) * zoom }, true);
   }
 
   /** Where offset `at` of card `id`'s front or notes falls on screen, as { x, y, h }; null when that side isn't shown. */
-  caretRect(id, back, at) {
+  caretRect(id: string, back: boolean, at: number) {
     const e = this.els.get(id);
     if (!e || back !== (this.state.turned === id)) return null;
     const node = e.el.querySelector(back ? ".notes" : ".front")?.firstChild;
     if (node?.nodeType !== Node.TEXT_NODE) return null;
     const r = document.createRange();
-    r.setStart(node, Math.min(at, node.length));
+    r.setStart(node, Math.min(at, (node as Text).length));
     r.collapse(true);
     const rect = r.getClientRects()[0] ?? r.getBoundingClientRect();
     if (!rect.height) return null;
@@ -171,7 +213,7 @@ export class View {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     const b = this.shown();
-    const live = new Set();
+    const live = new Set<string>();
     for (const l of b.lanes) {
       live.add(l.id);
       this.renderLane(l);
@@ -197,42 +239,42 @@ export class View {
    * the speed it had, so a dropped card leaves the finger as it was moving. Things that appear after the first
    * render grow in.
    */
-  place(e, x, y, held, scale = 1) {
+  place(e: Shown, x: number, y: number, held: boolean, scale = 1) {
     const still = reduced();
     if (!e.mx) {
       const grow = this.ready && !still;
       e.mx = motionValue(x);
       e.my = motionValue(y);
       e.ms = motionValue(grow ? 0.9 : scale);
-      const draw = () => (e.el.style.transform = `translate(${e.mx.get()}px, ${e.my.get()}px) scale(${e.ms.get()})`);
+      const draw = () => (e.el.style.transform = `translate(${e.mx!.get()}px, ${e.my!.get()}px) scale(${e.ms!.get()})`);
       for (const v of [e.mx, e.my, e.ms]) v.on("change", draw);
       draw();
       e.to = { x, y, scale: e.ms.get() };
       if (grow) animate(e.el, { opacity: [0, 1] }, { duration: 0.2 });
     }
-    for (const [k, v, to] of [["x", e.mx, x], ["y", e.my, y]]) {
+    for (const [k, v, to] of [["x", e.mx, x], ["y", e.my!, y]] as const) {
       if (held || still) {
         v.stop();
         v.set(to);
-      } else if (e.to[k] !== to) animate(v, to, SETTLE);
-      e.to[k] = to;
+      } else if (e.to![k] !== to) animate(v, to, SETTLE);
+      e.to![k] = to;
     }
-    if (e.to.scale !== scale) {
-      if (still) e.ms.jump(scale);
-      else animate(e.ms, scale, LIFT);
-      e.to.scale = scale;
+    if (e.to!.scale !== scale) {
+      if (still) e.ms!.jump(scale);
+      else animate(e.ms!, scale, LIFT);
+      e.to!.scale = scale;
     }
   }
 
   /** A deleted card or lane shrinks and fades while the others close up. */
-  vanish(e) {
+  vanish(e: Shown) {
     if (!this.ready || reduced() || !e.ms) return e.el.remove();
     e.el.style.pointerEvents = "none";
     animate(e.el, { opacity: 0 }, { duration: 0.2 });
     animate(e.ms, 0.9, SETTLE).then(() => e.el.remove());
   }
 
-  element(id, parent, html) {
+  element(id: string, parent: HTMLElement, html: string): Shown {
     let e = this.els.get(id);
     if (!e) {
       const el = document.createElement("div");
@@ -244,7 +286,7 @@ export class View {
     return e;
   }
 
-  renderCard(c, i) {
+  renderCard(c: Card, i: number) {
     const s = this.state;
     const editing = s.editing?.id === c.id ? s.editing : null;
     const turned = s.turned === c.id;
@@ -265,8 +307,8 @@ export class View {
     this.place(e, c.x + f.x, c.y + f.y, s.held.has(c.id) || s.taken.has(c.id), s.lifted.has(c.id) ? 1.05 : 1);
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
-    el.style.zIndex = turned || s.lifted.has(c.id) ? 1000000 : i;
-    const sheet = el.firstChild;
+    el.style.zIndex = String(turned || s.lifted.has(c.id) ? 1000000 : i);
+    const sheet = el.firstChild as Element;
     sheet.className = `sheet c${c.color}`;
     const [front, back] = sheet.children;
     const [heading, notes] = back.children;
@@ -278,7 +320,7 @@ export class View {
     }
   }
 
-  renderLane(l) {
+  renderLane(l: Lane) {
     const s = this.state;
     const renaming = s.renaming === l.id;
     const who = s.taken.get(l.id);
@@ -297,38 +339,38 @@ export class View {
     this.place(e, l.x + f.x, l.y + f.y, s.held.has(l.id) || s.taken.has(l.id));
     el.style.width = `${l.w + f.w}px`;
     el.style.height = `${l.h + f.h}px`;
-    if (!renaming) el.querySelector(".title").textContent = l.title;
+    if (!renaming) el.querySelector(".title")!.textContent = l.title;
   }
 
-  editorOf(id, back) {
-    return this.els.get(id)?.el.querySelector(back ? ".notes" : ".front");
+  editorOf(id: string, back: boolean) {
+    return this.els.get(id)?.el.querySelector<HTMLElement>(back ? ".notes" : ".front");
   }
 
-  titleOf(id) {
-    return this.els.get(id)?.el.querySelector(".title");
+  titleOf(id: string) {
+    return this.els.get(id)?.el.querySelector<HTMLElement>(".title");
   }
 
   /** Runs `change` at once and renders; the card flips over in one springy turn, showing the new face past halfway. */
-  animateTurn(ids, change) {
+  animateTurn(ids: string[], change: () => void) {
     if (reduced()) {
       change();
       return this.render();
     }
-    const ghosts = ids.map((id) => this.els.get(id)?.el).filter(Boolean).map((el) => {
-      const g = el.cloneNode(true);
+    const ghosts = ids.map((id) => this.els.get(id)?.el).filter((el): el is HTMLElement => Boolean(el)).map((el) => {
+      const g = el.cloneNode(true) as HTMLElement;
       g.classList.add("ghost");
-      g.style.zIndex = 1000001;
+      g.style.zIndex = "1000001";
       this.cardsEl.append(g);
       return g;
     });
     change();
     this.render();
-    const fresh = ids.map((id) => this.els.get(id)?.el.firstChild).filter(Boolean);
+    const fresh = ids.map((id) => this.els.get(id)?.el.firstChild).filter((s): s is HTMLElement => Boolean(s));
     const p = "perspective(1000px) ";
-    const turn = (a) => {
+    const turn = (a: number) => {
       for (const g of ghosts) {
         g.style.visibility = a < 90 ? "" : "hidden";
-        g.firstChild.style.transform = `${p}rotateY(${a}deg)`;
+        (g.firstChild as HTMLElement).style.transform = `${p}rotateY(${a}deg)`;
       }
       // opacity, not visibility: a hidden editor loses the keyboard focus that Tab just gave it
       for (const s of fresh) {
@@ -336,7 +378,7 @@ export class View {
         s.style.transform = `${p}rotateY(${a - 180}deg)`;
       }
     };
-    const cards = [...ghosts, ...fresh.map((s) => s.parentElement)];
+    const cards = [...ghosts, ...fresh.map((s) => s.parentElement!)];
     for (const el of cards) el.classList.add("flipping");
     turn(0);
     animate(0, 180, { type: "spring", visualDuration: 0.45, bounce: 0.2, onUpdate: turn }).then(() => {

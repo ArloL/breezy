@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RELOAD_AFTER_MS, shouldReload } from "../update.js";
+import { RELOAD_AFTER_MS, shouldReload } from "../update.ts";
 
 const away = { running: "1", latest: "2", hiddenFor: RELOAD_AFTER_MS, editing: false };
 

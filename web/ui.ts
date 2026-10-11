@@ -1,18 +1,19 @@
-import * as R from "./rules.js";
-import { track } from "./press.js";
-import { Menus } from "./menu.js";
-import { haptic } from "./haptics.js";
-import { animate } from "./motion.js";
-import { clampZoom } from "./view.js";
+import * as R from "./rules.ts";
+import { track } from "./press.ts";
+import { Menus } from "./menu.ts";
+import { haptic } from "./haptics.ts";
+import { animate } from "./motion.ts";
+import { clampZoom } from "./view.ts";
+import type { App, Match } from "./app.ts";
 
 const KEYS_H = 44;
-const MENUS = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
+const MENUS: Partial<Record<string, string>> = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
 const BAR = { type: "spring", visualDuration: 0.35, bounce: 0.15 };
-const REST = { x: 0, y: 0, scale: 1, opacity: 1, filter: "blur(0px)" };
+const REST: Record<string, string | number> = { x: 0, y: 0, scale: 1, opacity: 1, filter: "blur(0px)" };
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Shows or hides `el` the way iOS bars come and go: springing in from `from`, and out again before hiding. */
-function swap(el, show, from) {
+function swap(el: HTMLElement, show: boolean, from: Record<string, string | number>) {
   if (show === !el.hidden && !el.dataset.leaving) return;
   if (reduced()) {
     el.hidden = !show;
@@ -34,18 +35,26 @@ function swap(el, show, from) {
 
 /** The bars around the board: top, find, add and selection, and keyboard. */
 export class UI {
-  constructor(app) {
+  app: App;
+  matches: Match[];
+  index: number;
+  $: <E extends HTMLElement = HTMLElement>(sel: string) => E;
+  menus: Menus;
+  zoom: number | undefined;
+  zoomTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(app: App) {
     this.app = app;
     this.matches = [];
     this.index = -1;
-    this.$ = (sel) => document.querySelector(sel);
+    this.$ = <E extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<E>(sel)!;
     this.menus = new Menus({ pick: (b) => (haptic(), this.act(b.dataset.act, b)), hover: haptic });
-    for (const b of document.querySelectorAll("[data-act]")) {
-      const menu = MENUS[b.dataset.act];
+    for (const b of document.querySelectorAll<HTMLButtonElement>("[data-act]")) {
+      const menu = MENUS[b.dataset.act!];
       if (menu) this.menus.attach(b, this.$(menu));
       track(b, { act: () => menu || this.act(b.dataset.act, b) });
     }
-    const field = this.$("#find input");
+    const field = this.$<HTMLInputElement>("#find input");
     field.addEventListener("input", () => {
       this.$("#find .clear").hidden = !field.value;
       this.find(field.value);
@@ -59,13 +68,13 @@ export class UI {
       e.preventDefault();
       this.step(1);
     });
-    visualViewport.addEventListener("resize", () => {
+    visualViewport!.addEventListener("resize", () => {
       this.place();
       this.app.revealEditing();
       // the keyboard coming or going moves the middle of what is visible
       if (!this.$("#find").hidden && this.matches[this.index]) this.app.reveal(this.matches[this.index]);
     });
-    visualViewport.addEventListener("scroll", () => this.place());
+    visualViewport!.addEventListener("scroll", () => this.place());
     this.update();
   }
 
@@ -80,14 +89,14 @@ export class UI {
     status.hidden = !text;
   }
 
-  act(name, b) {
+  act(name: string | undefined, b?: HTMLElement) {
     const app = this.app;
     switch (name) {
       case "boards": return app.library?.showList();
       case "undo": return app.undo();
       case "redo": return app.redo();
       case "search": return this.openFind();
-      case "version": b.textContent = b.dataset.next ? `${b.dataset.version}, ${b.dataset.next} ready` : b.dataset.version; return;
+      case "version": b!.textContent = b!.dataset.next ? `${b!.dataset.version}, ${b!.dataset.next} ready` : b!.dataset.version!; return;
       case "new-space": this.closeMenu(); return app.library?.newSpace();
       case "rename-space": this.closeMenu(); return app.library?.renameSpace();
       case "leave-space": this.closeMenu(); return app.library?.leaveSpace();
@@ -96,7 +105,7 @@ export class UI {
       case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
-      case "colour": this.closeMenu(); return app.colour(Number(b.dataset.colour));
+      case "colour": this.closeMenu(); return app.colour(Number(b!.dataset.colour));
       case "turn": {
         const [c] = app.selectedCards();
         return c && app.turn(app.state.turned === c.id ? null : c.id);
@@ -108,9 +117,9 @@ export class UI {
       case "next": return this.step(1);
       case "close-find": return this.closeFind();
       case "clear-find": {
-        const field = this.$("#find input");
+        const field = this.$<HTMLInputElement>("#find input");
         field.value = "";
-        b.hidden = true;
+        b!.hidden = true;
         field.focus();
         return this.find("");
       }
@@ -123,8 +132,8 @@ export class UI {
     const cards = app.selectedCards();
     const lanes = app.selectedLanes();
     const typing = !!(s.editing || s.renaming);
-    this.$('[data-act="undo"]').disabled = !(app.model.canUndo || app.model.inGesture);
-    this.$('[data-act="redo"]').disabled = !app.model.canRedo;
+    this.$<HTMLButtonElement>('[data-act="undo"]').disabled = !(app.model.canUndo || app.model.inGesture);
+    this.$<HTMLButtonElement>('[data-act="redo"]').disabled = !app.model.canRedo;
     swap(this.$("#bottom"), !typing, { y: 120, opacity: 0 });
     const selecting = cards.length + lanes.length > 0;
     // The + and the selection bar morph into one another, as iOS 26's glass does.
@@ -138,7 +147,7 @@ export class UI {
     }
     this.$(".colours").hidden = !cards.length;
     if (cards.length) this.$(".colours .swatch i").className = `c${cards[0].color}`;
-    for (const b of document.querySelectorAll(".colours .menu button")) b.classList.toggle("on", Number(b.dataset.colour) === cards[0]?.color);
+    for (const b of document.querySelectorAll<HTMLElement>(".colours .menu button")) b.classList.toggle("on", Number(b.dataset.colour) === cards[0]?.color);
     if (!selecting && this.menus.menu === this.$(".colours .menu")) this.menus.close(true);
     const one = cards.length === 1 && !lanes.length ? cards[0] : null;
     this.$('[data-act="turn"]').hidden = !one;
@@ -162,18 +171,23 @@ export class UI {
 
   /** Puts the keyboard bar on the keyboard, wherever iOS has moved the visual viewport. */
   place() {
-    const vv = visualViewport;
+    const vv = visualViewport!;
     this.$("#keys").style.top = `${vv.offsetTop + vv.height - KEYS_H}px`;
   }
 
   /** The part of the screen the board shows through: below the bars, above the keyboard, the keys bar and the bottom bar. */
   area() {
-    const vv = visualViewport;
+    const vv = visualViewport!;
     const above = this.$("#find").hidden ? this.$("#top") : this.$("#find");
     const bar = this.$("#bottom");
     const visible = vv.offsetTop + vv.height - (this.app.state.editing ? KEYS_H : 0);
     const bottom = bar.hidden ? visible : Math.min(visible, bar.getBoundingClientRect().top);
     return { top: Math.max(above.getBoundingClientRect().bottom, vv.offsetTop), bottom, left: 0, right: innerWidth };
+  }
+
+  /** A light tap where the device has a Taptic Engine. */
+  haptic() {
+    haptic();
   }
 
   closeMenu() {
@@ -182,10 +196,10 @@ export class UI {
   }
 
   /** Opens the find bar, with `text` to find if given. */
-  openFind(text) {
+  openFind(text?: string) {
     this.closeMenu();
     swap(this.$("#find"), true, { y: -24, opacity: 0, scale: 0.96 });
-    const field = this.$("#find input");
+    const field = this.$<HTMLInputElement>("#find input");
     if (text !== undefined) {
       field.value = text;
       this.$("#find .clear").hidden = !text;
@@ -196,7 +210,7 @@ export class UI {
   }
 
   /** ⌘G: the next match, opening the bar on the last search when it is closed. */
-  findStep(d) {
+  findStep(d: number) {
     if (this.$("#find").hidden) return this.openFind();
     this.step(d);
   }
@@ -209,7 +223,7 @@ export class UI {
     this.app.view.invalidate();
   }
 
-  find(q) {
+  find(q: string) {
     this.matches = R.search(this.app.model.board, q);
     this.index = -1;
     this.$("#find .count").textContent = q.trim() ? "0" : "";
@@ -218,7 +232,7 @@ export class UI {
     this.app.view.invalidate();
   }
 
-  step(d) {
+  step(d: number) {
     const n = this.matches.length;
     if (!n) return;
     this.index = (this.index + d + n) % n;

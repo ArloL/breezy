@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hitTest, dragAction, pressAction } from "../policy.js";
+import { hitTest, dragAction, pressAction } from "../policy.ts";
+import type { DragAction, Hit } from "../policy.ts";
+import type { Board, Card, Lane } from "../types.ts";
 
-const rectOf = (c) => ({ x: c.x, y: c.y, w: c.w, h: 48 });
-const card = (id, x, y, notes) => ({ id, x, y, w: 240, text: "t", color: 1, ...(notes ? { notes } : {}) });
-const lane = { id: "l", x: 0, y: 0, w: 480, h: 720, title: "Lane" };
-const at = (b, x, y, zoom = 1, turned = null) => hitTest(b, { x, y }, { rectOf, zoom, turned });
+const rectOf = (c: Card) => ({ x: c.x, y: c.y, w: c.w, h: 48 });
+const card = (id: string, x: number, y: number, notes?: string): Card => ({ id, x, y, w: 240, text: "t", color: 1, ...(notes ? { notes } : {}) });
+const lane: Lane = { id: "l", x: 0, y: 0, w: 480, h: 720, title: "Lane" };
+const at = (b: Board, x: number, y: number, zoom = 1, turned: string | null = null) => hitTest(b, { x, y }, { rectOf, zoom, turned });
 
 test("the folded corner takes a 44 pt touch area, reaching outside the card", () => {
   const b = { cards: [card("a", 0, 0, "n")], lanes: [] };
@@ -42,7 +44,7 @@ test("a turned card is on top of later cards", () => {
 
 test("one finger pans unless the drag starts on a selected card or after a hold", () => {
   const sel = new Set(["a"]);
-  const cases = [
+  const cases: [Hit, boolean, DragAction][] = [
     [{ kind: "empty" }, false, "pan"],
     [{ kind: "empty" }, true, "marquee"],
     [{ kind: "card", id: "b" }, false, "pan"],
@@ -57,7 +59,7 @@ test("one finger pans unless the drag starts on a selected card or after a hold"
   for (const [hit, held, want] of cases) assert.equal(dragAction(hit, sel, held), want, JSON.stringify([hit, held]));
 });
 
-const mouseAt = (b, x, y, zoom = 1, turned = null) => hitTest(b, { x, y }, { rectOf, zoom, turned, touch: false });
+const mouseAt = (b: Board, x: number, y: number, zoom = 1, turned: string | null = null) => hitTest(b, { x, y }, { rectOf, zoom, turned, touch: false });
 
 test("a pointer's fold is the card's own corner, without a touch area", () => {
   const b = { cards: [card("a", 0, 0, "n")], lanes: [] };
@@ -74,7 +76,7 @@ test("a pointer's lane corner is 20 pt and its header 48 pt at any zoom", () => 
   assert.deepEqual(mouseAt(b, 100, 60, 0.25), { kind: "empty" });
 });
 
-const press = (kind, mods = {}, sel = []) => pressAction({ kind, id: "a" }, { shift: false, alt: false, ...mods }, new Set(sel));
+const press = (kind: Hit["kind"], mods: { shift?: boolean; alt?: boolean } = {}, sel: string[] = []) => pressAction({ kind, id: "a" } as Hit, { shift: false, alt: false, ...mods }, new Set(sel));
 
 test("a press on a card selects it alone and drags; in a selection it keeps the selection", () => {
   assert.deepEqual(press("card"), { select: "only", drag: "move", collapse: true });

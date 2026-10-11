@@ -1,37 +1,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mouse, DOUBLE_MS } from "../mouse.js";
+import { Mouse, DOUBLE_MS } from "../mouse.ts";
+import type { DragAction, Hit } from "../policy.ts";
+import type { Card, Point } from "../types.ts";
 
-const card = (id, x, y) => ({ id, x, y, w: 240, text: "t", color: 1 });
+const card = (id: string, x: number, y: number): Card => ({ id, x, y, w: 240, text: "t", color: 1 });
 
 /** An app whose input and actions record what the mouse asks of them. */
-function fakeApp(hits = {}) {
-  const calls = [];
+function fakeApp(hits: Record<string, Hit> = {}) {
+  const calls: unknown[][] = [];
   const app = {
     calls,
-    state: { selection: new Set(), turned: null },
+    state: { selection: new Set<string>(), turned: null as string | null },
     model: { board: { cards: [card("a", 0, 0), card("b", 0, 72)], lanes: [] } },
     heightOf: () => 48,
-    select: (ids) => { app.state.selection = new Set(ids); calls.push(["select", [...ids]]); },
-    toggle: (id) => calls.push(["toggle", id]),
-    turn: (id) => { app.state.turned = id; calls.push(["turn", id]); },
+    select: (ids: string[]) => { app.state.selection = new Set(ids); calls.push(["select", [...ids]]); },
+    toggle: (id: string) => calls.push(["toggle", id]),
+    turn: (id: string | null) => { app.state.turned = id; calls.push(["turn", id]); },
     endEditing: () => {},
     ui: { closeMenu: () => {} },
     input: {
-      drag: null,
+      drag: null as { action: DragAction } | null,
       stopCoast: () => {},
-      hit: (p) => hits[`${p.x},${p.y}`] ?? { kind: "empty" },
-      beginDrag: (action, h) => { app.input.drag = { action }; calls.push(["drag", action, h.id]); },
+      hit: (p: Point): Hit => hits[`${p.x},${p.y}`] ?? { kind: "empty" },
+      beginDrag: (action: DragAction, h: Hit) => { app.input.drag = { action }; calls.push(["drag", action, h.id]); },
       dragMove: () => calls.push(["move"]),
       dragEnd: () => { app.input.drag = null; calls.push(["end"]); },
       dragCancel: () => { app.input.drag = null; calls.push(["cancel"]); },
-      doubleClick: (p, h) => calls.push(["double", h.kind]),
+      doubleClick: (p: Point, h: Hit) => calls.push(["double", h.kind]),
     },
   };
   return app;
 }
-const at = (x, y, mods = {}) => ({ x, y, shiftKey: false, altKey: false, ...mods });
-const names = (app) => app.calls.map((c) => c[0]);
+const at = (x: number, y: number, mods: { shiftKey?: boolean; altKey?: boolean } = {}) => ({ x, y, shiftKey: false, altKey: false, ...mods });
+const names = (app: ReturnType<typeof fakeApp>) => app.calls.map((c) => c[0]);
 
 test("a press that does not move selects without dragging, and collapses a selection to the card", () => {
   const app = fakeApp({ "10,10": { kind: "card", id: "a" } });

@@ -1,8 +1,15 @@
 // Direct's transport over the browser's RTCPeerConnection; see the WebRTC design. Breezy/Live/peer.html is its twin
 // in the Mac app's web view.
+import type { Ice, LinkState, PeerTransport } from "./direct.ts";
+
 export const ICE_SERVERS = [{ urls: "stun:stun.cloudflare.com:3478" }];
 
-export class RTCTransport {
+export class RTCTransport implements PeerTransport {
+  peers: Map<string, { pc: RTCPeerConnection; ch: RTCDataChannel }>;
+  onCandidate: (id: string, c: Ice | null) => void;
+  onState: (id: string, state: LinkState) => void;
+  onMessage: (id: string, data: Uint8Array | string) => void;
+
   constructor() {
     this.peers = new Map();
     this.onCandidate = () => {};
@@ -10,7 +17,7 @@ export class RTCTransport {
     this.onMessage = () => {};
   }
 
-  create(id) {
+  create(id: string): void {
     this.close(id);
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const ch = pc.createDataChannel("live", { negotiated: true, id: 0, ordered: false, maxRetransmits: 0 });
@@ -26,40 +33,40 @@ export class RTCTransport {
     this.peers.set(id, { pc, ch });
   }
 
-  async offer(id, restart) {
-    const { pc } = this.peers.get(id);
+  async offer(id: string, restart: boolean): Promise<string> {
+    const { pc } = this.peers.get(id)!;
     if (restart) pc.restartIce();
     await pc.setLocalDescription();
-    return pc.localDescription.sdp;
+    return pc.localDescription!.sdp;
   }
 
-  async answer(id, sdp) {
-    const { pc } = this.peers.get(id);
+  async answer(id: string, sdp: string): Promise<string> {
+    const { pc } = this.peers.get(id)!;
     await pc.setRemoteDescription({ type: "offer", sdp });
     await pc.setLocalDescription();
-    return pc.localDescription.sdp;
+    return pc.localDescription!.sdp;
   }
 
-  async accept(id, sdp) {
-    await this.peers.get(id).pc.setRemoteDescription({ type: "answer", sdp });
+  async accept(id: string, sdp: string): Promise<void> {
+    await this.peers.get(id)!.pc.setRemoteDescription({ type: "answer", sdp });
   }
 
-  add(id, c) {
+  add(id: string, c: Ice): void {
     this.peers.get(id)?.pc.addIceCandidate({ candidate: c.candidate, sdpMid: c.mid, sdpMLineIndex: c.index }).catch(() => {});
   }
 
-  send(id, text) {
+  send(id: string, text: string | Uint8Array<ArrayBuffer>): boolean {
     const p = this.peers.get(id);
     if (p?.pc.connectionState !== "connected" || p.ch.readyState !== "open") return false;
-    p.ch.send(text);
+    p.ch.send(text as string);
     return true;
   }
 
-  sendBytes(id, bytes) {
+  sendBytes(id: string, bytes: Uint8Array<ArrayBuffer>): boolean {
     return this.send(id, bytes);
   }
 
-  close(id) {
+  close(id: string): void {
     const p = this.peers.get(id);
     this.peers.delete(id);
     p?.pc.close();

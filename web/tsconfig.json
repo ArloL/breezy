@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "lib": ["es2024", "dom", "dom.iterable"], "rootDir": ".", "noEmit": true },
+  "include": ["*.ts", "sync/*.ts"],
+  "exclude": ["sw.ts"]
+}

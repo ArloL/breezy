@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decay, coastOffset, projection, rubber, edgeSpeed, EDGE_ZONE } from "../physics.js";
+import { decay, coastOffset, projection, rubber, edgeSpeed, EDGE_ZONE } from "../physics.ts";
 
-const near = (a, b, e = 1e-6) => assert.ok(Math.abs(a - b) < e, `${a} ≉ ${b}`);
+const near = (a: number, b: number, e = 1e-6) => assert.ok(Math.abs(a - b) < e, `${a} ≉ ${b}`);
 
 test("velocity decays by 0.985 per millisecond, as Freeform's canvas coasts", () => {
   near(decay(1, 1), 0.985);
@@ -28,7 +28,7 @@ test("edge scrolling starts only inside the zone, crawls, then speeds up sharply
   assert.equal(edgeSpeed(EDGE_ZONE + 1, 0), 0);
   near(edgeSpeed(EDGE_ZONE, 0), 0.045);
   // Freeform scrolled 33 pt in the first half second and 96 pt by 0.8 s
-  const scrolled = (ms) => {
+  const scrolled = (ms: number) => {
     let s = 0;
     for (let t = 0; t < ms; t++) s += edgeSpeed(10, t);
     return s;

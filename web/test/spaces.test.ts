@@ -1,21 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Spaces } from "../sync/spaces.js";
-import { Store } from "../sync/store.js";
-import { MemoryStorage } from "./helpers/storage.js";
-import { FakeServer, FakeTransport, SERVER, device, mulberry } from "./helpers/fake-server.js";
-import { FakeRelay } from "./helpers/fake-relay.js";
-import { newID } from "../rules.js";
-import * as R from "../rules.js";
+import { Spaces } from "../sync/spaces.ts";
+import type { Group } from "../sync/spaces.ts";
+import { Store } from "../sync/store.ts";
+import { MemoryStorage } from "./helpers/storage.ts";
+import { FakeServer, FakeTransport, SERVER, device, mulberry } from "./helpers/fake-server.ts";
+import { FakeRelay } from "./helpers/fake-relay.ts";
+import { newID } from "../rules.ts";
+import * as R from "../rules.ts";
+import type { Card } from "../types.ts";
+import type { StoreState } from "../sync/store.ts";
 
 const SECRET = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
-const card = (id, text) => ({ id, x: 0, y: 0, w: 240, text, color: 1 });
+const card = (id: string, text: string): Card => ({ id, x: 0, y: 0, w: 240, text, color: 1 });
 
 /** A fake server per space, made on first use. */
 function servers() {
-  const all = new Map();
-  const server = (space) => all.get(space) ?? all.set(space, new FakeServer()).get(space);
-  return { server, transport: (state) => new FakeTransport(server(state.space)) };
+  const all = new Map<string | null, FakeServer>();
+  const server = (space: string | null) => all.get(space) ?? all.set(space, new FakeServer()).get(space)!;
+  return { server, transport: (state: StoreState) => new FakeTransport(server(state.space)) };
 }
 
 test("a store from before spaces becomes its space", async () => {
@@ -90,7 +93,7 @@ test("groups come On this device first, then spaces by name", async () => {
   assert.deepEqual(spaces.groups().map((g) => g.name), ["On this device", "Abe", "Zed"]);
   const id = zed.store.createBoard("Plans");
   assert.equal(spaces.groupOf(id), zed);
-  assert.equal(spaces.groupFor(abe.space), abe);
+  assert.equal(spaces.groupFor(abe.space!), abe);
   await spaces.flushAll();
   const again = await Spaces.open(storage);
   assert.deepEqual(again.groups().map((g) => g.name), ["On this device", "Abe", "Zed"]);
@@ -123,10 +126,10 @@ test("stopping saves what is pending, then nothing more", async () => {
   const spaces = await Spaces.open(storage);
   const id = spaces.local.store.createBoard("Plans");
   await spaces.stop();
-  assert.equal(new Store(storage.data.get("local")).title(id), "Plans");
+  assert.equal(new Store(storage.data.get("local") as StoreState).title(id), "Plans");
   spaces.local.store.renameBoard(id, "Later");
   await new Promise((r) => setTimeout(r, 400));
-  assert.equal(new Store(storage.data.get("local")).title(id), "Plans");
+  assert.equal(new Store(storage.data.get("local") as StoreState).title(id), "Plans");
 });
 
 test("moving a board copies it with new ids and deletes it where it was", async () => {
@@ -136,7 +139,7 @@ test("moving a board copies it with new ids and deletes it where it was", async 
   const lane = { id: "l", x: 0, y: 0, w: 480, h: 720, title: "Doing" };
   const id = work.store.createBoard("Plans", { cards: [card("a", "first"), card("b", "second")], lanes: [lane] });
   for (const p of work.store.pending()) work.store.accepted(p.id, 1, p.record);
-  const moved = await spaces.move(id, spaces.local);
+  const moved = (await spaces.move(id, spaces.local))!;
   const b = spaces.local.store.board(moved);
   assert.equal(spaces.local.store.title(moved), "Plans");
   assert.deepEqual(b.cards.map((c) => c.text), ["first", "second"]);
@@ -144,7 +147,7 @@ test("moving a board copies it with new ids and deletes it where it was", async 
   for (const x of [moved, ...b.cards.map((c) => c.id), ...b.lanes.map((l) => l.id)]) assert.ok(!["a", "b", "l", id].includes(x));
   assert.equal(work.store.title(id), null);
   assert.deepEqual(work.store.pending().map((p) => p.id).sort(), [id, "a", "b", "l"].sort());
-  assert.ok(storage.data.get("local").records[moved]);
+  assert.ok((storage.data.get("local") as StoreState).records[moved]);
 });
 
 test("a move whose copy can't be saved leaves the board where it was", async () => {
@@ -164,7 +167,7 @@ test("a device in two spaces moving boards ends like each space", async () => {
   const a = await Spaces.open(new MemoryStorage(), { transport });
   const x = a.newSpace(SERVER, "X");
   const y = a.newSpace(SERVER, "Y");
-  for (const [g, t] of [[x, "x"], [y, "y"]]) for (let n = 0; n < 3; n++) g.store.createBoard(`${t}${n}`, { cards: [card(newID(), t)], lanes: [] });
+  for (const [g, t] of [[x, "x"], [y, "y"]] as const) for (let n = 0; n < 3; n++) g.store.createBoard(`${t}${n}`, { cards: [card(newID(), t)], lanes: [] });
   await x.engine.sync();
   await y.engine.sync();
   const b = device(server(x.space), x.store.invite);
@@ -172,7 +175,7 @@ test("a device in two spaces moving boards ends like each space", async () => {
   await b.engine.sync();
   await c.engine.sync();
   const rnd = mulberry(7);
-  const pick = (list) => list[Math.floor(rnd() * list.length)];
+  const pick = <T>(list: T[]) => list[Math.floor(rnd() * list.length)];
   for (let step = 0; step < 200; step++) {
     const roll = Math.floor(rnd() * 6);
     if (roll === 0) {
@@ -189,7 +192,7 @@ test("a device in two spaces moving boards ends like each space", async () => {
     }
   }
   for (let i = 0; i < 3; i++) for (const e of [x.engine, y.engine, b.engine, c.engine]) await e.sync();
-  for (const [g, d] of [[x, b], [y, c]]) {
+  for (const [g, d] of [[x, b], [y, c]] as const) {
     assert.deepEqual(g.store.pending(), []);
     assert.deepEqual(d.store.pending(), []);
     assert.deepEqual(g.store.boards(), d.store.boards());
@@ -207,12 +210,12 @@ test("a move while read-only leaves the board where it was", async () => {
   assert.deepEqual(work.store.boards(), []);
 });
 
-async function liveSpaces(srv, relay, storage = new MemoryStorage()) {
+async function liveSpaces(srv: ReturnType<typeof servers>, relay: FakeRelay, storage = new MemoryStorage()) {
   return Spaces.open(storage, { transport: srv.transport, socket: () => relay.connect() });
 }
 
 /** Lets the live layer of each of `groups` appear, as it needs the space's keys, which take a moment, or 20 ms for none. */
-async function settleLive(...groups) {
+async function settleLive(...groups: Group[]) {
   const wait = () => new Promise((r) => setTimeout(r, 5));
   if (!groups.length) return new Promise((r) => setTimeout(r, 20));
   for (let i = 0; i < 400 && groups.some((g) => !g.live); i++) await wait();
@@ -222,7 +225,7 @@ test("a device has a name and an id, kept", async () => {
   const storage = new MemoryStorage();
   const spaces = await Spaces.open(storage);
   assert.equal(spaces.me.name, "");
-  assert.equal(storage.data.get("me").device, spaces.me.device);
+  assert.equal((storage.data.get("me") as { device: string }).device, spaces.me.device);
   await spaces.setName("Ana");
   const again = await Spaces.open(storage);
   assert.deepEqual(again.me, { device: spaces.me.device, name: "Ana" });
@@ -238,11 +241,11 @@ test("a relay gives the space a live layer", async () => {
   srv.server(g.space).relay = "wss://relay.example/";
   await g.engine.sync();
   await settleLive(g);
-  assert.equal(g.live.relay, "wss://relay.example/");
-  assert.equal(g.live.me.name, "Ana");
+  assert.equal(g.live!.relay, "wss://relay.example/");
+  assert.equal(g.live!.me.name, "Ana");
   assert.ok(heard >= 1);
   await spaces.setName("Ana Lima");
-  assert.equal(g.live.me.name, "Ana Lima");
+  assert.equal(g.live!.me.name, "Ana Lima");
   srv.server(g.space).relay = null;
   await g.engine.sync();
   await settleLive();
@@ -283,9 +286,9 @@ test("while live is connected, polling waits 30 s", async () => {
   srv.server(g.space).relay = "wss://relay.example/";
   await g.engine.sync();
   await settleLive(g);
-  g.live.connect();
+  g.live!.connect();
   await relay.run();
-  assert.ok(g.live.connected);
+  assert.ok(g.live!.connected);
   const before = g.engine.lastCycle;
   now += 10_000;
   spaces.syncAll({ polling: true });
@@ -302,11 +305,11 @@ test("a push is announced, and an announced push is pulled at once", async () =>
   const ga = a.newSpace(SERVER, "Work");
   srv.server(ga.space).relay = "wss://relay.example/";
   await ga.engine.sync();
-  const gb = b.join(ga.store.invite);
+  const gb = b.join(ga.store.invite!);
   await gb.engine.sync();
   await settleLive(ga, gb);
-  ga.live.connect();
-  gb.live.connect();
+  ga.live!.connect();
+  gb.live!.connect();
   await relay.run();
   const id = ga.store.createBoard("Plans");
   await ga.engine.sync();
@@ -322,7 +325,7 @@ test("leaving a space closes its live layer", async () => {
   srv.server(g.space).relay = "wss://relay.example/";
   await g.engine.sync();
   await settleLive(g);
-  g.live.connect();
+  g.live!.connect();
   await relay.run();
   await spaces.leave(g);
   await relay.run();
@@ -336,16 +339,16 @@ test("an announced push with its records is taken without a request, and with a 
   const server = srv.server(ga.space);
   server.relay = "wss://relay.example/";
   await ga.engine.sync();
-  const gb = b.join(ga.store.invite);
+  const gb = b.join(ga.store.invite!);
   await gb.engine.sync();
   await settleLive(ga, gb);
-  ga.live.connect();
-  gb.live.connect();
+  ga.live!.connect();
+  gb.live!.connect();
   await relay.run();
   // the welcomes' catch-up syncs, which would otherwise pull while the test counts pulls
   await Promise.all([ga.engine.running, gb.engine.running]);
   const id = ga.store.createBoard("Plans");
-  const seen = [];
+  const seen: number[] = [];
   const pull = server.pull.bind(server);
   server.pull = (since) => (seen.push(since), pull(since));
   await ga.engine.sync();
@@ -353,13 +356,13 @@ test("an announced push with its records is taken without a request, and with a 
   await gb.engine.running;
   assert.equal(gb.store.title(id), "Plans");
   assert.deepEqual(seen, []);
-  gb.live.close();
+  gb.live!.close();
   await relay.run();
   const id2 = ga.store.createBoard("More");
   await ga.engine.sync();
   await relay.run();
   const id3 = ga.store.createBoard("Later");
-  gb.live.connect();
+  gb.live!.connect();
   await relay.run();
   await ga.engine.sync();
   await relay.run();

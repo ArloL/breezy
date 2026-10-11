@@ -1,6 +1,8 @@
 // SplitMix64, as BreezyKit's tests seed theirs: the same seed draws the same numbers everywhere.
 export class Rng {
-  constructor(seed) {
+  state: bigint;
+
+  constructor(seed: number | bigint) {
     this.state = BigInt.asUintN(64, BigInt(seed));
   }
 
@@ -18,31 +20,31 @@ export class Rng {
   }
 
   /** In [0, n). */
-  int(n) {
+  int(n: number) {
     return Math.floor(this.float() * n);
   }
 
-  between(lo, hi) {
+  between(lo: number, hi: number) {
     return lo + this.float() * (hi - lo);
   }
 
-  chance(p) {
+  chance(p: number) {
     return this.float() < p;
   }
 
-  pick(xs) {
+  pick<T>(xs: readonly T[]): T {
     return xs[this.int(xs.length)];
   }
 
   /** An entry of `{key: weight}`, by weight; null when all are 0. */
-  weighted(weights) {
-    const entries = Object.entries(weights).filter(([, w]) => w > 0);
+  weighted<K extends string>(weights: Partial<Record<K, number>>): K | null {
+    const entries = (Object.entries(weights) as [K, number][]).filter(([, w]) => w > 0);
     let r = this.float() * entries.reduce((s, [, w]) => s + w, 0);
     for (const [k, w] of entries) if ((r -= w) < 0) return k;
     return entries.at(-1)?.[0] ?? null;
   }
 
-  bytes(n) {
+  bytes(n: number) {
     const out = new Uint8Array(n);
     for (let i = 0; i < n; i++) out[i] = Number(this.next64() & 0xffn);
     return out;

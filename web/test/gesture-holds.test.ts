@@ -1,16 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GestureHolds } from "../sync/gesture-holds.js";
+import { GestureHolds } from "../sync/gesture-holds.ts";
 
 /** Syncs that end when the test says. */
 function syncs() {
-  const waiting = [];
-  return { waiting, sync: () => new Promise((r) => waiting.push(r)), end: (i) => waiting[i]() };
+  const waiting: (() => void)[] = [];
+  return { waiting, sync: () => new Promise<void>((r) => waiting.push(r)), end: (i: number) => waiting[i]() };
 }
 
 test("a finish lets go only after its push", async () => {
   const holds = new GestureHolds(), s = syncs();
-  const log = [];
+  const log: string[] = [];
   const done = holds.finish("S", { flush: () => log.push("flush"), sync: s.sync, busy: () => false, release: () => log.push("release") });
   assert.deepEqual(log, ["flush"]);
   s.end(0);

@@ -1,16 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Direct, BEAT, OPEN_TIMEOUT_MS, RESTART_MS, SILENT_MS } from "../sync/direct.js";
-import { FakeTransport } from "./helpers/fake-transport.js";
+import { Direct, BEAT, OPEN_TIMEOUT_MS, RESTART_MS, SILENT_MS } from "../sync/direct.ts";
+import { FakeTransport } from "./helpers/fake-transport.ts";
+
+type Signal = { t: string; sdp?: string; v?: number; candidate?: string | null; mid?: string | null; index?: number | null };
 
 const settle = () => new Promise((r) => setImmediate(r));
 
 function direct() {
   let t = 1_000_000;
-  const transport = new FakeTransport(), relayed = [], messages = [];
+  const transport = new FakeTransport(), relayed: ({ to: string } & Signal)[] = [], messages: { from: string; data: string | Uint8Array }[] = [];
   let changes = 0, lost = 0;
-  const d = new Direct(transport, { now: () => t, relay: (to, b) => relayed.push({ to, ...b }), message: (from, data) => messages.push({ from, data }), change: () => changes++, lost: () => lost++ });
-  return { d, transport, relayed, messages, advance: (ms) => (t += ms), changes: () => changes, lost: () => lost };
+  const d = new Direct(transport, { now: () => t, relay: (to: string, b: Signal) => relayed.push({ to, ...b }), message: (from: string, data: string | Uint8Array) => messages.push({ from, data }), change: () => changes++, lost: () => lost++ });
+  return { d, transport, relayed, messages, advance: (ms: number) => (t += ms), changes: () => changes, lost: () => lost };
 }
 
 test("the newcomer offers to everyone already here, its candidates after its offer", async () => {
@@ -72,7 +74,7 @@ test("open channels carry messages; others do not", async () => {
 });
 
 test("offers and answers say version 2; a link is version 2 only when the other side said so", async () => {
-  const offerer = (answer) => async () => {
+  const offerer = (answer: Signal) => async () => {
     const { d, relayed } = direct();
     d.welcome(["p1"]);
     await settle();
@@ -84,7 +86,7 @@ test("offers and answers say version 2; a link is version 2 only when the other 
   };
   assert.equal(await offerer({ t: "answer", sdp: "a", v: 2 })(), 2);
   assert.equal(await offerer({ t: "answer", sdp: "a" })(), 1);
-  const answerer = async (offer) => {
+  const answerer = async (offer: Signal) => {
     const { d, relayed } = direct();
     d.heard("p1", offer);
     await settle();

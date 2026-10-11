@@ -1,18 +1,39 @@
 // relay/src/worker.js's Durable Object, run in the hub on virtual time, one per run: the relay the devices meet.
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import * as V from "./virtual.mjs";
-import { State } from "./cloudflare-shim.mjs";
+import * as V from "./virtual.ts";
+import { State, type ServerSocket } from "./cloudflare-shim.ts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
+/** What the hub uses of the Worker's Durable Object. */
+interface Space {
+  fetch(): Promise<unknown>;
+  alarm(): Promise<void>;
+  webSocketMessage(ws: ServerSocket, message: string | ArrayBuffer): Promise<void>;
+  webSocketClose(ws: ServerSocket, code: number, reason: string, clean: boolean): Promise<void>;
+}
+
+/** A socket's state as the Worker keeps it. */
+export interface Attachment {
+  id: string;
+  authed: boolean;
+  left?: boolean;
+  holds: string[];
+}
+
+/** The hub's end of a socket, which the relay's end names. */
+export interface RelayConn<C> {
+  server?: ServerSocket<C>;
+}
+
 /** The Worker's module with its imports pointed at the shim and at relay/src, written under build/. */
-async function loadWorker() {
+async function loadWorker(): Promise<{ Space: new (state: State<unknown>, env: object) => Space }> {
   const src = `${root}relay/src/`;
-  const shim = pathToFileURL(fileURLToPath(new URL("./cloudflare-shim.mjs", import.meta.url))).href;
+  const shim = pathToFileURL(fileURLToPath(new URL("./cloudflare-shim.ts", import.meta.url))).href;
   const text = readFileSync(`${src}worker.js`, "utf8")
     .replace(`import { DurableObject } from "cloudflare:workers";`, `import { DurableObject, Response, WebSocketPair, WebSocketRequestResponsePair } from "${shim}";`)
-    .replace(/from "\.\/([a-z]+\.js)"/g, (_, f) => `from "${pathToFileURL(src + f).href}"`);
+    .replace(/from "\.\/([a-z]+\.js)"/g, (_, f: string) => `from "${pathToFileURL(src + f).href}"`);
   mkdirSync(`${root}build/fuzz`, { recursive: true });
   const out = `${root}build/fuzz/worker.mjs`;
   // runs in parallel share the file: each writes it whole, then moves it in place
@@ -23,9 +44,16 @@ async function loadWorker() {
 
 const worker = await loadWorker();
 
-export class Relay {
+export class Relay<C extends RelayConn<C>> {
+  ctx: V.Context;
+  toClient: (conn: C, data: string | ArrayBuffer) => void;
+  closeClient: (conn: C, code: number) => void;
+  alarmTimer: ReturnType<typeof setTimeout> | null;
+  state: State<C>;
+  space: Space;
+
   /** `toClient(conn, data)` carries a frame to a device, `closeClient(conn, code)` a close. */
-  constructor(ctx, { toClient, closeClient }) {
+  constructor(ctx: V.Context, { toClient, closeClient }: { toClient: (conn: C, data: string | ArrayBuffer) => void; closeClient: (conn: C, code: number) => void }) {
     this.ctx = ctx;
     this.toClient = toClient;
     this.closeClient = closeClient;
@@ -34,9 +62,9 @@ export class Relay {
     this.space = new worker.Space(this.state, {});
   }
 
-  setAlarm(t) {
+  setAlarm(t: number) {
     V.run(this.ctx, () => {
-      clearTimeout(this.alarmTimer);
+      clearTimeout(this.alarmTimer ?? undefined);
       this.alarmTimer = setTimeout(() => {
         this.alarmTimer = null;
         this.state.alarm = null;
@@ -46,11 +74,11 @@ export class Relay {
   }
 
   /** A device's socket reached the relay. */
-  async open(conn) {
+  async open(conn: C) {
     await V.run(this.ctx, async () => {
       // the shim's pair hands the object its end; the device's end is the hub's `conn`
       const accept = this.state.acceptWebSocket.bind(this.state);
-      this.state.acceptWebSocket = (ws) => {
+      this.state.acceptWebSocket = (ws: ServerSocket<C>) => {
         ws.conn = conn;
         ws.out = (kind, v) => (kind === "send" ? this.toClient(conn, v) : this.closeClient(conn, v));
         conn.server = ws;
@@ -65,7 +93,7 @@ export class Relay {
   }
 
   /** A frame from a device: text, or bytes as a Uint8Array. */
-  async message(conn, data) {
+  async message(conn: C, data: string | Uint8Array<ArrayBuffer>) {
     const ws = conn.server;
     if (!ws || !this.state.sockets.includes(ws)) return;
     const auto = this.state.autoResponse;
@@ -78,7 +106,7 @@ export class Relay {
   }
 
   /** A device's close reached the relay: one it began, or its answer to the relay's. */
-  async closed(conn) {
+  async closed(conn: C) {
     const ws = conn.server;
     if (!ws || !this.state.sockets.includes(ws)) return;
     this.state.sockets.splice(this.state.sockets.indexOf(ws), 1);
@@ -100,9 +128,9 @@ export class Relay {
 
   /** Connection id → ids held, as the relay would announce them now. */
   holds() {
-    const out = {};
+    const out: Record<string, string[]> = {};
     for (const ws of this.state.sockets) {
-      const a = ws.deserializeAttachment();
+      const a = ws.deserializeAttachment() as Attachment | null;
       if (a?.authed && !a.left && a.holds.length) out[a.id] = a.holds;
     }
     return out;

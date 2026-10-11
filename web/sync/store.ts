@@ -1,44 +1,89 @@
 // The boards of one space as this device has them, as BreezyKit's Store. Records are never changed in place: a
 // change makes a new object, so a record sent to the server can serve as the base afterwards.
-import { newID } from "../rules.js";
-import { boardFrom, boardRecord, changes, deletedRecord, spaceRecord } from "./records.js";
-import { mergeRecord, equalRecords } from "./merge.js";
-import { encode } from "./base64.js";
-import { randomBytes } from "./crypto.js";
+import type { Board } from "../types.ts";
+import { newID } from "../rules.ts";
+import { boardFrom, boardRecord, changes, deletedRecord, spaceRecord } from "./records.ts";
+import type { Edits, SyncRecord } from "./records.ts";
+import type { Orders } from "./order-key.ts";
+import { mergeRecord, equalRecords } from "./merge.ts";
+import { encode } from "./base64.ts";
+import { randomBytes } from "./crypto.ts";
+import type { Invite } from "./crypto.ts";
 
-export const emptyState = () => ({
+/** A record as this device has it: as the server last had it (`base`, at `version`), and with local edits (`current`). */
+export interface RecordState {
+  base: SyncRecord | null;
+  version: number;
+  current: SyncRecord;
+  /** The version from before a resync. */
+  prior?: number;
+}
+
+/** A record sealed for the server: base64 id and blob. */
+export interface Held {
+  version: number;
+  blob: string;
+}
+
+/** A record from the server, opened. */
+export interface Item {
+  id: string;
+  version: number;
+  record: SyncRecord;
+  stale?: boolean;
+}
+
+export interface StoreState {
+  server: string | null;
+  space: string | null;
+  secret: string | null;
+  relay: string | null;
+  cursor: number;
+  records: { [id: string]: RecordState };
+  held: { [id: string]: Held };
+  unreadable: number;
+  epoch: string | null;
+  resync: boolean;
+  invitedName: string | null;
+}
+
+export const emptyState = (): StoreState => ({
   server: null, space: null, secret: null, relay: null, cursor: 0, records: {}, held: {}, unreadable: 0, epoch: null, resync: false, invitedName: null,
 });
 
-export const withFreshIDs = (board) => ({
+export const withFreshIDs = (board: Board): Board => ({
   cards: board.cards.map((c) => ({ ...c, id: newID() })),
   lanes: board.lanes.map((l) => ({ ...l, id: newID() })),
 });
 
-const empty = () => ({ cards: [], lanes: [] });
+const empty = (): Board => ({ cards: [], lanes: [] });
 
 export class Store {
+  state: StoreState;
+  /** After a change to what boards show, with the boards concerned and whether it came from the server. */
+  onChange: (boards: Set<string>, remote: boolean) => void;
+  /** After any change, for saving. */
+  onDirty: () => void;
+
   constructor(state = emptyState()) {
     this.state = state;
-    /** After a change to what boards show, with the boards concerned and whether it came from the server. */
     this.onChange = () => {};
-    /** After any change, for saving. */
     this.onDirty = () => {};
   }
 
-  get syncing() {
+  get syncing(): boolean {
     const s = this.state;
     return !!(s.server && s.space && s.secret);
   }
 
-  get invite() {
+  get invite(): Invite | null {
     const { server, space, secret } = this.state;
     const name = this.name;
-    return this.syncing ? { server, space, secret, ...(name ? { name } : {}) } : null;
+    return this.syncing ? ({ server, space, secret, ...(name ? { name } : {}) } as Invite) : null;
   }
 
   /** The space's name: its name record's, else the invite's; null without either or when not syncing. */
-  get name() {
+  get name(): string | null {
     const s = this.state;
     if (!s.space) return null;
     const r = s.records[s.space]?.current;
@@ -46,53 +91,53 @@ export class Store {
     return s.invitedName ?? null;
   }
 
-  rename(name) {
+  rename(name: string): void {
     if (this.state.space) this.apply({ [this.state.space]: { fields: spaceRecord(name) } });
   }
 
-  current() {
+  current(): { [id: string]: SyncRecord } {
     return Object.fromEntries(Object.entries(this.state.records).map(([id, s]) => [id, s.current]));
   }
 
-  boards() {
+  boards(): { id: string; title: string }[] {
     return Object.entries(this.state.records)
       .filter(([, s]) => s.current.kind === "board" && s.current.deleted !== true)
       .map(([id, s]) => ({ id, title: typeof s.current.title === "string" ? s.current.title : "" }))
       .sort((a, b) => a.title.localeCompare(b.title) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
-  title(id) {
+  title(id: string): string | null {
     const r = this.state.records[id]?.current;
     if (!r || r.kind !== "board" || r.deleted === true) return null;
     return typeof r.title === "string" ? r.title : "";
   }
 
-  board(id) {
+  board(id: string): Board {
     return boardFrom(this.current(), id);
   }
 
-  createBoard(title, contents = empty()) {
+  createBoard(title: string, contents = empty()): string {
     const id = newID();
     this.apply({ ...changes(empty(), contents, id, {}), [id]: { fields: boardRecord(title) } });
     return id;
   }
 
-  renameBoard(id, title) {
+  renameBoard(id: string, title: string): void {
     this.apply({ [id]: { fields: { title } } });
   }
 
-  deleteBoard(id) {
-    const out = { [id]: { deleted: "board" } };
+  deleteBoard(id: string): void {
+    const out: Edits = { [id]: { deleted: "board" } };
     for (const [rid, s] of Object.entries(this.state.records)) {
-      if (s.current.board === id && s.current.deleted !== true) out[rid] = { deleted: s.current.kind };
+      if (s.current.board === id && s.current.deleted !== true) out[rid] = { deleted: s.current.kind! };
     }
     this.apply(out);
   }
 
   /** Local edits. A deleted record comes back only whole, as an undo writes it; partial fields for an unknown record, and new
    * records on a deleted board, are dropped. */
-  apply(edits) {
-    const boards = new Set();
+  apply(edits: Edits): void {
+    const boards = new Set<string>();
     for (const [id, change] of Object.entries(edits)) {
       const s = this.state.records[id];
       if (change.deleted) {
@@ -102,18 +147,18 @@ export class Store {
       } else if (s) {
         if (s.current.deleted === true) {
           // a whole record, as undoing a delete writes, brings it back; a field edit, as to a card deleted elsewhere, does not
-          if (!change.fields.kind || this.state.records[change.fields.board]?.current.deleted === true) continue;
-          this.state.records[id] = { ...s, current: change.fields };
-          boards.add(change.fields.board ?? id);
+          if (!change.fields!.kind || this.state.records[change.fields!.board!]?.current.deleted === true) continue;
+          this.state.records[id] = { ...s, current: change.fields! };
+          boards.add(change.fields!.board ?? id);
           continue;
         }
-        const current = { ...s.current, ...change.fields };
+        const current = { ...s.current, ...change.fields! };
         this.state.records[id] = { ...s, current };
         boards.add(current.board ?? id);
       } else {
-        if (!change.fields.kind || this.state.records[change.fields.board]?.current.deleted === true) continue;
-        this.state.records[id] = { base: null, version: 0, current: change.fields };
-        boards.add(change.fields.board ?? id);
+        if (!change.fields!.kind || this.state.records[change.fields!.board!]?.current.deleted === true) continue;
+        this.state.records[id] = { base: null, version: 0, current: change.fields! };
+        boards.add(change.fields!.board ?? id);
       }
     }
     if (!boards.size) return;
@@ -121,8 +166,8 @@ export class Store {
     this.onChange(boards, false);
   }
 
-  orders(board) {
-    const out = {};
+  orders(board: string): Orders {
+    const out: Orders = {};
     for (const [id, s] of Object.entries(this.state.records)) {
       const r = s.current;
       if (r.kind === "card" && r.deleted !== true && r.board === board && typeof r.order === "string") out[id] = r.order;
@@ -130,7 +175,7 @@ export class Store {
     return out;
   }
 
-  pending() {
+  pending(): { id: string; base: number; record: SyncRecord }[] {
     return Object.entries(this.state.records)
       .filter(([, s]) => !equalRecords(s.current, s.base))
       .map(([id, s]) => ({ id, base: s.version, record: s.current }))
@@ -138,7 +183,7 @@ export class Store {
   }
 
   /** The server took `record` as `version`; edits made since it was sent stay pending. */
-  accepted(id, version, record) {
+  accepted(id: string, version: number, record: SyncRecord): void {
     const s = this.state.records[id];
     if (!s) return;
     this.state.records[id] = { ...s, base: record, version };
@@ -150,9 +195,9 @@ export class Store {
    * has seen at least as new becomes its base, so that what the device has since is pushed. A record's `prior` keeps its
    * version from before the resync, to tell a backup newer than this device from an older one.
    */
-  merge(items) {
+  merge(items: Item[]): void {
     if (!items.length) return;
-    const boards = new Set();
+    const boards = new Set<string>();
     for (const { id, version, record, stale } of items) {
       const old = this.state.records[id];
       if (old && this.state.resync && stale && version <= (old.prior ?? 0)) {
@@ -174,7 +219,7 @@ export class Store {
     if (boards.size) this.onChange(boards, true);
   }
 
-  advance(cursor) {
+  advance(cursor: number): void {
     this.state.cursor = Math.max(this.state.cursor, cursor);
     this.onDirty();
   }
@@ -184,13 +229,13 @@ export class Store {
    * the loss of the space, starts pulling everything again, as `merge` and `resynced` describe, and returns true.
    */
   /** The relay the server last named, so that the live layer can connect before the first sync. */
-  noteRelay(relay) {
+  noteRelay(relay: string | null): void {
     if ((this.state.relay ?? null) === relay) return;
     this.state.relay = relay;
     this.onDirty();
   }
 
-  noteEpoch(epoch = null) {
+  noteEpoch(epoch: string | null = null): boolean {
     const s = this.state;
     if (epoch === (s.epoch ?? null)) return false;
     const resync = s.epoch != null;
@@ -204,7 +249,7 @@ export class Store {
   }
 
   /** The resync's pull is done; records the server lacks wait to be pushed as new. */
-  resynced() {
+  resynced(): void {
     const s = this.state;
     if (!s.resync) return;
     s.resync = false;
@@ -212,23 +257,23 @@ export class Store {
     this.onDirty();
   }
 
-  hold(id, version, blob) {
+  hold(id: string, version: number, blob: string): void {
     this.state.held[id] = { version, blob };
     this.onDirty();
   }
 
-  release(id) {
+  release(id: string): void {
     delete this.state.held[id];
     this.onDirty();
   }
 
-  noteUnreadable() {
+  noteUnreadable(): void {
     this.state.unreadable++;
     this.onDirty();
   }
 
   /** This device's boards give way to the space `invite` names. */
-  join({ server, space, secret, name }) {
+  join({ server, space, secret, name }: Invite): void {
     const boards = new Set(this.boards().map((b) => b.id));
     this.state = { ...emptyState(), server, space, secret, invitedName: name ?? null };
     this.onDirty();
@@ -236,7 +281,7 @@ export class Store {
   }
 
   /** A new space on `server` for the boards here; every record waits to be pushed. */
-  startSyncing(server) {
+  startSyncing(server: string): Invite | null {
     const s = this.state;
     Object.assign(s, { server, space: encode(randomBytes(16)), secret: encode(randomBytes(32)), cursor: 0, epoch: null, resync: false, held: {}, unreadable: 0 });
     for (const [id, r] of Object.entries(s.records)) s.records[id] = { ...r, base: null, version: 0 };

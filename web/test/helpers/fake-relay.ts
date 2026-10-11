@@ -1,13 +1,26 @@
 // The relay's rules in memory, with the real hold rules and frames, and a clock for the timers of Live.
 import { conflicts, holdsOf, lapsed } from "../../../relay/src/holds.js";
 import { outFrame, parseFrame } from "../../../relay/src/frames.js";
-import { encode, decode } from "../../sync/base64.js";
+import { encode, decode } from "../../sync/base64.ts";
+
+type Holds = Record<string, string[]>;
+type Conn = { id: string; holds: string[]; last: number };
+const relayConflicts = conflicts as (conns: Conn[], id: string, ids: string[]) => string[];
+const relayHoldsOf = holdsOf as (conns: Conn[]) => Holds;
+const relayLapsed = lapsed as <C extends Conn>(conns: C[], now: number) => C[];
+const relayParseFrame = parseFrame as (bytes: Uint8Array) => { to: number | null; body: Uint8Array } | null;
+const relayOutFrame = outFrame as (from: number, body: Uint8Array) => Uint8Array<ArrayBuffer>;
+
+type Timed = "encrypt" | "decrypt" | "importKey" | "deriveKey" | "deriveBits" | "digest";
+type Body = { bytes?: Uint8Array | null; text?: string };
+export type Frame = { from: string; text?: string; bytes?: Uint8Array };
+export type MessageEvent = { data: string | ArrayBuffer };
 
 /** Crypto calls under way: sealing and opening run on a thread pool, which a busy machine makes slow. */
 let pending = 0;
-for (const name of ["encrypt", "decrypt", "importKey", "deriveKey", "deriveBits", "digest"]) {
-  const f = crypto.subtle[name].bind(crypto.subtle);
-  crypto.subtle[name] = (...args) => {
+for (const name of ["encrypt", "decrypt", "importKey", "deriveKey", "deriveBits", "digest"] as Timed[]) {
+  const f = (crypto.subtle[name] as (...args: unknown[]) => Promise<unknown>).bind(crypto.subtle);
+  (crypto.subtle as unknown as Record<Timed, unknown>)[name] = (...args: unknown[]) => {
     pending++;
     return f(...args).finally(() => pending--);
   };
@@ -15,15 +28,20 @@ for (const name of ["encrypt", "decrypt", "importKey", "deriveKey", "deriveBits"
 
 /** Time and timers under a test's control, in ms. */
 export class Clock {
+  t: number;
+  timers: { at: number; fn: () => void }[];
+  now: () => number;
+  schedule: (ms: number, fn: () => void) => void;
+
   constructor() {
     this.t = 1_000_000;
     this.timers = [];
     this.now = () => this.t;
-    this.schedule = (ms, fn) => this.timers.push({ at: this.t + ms, fn });
+    this.schedule = (ms, fn) => void this.timers.push({ at: this.t + ms, fn });
   }
 
   /** Moves time on by `ms`, running the timers due meanwhile, earliest first. */
-  advance(ms) {
+  advance(ms: number) {
     const end = this.t + ms;
     for (;;) {
       const due = this.timers.filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
@@ -36,8 +54,21 @@ export class Clock {
   }
 }
 
-class Socket {
-  constructor(relay, id) {
+export class Socket {
+  relay: FakeRelay;
+  id: string;
+  authed: boolean;
+  v: number;
+  holds: string[];
+  last: number;
+  readyState: number;
+  halfOpen: boolean;
+  binaryType!: BinaryType;
+  onopen: (() => void) | null = null;
+  onmessage: ((e: MessageEvent) => void) | null = null;
+  onclose: ((e: { code: number }) => void) | null = null;
+
+  constructor(relay: FakeRelay, id: string) {
     this.relay = relay;
     this.id = id;
     this.authed = false;
@@ -51,7 +82,7 @@ class Socket {
     this.halfOpen = false;
   }
 
-  send(data) {
+  send(data: string | Uint8Array) {
     this.relay.queue.push(() => this.relay.received(this, data));
   }
 
@@ -63,8 +94,19 @@ class Socket {
 /** What sockets send is delivered when `run` is called. `old` acts as the relay before the lean sync design: UUID ids,
  * JSON only, binary frames dropped unread. */
 export class FakeRelay {
-  constructor({ old = false, now = () => 0 } = {}) {
-    Object.assign(this, { old, now });
+  old: boolean;
+  now: () => number;
+  sockets: Socket[];
+  queue: (() => unknown)[];
+  token: string | null;
+  frames: Frame[];
+  pings: number;
+  opened: number;
+  silent?: boolean;
+
+  constructor({ old = false, now = () => 0 }: { old?: boolean; now?: () => number } = {}) {
+    this.old = old;
+    this.now = now;
     this.sockets = [];
     this.queue = [];
     this.token = null;
@@ -92,39 +134,39 @@ export class FakeRelay {
   async run() {
     for (let i = 0, calm = 0; i < 100_000 && calm < 40; i++) {
       calm = this.queue.length || pending ? 0 : calm + 1;
-      while (this.queue.length) this.queue.shift()();
-      await new Promise((r) => setImmediate(r));
+      while (this.queue.length) this.queue.shift()!();
+      await new Promise<void>((r) => setImmediate(r));
     }
   }
 
-  kick(s, code) {
+  kick(s: Socket, code: number) {
     this.drop(s, code);
   }
 
-  lapse(s) {
+  lapse(s: Socket) {
     s.holds = [];
     this.announce();
   }
 
   /** Lets the holds of those silent for over 10 s lapse, as the relay's alarm does. */
   sweep() {
-    for (const s of lapsed(this.conns(), this.now())) this.lapse(s);
+    for (const s of relayLapsed(this.conns(), this.now())) this.lapse(s);
   }
 
   conns() {
     return this.sockets.filter((s) => s.authed);
   }
 
-  deliver(s, m) {
+  deliver(s: Socket, m: object) {
     const data = JSON.stringify(m);
     this.queue.push(() => s.halfOpen || s.onmessage?.({ data }));
   }
 
   announce() {
-    for (const s of this.conns()) this.deliver(s, { t: "holds", holds: holdsOf(this.conns()) });
+    for (const s of this.conns()) this.deliver(s, { t: "holds", holds: relayHoldsOf(this.conns()) });
   }
 
-  received(s, data) {
+  received(s: Socket, data: string | Uint8Array) {
     if (!this.sockets.includes(s) || s.halfOpen) return;
     if (typeof data !== "string") {
       const bytes = new Uint8Array(data);
@@ -132,7 +174,7 @@ export class FakeRelay {
       if (this.old) return;
       s.last = this.now();
       if (!s.authed) return this.drop(s, 4001);
-      const f = parseFrame(bytes);
+      const f = relayParseFrame(bytes);
       return f && this.forward(s, { bytes: f.body }, f.to === null ? null : String(f.to));
     }
     if (data === "ping") {
@@ -150,12 +192,12 @@ export class FakeRelay {
       const replaced = typeof m.replaces === "string" && this.conns().find((x) => x !== s && x.id === m.replaces);
       if (replaced) this.drop(replaced, 1000);
       const others = this.conns().filter((x) => x !== s);
-      this.deliver(s, { t: "welcome", id: s.id, peers: others.map((x) => x.id), holds: holdsOf(others) });
+      this.deliver(s, { t: "welcome", id: s.id, peers: others.map((x) => x.id), holds: relayHoldsOf(others) });
       for (const x of others) this.deliver(x, { t: "join", id: s.id });
       return;
     }
     if (m.t === "hold") {
-      const refused = conflicts(this.conns(), s.id, m.ids);
+      const refused = relayConflicts(this.conns(), s.id, m.ids);
       if (refused.length) return this.deliver(s, { t: "refused", ids: refused });
       s.holds = [...new Set([...s.holds, ...m.ids])].sort();
       return this.announce();
@@ -170,18 +212,18 @@ export class FakeRelay {
   }
 
   /** A body ({bytes} or {text}, base64url) from `s` to `to` or everyone else: binary to v2 sockets, JSON to older ones. */
-  forward(s, body, to) {
+  forward(s: Socket, body: Body, to: string | null) {
     for (const x of this.conns()) {
       if (x === s || (to !== null && x.id !== to)) continue;
       if (x.v === 2) {
-        if (!(body.bytes ??= decode(body.text))) continue;
-        const frame = outFrame(Number(s.id), body.bytes);
+        if (!(body.bytes ??= decode(body.text!))) continue;
+        const frame = relayOutFrame(Number(s.id), body.bytes);
         this.queue.push(() => x.halfOpen || x.onmessage?.({ data: frame.buffer }));
-      } else this.deliver(x, { from: s.id, body: (body.text ??= encode(body.bytes)) });
+      } else this.deliver(x, { from: s.id, body: (body.text ??= encode(body.bytes!)) });
     }
   }
 
-  drop(s, code) {
+  drop(s: Socket, code: number | null) {
     if (!this.sockets.includes(s)) return;
     this.sockets.splice(this.sockets.indexOf(s), 1);
     s.readyState = 3;

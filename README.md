@@ -41,7 +41,7 @@ swift test --package-path BreezyKit
 xcodebuild -project Breezy.xcodeproj -scheme Breezy -derivedDataPath build test
 scripts/selftest.sh                    # after a Debug build; for when XCUITest cannot activate the app
 scripts/bench.sh LABEL RUNS BOARD...   # after a Release build; then python3 scripts/bench-summary.py
-node scripts/gate.mjs RUN BASELINE...  # fails when a measure of feel.mjs's or bench.sh's got worse: its 95 % CI wholly above every baseline's. Nightly runs both against scripts/baselines/, which come from that workflow's artifacts
+node scripts/gate.ts RUN BASELINE...  # fails when a measure of feel.ts's or bench.sh's got worse: its 95 % CI wholly above every baseline's. Nightly runs both against scripts/baselines/, which come from that workflow's artifacts
 ```
 
 ## Sync
@@ -60,20 +60,23 @@ server/dev.sh    # serves http://127.0.0.1:58566/sync.php from build/ for trying
 scripts/build-site.sh build/site local-$(git rev-parse --short HEAD) && mise exec -- scripts/deploy.py build/site   # deploys from here as CI does, with mise.local.toml's secrets
 relay/test.sh                  # the relay under wrangler dev, with its tests; first npm install --prefix relay
 npm --prefix relay run dev     # serves ws://127.0.0.1:58568/, which server/dev.sh names
-node scripts/direct-e2e.mjs    # starts wrangler, server/dev.sh and a web server on 58568, 58566, 58565; two headless Chromiums open a direct channel, fall back to the relay while it goes silent and come back, then fall back when it closes, checking that both carry binary, compact bodies, one body a move. Needs Node 24, php, npm install --prefix relay, and Playwright's Chromium (or BREEZY_CHROMIUM; not ungoogled-chromium)
-node scripts/feel.mjs [--direct] [--only cursor,drag,colour,outage,silent,passive]   # the same setup with each browser behind a proxy that delays the relay 25 ms and the server 40 ms each way: how far a cursor and a drag trail, how long a recolour takes, and how long both take after a network change; 95 % CIs over --runs
-node scripts/fuzz.mjs --seeds 1-50 [--profile mixed|lan|office|train|tether|blocked-ws] [--web 2 --swift 2] [--shrink]   # web and Swift devices edit one board against sync.php, the relay's Durable Object and simulated direct channels, over simulated networks with faults, on virtual time; then all must end the same. A failure goes to build/fuzz/, replayable with --replay. Needs php and swift build --package-path BreezyKit --product breezy-sim; see the convergence fuzzing design
+node scripts/direct-e2e.ts    # starts wrangler, server/dev.sh and a web server on 58568, 58566, 58565; two headless Chromiums open a direct channel, fall back to the relay while it goes silent and come back, then fall back when it closes, checking that both carry binary, compact bodies, one body a move. Needs Node 24, php, npm install --prefix relay, and Playwright's Chromium (or BREEZY_CHROMIUM; not ungoogled-chromium)
+node scripts/feel.ts [--direct] [--only cursor,drag,colour,outage,silent,passive]   # the same setup with each browser behind a proxy that delays the relay 25 ms and the server 40 ms each way: how far a cursor and a drag trail, how long a recolour takes, and how long both take after a network change; 95 % CIs over --runs
+node scripts/fuzz.ts --seeds 1-50 [--profile mixed|lan|office|train|tether|blocked-ws] [--web 2 --swift 2] [--shrink]   # web and Swift devices edit one board against sync.php, the relay's Durable Object and simulated direct channels, over simulated networks with faults, on virtual time; then all must end the same. A failure goes to build/fuzz/, replayable with --replay. Needs php and swift build --package-path BreezyKit --product breezy-sim; see the convergence fuzzing design
 ```
 
 ## Touch prototype
 
-`web/` is a touch version for trying Breezy's interaction on a phone. It keeps its boards in the browser and opens on a list of them; `?stress` loads 500 cards into a board it does not keep. Every push to `main` publishes it at https://breezy.k5d.de/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. In a desktop browser it takes a mouse, trackpad and keyboard as the Mac app does. Once installed it launches from a local copy of one version, without the network; `web/sw.js` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
+`web/` is a touch version for trying Breezy's interaction on a phone. It keeps its boards in the browser and opens on a list of them; `?stress` loads 500 cards into a board it does not keep. Every push to `main` publishes it at https://breezy.k5d.de/: on iPhone, Safari's Share → Add to Home Screen; on Android, Chrome's ⋮ → Install app. In a desktop browser it takes a mouse, trackpad and keyboard as the Mac app does. Once installed it launches from a local copy of one version, without the network; `web/sw.ts` downloads a new version in the background and switches to it on the next launch, or on coming back after five minutes away. Version in the ⋯ menu says when one is ready.
 
 ```bash
-npx --yes live-server@1.2.2 web --port=58565 --no-browser
+npm install
+npm run dev       # serves web/ on 58565, rebuilt and reloaded on every save
+npm run check     # types, strict
+npm test
 ```
 
-It reloads the page on every save. On the iPhone, on the same Wi-Fi, open `http://<the Mac's address>:58565` in Safari and Add to Home Screen. `node --test web/test/*.test.js` runs its tests; `swift scripts/make-web-icons.swift web` redraws its icons and `scripts/make-web-launch.py web` its launch images, whose `<link>` tags it prints for `index.html`.
+On the iPhone, on the same Wi-Fi, open `http://<the Mac's address>:58565` in Safari and Add to Home Screen. The app and its tests are TypeScript, which Node runs as it is; `scripts/build-web.ts` compiles each module to one JS file for browsers. `swift scripts/make-web-icons.swift web` redraws its icons and `scripts/make-web-launch.py web` its launch images, whose `<link>` tags it prints for `index.html`.
 
 In the iOS simulator, which Xcode 27 shows in DeviceHub rather than a Simulator app, open it with `xcrun simctl openurl booted http://localhost:58565/`. `scripts/sim-touch.py` replays touches as one timed stream; gestures that start with a double tap need it, because the window is 300 ms and `idb ui tap` or AXe take at least 0.7 s per touch. A screenshot rarely lands mid-gesture, so record with `xcrun simctl io booted recordVideo` to catch something brief like iOS's magnifier.
 

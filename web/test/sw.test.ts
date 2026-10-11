@@ -3,46 +3,47 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import vm from "node:vm";
+import { stripTypeScriptTypes } from "node:module";
 
 const SCOPE = "https://example.org/breezy/";
-const source = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-const hash = (body) => createHash("sha256").update(body).digest("hex");
+const source = stripTypeScriptTypes(readFileSync(new URL("../sw.ts", import.meta.url), "utf8"));
+const hash = (body: string) => createHash("sha256").update(body).digest("hex");
 
 class FakeCache {
-  entries = new Map();
-  async match(key) {
+  entries = new Map<string, { body: ArrayBuffer; headers: Record<string, string> }>();
+  async match(key: string | Request) {
     const e = this.entries.get(typeof key === "string" ? key : key.url);
     return e && new Response(e.body, { headers: e.headers });
   }
-  async put(key, res) {
+  async put(key: string | Request, res: Response) {
     this.entries.set(typeof key === "string" ? key : key.url, { body: await res.arrayBuffer(), headers: Object.fromEntries(res.headers) });
   }
 }
 
 class FakeCaches {
-  stores = new Map();
-  async open(name) {
+  stores = new Map<string, FakeCache>();
+  async open(name: string) {
     if (!this.stores.has(name)) this.stores.set(name, new FakeCache());
     return this.stores.get(name);
   }
-  async has(name) { return this.stores.has(name); }
-  async delete(name) { return this.stores.delete(name); }
+  async has(name: string) { return this.stores.has(name); }
+  async delete(name: string) { return this.stores.delete(name); }
   async keys() { return [...this.stores.keys()]; }
 }
 
 /** GitHub Pages: serves the deployed files, or whatever a test says instead. */
 class Server {
-  files = {};
-  override = {};
-  requests = [];
+  files: Record<string, string> = {};
+  override: Record<string, string> = {};
+  requests: string[] = [];
   down = false;
-  hang = new Set();
-  deploy(version, extra = {}) {
+  hang = new Set<string>();
+  deploy(version: string, extra: Record<string, string> = {}) {
     this.files = { "index.html": `<p>${version}</p>`, "main.js": `// ${version}`, ...extra };
     const files = Object.fromEntries(Object.entries(this.files).map(([p, b]) => [p, hash(b)]));
     this.files["version.json"] = JSON.stringify({ version, files });
   }
-  fetch = async (input, init = {}) => {
+  fetch = async (input: string | Request, init: RequestInit = {}): Promise<Response> => {
     const url = new URL(typeof input === "string" ? input : input.url);
     const path = url.href.slice(SCOPE.length).split("?")[0] || "index.html";
     this.requests.push(path);
@@ -60,12 +61,12 @@ class Server {
 function worker() {
   const server = new Server();
   const caches = new FakeCaches();
-  const handlers = {};
-  const timers = [];
+  const handlers: Record<string, (e: object) => void> = {};
+  const timers: AbortController[] = [];
   const ctx = {
-    self: null,
+    self: null as object | null,
     registration: { scope: SCOPE },
-    addEventListener: (type, fn) => { handlers[type] = fn; },
+    addEventListener: (type: string, fn: (e: object) => void) => { handlers[type] = fn; },
     skipWaiting: async () => {},
     clients: { claim: async () => {} },
     caches,
@@ -73,19 +74,19 @@ function worker() {
     Response, Headers, URL, TextEncoder, crypto,
     console: { warn: () => {} },
     // timeouts fire only when a test says so
-    AbortSignal: { timeout: (ms) => { const c = new AbortController(); timers.push(c); return c.signal; } },
+    AbortSignal: { timeout: (ms: number) => { const c = new AbortController(); timers.push(c); return c.signal; } },
   };
   ctx.self = ctx;
   vm.createContext(ctx);
   vm.runInContext(source, ctx);
 
-  const dispatch = (type, fields) => {
-    const waits = [];
-    let response;
-    handlers[type]({ ...fields, respondWith: (p) => { response = p; }, waitUntil: (p) => waits.push(p) });
+  const dispatch = (type: string, fields: object) => {
+    const waits: Promise<unknown>[] = [];
+    let response: Promise<Response> | undefined;
+    handlers[type]({ ...fields, respondWith: (p: Promise<Response>) => { response = p; }, waitUntil: (p: Promise<unknown>) => waits.push(p) });
     return { response, done: Promise.all(waits) };
   };
-  const text = async (p) => (await p).text();
+  const text = async (p: Promise<Response> | undefined) => (await p)!.text();
   return {
     server, caches, timers,
     /** A cold launch: returns the page's HTML and waits for the update check it starts. */
@@ -99,12 +100,12 @@ function worker() {
     respond() {
       return text(dispatch("fetch", { request: { url: SCOPE, method: "GET", mode: "navigate" } }).response);
     },
-    get(path) {
+    get(path: string) {
       return dispatch("fetch", { request: { url: SCOPE + path, method: "GET", mode: "cors" } }).response;
     },
-    async message(type) {
-      let reply;
-      const { done } = dispatch("message", { data: { type }, ports: [{ postMessage: (d) => { reply = d; } }] });
+    async message(type: string) {
+      let reply: object | undefined;
+      const { done } = dispatch("message", { data: { type }, ports: [{ postMessage: (d: object) => { reply = d; } }] });
       await done;
       return { ...reply };
     },
@@ -118,7 +119,7 @@ test("the first launch comes from the network, then a snapshot of it boots witho
   assert.equal(await w.launch(), "<p>1</p>");
   w.server.down = true;
   assert.equal(await w.launch(), "<p>1</p>");
-  assert.equal(await (await w.get("main.js")).text(), "// 1");
+  assert.equal(await (await w.get("main.js"))!.text(), "// 1");
 });
 
 test("a launch never waits for the network", async () => {
@@ -128,7 +129,7 @@ test("a launch never waits for the network", async () => {
   w.server.deploy("2");
   for (const path of ["version.json", "index.html", "main.js"]) w.server.hang.add(path);
   assert.equal(await w.respond(), "<p>1</p>");
-  assert.equal(await (await w.get("main.js")).text(), "// 1");
+  assert.equal(await (await w.get("main.js"))!.text(), "// 1");
 });
 
 test("an update downloads in the background and runs from the next launch on", async () => {
@@ -137,11 +138,11 @@ test("an update downloads in the background and runs from the next launch on", a
   await w.launch();
   w.server.deploy("2");
   assert.equal(await w.launch(), "<p>1</p>", "the launch that finds the update still runs the old version");
-  assert.equal(await (await w.get("main.js")).text(), "// 1", "and so do its modules");
+  assert.equal(await (await w.get("main.js"))!.text(), "// 1", "and so do its modules");
   assert.deepEqual(await w.message("status"), { current: "1", next: "2" });
   w.server.down = true;
   assert.equal(await w.launch(), "<p>2</p>");
-  assert.equal(await (await w.get("main.js")).text(), "// 2");
+  assert.equal(await (await w.get("main.js"))!.text(), "// 2");
   assert.deepEqual(await w.message("status"), { current: "2", next: null });
 });
 
@@ -218,7 +219,7 @@ test("a file missing from the snapshot comes from the network", async () => {
   w.server.deploy("1");
   await w.launch();
   w.server.files["late.js"] = "// late";
-  assert.equal(await (await w.get("late.js")).text(), "// late");
+  assert.equal(await (await w.get("late.js"))!.text(), "// late");
 });
 
 test("the worker, the version file and the sync server are left to the browser", async () => {
@@ -238,5 +239,5 @@ test("an update reuses unchanged files from the running snapshot", async () => {
   assert.deepEqual(w.server.requests.sort(), ["index.html", "main.js", "version.json"]);
   w.server.down = true;
   await w.launch();
-  assert.equal(await (await w.get("style.css")).text(), "p {}");
+  assert.equal(await (await w.get("style.css"))!.text(), "p {}");
 });

@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import * as V from "../virtual.mjs";
-import { Relay } from "../relay.mjs";
+import * as V from "../virtual.ts";
+import { Relay } from "../relay.ts";
 
 V.install();
 
 const token = "A".repeat(43);
-const id = (n) => String.fromCharCode(65 + n).repeat(22);
+const id = (n: number) => String.fromCharCode(65 + n).repeat(22);
 
 function setup() {
   const got = new Map();
@@ -40,7 +40,7 @@ test("auth, a hold, and a replacement that takes the old connection's holds", as
   assert.equal(relay.state.sockets.length, 3);
   await relay.closed(a);
   assert.equal(relay.state.sockets.length, 2);
-  assert.ok(got.get(b).some((m) => m.t === "leave" && m.id === aid));
+  assert.ok(got.get(b).some((m: { t?: string; id?: string }) => m.t === "leave" && m.id === aid));
 });
 
 test("ping is answered without the object, and holds lapse after 10 s of silence", async () => {
@@ -52,7 +52,7 @@ test("ping is answered without the object, and holds lapse after 10 s of silence
   await relay.message(a, JSON.stringify({ t: "hold", ids: [id(1)] }));
   assert.equal(Object.keys(relay.holds()).length, 1);
   for (let i = 0; i < 10 && V.next(ctx) !== null; i++) {
-    V.setTime(V.next(ctx));
+    V.setTime(V.next(ctx)!);
     V.fire(ctx);
     await V.settle();
   }

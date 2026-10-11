@@ -1,22 +1,24 @@
 // Mirrored in BreezyKit's CollabTests.swift: the same cases, so that both apps' glue behaves alike.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Collab } from "../sync/collab.js";
-import { GestureHolds } from "../sync/gesture-holds.js";
-import { Live } from "../sync/live.js";
-import { Store } from "../sync/store.js";
-import { SyncEngine } from "../sync/engine.js";
-import { encode, decode } from "../sync/base64.js";
-import { randomBytes } from "../sync/crypto.js";
-import { Model } from "../model.js";
-import { Binding } from "../binding.js";
-import * as R from "../rules.js";
-import { FakeRelay, Clock } from "./helpers/fake-relay.js";
-import { FakeServer, FakeTransport, SERVER } from "./helpers/fake-server.js";
+import { Collab } from "../sync/collab.ts";
+import { GestureHolds } from "../sync/gesture-holds.ts";
+import { Live } from "../sync/live.ts";
+import { Store } from "../sync/store.ts";
+import { SyncEngine } from "../sync/engine.ts";
+import { encode, decode } from "../sync/base64.ts";
+import { randomBytes } from "../sync/crypto.ts";
+import { Model } from "../model.ts";
+import { Binding } from "../binding.ts";
+import * as R from "../rules.ts";
+import { FakeRelay, Clock } from "./helpers/fake-relay.ts";
+import { FakeServer, FakeTransport, SERVER } from "./helpers/fake-server.ts";
+import type { Board, Card } from "../types.ts";
+import type { Group } from "../sync/spaces.ts";
 
-const id = (n) => encode(new Uint8Array(16).fill(n));
+const id = (n: number) => encode(new Uint8Array(16).fill(n));
 const [C1, C2, C3] = [0xc1, 0xc2, 0xc3].map(id);
-const card = (cid, x) => ({ id: cid, x, y: 0, w: 240, text: "t", color: 0 });
+const card = (cid: string, x: number): Card => ({ id: cid, x, y: 0, w: 240, text: "t", color: 0 });
 
 /** A device in a space with boards `b1` (cards C1, C2) and `b2` (C3), its Collab, and another device watching `b1`. */
 async function setup() {
@@ -29,8 +31,8 @@ async function setup() {
   const engine = new SyncEngine(store, { transport: () => transport, now: clock.now });
   await engine.sync();
   const keys = await engine.keysOf(store.state);
-  const live = (name) =>
-    new Live({ relay: "wss://relay.example/", space: store.state.space, keys, me: { device: encode(randomBytes(16)), name }, socket: () => relay.connect(), now: clock.now, clock: clock.now, schedule: clock.schedule });
+  const live = (name: string) =>
+    new Live({ relay: "wss://relay.example/", space: store.state.space!, keys, me: { device: encode(randomBytes(16)), name }, socket: () => relay.connect(), now: clock.now, clock: clock.now, schedule: clock.schedule });
   const mine = live("Ana"), other = live("Bo");
   engine.onPushing = () => mine.pushing();
   engine.onPushed = (p) => mine.sendPushed(p);
@@ -41,10 +43,10 @@ async function setup() {
   mine.setPresence({ board: b1, selection: [] });
   other.setPresence({ board: b1, selection: [] });
   await relay.run();
-  const group = { space: store.state.space, store, engine, live: mine };
+  const group = { space: store.state.space, store, engine, live: mine } as Group;
   const collab = new Collab(group, new GestureHolds());
   /** Board `b` open, as the apps open it. */
-  const open = (b) => {
+  const open = (b: string) => {
     const model = new Model(store.board(b));
     const binding = new Binding(store, model, b, () => {});
     const session = collab.open(b, model, binding);
@@ -63,9 +65,9 @@ async function setup() {
   return { clock, relay, store, transport, engine, live: mine, other, collab, b1, b2, open, pushes, settle };
 }
 
-const colorOf = (store, b, cid) => store.board(b).cards.find((c) => c.id === cid).color;
-const xOf = (store, b, cid) => store.board(b).cards.find((c) => c.id === cid).x;
-const move = (cid, x) => (b) => (R.card(b, cid).x = x);
+const colorOf = (store: Store, b: string, cid: string) => store.board(b).cards.find((c: Card) => c.id === cid)!.color;
+const xOf = (store: Store, b: string, cid: string) => store.board(b).cards.find((c: Card) => c.id === cid)!.x;
+const move = (cid: string, x: number) => (b: Board) => (R.card(b, cid)!.x = x);
 
 test("a recolour outside a gesture flushes, pushes at once and sends one keyframe when the push goes now, and none behind a back-off", async () => {
   const d = await setup();
@@ -89,7 +91,7 @@ test("a recolour outside a gesture flushes, pushes at once and sends one keyfram
 test("a press holds; moves send live bodies; nothing is pushed until the end; the end flushes, pushes, then releases", async () => {
   const d = await setup();
   const { model, session } = d.open(d.b1);
-  const held = [];
+  const held: number[] = [];
   d.transport.beforePush = async () => held.push(d.live.mine.size);
   const before = d.pushes();
   model.begin();

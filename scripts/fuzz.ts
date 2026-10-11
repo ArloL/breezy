@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Convergence fuzzing: web and Swift devices edit one board against sync.php, the relay and direct channels over
 // simulated networks, then must end the same. See docs/superpowers/specs/2026-10-10-breezy-convergence-fuzzing-design.md.
-//   node scripts/fuzz.mjs [--seeds 1-50] [--steps 300] [--web 2] [--swift 2] [--profile mixed] [--no-restore] [--no-faults]
+//   node scripts/fuzz.ts [--seeds 1-50] [--steps 300] [--web 2] [--swift 2] [--profile mixed] [--no-restore] [--no-faults]
 //                         [--fault-mean MS] [--plant NAME] [--shrink] [--replay build/fuzz/FILE.json] [--verbose]
 // A failure is written to build/fuzz/; --shrink also writes the smallest trace that still fails the same way, and
 // --replay runs a written trace again.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { Hub } from "./fuzz/hub.mjs";
-import { shrink } from "./fuzz/shrink.mjs";
+import { Hub } from "./fuzz/hub.ts";
+import { shrink } from "./fuzz/shrink.ts";
 
 const { values: a } = parseArgs({
   options: {
@@ -33,16 +33,16 @@ const seeds = a.seeds.split(",").flatMap((r) => {
 });
 const opts = {
   steps: Number(a.steps), web: Number(a.web), swift: Number(a.swift), profile: a.profile, restore: !a["no-restore"], faults: !a["no-faults"],
-  plant: a.plant ?? null, faultMean: a["fault-mean"] ? Number(a["fault-mean"]) : undefined, log: a.verbose ? (...x) => console.error(...x) : () => {},
+  plant: a.plant ?? null, faultMean: a["fault-mean"] ? Number(a["fault-mean"]) : undefined, log: a.verbose ? (...x: unknown[]) => console.error(...x) : () => {},
 };
 
 let failed = 0;
-const recovery = { sync: [], relay: [] };
+const recovery: { sync: number[]; relay: number[] } = { sync: [], relay: [] };
 for (const seed of seeds) {
   const started = performance.now();
   const r = await new Hub({ ...opts, seed }).run();
   const s = ((performance.now() - started) / 1000).toFixed(1);
-  for (const k of ["sync", "relay"]) recovery[k].push(...r.stats.recovery[k]);
+  for (const k of ["sync", "relay"] as const) recovery[k].push(...r.stats.recovery[k]);
   if (r.ok) {
     console.log(`seed ${seed}: ok in ${s} s, ${r.cards} cards, ${r.stats.requests} requests, ${r.stats.frames} frames, hash ${r.hash}`);
     continue;
@@ -66,7 +66,7 @@ for (const seed of seeds) {
 }
 console.log(`${seeds.length - failed} of ${seeds.length} seeds converged`);
 /** Mean with a 95 % confidence interval, in s. */
-const ci = (xs) => {
+const ci = (xs: number[]) => {
   if (!xs.length) return "not seen";
   const m = xs.reduce((a, b) => a + b, 0) / xs.length;
   const sd = Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, xs.length - 1));

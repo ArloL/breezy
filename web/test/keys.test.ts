@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { command } from "../keys.js";
+import { command } from "../keys.ts";
+import type { KeyEvent, Typing } from "../keys.ts";
 
-const key = (k, mods = {}, ctx = {}) =>
+const key = (k: string, mods: Partial<KeyEvent> = {}, ctx: { mac?: boolean; typing?: Typing } = {}) =>
   command({ key: k, code: "", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods }, { mac: true, typing: null, ...ctx });
 
 test("⌘ shortcuts on the Mac, Ctrl elsewhere", () => {
@@ -44,7 +45,7 @@ test("⇧1 types '!' and colours nothing; ⌥ and ⌘ leave board keys alone", (
 });
 
 test("typing into a card types, except the keys that end or turn it", () => {
-  const card = { typing: "card" };
+  const card = { typing: "card" as const };
   for (const k of [" ", "3", "l", "Backspace", "Enter"]) assert.equal(key(k, {}, card), null, k);
   assert.equal(key("a", { metaKey: true }, card), null);
   assert.equal(key("Escape", {}, card), "end-edit");
@@ -59,7 +60,7 @@ test("typing into a card types, except the keys that end or turn it", () => {
 test("a lane title ends on Tab; the find field keeps its own keys", () => {
   assert.equal(key("Tab", {}, { typing: "lane" }), "end-edit");
   assert.equal(key(" ", {}, { typing: "lane" }), null);
-  const field = { typing: "field" };
+  const field = { typing: "field" as const };
   assert.equal(key("z", { metaKey: true }, field), null);
   assert.equal(key("a", { metaKey: true }, field), null);
   assert.equal(key("g", { metaKey: true }, field), "find-next");

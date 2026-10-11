@@ -1,6 +1,9 @@
-/** Storage in memory, as web/sync/idb.js keeps it; `failing` makes saves reject. */
+/** Storage in memory, as web/sync/idb.ts keeps it; `failing` makes saves reject. */
 export class MemoryStorage {
-  constructor(entries = {}) {
+  data: Map<string, unknown>;
+  failing: boolean;
+
+  constructor(entries: Record<string, unknown> = {}) {
     this.data = new Map(Object.entries(structuredClone(entries)));
     this.failing = false;
   }
@@ -9,12 +12,12 @@ export class MemoryStorage {
     return structuredClone(Object.fromEntries(this.data));
   }
 
-  async save(key, value) {
+  async save(key: string, value: unknown) {
     if (this.failing) throw new Error("full");
     this.data.set(key, structuredClone(value));
   }
 
-  async remove(key) {
+  async remove(key: string) {
     this.data.delete(key);
   }
 }

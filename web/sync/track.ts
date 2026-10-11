@@ -6,24 +6,34 @@ export const MIN_DELAY_MS = 8;
 export const MAX_DELAY_MS = 150;
 
 /** The lower median of the gaps between consecutive `at` up to PAUSE_MS; 0 without any. */
-function interval(samples) {
+function interval(samples: Sample[]): number {
   const gaps = samples.slice(1).map((s, i) => s.at - samples[i].at).filter((g) => g <= PAUSE_MS).sort((a, b) => a - b);
   return gaps.length ? gaps[(gaps.length - 1) >> 1] : 0;
 }
 
+interface Sample {
+  at: number;
+  arrival: number;
+  value: number[];
+}
+
 export class Track {
+  samples: Sample[];
+  offset: number;
+  delay: number;
+
   constructor() {
     this.samples = [];
     this.offset = 0;
     this.delay = MIN_DELAY_MS;
   }
 
-  recent(upTo) {
+  recent(upTo: number): Sample[] {
     return this.samples.filter((s) => s.arrival > upTo - WINDOW_MS);
   }
 
   /** What the sender had at its time `at`, arriving at `arrival`; older than the last, it is dropped. */
-  push(at, arrival, value) {
+  push(at: number, arrival: number, value: number[]): void {
     const last = this.samples.at(-1);
     if (last && at <= last.at) return;
     // after a pause the value sat still until just before this sample, rather than drifting all the way
@@ -41,7 +51,7 @@ export class Track {
   }
 
   /** The value at `now`, played back `delay` late, between the samples either side; never past the last. */
-  sample(now) {
+  sample(now: number): number[] {
     const t = now - this.offset - this.delay;
     const s = this.samples;
     if (t <= s[0].at) return s[0].value;
@@ -50,11 +60,11 @@ export class Track {
       const a = s[i - 1], b = s[i], k = (t - a.at) / (b.at - a.at);
       return a.value.map((v, j) => v + (b.value[j] - v) * k);
     }
-    return s.at(-1).value;
+    return s.at(-1)!.value;
   }
 
   /** Whether playback has yet to reach the last sample. */
-  playing(now) {
-    return this.samples.length > 0 && now - this.offset - this.delay < this.samples.at(-1).at;
+  playing(now: number): boolean {
+    return this.samples.length > 0 && now - this.offset - this.delay < this.samples.at(-1)!.at;
   }
 }

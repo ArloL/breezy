@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeRecord, equalRecords } from "../sync/merge.js";
-import { fixture } from "./helpers/fixture.js";
+import { mergeRecord, equalRecords } from "../sync/merge.ts";
+import { fixture } from "./helpers/fixture.ts";
+import type { SyncRecord } from "../sync/records.ts";
 
 test("merges match the shared cases", () => {
   for (const c of fixture("merge.json")) {
@@ -20,7 +21,7 @@ test("records are equal whatever the order of their fields", () => {
 test("only a deleted field of exactly true deletes a record", () => {
   const base = { format: 1, kind: "card", board: "B", text: "a", notes: "", color: 1, pos: [0, 0], w: 240, order: "V" };
   const local = { ...base, text: "b" };
-  const r = mergeRecord(base, local, { ...base, deleted: 1 });
+  const r = mergeRecord(base, local, { ...base, deleted: 1 } as unknown as SyncRecord);
   assert.equal(r.record.text, "b");
   assert.equal(r.copy, null);
 });

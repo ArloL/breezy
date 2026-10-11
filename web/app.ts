@@ -1,15 +1,48 @@
-import * as R from "./rules.js";
-import { Model } from "./model.js";
-import { View } from "./view.js";
-import { UI } from "./ui.js";
-import { Input } from "./input.js";
-import { Presence } from "./presence.js";
+import * as R from "./rules.ts";
+import { Model } from "./model.ts";
+import { Input } from "./input.ts";
+import type { Ports, PresencePort, SpacePort, UIPort, ViewPort } from "./ports.ts";
+import type { Person } from "./presence.ts";
+import type { Library } from "./library.ts";
+import type { Board, Lane, Point, Rect } from "./types.ts";
 
-function caretToEnd(el) {
+/** The card being edited, which side of it, and the undo step the edit records. */
+export interface Editing {
+  id: string;
+  back: boolean;
+  name: string;
+}
+
+/** How far what a finger holds is from where the board keeps it: a moved card or lane, or a resized lane. */
+export type Float = { x: number; y: number; w?: undefined; h?: undefined } | { w: number; h: number; x?: undefined; y?: undefined };
+
+export interface State {
+  selection: Set<string>;
+  turned: string | null;
+  editing: Editing | null;
+  renaming: string | null;
+  held: Set<string>;
+  lifted: Set<string>;
+  float: Float | null;
+  marquee: Rect | null;
+  found: string | null;
+  /** Who else holds each item they hold. */
+  taken: Map<string, Person>;
+  /** The colour of whoever else has each item selected. */
+  seen: Map<string, string>;
+}
+
+/** A search match. */
+export interface Match {
+  id: string;
+  side?: string;
+}
+
+function caretToEnd(el: HTMLElement) {
   const r = document.createRange();
   r.selectNodeContents(el);
   r.collapse(false);
-  const s = getSelection();
+  const s = getSelection()!;
   s.removeAllRanges();
   s.addRange(r);
 }
@@ -19,10 +52,10 @@ function caretToEnd(el) {
  * line above. A second newline, as Chrome uses, draws the line; the caret goes at the start of its own text node, as
  * at the end of a text node it is drawn at the end of the title's ::first-line.
  */
-function newlineForBreak(el) {
+function newlineForBreak(el: HTMLElement) {
   const br = el.lastChild;
   if (br?.nodeName !== "BR") return;
-  const sel = getSelection();
+  const sel = getSelection()!;
   const atEnd = sel.anchorNode === el && sel.anchorOffset >= el.childNodes.length - 1;
   const nl = document.createTextNode("\n");
   br.replaceWith(nl);
@@ -31,17 +64,28 @@ function newlineForBreak(el) {
 
 /** The board, what is selected, turned and being edited, and every action on them. */
 export class App {
-  constructor(board) {
+  touching: boolean;
+  state: State;
+  model: Model;
+  view: ViewPort;
+  presence: PresencePort;
+  onSelect: () => void;
+  ui: UIPort;
+  input: Input;
+  library: Library | undefined;
+  space: SpacePort | undefined;
+
+  constructor(board: Board, ports: Ports) {
     this.touching = true;
     this.state = { selection: new Set(), turned: null, editing: null, renaming: null, held: new Set(), lifted: new Set(), float: null, marquee: null, found: null, taken: new Map(), seen: new Map() };
     this.model = new Model(board);
-    this.view = new View(document.getElementById("board"), this.model, this.state);
-    this.presence = new Presence(this.view);
+    this.view = ports.view(this);
+    this.presence = ports.presence(this.view);
     this.view.onRender = () => this.presence.place();
     /** After the selection changes, for others to see. */
     this.onSelect = () => {};
     R.gravity(this.model.board, this.view.heightOf);
-    this.ui = new UI(this);
+    this.ui = ports.ui(this);
     this.input = new Input(this);
     this.view.area = () => this.ui.area();
     this.view.onCamera = () => {
@@ -60,7 +104,7 @@ export class App {
   }
 
   /** Shows `board` in place of the one shown, with no undo history. */
-  load(board) {
+  load(board: Board) {
     this.endEditing();
     this.turn(null);
     this.ui.closeFind();
@@ -79,35 +123,35 @@ export class App {
   }
 
   /** Selects `ids`, leaving out what someone else holds. */
-  select(ids) {
+  select(ids: Iterable<string>) {
     this.state.selection = new Set([...ids].filter((id) => !this.state.taken.has(id)));
     this.view.invalidate();
     this.ui.update();
     this.onSelect();
   }
 
-  toggle(id) {
+  toggle(id: string) {
     const s = new Set(this.state.selection);
     if (!s.delete(id)) s.add(id);
     this.select(s);
   }
 
   /** Turns card `id` over, putting back the one turned before; null just puts it back. */
-  turn(id) {
+  turn(id: string | null) {
     const s = this.state;
     const next = id && R.card(this.model.board, id) ? id : null;
     if (next === s.turned) return;
-    this.view.animateTurn([s.turned, next].filter(Boolean), () => (s.turned = next));
-    if (next) this.view.reveal(this.view.rectOf(R.card(this.model.board, next)));
+    this.view.animateTurn([s.turned, next].filter((x): x is string => Boolean(x)), () => (s.turned = next));
+    if (next) this.view.reveal(this.view.rectOf(R.card(this.model.board, next)!));
     this.ui.update();
   }
 
   /** A card at world point `w`: centred on it, or with its top-left there, as a double-click on the Mac puts it. */
-  newCard(w, anchor = "centre") {
+  newCard(w: Point, anchor: "centre" | "corner" = "centre") {
     this.endEditing();
     this.turn(null);
     this.model.begin();
-    let id;
+    let id!: string;
     this.model.update((b) => {
       id = anchor === "corner" ? R.addCard(b, w.x, w.y) : R.addCard(b, w.x - R.CARD_W / 2, w.y - R.GRID);
       R.gravity(b, this.heightOf);
@@ -117,9 +161,9 @@ export class App {
   }
 
   /** A lane centred on world point `p`, by default the middle of the view. */
-  newLane(p = this.view.toWorld(this.view.centre())) {
+  newLane(p: Point = this.view.toWorld(this.view.centre())) {
     this.endEditing();
-    let id;
+    let id!: string;
     this.model.perform("New Lane", (b) => {
       const s = R.openSpot(b, R.LANE_W, R.LANE_H, p.x - R.LANE_W / 2, p.y - R.LANE_H / 2, this.heightOf);
       id = R.addLane(b, s.x, s.y);
@@ -133,23 +177,23 @@ export class App {
   }
 
   /** Zooms about the middle of the view, animated, as the Mac's zoom commands do. */
-  zoomTo(z) {
+  zoomTo(z: number) {
     this.view.zoomAround(this.view.centre(), z, true);
   }
 
-  zoomBy(f) {
+  zoomBy(f: number) {
     this.zoomTo(this.view.cam.zoom * f);
   }
 
   /** Asks the open board's space to hold `ids` for the gesture starting. */
-  hold(ids) {
-    this.library?.hold(ids);
+  hold(ids: Iterable<string>) {
+    this.space?.hold(ids);
   }
 
   /** Someone else got there first with `ids`: the drag, edit or rename under way on any of them goes back as it began. */
-  refused(ids) {
+  refused(ids: ReadonlySet<string>) {
     const s = this.state;
-    if (["move", "lane", "resize"].includes(this.input.drag?.action)) {
+    if (["move", "lane", "resize"].includes(this.input.drag?.action ?? "")) {
       if ([...s.held].some((id) => ids.has(id))) this.input.dragCancel();
       return;
     }
@@ -162,7 +206,7 @@ export class App {
     const s = this.state;
     const id = s.editing?.id ?? s.renaming;
     if (!id) return;
-    const el = s.editing ? this.view.editorOf(s.editing.id, s.editing.back) : this.view.titleOf(s.renaming);
+    const el = s.editing ? this.view.editorOf(s.editing.id, s.editing.back) : this.view.titleOf(s.renaming!);
     s.editing = s.renaming = null;
     if (el) {
       el.onblur = el.oninput = el.onkeydown = null;
@@ -180,16 +224,16 @@ export class App {
   caret() {
     const e = this.state.editing;
     const el = e && this.view.editorOf(e.id, e.back);
-    const sel = getSelection();
+    const sel = getSelection()!;
     if (!el || !sel.rangeCount || !el.contains(sel.focusNode)) return null;
     const r = document.createRange();
     r.selectNodeContents(el);
-    r.setEnd(sel.focusNode, sel.focusOffset);
+    r.setEnd(sel.focusNode!, sel.focusOffset);
     return { id: e.id, back: e.back, at: r.toString().replace(/\u200b/g, "").length };
   }
 
   /** Edits the side of card `id` facing up; focus stays synchronous so iOS shows the keyboard. */
-  beginEdit(id, name = "Edit Card") {
+  beginEdit(id: string, name = "Edit Card") {
     const c = R.card(this.model.board, id);
     if (!c) return;
     if (this.state.taken.has(id)) return;
@@ -199,7 +243,7 @@ export class App {
     const back = this.state.turned === id;
     this.state.editing = { id, back, name };
     this.view.render();
-    const el = this.view.editorOf(id, back);
+    const el = this.view.editorOf(id, back)!;
     el.textContent = back ? (c.notes ?? "") : c.text;
     el.classList.remove("placeholder");
     el.contentEditable = "plaintext-only";
@@ -216,7 +260,7 @@ export class App {
   edited() {
     const e = this.state.editing;
     if (!e) return;
-    const el = this.view.editorOf(e.id, e.back);
+    const el = this.view.editorOf(e.id, e.back)!;
     newlineForBreak(el);
     // An empty last line is drawn from two newlines; the last one is not part of the text.
     const raw = el.innerText.replace(/\u200b/g, "");
@@ -267,7 +311,7 @@ export class App {
   switchSide() {
     const e = this.state.editing;
     if (!e) return;
-    const old = this.view.editorOf(e.id, e.back);
+    const old = this.view.editorOf(e.id, e.back)!;
     old.oninput = old.onblur = null;
     this.state.editing = null;
     this.turn(e.back ? null : e.id);
@@ -275,7 +319,7 @@ export class App {
     old.contentEditable = "false";
   }
 
-  beginRename(id) {
+  beginRename(id: string) {
     const l = R.lane(this.model.board, id);
     if (!l) return;
     if (this.state.taken.has(id)) return;
@@ -284,7 +328,7 @@ export class App {
     this.hold([id]);
     this.state.renaming = id;
     this.view.render();
-    const el = this.view.titleOf(id);
+    const el = this.view.titleOf(id)!;
     el.textContent = l.title;
     el.contentEditable = "plaintext-only";
     el.oninput = () => this.model.update((b) => R.setLaneTitle(b, id, el.textContent));
@@ -305,13 +349,13 @@ export class App {
     if (c) this.view.reveal(this.view.rectOf(c), "bottom");
   }
 
-  colour(n) {
+  colour(n: number) {
     this.model.perform("Colour", (b) => R.setColor(b, this.state.selection, n));
   }
 
   removeSelection() {
     const ids = new Set(this.state.selection);
-    if (ids.has(this.state.turned)) this.state.turned = null;
+    if (this.state.turned && ids.has(this.state.turned)) this.state.turned = null;
     this.model.perform("Delete", (b) => {
       R.remove(b, ids);
       R.gravity(b, this.heightOf);
@@ -335,14 +379,14 @@ export class App {
   }
 
   /** Shows search match `m`, turning a card over for a match on its back. */
-  reveal(m) {
+  reveal(m: Match) {
     const s = this.state;
     const b = this.model.board;
     s.found = m.id;
     const c = R.card(b, m.id);
     this.turn(m.side === "back" ? m.id : null);
     const l = !c && R.lane(b, m.id);
-    if (c || l) this.view.centreOn(c ? this.view.rectOf(c) : R.laneRect(l));
+    if (c || l) this.view.centreOn(c ? this.view.rectOf(c) : R.laneRect(l as Lane));
     this.view.invalidate();
   }
 }
