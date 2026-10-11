@@ -1,101 +1,60 @@
 # Breezy testability — design
 
-Every interaction, dragging included, is tested without a hand on the Mac or the phone, and scenarios across devices are short to write: a Swift device drags a card into a lane, and a web device shows it there. The Mac and the web keep their own cores for performance; scenarios drive both in one language, TypeScript, through one device protocol. Each core sits behind ports whose real adapters only translate, and whose fakes are held to the real thing by contract suites.
-
-## Done
-
-The scenarios run on every PR, on virtual time, with Swift and web devices against the real `sync.php`. The same scenario files run nightly against the Debug Mac app and headless Chromium and WebKit. The sub-projects below get there in steps.
+Every interaction, dragging included, is tested without a hand on the Mac or the phone, and scenarios across devices are short to write: a Mac drags a card into a lane, and a browser shows it there. The Mac and the web keep their own cores for performance; scenarios drive both in one language, TypeScript, through one set of device commands. Each core sits behind ports whose real adapters only translate; the same scenarios run on fakes of them and on the real devices, which keeps the fakes honest.
 
 ## Shape
 
 ```
-                 scenarios/*.ts  (node --test)
-                        |
-                 device protocol
-        /          |            |             \
-     swift        web       chromium/webkit     mac
-  breezy-sim   hub process  headless browser  Debug Breezy.app
-  fake ports   fake ports    real DOM ports    real AppKit ports
-        \__________/            \_____________/
-     fuzz hub: virtual time,   wall clock: sync.php,
-     sync.php, relay sim,      wrangler dev, WebRTC
-     simulated links           (as direct-e2e.mjs)
+                       scenarios/cases.ts  (each case once)
+                      /                                \
+       cases.test.ts: World                    browsers.e2e.ts: RealWorld
+       fuzz hub, virtual time,                 wall clock, server/dev.sh,
+       sync.php, relay sim, links              wrangler dev, WebRTC
+          /              \                     /          |           \
+      swift              web              chromium     webkit         mac
+   breezy-sim:       hub process:        Playwright: the built app,   Debug Breezy.app,
+   CanvasCore        App on fakes        its own mouse, keys, touch   -BreezyControl
 ```
 
-A scenario names its devices and a kind for each. When every device has virtual time, it runs in the fuzz hub, deterministic and fast; when any is real, all run on the wall clock against the real stack.
+`scenarios/device.ts` is what a case sees of any device: `pointer`, `key`, `type`, `scene`, `addCard`, `addLane`, and verbs built on them — `drag`, `click`, `touchDrag`, `tap`, `doubleTap`, `typeInto`. Points a case gives are world points; a device turns them into its screen points with its own camera, so the core's hit testing runs. A case acts on the first device and reads the second's scene.
 
-## Device protocol
-
-The one contract both cores implement. Its types are written once in TypeScript; a JSON Schema generated from them checks the Swift `Codable` mirror, so drift on either side fails a test.
-
-| Command | |
-|---|---|
-| `pointer` | down, move, up or cancel: id, kind (mouse, touch, pen), screen point, modifiers, time |
-| `key`, `text`, `scroll`, `magnify` | other input |
-| `scene` | what the device shows: cards (id, world frame, colour, face, z, lifted or floating), lanes, selection, editing, camera, presence |
-| `board` | the store's board, canonical |
-| `advance`, `idle` | virtual time, for kinds that have it |
-
-Locators turn `card('A')` or `lane('L').column(1)` into a screen point from the device's own scene and camera, so the core's hit testing runs. Verbs such as `drag`, `tap` and `doubleTap` map to each kind's native input: mouse on the Mac, touch or mouse on the web.
-
-## Device kinds
-
-| Kind | Input | Screen | Clock | Runs in |
+| Kind | Input | Scene | Edits | Keys |
 |---|---|---|---|---|
-| `swift` | protocol → core | fake | virtual | `breezy-sim` |
-| `web` | protocol → core | fake | virtual | the hub's process |
-| `chromium`, `webkit` | CDP touch and mouse → DOM listeners | DOM, read back as a scene | wall | headless browser |
-| `mac` | synthesised `NSEvent`s → the window | `CALayer`s, read back as a scene | wall | Debug `Breezy.app` with a control socket |
+| `swift` | mouse, through `CanvasCore` | `CanvasCore.scene` | no | no |
+| `web` | mouse through `Mouse`, touch through `Gestures`, as `main.ts` hands them | `sceneOf` on the fake view | no | through `keys.ts` |
+| `chromium`, `webkit` | the browser's own mouse; touch as `PointerEvent`s | read back off the DOM | yes | yes |
+| `mac` | `NSEvent`s sent to the board window | `CanvasCore.scene`, camera from the scroll view | yes | yes, ⌘ through the menu |
+
+A case says what it needs of the first device (touch, editing, keys); the runners skip the pairs that lack it.
+
+## Scenes
+
+A scene is what a device draws: each card and lane with its world frame, whether it is selected, held or lifted, its colour and text; the turned card, the selection box, and the camera. `web/scene.ts` and BreezyKit's `Scene` have one shape; `scenarios/conformance.test.ts` plays the same gestures on a Swift and a web device and requires equal scenes, which checks both cores and the Swift mirror of the shape.
 
 ## Ports
 
-The core decides; it never animates. It emits a scene, the target state of the screen, and adapters animate towards it.
+| Core | Where | Ports |
+|---|---|---|
+| Mac | `BreezyKit/CanvasCore.swift`: hits, the drag threshold, selection, the box, what a drag moves and where it lands | closures for heights, drawn rects, what others hold, zoom, camera, turning, holding; `CanvasView` turns events into calls and draws what the core holds |
+| web | `App`, `Input`, `Mouse`, `Gestures`, `keys.ts` | `web/ports.ts`: the view, the UI, presence and the open board's space; `main.ts` gives the DOM ones, `web/test/fakes.ts` the fakes |
 
-| Port | Mac adapter | Web adapter | Fake |
-|---|---|---|---|
-| Input | `CanvasView` forwards `NSEvent`s as protocol events | `main.ts` listeners forward pointer, touch, key, wheel and gesture events | the test sends protocol events |
-| Screen | scene diffs → `CardLayer`, `LaneView`, presence | scene diffs → `View` | keeps the scene |
-| Editor | `NSTextView` | `contentEditable` | a text buffer with a caret |
-| Text metrics | `NSLayoutManager` | the `.measure` node | fixed glyph widths and line height |
-| Clock, schedule | media time, display link, `asyncAfter` | `performance.now`, rAF, `setTimeout` | the hub's clock |
-| Network, storage | the existing seams | the existing seams | the hub's simulations |
+Fakes measure a card as 24 + 24 pt per line, as Chromium, WebKit and the Mac draw text too short to wrap.
 
-Adapters hold no decisions: hit testing, the drag threshold, gesture state, selection, editing state, edge scroll and the drop all live in the core.
-
-## Contracts
-
-One suite per port, run against the fake and the real adapter:
-
-- **Screen** — apply a set of scenes, read back the model-layer state and compare it with the scene. On the Mac in XCTest on an offscreen `NSWindow`, which needs no activation; on the web in headless Chromium and WebKit.
-- **Input** — native events (CDP touch and mouse, synthesised `NSEvent`s) yield the protocol events the fake injects, including iOS's compat `mousedown` after a tap.
-- **Editor** — typing, the caret, Esc and ⌘↩ map to the same protocol events.
-- **Text metrics** — real and fake differ by design, so the suite pins properties: a blank card is one line, more text is never shorter, text wraps at the card's width.
-
-## Conformance
-
-Every single-device scenario runs on both `swift` and `web`, and both must end with the same scene and board. This replaces the rules tests mirrored by hand between `rules.test.js` and `StackingTests`/`EditsTests`.
-
-## Fitness
-
-- BreezyKit imports no AppKit.
-- The TypeScript core compiles with a `lib` without `"dom"`, so a DOM call in it fails to compile.
-- A listener inventory: each platform event is registered once.
+The hub's devices answer the fuzzer's commands plus `pointer`, `key` and `scene`; its web devices run the app's core on the fakes and its Swift devices `CanvasCore`, so the fuzzer presses, drags and releases through the same code as a person. The Mac's control port (`Breezy/Support/Control.swift`) takes `join`, `createBoard`, `open`, `newLane`, `pointer`, `key`, `type`, `scene` and `status`; it keeps a store of its own and counts its windows as shown.
 
 ## Not covered headless
 
 | What | Where it stays |
 |---|---|
 | Frames in flight, pixel rendering | `scripts/selftest.sh` pixel diffs, screen recordings |
-| iOS-only behaviour: the magnifier, the keyboard, `visualViewport` | the simulator with `scripts/sim-touch.py`, the phone with `scripts/wda.py` |
+| iOS-only behaviour: the magnifier, the keyboard, `visualViewport`, haptics | the simulator with `scripts/sim-touch.py`, the phone with `scripts/wda.py` |
 
-## Sub-projects
+## Still to do
 
-Each gets its own spec, plan and implementation, in this order.
-
-| # | Sub-project | Done when |
-|---|---|---|
-| 1 | TypeScript | web, `sync/`, the hub, fuzz and scripts are TypeScript; esbuild bundles the PWA; `tsc --noEmit` strict and every existing test pass; no change in behaviour |
-| 2 | Protocol and pointer cores | the protocol and its Swift mirror; drag, select, box select, lane move and resize and drop in both cores behind the input, screen and clock ports; `swift` and `web` kinds; `SimDevice`'s own drag gone; "a Swift drag into a lane shows on the web" passes on virtual time |
-| 3 | The rest of the interactions | editing (editor and text metrics ports), keys, turning, zoom and pan, find, edge scroll, undo; conformance replaces the mirrored rules tests |
-| 4 | Real adapters and contracts | `chromium`, `webkit` and `mac` kinds; the contract suites; one scenario file passing on fakes and on real devices |
-| 5 | Fuzz and CI | fuzz operations become protocol verbs, so the fuzzer drives the interaction code; scenarios on every PR, real kinds and contracts nightly |
+| What | Why it matters |
+|---|---|
+| Editing on the hub: an editor port for `App`, and the Mac's editing in BreezyKit | cases that type run only on real devices |
+| The Mac's keys, turning, zoom and edge scroll in `CanvasCore` | the hub's Swift devices take no keys; conformance covers the pointer only |
+| Replacing the rules tests mirrored by hand between `rules.test.ts` and `StackingTests`/`EditsTests` with conformance cases | one change, one test |
+| Contract suites per port, beside the cases: scenes applied to the DOM view and read back; native events against what the fakes inject | a fake that drifts shows as a contract failure, not as a case that passes on fakes alone |
+| Touch through the browsers' own touch input rather than `PointerEvent`s | iOS's compatibility mouse events come only from real touches |
