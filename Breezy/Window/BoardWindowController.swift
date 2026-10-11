@@ -24,7 +24,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   init(model: BoardModel, boardID: String) {
     self.boardID = boardID
     canvas = CanvasView(model: model)
-    let window = NSWindow(
+    let window = BoardWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
       styleMask: [.titled, .closable, .miniaturizable, .resizable],
       backing: .buffered, defer: false)
@@ -222,5 +222,12 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       NSLayoutConstraint.activate([f.widthAnchor.constraint(equalToConstant: 22), f.heightAnchor.constraint(equalToConstant: 22)])
       return f
     }, in: .leading)
+  }
+}
+
+/// Scripted checks keep their size on a screen smaller than it, so that what a check points at shows.
+final class BoardWindow: NSWindow {
+  override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+    DebugLaunch.active ? frameRect : super.constrainFrameRect(frameRect, to: screen)
   }
 }
