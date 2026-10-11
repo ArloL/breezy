@@ -98,6 +98,17 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var onSelection: (() -> Void)?
   /// Asks the space to hold these ids for the gesture starting.
   var hold: ((Set<String>) -> Void)?
+  /// What the pointer holds moved off the grid while the board stayed put, for others to see.
+  var onFloat: (() -> Void)?
+
+  /// How far what the pointer holds floats off the grid, as this Mac draws it.
+  var floating: Records.Floating? {
+    switch drag?.kind {
+    case .cards?, .lane?: .moved(held.offset.width, held.offset.height)
+    case .resize?: .resized(held.growth.width, held.growth.height)
+    default: nil
+    }
+  }
 
   init(model: BoardModel) {
     self.model = model

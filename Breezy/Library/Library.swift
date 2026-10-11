@@ -168,8 +168,15 @@ extension Notification.Name {
       return (CanvasPresence(live, board: id), live.animating(on: id))
     }
     canvas.hold = { [weak doc] ids in doc?.session?.hold(ids) }
+    canvas.onFloat = { [weak doc] in doc?.session?.edited() }
     if let g = spaces.group(of: id) {
-      doc.session = collab(g).open(id, model: doc.model, binding: doc.binding, caret: { [weak doc] in doc?.windowController?.canvas.caret() })
+      doc.session = collab(g).open(
+        id, model: doc.model, binding: doc.binding, caret: { [weak doc] in doc?.windowController?.canvas.caret() },
+        items: { [weak canvas] start, now, ids, id in
+          let items = Records.liveFields(from: start, to: now, ids: ids, board: id)
+          guard let canvas else { return items }
+          return Records.floated(items, board: now, held: canvas.held.ids.intersection(ids), by: canvas.floating)
+        })
     }
   }
 

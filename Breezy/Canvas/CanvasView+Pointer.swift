@@ -154,6 +154,7 @@ extension CanvasView {
     if board == before.0 && held != before.1 {
       placeLanes()
       layoutCards()
+      onFloat?()
     }
   }
 

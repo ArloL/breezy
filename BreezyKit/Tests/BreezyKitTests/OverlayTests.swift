@@ -51,3 +51,17 @@ import Testing
   #expect(shown.cards.map(\.id) == ["a"])
   #expect(shown.lanes == [start.lanes[0], Lane(id: "m", x: 24, y: 48, w: 480, h: 240, title: "New")])
 }
+
+@Test func heldItemsGoWhereTheyFloatOffTheGrid() {
+  let b = board([card("a", 48, 24), card("b", 0, 0), card("c", 96, 0)], [lane("l", 0, 0)])
+  let pos = { (x: Double, y: Double) in JSONValue.array([.number(x), .number(y)]) }
+  let items: [String: LiveFields] = ["a": ["pos": pos(48, 24)], "c": ["color": .number(2)]]
+  let moved = Records.floated(items, board: b, held: ["a", "b"], by: .moved(5, -3))
+  #expect(moved["a"] == ["pos": pos(53, 21)])
+  #expect(moved["b"] == ["pos": pos(5, -3)])
+  #expect(moved["c"] == items["c"])
+  #expect(Records.floated(items, board: b, held: ["b"], by: .moved(0, 0))["b"] == nil)
+  let resized = Records.floated([:], board: b, held: ["l"], by: .resized(7, 9))
+  #expect(resized["l"] == ["size": pos(487, 729)])
+  #expect(Records.floated(items, board: b, held: ["a"], by: nil) == items)
+}

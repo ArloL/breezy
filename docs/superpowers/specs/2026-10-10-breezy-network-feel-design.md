@@ -30,7 +30,7 @@ With 0 to 40 ms of jitter a hop, drags trail by 162 ± 3 ms over the relay and s
 - Live fields gain `gone`, compact key 8, for a deleted item. Overlays take such items off the board, and put new lanes on it as they did new cards.
 - Asking for holds sends the gesture's live state, so a new card shows before its first key.
 - While a gesture others follow is under way, nothing is pushed: the binding still writes to the store, and the end pushes. Intermediate pushes made the others restack around positions the overlay hid.
-- The web app sends a dragged item where it floats under the pointer, as it draws it; the Mac snaps while dragging, so it sends the grid.
+- Both apps send a dragged item where it floats under the pointer, as they draw it, and send again whenever it moves without the board changing: sending the board alone, which snaps to the grid, moves it a cell at a time.
 
 ## Relay
 

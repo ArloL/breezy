@@ -23,10 +23,14 @@ import Foundation
   /// Whether a board open on the group is in a gesture.
   public var busy: Bool { sessions.contains { $0.model?.inGesture == true } }
 
+  /// What a gesture shows others of `ids` between `start` and `now` on board `id`.
+  public typealias Items = (_ start: Board, _ now: Board, _ ids: Set<String>, _ id: String) -> [String: LiveFields]
+
   /// Board `id` open in `model` and `binding`, whose `afterEdit` and `afterGesture` the session takes; `caret` is where
   /// a gesture's text caret is.
-  public func open(_ id: String, model: BoardModel, binding: BoardBinding, caret: @escaping () -> Caret? = { nil }) -> Session {
-    let s = Session(self, id, model, binding, caret)
+  public func open(_ id: String, model: BoardModel, binding: BoardBinding, caret: @escaping () -> Caret? = { nil },
+                   items: @escaping Items = Records.liveFields) -> Session {
+    let s = Session(self, id, model, binding, caret, items)
     sessions.append(s)
     binding.taken = { [weak group] in group?.live?.taken ?? [] }
     // a gesture's end finishes even after the board closed, as a window closed mid-edit does
@@ -48,17 +52,19 @@ import Foundation
     weak var model: BoardModel?
     weak var binding: BoardBinding?
     let caret: () -> Caret?
+    let items: Items
     /// The model was in a gesture at the last edit.
     private var gesturing = false
     /// A gesture asked for holds and has not finished yet.
     private var unfinished = false
 
-    init(_ collab: Collab, _ id: String, _ model: BoardModel, _ binding: BoardBinding, _ caret: @escaping () -> Caret?) {
+    init(_ collab: Collab, _ id: String, _ model: BoardModel, _ binding: BoardBinding, _ caret: @escaping () -> Caret?, _ items: @escaping Items) {
       self.collab = collab
       self.id = id
       self.model = model
       self.binding = binding
       self.caret = caret
+      self.items = items
     }
 
     /// Asks the relay to hold `ids` for the gesture starting.
@@ -77,7 +83,7 @@ import Foundation
       if let start = model.gestureStartBoard {
         gesturing = true
         guard let live, !live.mine.isEmpty else { return }
-        live.sendLive(board: id, items: Records.liveFields(from: start, to: model.board, ids: live.mine, board: id), caret: caret(),
+        live.sendLive(board: id, items: items(start, model.board, live.mine, id), caret: caret(),
                       starts: Records.startPositions(start, ids: live.mine))
         return
       }

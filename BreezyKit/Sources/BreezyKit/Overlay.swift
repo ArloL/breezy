@@ -26,6 +26,30 @@ extension Records {
     return out
   }
 
+  /// How far held items float off the grid under the pointer: moved, or a lane resized.
+  public enum Floating: Equatable, Sendable {
+    case moved(Double, Double)
+    case resized(Double, Double)
+  }
+
+  /// `items`, from `liveFields`, with the `held` items of `board` where they float under the pointer, off the grid, as
+  /// this device draws them: others then see the drag as smoothly.
+  public static func floated(_ items: [String: LiveFields], board: Board, held: Set<String>, by floating: Floating?) -> [String: LiveFields] {
+    guard let floating else { return items }
+    var out = items
+    let still = floating == .moved(0, 0) || floating == .resized(0, 0)
+    func put(_ id: String, _ x: Double, _ y: Double, _ w: Double?, _ h: Double?) {
+      guard held.contains(id), items[id] != nil || !still else { return }
+      switch floating {
+      case let .moved(dx, dy): out[id, default: [:]]["pos"] = pair(x + dx, y + dy)
+      case let .resized(dw, dh): if let w, let h { out[id, default: [:]]["size"] = pair(w + dw, h + dh) }
+      }
+    }
+    for c in board.cards { put(c.id, c.x, c.y, nil, nil) }
+    for l in board.lanes { put(l.id, l.x, l.y, l.w, l.h) }
+    return out
+  }
+
   /// Where the held cards and lanes of `ids` were when the gesture began, as `[x, y]`.
   public static func startPositions(_ start: Board, ids: Set<String>) -> [String: [Double]] {
     var out: [String: [Double]] = [:]
