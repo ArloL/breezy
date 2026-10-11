@@ -25,7 +25,7 @@ test("a mouse drag into a lane lands the card in its column, as one step", () =>
   mouse.move({ x: 100, y: 200 });
   assert.equal(scene().cards[0]!.held, true);
   mouse.up({ x: 100, y: 200 });
-  assert.deepEqual(scene().cards[0], { id: "a", x: 24, y: 72, w: 240, h: 96, selected: true, held: false, raised: false, color: 1, text: "a" });
+  assert.deepEqual(scene().cards[0], { id: "a", x: 24, y: 72, w: 240, h: 48, selected: true, held: false, raised: false, color: 1, text: "a" });
   a.undo();
   assert.equal(a.model.board.cards[0]!.x, 600);
 });

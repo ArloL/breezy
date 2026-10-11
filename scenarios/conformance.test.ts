@@ -34,7 +34,7 @@ async function agree(name: string, setUp: Steps, act: Steps) {
 }
 
 const laneAndCards: Steps = async (d, made) => {
-  made.push(await d.addLane(0, 0));
+  made.push(await d.addLane(144, 360));
   made.push(await d.addCard(600, 72));
   made.push(await d.addCard(600, 240));
   made.push(await d.addCard(24, 72));

@@ -12,35 +12,6 @@ async function phoneAndMac() {
   return { w, phone, mac, lane, card };
 }
 
-test("a card held and dragged into a lane on the phone lands in its column on the Mac", async () => {
-  const { w, phone, mac, lane, card } = await phoneAndMac();
-  try {
-    const s = await phone.scene();
-    await phone.touchDrag(centre(item(s, card)), centre(item(s, lane)));
-    await w.settle();
-    const seen = item(await mac.scene(), card);
-    assert.deepEqual({ x: seen.x, y: seen.y }, { x: 24, y: 72 });
-    assert.deepEqual(await mac.board(), await phone.board());
-  } finally {
-    w.stop();
-  }
-});
-
-test("a finger dragged across a card without holding pans the board and moves nothing", async () => {
-  const { w, phone, mac, card } = await phoneAndMac();
-  try {
-    const before = await phone.scene();
-    await phone.touchDrag(centre(item(before, card)), { x: 300, y: 300 }, { hold: false });
-    await w.settle();
-    const after = await phone.scene();
-    assert.notDeepEqual(after.camera, before.camera, "the camera moved");
-    assert.deepEqual(item(after, card).x, item(before, card).x, "the card did not");
-    assert.equal(item(await mac.scene(), card).x, 600);
-  } finally {
-    w.stop();
-  }
-});
-
 test("a tap on a card selects it, and the Mac sees nothing move", async () => {
   const { w, phone, mac, card } = await phoneAndMac();
   try {

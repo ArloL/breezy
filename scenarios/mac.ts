@@ -62,7 +62,9 @@ export class MacDevice extends Device {
   async command<T = unknown>(c: Record<string, unknown>): Promise<T> {
     const line = new Promise<string>((r) => this.waiting.push(r));
     this.socket.write(`${JSON.stringify(c)}\n`);
-    const answer = JSON.parse(await line) as { reply?: T; error?: string };
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`mac: no answer to ${c.cmd} in 10 s`)), 10_000)));
+    const answer = JSON.parse(await Promise.race([line, late]).finally(() => clearTimeout(timer))) as { reply?: T; error?: string };
     if (answer.error) throw new Error(`mac: ${answer.error}`);
     return answer.reply as T;
   }
