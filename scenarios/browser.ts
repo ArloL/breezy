@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { chromium, webkit, type Browser, type Page } from "playwright-core";
+import { chromium, webkit, type Browser, type CDPSession, type Page } from "playwright-core";
 import { buildWeb } from "../scripts/build-web.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
@@ -69,11 +69,24 @@ function touchEvent([type, x, y, finger]: [string, number, number, number]) {
 export class BrowserDevice extends Device {
   readonly kind: BrowserKind;
   readonly page: Page;
+  /** Chromium's DevTools session, which sends real touches; WebKit's touches are dispatched pointer events. */
+  private cdp: CDPSession | null = null;
+  /** The fingers down, by id, as a touch event lists them all. */
+  private fingers = new Map<number, Point>();
 
   constructor(kind: BrowserKind, page: Page) {
     super();
     this.kind = kind;
     this.page = page;
+  }
+
+  private async touch(phase: PointerPhase, p: Point, finger: number) {
+    this.cdp ??= await this.page.context().newCDPSession(this.page);
+    if (phase === "down" || phase === "move") this.fingers.set(finger, p);
+    else this.fingers.delete(finger);
+    const type = ({ down: "touchStart", move: "touchMove", up: "touchEnd", cancel: "touchCancel" } as const)[phase];
+    const touchPoints = [...this.fingers].map(([id, q]) => ({ x: q.x, y: q.y, id }));
+    await this.cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
   }
 
   async scene(): Promise<Scene> {
@@ -85,6 +98,7 @@ export class BrowserDevice extends Device {
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
+    if (extra.kind === "touch" && this.kind === "chromium") return this.touch(phase, p, extra.finger ?? 0);
     if (extra.kind === "touch") {
       const type = { down: "pointerdown", move: "pointermove", up: "pointerup", cancel: "pointercancel" }[phase];
       return this.page.evaluate(touchEvent, [type, p.x, p.y, extra.finger ?? 0] as [string, number, number, number]);
