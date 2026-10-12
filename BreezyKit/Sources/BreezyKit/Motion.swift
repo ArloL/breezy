@@ -56,17 +56,14 @@ public struct Spring: Equatable, Sendable {
   }
 }
 
-/// Edge auto-scroll, as measured in Freeform: a narrow zone; a crawl for most of a second, then a
-/// sharp speed-up.
+/// Edge auto-scroll: a zone wide enough for a thumb, which rests up to 28 pt from the edge it reaches
+/// less easily; then a speed that grows ×e every 400 ms, as Freeform's does for its first 0.7 s, up
+/// to 600 pt/s at 1.2 s. Freeform instead jumps to 1,330 pt/s by 0.95 s.
 public enum EdgeScroll {
-  public static let zone = 24.0
-  /// Speeds in pt/ms by milliseconds held, from the distances Freeform scrolled after 0.25 to 0.9 s.
-  private static let curve: [(ms: Double, speed: Double)] = [(0, 0.045), (375, 0.085), (550, 0.13), (650, 0.15), (750, 0.35), (850, 1.1), (950, 1.5)]
+  public static let zone = 32.0
 
   /// The speed in pt/ms once the pointer has stayed in the zone for `heldMs`.
   public static func speed(heldMs: Double) -> Double {
-    guard let i = curve.firstIndex(where: { $0.ms > heldMs }) else { return curve.last!.speed }
-    let (t0, v0) = curve[max(i - 1, 0)], (t1, v1) = curve[i]
-    return v0 + (v1 - v0) * (heldMs - t0) / (t1 - t0)
+    min(0.6, 0.03 * exp(heldMs / 400))
   }
 }

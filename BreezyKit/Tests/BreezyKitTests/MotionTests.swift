@@ -1,13 +1,13 @@
 import Testing
 @testable import BreezyKit
 
-@Test func edgeScrollingCrawlsThenSpeedsUpAsFreeformDoes() {
-  #expect(EdgeScroll.speed(heldMs: 0) == 0.045)
-  // Freeform scrolled 33 pt in the first half second and 96 pt by 0.8 s
+@Test func edgeScrollingCrawlsAsFreeformDoesAndGrowsEvenly() {
+  #expect(EdgeScroll.speed(heldMs: 0) == 0.03)
+  // Freeform scrolled 33 pt in the first half second and 1,700 pt by 2 s
   func scrolled(_ ms: Int) -> Double { (0..<ms).reduce(0) { $0 + EdgeScroll.speed(heldMs: Double($1)) } }
-  #expect(abs(scrolled(500) - 33) < 8)
-  #expect(abs(scrolled(800) - 96) < 15)
-  #expect(EdgeScroll.speed(heldMs: 5000) == 1.5)
+  #expect(abs(scrolled(500) - 33) < 4)
+  #expect(abs(scrolled(2000) - 708) < 10)
+  #expect(EdgeScroll.speed(heldMs: 5000) == 0.6)
 }
 
 @Test func aSpringWithBounceOvershootsAndSettles() {

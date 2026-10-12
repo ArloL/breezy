@@ -24,16 +24,19 @@ test("the rubber band follows UIKit's formula: small stretches nearly 1:1, large
   near(rubber(-10, 100), -rubber(10, 100));
 });
 
-test("edge scrolling starts only inside the zone, crawls, then speeds up sharply, as Freeform's does", () => {
+test("edge scrolling starts only inside the zone, crawls as Freeform's does, and grows evenly to 600 pt/s", () => {
   assert.equal(edgeSpeed(EDGE_ZONE + 1, 0), 0);
-  near(edgeSpeed(EDGE_ZONE, 0), 0.045);
-  // Freeform scrolled 33 pt in the first half second and 96 pt by 0.8 s
+  near(edgeSpeed(EDGE_ZONE, 0), 0.03);
+  // a thumb rests up to 28 pt from the edge it reaches less easily
+  assert.ok(edgeSpeed(28, 0) > 0);
   const scrolled = (ms: number) => {
     let s = 0;
     for (let t = 0; t < ms; t++) s += edgeSpeed(10, t);
     return s;
   };
-  near(scrolled(500), 33, 8);
-  near(scrolled(800), 96, 15);
-  near(edgeSpeed(1, 5000), 1.5);
+  // Freeform scrolled 33 pt in the first half second and 1,700 pt by 2 s
+  near(scrolled(500), 33, 4);
+  near(scrolled(2000), 708, 10);
+  near(edgeSpeed(1, 600) / edgeSpeed(1, 300), edgeSpeed(1, 900) / edgeSpeed(1, 600));
+  near(edgeSpeed(1, 5000), 0.6);
 });

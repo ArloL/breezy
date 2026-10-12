@@ -320,7 +320,7 @@ export class Input {
     this.pinchCancel();
   }
 
-  /** At the very edge of the visible area a drag scrolls the board, slowly at first and faster the longer it stays, as in Freeform. */
+  /** At the very edge of the visible area a drag scrolls the board, slowly at first and faster the longer it stays. */
   edgeScroll(p: Point) {
     cancelAnimationFrame(this.scroll);
     const a = this.app.ui.area();
