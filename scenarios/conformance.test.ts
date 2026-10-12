@@ -53,7 +53,8 @@ agree("a card dragged out of a stack", laneAndCards, async (d, made) => {
 agree("a lane dragged by its header carries its cards", laneAndCards, async (d, made) => {
   const s = await d.scene();
   const l = item(s, made[0]!);
-  await d.drag({ x: l.x + 100, y: l.y + 10 }, { x: l.x + 400, y: l.y + 130 });
+  // low in the header, out of the zone where a drag scrolls the board, which the Swift core leaves to its view
+  await d.drag({ x: l.x + 100, y: l.y + 40 }, { x: l.x + 400, y: l.y + 160 });
 });
 
 agree("a lane resized by its corner", laneAndCards, async (d, made) => {

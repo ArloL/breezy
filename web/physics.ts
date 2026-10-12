@@ -6,11 +6,14 @@ export const DECEL = 0.985;
 const K = Math.log(DECEL);
 
 /**
- * Edge auto-scroll, as measured in Freeform: a narrow zone; a crawl for most of a second, then a sharp speed-up.
- * Speeds in pt/ms by milliseconds held, from the distances Freeform scrolled after holding 0.25 to 0.9 s.
+ * Edge auto-scroll: a zone wide enough for a thumb, which rests up to 28 pt from the edge it reaches less easily; then a
+ * speed that grows ×e every 400 ms, as Freeform's does for its first 0.7 s, up to 600 pt/s at 1.2 s. Freeform instead
+ * jumps to 1,330 pt/s by 0.95 s. Speeds in pt/ms.
  */
-export const EDGE_ZONE = 24;
-const EDGE_CURVE: [number, number][] = [[0, 0.045], [375, 0.085], [550, 0.13], [650, 0.15], [750, 0.35], [850, 1.1], [950, 1.5]];
+export const EDGE_ZONE = 32;
+const EDGE_MIN = 0.03;
+const EDGE_TAU = 400;
+const EDGE_MAX = 0.6;
 
 export const decay = (v: number, ms: number) => v * DECEL ** ms;
 export const coastOffset = (v: number, ms: number) => (v * (DECEL ** ms - 1)) / K;
@@ -21,10 +24,5 @@ export const rubber = (x: number, d: number, c = 0.55) => Math.sign(x) * (1 - 1 
 
 /** Auto-scroll speed in pt/ms for a finger `depth` points from the edge that has stayed in the zone `heldMs`. */
 export function edgeSpeed(depth: number, heldMs: number) {
-  if (depth > EDGE_ZONE) return 0;
-  const i = EDGE_CURVE.findIndex(([t]) => t > heldMs);
-  if (i === -1) return EDGE_CURVE.at(-1)![1];
-  const [t0, v0] = EDGE_CURVE[i - 1];
-  const [t1, v1] = EDGE_CURVE[i];
-  return v0 + ((v1 - v0) * (heldMs - t0)) / (t1 - t0);
+  return depth > EDGE_ZONE ? 0 : Math.min(EDGE_MAX, EDGE_MIN * Math.exp(heldMs / EDGE_TAU));
 }
