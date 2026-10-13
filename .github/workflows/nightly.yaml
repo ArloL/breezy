@@ -121,6 +121,8 @@ jobs:
       with:
         path: ~/.local/share/mise/installs/android-sdk
         key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
+        # a changed script starts from the SDK before it and downloads only what is new
+        restore-keys: android-sdk-${{ runner.os }}-
     - name: Boot the emulator
       timeout-minutes: 8
       run: mise exec -- node scripts/android.ts
