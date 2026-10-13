@@ -16,7 +16,10 @@ const sdk = process.env.ANDROID_HOME!;
 const avds = process.env.ANDROID_AVD_HOME!;
 // mise puts it on PATH only once it is installed
 process.env.PATH = `${join(sdk, "platform-tools")}:${process.env.PATH}`;
-const image = `system-images;android-36;google_apis_playstore;${arch() === "arm64" ? "arm64-v8a" : "x86_64"}`;
+// Android 17 with Google Play, whose Chrome is the one a phone gets; the AVD is named for it, so a new one replaces it
+const api = "android-37.0";
+const image = `system-images;${api};google_apis_playstore;${arch() === "arm64" ? "arm64-v8a" : "x86_64"}`;
+const avd = `breezy-${api}`;
 
 const run = (cmd: string, args: string[], { input, timeout = 30_000 }: { input?: string; timeout?: number } = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", input, timeout, stdio: "pipe" });
@@ -44,10 +47,10 @@ async function within(seconds: number, what: string, ok: () => boolean) {
 if (!existsSync(join(sdk, "emulator", "emulator")) || !existsSync(join(sdk, ...image.split(";")))) {
   run("sdkmanager", ["emulator", "platform-tools", image], { timeout: 0 });
 }
-if (!existsSync(join(avds, "breezy.ini"))) {
+if (!existsSync(join(avds, `${avd}.ini`))) {
   // avdmanager writes elsewhere when the directory is missing
   mkdirSync(avds, { recursive: true });
-  run("avdmanager", ["create", "avd", "--name", "breezy", "--package", image, "--device", "pixel_8a"], { input: "no\n" });
+  run("avdmanager", ["create", "avd", "--name", avd, "--package", image, "--device", "pixel_8a"], { input: "no\n" });
 }
 // the emulator alone, as the adb commands below name no device; this run connects TCP again
 succeeds(() => adb("disconnect", EMULATOR_TCP))();
@@ -55,7 +58,7 @@ succeeds(() => adb("disconnect", EMULATOR_TCP))();
 if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   mkdirSync(join(root, "build"), { recursive: true });
   const log = openSync(join(root, "build", "android-emulator.log"), "w");
-  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", "breezy", "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save"], { detached: true, stdio: ["ignore", log, log] });
+  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save"], { detached: true, stdio: ["ignore", log, log] });
   emulator.unref();
 }
 await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop", "sys.boot_completed").trim() === "1"));
@@ -108,7 +111,7 @@ await within(90, "Chrome to get past its first-run screens", () => {
   }
   if (/com\.android\.chrome:id\/(url_bar|search_box_text)/.test(ui)) return true;
   // a dump during a transition still shows the screen going away, so only a button the next dump shows too is tapped
-  const button = /text="(?:Use without an account|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui);
+  const button = /text="(?:Use without an account|Stay signed out|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui);
   const now = top + button?.[0];
   if (!button || now !== seen) {
     seen = now;
@@ -121,4 +124,4 @@ await within(90, "Chrome to get past its first-run screens", () => {
 }).catch((e: Error) => {
   throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
 });
-
+console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]} on ${api}`);
