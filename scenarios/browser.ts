@@ -321,7 +321,12 @@ export class BrowserDevice extends Device {
     return true;
   }
 
+  /** Once an editor has the keyboard: one a double tap opened shows a moment later on a busy phone. */
   override async type(text: string) {
+    await this.page.waitForFunction(() => {
+      const e = document.activeElement;
+      return e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || (e as HTMLElement | null)?.isContentEditable === true;
+    }, undefined, { timeout: 5000 });
     await this.page.keyboard.type(text);
     // a touchscreen's touches reach the page by another way than DevTools' keys, and could overtake them
     if (this.touchscreen) {
