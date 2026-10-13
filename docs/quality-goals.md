@@ -52,4 +52,4 @@ The partner judges Breezy on the first sessions; one confusing moment costs trus
 
 ## Gaps
 
-Nothing measures 1, 2a–c or 4 on a real Android phone: the real-device scenarios run headless Chromium, WebKit and Firefox, and `feel.ts` desktop browsers. Live collaboration (relay, direct channel, cursors) serves none of these goals beyond 3a.
+Chrome on an Android emulator runs the touch scenarios nightly, so 1b's gestures work on Android; nothing judges whether they surprise. Its keys come through DevTools, not Android's keyboard (1c). Nothing measures 1a, 1d, 1e, 2a–c or 4 on Android: `feel.ts` times desktop Chromium, and an emulator's timings do not stand for a mid-range phone. No scenario opens a board offline (4b). Live collaboration (relay, direct channel, cursors) serves none of these goals beyond 3a.
