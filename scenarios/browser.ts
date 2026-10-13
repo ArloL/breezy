@@ -365,7 +365,11 @@ export class RealWorld {
     const opened: [AndroidDevice, BrowserContext?] = [device];
     this.androids.push(opened);
     for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`]);
-    const context = opened[1] = await device.launchBrowser({ reducedMotion: "reduce" });
+    // Chrome's launch stalls now and then, never opening its DevTools socket, which Playwright waits for without end;
+    // launching force-stops it first. Why it stalls is not known.
+    const launch = () => Promise.race([device.launchBrowser({ reducedMotion: "reduce" }), sleep(30_000).then(() => null)]);
+    const context = opened[1] = await launch() ?? await launch() ?? undefined;
+    if (!context) throw new Error("Chrome did not launch twice in 30 s");
     // the only tab, so the one on screen: a first launch also restores the tab Chrome's first run left
     const page = await context.newPage();
     for (const p of context.pages()) if (p !== page) await p.close();
