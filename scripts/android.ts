@@ -68,9 +68,8 @@ adb("shell", "pm", "grant", "com.android.chrome", "android.permission.POST_NOTIF
 // while after its package
 const chrome = () => adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main");
 await within(60, "Chrome's activity", succeeds(chrome));
-let ui = "", seen = "";
+let ui = "", top = "", seen = "";
 await within(90, "Chrome to get past its first-run screens", () => {
-  let top;
   try {
     top = adb("shell", "dumpsys activity activities | grep -m1 topResumedActivity");
     ui = adb("shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml");
@@ -97,5 +96,5 @@ await within(90, "Chrome to get past its first-run screens", () => {
   }
   return false;
 }).catch((e: Error) => {
-  throw new Error(`${e.message}; it shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
+  throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
 });
