@@ -16,6 +16,8 @@ export interface Case {
   input: "mouse" | "touch";
   /** Whether the first device must edit text, which the hub's fakes cannot yet. */
   edits?: boolean;
+  /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
+  offline?: boolean;
   run(s: Stage): Promise<void>;
 }
 
@@ -29,6 +31,15 @@ async function laneAndCard({ devices: [a], settle }: Stage) {
   const card = narrow ? await a!.addCard(l.x + l.w / 2, l.y + l.h + 72) : await a!.addCard(l.x + l.w + 200, l.y + 200);
   await settle();
   return { lane, card };
+}
+
+/** Until `test` holds, checked every 250 ms on `d`'s clock for at most `ms`. */
+async function eventually(d: Device, ms: number, test: () => Promise<boolean>) {
+  for (let t = 0; t < ms; t += 250) {
+    if (await test()) return true;
+    await d.wait(250);
+  }
+  return test();
 }
 
 /** Where `id` is drawn relative to `lane` on device `d`. */
@@ -62,6 +73,27 @@ export const cases: Case[] = [
       await a.touchDrag(centre(item(at, card)), centre(item(at, lane)));
       await s.settle();
       assert.deepEqual(await within(b, lane, card), { x: 24, y: 72 });
+    },
+  },
+  {
+    name: "a card dragged into a lane with a finger in the app launched without network shows there on the other device once online",
+    input: "touch",
+    offline: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      const was = await within(b, lane, card);
+      await a.offline(true);
+      await a.relaunch();
+      const at = await a.scene();
+      await a.touchDrag(centre(item(at, card)), centre(item(at, lane)));
+      await a.wait(2000);
+      assert.deepEqual(await within(a, lane, card), { x: 24, y: 72 }, "where it was dragged, offline");
+      assert.deepEqual(await within(b, lane, card), was, "the other device saw it while the first was offline");
+      await a.offline(false);
+      // quality goal 3a: both show it 10 s after both are online
+      const there = await eventually(b, 10_000, async () => JSON.stringify(await within(b, lane, card)) === JSON.stringify({ x: 24, y: 72 }));
+      assert.ok(there, `the other device shows it at ${JSON.stringify(await within(b, lane, card))} 10 s after the first came online`);
     },
   },
   {
