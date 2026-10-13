@@ -45,6 +45,11 @@ jobs:
       run: |
         npm ci
         npm ci --prefix relay
+    # Playwright's CDN drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
     # over the relay only: GitHub's macOS runners open no WebRTC channel
@@ -104,6 +109,11 @@ jobs:
       run: |
         npm ci
         npm ci --prefix relay
+    # Playwright's CDN drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     - name: Install Chromium
       run: npx playwright-core install --with-deps chromium
     - name: Boot the emulator
