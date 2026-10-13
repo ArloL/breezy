@@ -397,8 +397,8 @@ public struct Peer: Equatable, Sendable {
       socket = nil
       s.close()
     }
-    // just opened
-    if socket != nil && now().timeIntervalSince(openedAt) < Self.pongTimeout { return }
+    // just opened; one opened before the network came back may never open
+    if socket != nil && !changed && now().timeIntervalSince(openedAt) < Self.pongTimeout { return }
     if let s = socket {
       // still opening, maybe over the network that went
       socket = nil

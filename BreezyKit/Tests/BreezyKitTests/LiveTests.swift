@@ -492,6 +492,20 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   #expect(!a.connected)
 }
 
+@MainActor @Test func whenTheNetworkComesBackASocketOpenedBeforeItIsNotWaitedFor() {
+  let clock = Clock(), relay = FakeRelay(clock: clock)
+  let a = live(relay, clock)
+  relay.silent = true
+  a.connect()
+  relay.run()
+  clock.advance(1)
+  relay.silent = false
+  a.check(changed: true)
+  relay.run()
+  #expect(relay.opened == 2)
+  #expect(a.connected)
+}
+
 @MainActor @Test func aCheckOpensAtOnceWithoutWaitingOutABackOffAndMakesAnOpenSocketAnswer() {
   let clock = Clock(), relay = FakeRelay(clock: clock)
   let a = live(relay, clock)

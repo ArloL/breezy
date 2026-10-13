@@ -519,6 +519,20 @@ test("a check opens at once, without waiting out a back-off, and makes an open s
   assert.equal(relay.opened, 5);
 });
 
+test("when the network comes back, a socket opened before it is not waited for", async () => {
+  const relay = new FakeRelay(), clock = new Clock();
+  const a = live(relay, clock);
+  relay.silent = true;
+  a.connect();
+  await relay.run();
+  clock.advance(1000);
+  relay.silent = false;
+  a.check(true);
+  await relay.run();
+  assert.equal(relay.opened, 2);
+  assert.ok(a.connected);
+});
+
 test("a socket the relay never welcomes is given up on", async () => {
   const relay = new FakeRelay(), clock = new Clock();
   const a = live(relay, clock);
