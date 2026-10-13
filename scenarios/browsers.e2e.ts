@@ -1,7 +1,7 @@
 // The cases on real devices against server/dev.sh and the relay under wrangler dev: the web app as it ships in headless
 // Chromium, WebKit and Firefox, Chrome on the Android device adb sees, and the Debug Mac app. Slower: run with
 //   node --test scenarios/browsers.e2e.ts
-// under MISE_ENV=android mise exec -- after scripts/android.sh for Android.
+// under MISE_ENV=android mise exec -- after node scripts/android.ts for Android.
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -12,7 +12,7 @@ import { MAC_APP } from "./mac.ts";
 const noMac = !existsSync(MAC_APP) && "the Debug Mac app is not built";
 const noAndroid = (() => {
   try {
-    return !/\tdevice$/m.test(execFileSync("adb", ["devices"], { encoding: "utf8" })) && "no Android device: run scripts/android.sh";
+    return !/\tdevice$/m.test(execFileSync("adb", ["devices"], { encoding: "utf8" })) && "no Android device: run node scripts/android.ts";
   } catch {
     return "no adb: run under MISE_ENV=android mise exec --";
   }

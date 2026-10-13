@@ -17,6 +17,8 @@ on:
     - scripts/gate.ts
     - scripts/feel.ts
     - scenarios/**
+    - scripts/android.ts
+    - mise.android.toml
     - Breezy/Support/Control.swift
     - scripts/bench.sh
     - Breezy/Support/Bench.swift
@@ -72,6 +74,55 @@ jobs:
         xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
     - name: Scenarios on real devices
       run: node --test scenarios/browsers.e2e.ts
+  # GitHub's macOS runners cannot run the emulator, Linux's have KVM; so the Mac → Android pair stays local
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: android
+      # no Linux build
+      MISE_DISABLE_TOOLS: xcodegen
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    - name: Install zsh, PHP's SQLite and KVM access
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes zsh php-cli php-sqlite3
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    - name: Install Chromium
+      run: npx playwright-core install --with-deps chromium
+    - name: Boot the emulator
+      timeout-minutes: 8
+      run: mise exec -- node scripts/android.ts
+    - name: Scenarios on Android
+      timeout-minutes: 8
+      run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
+    - name: Capture the emulator's screen
+      if: ${{ failure() }}
+      run: mise exec -- adb exec-out screencap -p > build/android-screen.png || true
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ failure() }}
+      with:
+        name: android-emulator
+        path: |
+          build/android-emulator.log
+          build/android-screen.png
+          build/android-touches.png
   bench:
     runs-on: macos-latest
     timeout-minutes: 60
