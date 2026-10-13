@@ -1,12 +1,14 @@
-// The web app built as it ships, in headless Chromium, WebKit and Firefox, against sync.php and the relay under wrangler dev,
-// on the wall clock: the same scenarios as on the hub, through the browsers' own input and the DOM.
-import { spawn, type ChildProcess } from "node:child_process";
+// The web app built as it ships, in headless Chromium, WebKit and Firefox and in Chrome on Android, against sync.php and
+// the relay under wrangler dev, on the wall clock: the same scenarios as on the hub, through the browsers' own input and
+// the DOM.
+import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { createServer } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { chromium, firefox, webkit, type Browser, type CDPSession, type Page } from "playwright-core";
+import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { buildWeb } from "../scripts/build-web.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
@@ -15,7 +17,7 @@ import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
 
-export type BrowserKind = "chromium" | "webkit" | "firefox";
+export type BrowserKind = "chromium" | "webkit" | "firefox" | "android";
 export type RealKind = BrowserKind | "mac";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -60,6 +62,78 @@ function readScene(): Scene {
   };
 }
 
+/** The emulator's touchscreen, driven through its console: touches pass through Android's input as a finger's do. */
+export class Touchscreen {
+  private readonly ids = new Map<number, number>();
+  private next = 1;
+  private readonly serial: string;
+  /** The screen's size in pixels. */
+  private readonly px: Point;
+  /** Pixels a page point. */
+  private readonly dpr: number;
+  /** Where the page starts, in points below the screen's top. */
+  private top = 0;
+
+  constructor(serial: string, px: Point, dpr: number) {
+    this.serial = serial;
+    this.px = px;
+    this.dpr = dpr;
+  }
+
+  static async of(serial: string, page: Page): Promise<Touchscreen> {
+    const size = execFileSync("adb", ["-s", serial, "shell", "wm", "size"], { encoding: "utf8" }).match(/(\d+)x(\d+)\s*$/)!;
+    const t = new Touchscreen(serial, { x: Number(size[1]), y: Number(size[2]) }, await page.evaluate(() => devicePixelRatio));
+    // where the page starts below the status bar and Chrome's toolbar: a tap the page keeps from itself, on a page at
+    // the app's scale; the taps before it dismiss what Chrome shows over the page
+    await page.setContent('<meta name="viewport" content="width=device-width">');
+    await page.evaluate(() => {
+      for (const type of ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click"]) {
+        addEventListener(type, (e) => {
+          e.stopImmediatePropagation();
+          if (e instanceof PointerEvent && type === "pointerdown") (window as { tapped?: number }).tapped = e.clientY;
+        }, { capture: true });
+      }
+    });
+    const middle = { x: t.px.x / 2 / t.dpr, y: t.px.y / 2 / t.dpr };
+    for (let i = 0; i < 5; i++) {
+      await t.send([[0, "down", middle]]);
+      await t.send([[0, "up", middle]]);
+      await sleep(1000);
+      const y = await page.evaluate(() => (window as { tapped?: number }).tapped);
+      if (y !== undefined) {
+        t.top = middle.y - y;
+        return t;
+      }
+    }
+    throw new Error("the page sees no touches: something of Chrome's covers it");
+  }
+
+  /** Fingers changing in one frame of the touchscreen, at page points. */
+  async send(fingers: [number, PointerPhase, Point][]) {
+    const axis = (v: number, of: number) => Math.round((v * this.dpr * 32767) / of);
+    const events: string[] = [];
+    for (const [finger, phase, p] of fingers) {
+      events.push(`EV_ABS:ABS_MT_SLOT:${finger}`);
+      if (phase === "down") {
+        this.ids.set(finger, this.next++);
+        events.push(`EV_ABS:ABS_MT_TRACKING_ID:${this.ids.get(finger)}`);
+      }
+      if (phase === "down" || phase === "move") {
+        events.push(`EV_ABS:ABS_MT_POSITION_X:${axis(p.x, this.px.x)}`, `EV_ABS:ABS_MT_POSITION_Y:${axis(p.y + this.top, this.px.y)}`);
+      }
+      if (phase === "down") events.push("EV_ABS:ABS_MT_PRESSURE:1024", "EV_ABS:ABS_MT_TOUCH_MAJOR:1280", "EV_ABS:ABS_MT_TOUCH_MINOR:1280");
+      // a touchscreen cannot cancel: the finger lifts
+      if (phase === "up" || phase === "cancel") {
+        this.ids.delete(finger);
+        events.push("EV_ABS:ABS_MT_PRESSURE:0", "EV_ABS:ABS_MT_TRACKING_ID:-1");
+      }
+    }
+    await run("adb", ["-s", this.serial, "emu", "event", "send", ...events, "EV_SYN:0:0"]);
+  }
+}
+
+const run = promisify(execFile);
+
 /** A finger's pointer event, as iOS Safari sends one: runs in the page, at the element under the point. */
 function touchEvent([type, x, y, finger]: [string, number, number, number]) {
   const target = (type === "pointerdown" && document.elementFromPoint(x, y)) || document.body;
@@ -74,14 +148,23 @@ export class BrowserDevice extends Device {
   /** The fingers down, by id, as a touch event lists them all. */
   private down = new Map<number, Point>();
 
-  constructor(kind: BrowserKind, page: Page) {
+  /** An emulator's, which touches go through in place of DevTools. */
+  private readonly touchscreen?: Touchscreen;
+
+  constructor(kind: BrowserKind, page: Page, touchscreen?: Touchscreen) {
     super();
     this.kind = kind;
     this.page = page;
+    this.touchscreen = touchscreen;
+  }
+
+  override async size() {
+    return this.page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
   }
 
   override async fingers(phase: PointerPhase, moves: [number, Point][]) {
-    if (this.kind !== "chromium" || phase !== "move") return super.fingers(phase, moves);
+    if (this.touchscreen) return this.touchscreen.send(moves.map(([finger, p]) => [finger, phase, p]));
+    if (!this.devtools || phase !== "move") return super.fingers(phase, moves);
     for (const [finger, p] of moves) this.down.set(finger, p);
     await this.touch(phase, moves[0]![1], moves[0]![0]);
   }
@@ -95,6 +178,10 @@ export class BrowserDevice extends Device {
     await this.cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
   }
 
+  private get devtools() {
+    return this.kind === "chromium" || this.kind === "android";
+  }
+
   async scene(): Promise<Scene> {
     return this.page.evaluate(readScene);
   }
@@ -104,7 +191,8 @@ export class BrowserDevice extends Device {
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
-    if (extra.kind === "touch" && this.kind === "chromium") return this.touch(phase, p, extra.finger ?? 0);
+    if (extra.kind === "touch" && this.touchscreen) return this.touchscreen.send([[extra.finger ?? 0, phase, p]]);
+    if (extra.kind === "touch" && this.devtools) return this.touch(phase, p, extra.finger ?? 0);
     if (extra.kind === "touch") {
       const type = { down: "pointerdown", move: "pointermove", up: "pointerup", cancel: "pointercancel" }[phase];
       return this.page.evaluate(touchEvent, [type, p.x, p.y, extra.finger ?? 0] as [string, number, number, number]);
@@ -173,6 +261,7 @@ export class BrowserDevice extends Device {
 export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
+  private readonly androids: [AndroidDevice, BrowserContext][] = [];
   private readonly children: ChildProcess[] = [];
   private readonly dirs: string[] = [];
   private web?: ReturnType<typeof createServer>;
@@ -195,10 +284,8 @@ export class RealWorld {
           await mac.command({ cmd: "open", board });
           continue;
         }
-        const browser = await { chromium, webkit, firefox }[kind].launch();
-        w.browsers.push(browser);
-        const page = await (await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" })).newPage();
-        const d = new BrowserDevice(kind, page);
+        const [page, touchscreen] = kind === "android" ? await w.android() : [await w.browser(kind)];
+        const d = new BrowserDevice(kind, page, touchscreen);
         w.devices.push(d);
         await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
         // as direct-e2e.ts does: the list may be laid out out of sight, which a person's click could not reach either
@@ -221,6 +308,29 @@ export class RealWorld {
       await w.stop();
       throw e;
     }
+  }
+
+  private async browser(kind: Exclude<BrowserKind, "android">) {
+    const browser = await { chromium, webkit, firefox }[kind].launch();
+    this.browsers.push(browser);
+    return (await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" })).newPage();
+  }
+
+  /** Chrome on the phone or emulator adb sees, at its own size, reaching this Mac's servers at its own localhost. */
+  private async android() {
+    const [device] = await _android.devices();
+    if (!device) throw new Error("no Android device: run scripts/android.sh");
+    for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`]);
+    const context = await device.launchBrowser({ reducedMotion: "reduce" });
+    this.androids.push([device, context]);
+    const page = context.pages()[0] ?? await context.newPage();
+    // Chrome keeps its profile from run to run
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
+    await cdp.detach();
+    // an emulator's touchscreen; a phone's touches go through DevTools
+    const touchscreen = device.serial().startsWith("emulator-") ? await Touchscreen.of(device.serial(), page) : undefined;
+    return [page, touchscreen] as const;
   }
 
   private async serve() {
@@ -254,6 +364,7 @@ export class RealWorld {
 
   async stop() {
     for (const b of this.browsers) await b.close().catch(() => {});
+    for (const [d, c] of this.androids) await c.close().then(() => d.close(), () => d.close());
     for (const d of this.devices) if (d instanceof MacDevice) d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
