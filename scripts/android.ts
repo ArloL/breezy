@@ -68,9 +68,11 @@ await within(60, "adbd to listen on TCP", succeeds(() => {
   adb("-s", serial, "tcpip", "5555");
   return false;
 }));
-// already there when the emulator was running
-succeeds(() => adb("-s", serial, "emu", "redir", "add", `tcp:${EMULATOR_TCP.split(":")[1]}:5555`))();
-await within(60, `adb to connect to ${EMULATOR_TCP}`, succeeds(() => adb("connect", EMULATOR_TCP).includes("connected") && adb("-s", EMULATOR_TCP, "get-state").trim() === "device"));
+await within(60, `adb to connect to ${EMULATOR_TCP}`, succeeds(() => {
+  // fails while the emulator's console is starting, and when the redirect is there already
+  succeeds(() => adb("-s", serial, "emu", "redir", "add", `tcp:${EMULATOR_TCP.split(":")[1]}:5555`))();
+  return adb("connect", EMULATOR_TCP).includes("connected") && adb("-s", EMULATOR_TCP, "get-state").trim() === "device";
+}));
 device = ["-s", EMULATOR_TCP];
 // before Android's own connections take them
 for (const port of [WEB, SERVER, RELAY]) {
