@@ -112,6 +112,8 @@ export class Gestures {
       if (this.points.size < 2) return;
       const [a, b] = this.points.values();
       const c = mid(a, b);
+      // a frame's moves come one finger at a time, with the frame's time: its last has every finger where it went
+      if (this.two.track.at(-1)?.t === t) this.two.track.pop();
       this.two.track.push({ ...c, t });
       this.h.pinch(c, dist(a, b) / this.two.d);
       return;
