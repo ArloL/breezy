@@ -102,17 +102,16 @@ await within(90, "Chrome to get past its first-run screens", () => {
     return false;
   }
   if (/com\.android\.chrome:id\/(url_bar|search_box_text)/.test(ui)) return true;
-  // a dump during a transition still shows the screen going away, so only one the next agrees with is tapped
-  const now = top + ui;
-  if (now !== seen) {
+  // a dump during a transition still shows the screen going away, so only a button the next dump shows too is tapped
+  const button = /text="(?:Use without an account|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui);
+  const now = top + button?.[0];
+  if (!button || now !== seen) {
     seen = now;
     return false;
   }
-  const b = /text="(?:Use without an account|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui)?.slice(1).map(Number);
-  if (b) {
-    adb("shell", "input", "tap", String(Math.round((b[0]! + b[2]!) / 2)), String(Math.round((b[1]! + b[3]!) / 2)));
-    seen = "";
-  }
+  const [x0, y0, x1, y1] = button.slice(1).map(Number);
+  adb("shell", "input", "tap", String(Math.round((x0! + x1!) / 2)), String(Math.round((y0! + y1!) / 2)));
+  seen = "";
   return false;
 }).catch((e: Error) => {
   throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
