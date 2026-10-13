@@ -418,10 +418,11 @@ const press = (page: Page, selector: string) => until(selector, () => page.evalu
   return !!e;
 }, selector));
 
-/** Opens the space's board from the board list. */
+/** Opens the space's board from the board list, once it is drawn: opening draws it on the next frame. */
 async function openBoard(page: Page) {
   await press(page, '.boards-group[data-group^="space:"] li[data-board] .open');
   await page.waitForSelector('body[data-screen="board"]');
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
 /** Joins the space of invite `hash` as `name`, as a person does from the link. */
