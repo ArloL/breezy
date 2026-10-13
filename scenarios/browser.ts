@@ -147,11 +147,21 @@ export class Touchscreen {
 
 const run = promisify(execFile);
 
-/** A finger's pointer event, as iOS Safari sends one: runs in the page, at the element under the point. */
-function touchEvent([type, x, y, finger]: [string, number, number, number]) {
-  const target = (type === "pointerdown" && document.elementFromPoint(x, y)) || document.body;
-  target.dispatchEvent(new PointerEvent(type, { pointerId: 10 + finger, pointerType: "touch", isPrimary: finger === 0, clientX: x, clientY: y, bubbles: true, cancelable: true, buttons: type === "pointerup" ? 0 : 1 }));
+/**
+ * A frame's finger pointer events, as iOS Safari sends them: one at a time, each at the element under its point, all with
+ * the frame's time. Runs in the page.
+ */
+function touchEvents(events: [string, number, number, number][]) {
+  const timeStamp = performance.now();
+  for (const [type, x, y, finger] of events) {
+    const target = (type === "pointerdown" && document.elementFromPoint(x, y)) || document.body;
+    const e = new PointerEvent(type, { pointerId: 10 + finger, pointerType: "touch", isPrimary: finger === 0, clientX: x, clientY: y, bubbles: true, cancelable: true, buttons: type === "pointerup" ? 0 : 1 });
+    Object.defineProperty(e, "timeStamp", { value: timeStamp });
+    target.dispatchEvent(e);
+  }
 }
+
+const TOUCH_TYPES = { down: "pointerdown", move: "pointermove", up: "pointerup", cancel: "pointercancel" };
 
 export class BrowserDevice extends Device {
   readonly kind: BrowserKind;
@@ -177,7 +187,8 @@ export class BrowserDevice extends Device {
 
   override async fingers(phase: PointerPhase, moves: [number, Point][]) {
     if (this.touchscreen) return this.touchscreen.send(moves.map(([finger, p]) => [finger, phase, p]));
-    if (!this.devtools || phase !== "move") return super.fingers(phase, moves);
+    if (!this.devtools) return this.page.evaluate(touchEvents, moves.map(([finger, p]): [string, number, number, number] => [TOUCH_TYPES[phase], p.x, p.y, finger]));
+    if (phase !== "move") return super.fingers(phase, moves);
     for (const [finger, p] of moves) this.down.set(finger, p);
     await this.touch(phase, moves[0]![1], moves[0]![0]);
   }
@@ -221,10 +232,7 @@ export class BrowserDevice extends Device {
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
     if (extra.kind === "touch" && this.touchscreen) return this.touchscreen.send([[extra.finger ?? 0, phase, p]]);
     if (extra.kind === "touch" && this.devtools) return this.touch(phase, p, extra.finger ?? 0);
-    if (extra.kind === "touch") {
-      const type = { down: "pointerdown", move: "pointermove", up: "pointerup", cancel: "pointercancel" }[phase];
-      return this.page.evaluate(touchEvent, [type, p.x, p.y, extra.finger ?? 0] as [string, number, number, number]);
-    }
+    if (extra.kind === "touch") return this.fingers(phase, [[extra.finger ?? 0, p]]);
     const keys = [extra.shift && "Shift", extra.option && "Alt"].filter((k): k is string => !!k);
     const m = this.page.mouse;
     if (phase === "down") {
