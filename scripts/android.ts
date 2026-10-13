@@ -78,6 +78,9 @@ device = ["-s", EMULATOR_TCP];
 for (const port of [WEB, SERVER, RELAY]) {
   await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
 }
+// the Play Store updates Google Play services and itself while the scenarios run, and Chrome quits when Play services is
+// replaced, closing the page under a case
+await within(60, "the Play Store to be off", succeeds(() => adb("shell", "pm", "disable-user", "--user", "0", "com.android.vending").includes("disabled")));
 // a cold boot reports itself completed before the package manager knows Chrome
 await within(60, "the package manager to know Chrome", succeeds(() => adb("shell", "pm", "path", "com.android.chrome")));
 // a user build's Chrome reads the command line Playwright writes only as the debug app
