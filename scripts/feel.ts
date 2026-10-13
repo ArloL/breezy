@@ -479,7 +479,7 @@ if (only.has("launch")) {
     // a missed presence counts as 20 s, as outages count as the time given up after, rather than ending the run
     let shown = null;
     for (const end = Date.now() + 20_000; Date.now() < end && shown === null; await sleep(50))
-      if (await b.run(`!!document.querySelector(".boards-list li[data-board] .people")?.children.length`)) shown = (await b.run<number>("__now()")) - t;
+      if (await b.run(`!!document.querySelector('.boards-group[data-group^="space:"] li[data-board] .people')?.children.length`)) shown = (await b.run<number>("__now()")) - t;
     if (shown === null) {
       console.log(`  launch ${r}: b did not show a on the board list within 20 s`);
       console.log(`    b: ${await b.run<string>(`JSON.stringify({ url: location.href, sheet: document.querySelector("#sheet:not([hidden]) .sheet-title")?.textContent ?? null, rows: [...document.querySelectorAll(".boards-list li[data-board]")].map((li) => li.outerHTML.slice(0, 300)) })`)}`);
