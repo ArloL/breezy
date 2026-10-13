@@ -141,6 +141,18 @@ test("velocity is measured over the last 80 ms and is zero after a pause", () =>
   assert.deepEqual(s.log.at(-1)![2], P(0, 0));
 });
 
+test("a frame's moves arrive one finger at a time with its timestamp: only its last midpoint counts toward velocity", () => {
+  const { g, log } = setup();
+  g.down(1, 100, 0, 0);
+  g.down(2, 200, 0, 0);
+  for (let i = 1, t = 30; i <= 3; i++, t += 30) {
+    g.move(1, 100 - 5 * i, 0, t);
+    g.move(2, 200 + 5 * i, 0, t);
+  }
+  g.up(1, 85, 0, 100);
+  assert.deepEqual(log.at(-1), ["pinchEnd", P(0, 0)]);
+});
+
 test("a cancelled drag is undone, and the touch's lift is ignored", () => {
   const { g, names } = setup();
   g.down(1, 0, 0, 0);
