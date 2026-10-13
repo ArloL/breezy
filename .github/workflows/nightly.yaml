@@ -78,7 +78,9 @@ jobs:
         xcodegen generate
         xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
     - name: Scenarios on real devices
-      run: node --test scenarios/browsers.e2e.ts
+      timeout-minutes: 30
+      # a handle left open once kept node from exiting after the last case, until the job timed out
+      run: node --test --test-force-exit scenarios/browsers.e2e.ts
   # GitHub's macOS runners cannot run the emulator, Linux's have KVM; so the Mac → Android pair stays local
   android:
     runs-on: ubuntu-latest

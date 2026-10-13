@@ -494,6 +494,7 @@ export class RealWorld {
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();
+    this.web?.closeAllConnections();
   }
 }
 
