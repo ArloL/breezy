@@ -66,18 +66,35 @@ adb("shell", "am", "set-debug-app", "--persistent", "com.android.chrome");
 adb("shell", "pm", "grant", "com.android.chrome", "android.permission.POST_NOTIFICATIONS");
 // Chrome's first-run screens, which Playwright's --disable-fre does not skip; after a cold boot its activity shows up a
 // while after its package
-await within(60, "Chrome's activity", succeeds(() => adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main")));
-let ui = "";
+const chrome = () => adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main");
+await within(60, "Chrome's activity", succeeds(chrome));
+let ui = "", seen = "";
 await within(90, "Chrome to get past its first-run screens", () => {
+  let top;
   try {
+    top = adb("shell", "dumpsys activity activities | grep -m1 topResumedActivity");
     ui = adb("shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml");
   } catch {
     // fails while the screen is still changing
     return false;
   }
+  // a tap meant for Chrome lands on whatever is there instead: the home screen's search bar sits under "Got it"
+  if (!top.includes("com.android.chrome/")) {
+    succeeds(chrome)();
+    return false;
+  }
   if (/com\.android\.chrome:id\/(url_bar|search_box_text)/.test(ui)) return true;
+  // a dump during a transition still shows the screen going away, so only one the next agrees with is tapped
+  const now = top + ui;
+  if (now !== seen) {
+    seen = now;
+    return false;
+  }
   const b = /text="(?:Use without an account|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui)?.slice(1).map(Number);
-  if (b) adb("shell", "input", "tap", String(Math.round((b[0]! + b[2]!) / 2)), String(Math.round((b[1]! + b[3]!) / 2)));
+  if (b) {
+    adb("shell", "input", "tap", String(Math.round((b[0]! + b[2]!) / 2)), String(Math.round((b[1]! + b[3]!) / 2)));
+    seen = "";
+  }
   return false;
 }).catch((e: Error) => {
   throw new Error(`${e.message}; it shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
