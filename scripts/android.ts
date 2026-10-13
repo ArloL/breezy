@@ -20,7 +20,9 @@ const image = `system-images;android-36;google_apis_playstore;${arch() === "arm6
 
 const run = (cmd: string, args: string[], { input, timeout = 30_000 }: { input?: string; timeout?: number } = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", input, timeout, stdio: "pipe" });
-const adb = (...args: string[]) => run("adb", args);
+/** The device the commands go to once there are two: the emulator, and adbd on TCP. */
+let device: string[] = [];
+const adb = (...args: string[]) => run("adb", [...device, ...args]);
 /** Whether `f` neither throws nor returns false. */
 const succeeds = (f: () => unknown) => () => {
   try {
@@ -57,6 +59,19 @@ if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   emulator.unref();
 }
 await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop", "sys.boot_completed").trim() === "1"));
+// The scenarios and the rest of this script reach adbd over TCP, which the emulator redirects from this machine's port to
+// its own: the emulator's adb pipe drops every connection on it under load, a few times an hour on some runners, and an
+// `am start` it drops leaves Chrome half launched. Listening on TCP restarts adbd.
+const serial = /^(emulator-\d+)\tdevice$/m.exec(adb("devices"))![1]!;
+await within(60, "adbd to listen on TCP", succeeds(() => {
+  if (adb("-s", serial, "shell", "getprop", "service.adb.tcp.port").trim() === "5555") return true;
+  adb("-s", serial, "tcpip", "5555");
+  return false;
+}));
+// already there when the emulator was running
+succeeds(() => adb("-s", serial, "emu", "redir", "add", `tcp:${EMULATOR_TCP.split(":")[1]}:5555`))();
+await within(60, `adb to connect to ${EMULATOR_TCP}`, succeeds(() => adb("connect", EMULATOR_TCP).includes("connected") && adb("-s", EMULATOR_TCP, "get-state").trim() === "device"));
+device = ["-s", EMULATOR_TCP];
 // before Android's own connections take them
 for (const port of [WEB, SERVER, RELAY]) {
   await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
@@ -81,7 +96,8 @@ await within(90, "Chrome to get past its first-run screens", () => {
     return false;
   }
   // a tap meant for Chrome lands on whatever is there instead: the home screen's search bar sits under "Got it"
-  if (!top.includes("com.android.chrome/")) {
+  // in front but not drawn, as when its launch stalled, it is launched again too
+  if (!top.includes("com.android.chrome/") || !ui.includes('package="com.android.chrome"')) {
     succeeds(chrome)();
     return false;
   }
@@ -102,15 +118,3 @@ await within(90, "Chrome to get past its first-run screens", () => {
   throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
 });
 
-// The scenarios drive Chrome through adbd over TCP, which the emulator redirects from this machine's port to its own: the
-// emulator's adb pipe drops every connection on it under load, a few times an hour on some runners. Listening on TCP
-// restarts adbd, which lets go of the ports reversed above until they are reversed again.
-const serial = /^(emulator-\d+)\tdevice$/m.exec(adb("devices"))![1]!;
-adb("-s", serial, "tcpip", "5555");
-await within(60, "adbd to come back on TCP", succeeds(() => adb("-s", serial, "shell", "getprop", "service.adb.tcp.port").trim() === "5555"));
-// already there when the emulator was running
-succeeds(() => adb("-s", serial, "emu", "redir", "add", `tcp:${EMULATOR_TCP.split(":")[1]}:5555`))();
-await within(60, `adb to connect to ${EMULATOR_TCP}`, succeeds(() => adb("connect", EMULATOR_TCP).includes("connected") && adb("-s", EMULATOR_TCP, "get-state").trim() === "device"));
-for (const port of [WEB, SERVER, RELAY]) {
-  await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`)));
-}
