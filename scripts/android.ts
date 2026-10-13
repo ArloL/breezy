@@ -65,7 +65,9 @@ await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop",
 // The scenarios and the rest of this script reach adbd over TCP, which the emulator redirects from this machine's port to
 // its own: the emulator's adb pipe drops every connection on it under load, a few times an hour on some runners, and an
 // `am start` it drops leaves Chrome half launched. Listening on TCP restarts adbd.
-const serial = /^(emulator-\d+)\tdevice$/m.exec(adb("devices"))![1]!;
+// listed offline for a moment when its pipe drops
+let serial = "";
+await within(60, "the emulator to be listed", succeeds(() => (serial = /^(emulator-\d+)\tdevice$/m.exec(adb("devices"))?.[1] ?? "") !== ""));
 await within(60, "adbd to listen on TCP", succeeds(() => {
   if (adb("-s", serial, "shell", "getprop", "service.adb.tcp.port").trim() === "5555") return true;
   adb("-s", serial, "tcpip", "5555");
