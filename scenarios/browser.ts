@@ -71,7 +71,10 @@ function readScene(): Scene {
 export class Touchscreen {
   private readonly ids = new Map<number, number>();
   private next = 1;
+  /** The device's adb serial, for shell commands. */
   private readonly serial: string;
+  /** The emulator's, whose console takes the touches. */
+  private readonly console: string;
   /** The screen's size in pixels. */
   private readonly px: Point;
   /** Pixels a page point. */
@@ -79,15 +82,16 @@ export class Touchscreen {
   /** Where the page starts, in points below the screen's top. */
   private top = 0;
 
-  constructor(serial: string, px: Point, dpr: number) {
+  constructor(serial: string, console: string, px: Point, dpr: number) {
     this.serial = serial;
+    this.console = console;
     this.px = px;
     this.dpr = dpr;
   }
 
-  static async of(serial: string, page: Page): Promise<Touchscreen> {
+  static async of(serial: string, console: string, page: Page): Promise<Touchscreen> {
     const size = execFileSync("adb", ["-s", serial, "shell", "wm", "size"], { encoding: "utf8" }).match(/(\d+)x(\d+)\s*$/)!;
-    const t = new Touchscreen(serial, { x: Number(size[1]), y: Number(size[2]) }, await page.evaluate(() => devicePixelRatio));
+    const t = new Touchscreen(serial, console, { x: Number(size[1]), y: Number(size[2]) }, await page.evaluate(() => devicePixelRatio));
     // where the page starts below the status bar and Chrome's toolbar: a tap the page keeps from itself, on a page at
     // the app's scale; the taps before it dismiss what Chrome shows over the page
     await page.setContent('<meta name="viewport" content="width=device-width">');
@@ -144,7 +148,7 @@ export class Touchscreen {
         events.push("EV_ABS:ABS_MT_PRESSURE:0", "EV_ABS:ABS_MT_TRACKING_ID:-1");
       }
     }
-    await run("adb", ["-s", this.serial, "emu", "event", "send", ...events, "EV_SYN:0:0"]);
+    await run("adb", ["-s", this.console, "emu", "event", "send", ...events, "EV_SYN:0:0"]);
   }
 }
 
@@ -383,7 +387,7 @@ export class RealWorld {
     await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
     await cdp.detach();
     // an emulator's touchscreen; a phone's touches go through DevTools
-    const touchscreen = emulator ? await Touchscreen.of(emulator, page) : undefined;
+    const touchscreen = emulator ? await Touchscreen.of(device.serial(), emulator, page) : undefined;
     return [page, touchscreen] as const;
   }
 
@@ -434,7 +438,8 @@ export class RealWorld {
       // closing the context leaves Chrome's tabs open on a phone, and it restores every one when it starts again
       for (const p of c?.pages() ?? []) await p.close().catch(() => {});
       await c?.close().catch(() => {});
-      await d.close().catch(() => {});
+      // which once waited 90 s, on a connection adbd had stopped serving, after the case had passed
+      await Promise.race([d.close().catch(() => {}), sleep(10_000)]);
     }
     for (const d of this.devices) if (d instanceof MacDevice) d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
