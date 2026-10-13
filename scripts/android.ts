@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Boots a headless Pixel 8a emulator whose Chrome Playwright can drive, for the scenarios' android device:
 //   MISE_ENV=android mise install && MISE_ENV=android mise exec -- node scripts/android.ts
-// Installs the system image and creates the AVD the first time. Each wait is bounded and names what it waited for.
+// Installs the system image and creates the AVD the first time, and connects adb to the emulator over TCP as well. Each
+// wait is bounded and names what it waited for.
 // Stop it with adb emu kill.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, openSync } from "node:fs";
 import { arch } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { RELAY, SERVER, WEB } from "../scenarios/browser.ts";
+import { EMULATOR_TCP, RELAY, SERVER, WEB } from "../scenarios/browser.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const sdk = process.env.ANDROID_HOME!;
@@ -46,6 +47,8 @@ if (!existsSync(join(avds, "breezy.ini"))) {
   mkdirSync(avds, { recursive: true });
   run("avdmanager", ["create", "avd", "--name", "breezy", "--package", image, "--device", "pixel_8a"], { input: "no\n" });
 }
+// the emulator alone, as the adb commands below name no device; this run connects TCP again
+succeeds(() => adb("disconnect", EMULATOR_TCP))();
 // one still listed while it shuts down is not running
 if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   mkdirSync(join(root, "build"), { recursive: true });
@@ -98,3 +101,16 @@ await within(90, "Chrome to get past its first-run screens", () => {
 }).catch((e: Error) => {
   throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
 });
+
+// The scenarios drive Chrome through adbd over TCP, which the emulator redirects from this machine's port to its own: the
+// emulator's adb pipe drops every connection on it under load, a few times an hour on some runners. Listening on TCP
+// restarts adbd, which lets go of the ports reversed above until they are reversed again.
+const serial = /^(emulator-\d+)\tdevice$/m.exec(adb("devices"))![1]!;
+adb("-s", serial, "tcpip", "5555");
+await within(60, "adbd to come back on TCP", succeeds(() => adb("-s", serial, "shell", "getprop", "service.adb.tcp.port").trim() === "5555"));
+// already there when the emulator was running
+succeeds(() => adb("-s", serial, "emu", "redir", "add", `tcp:${EMULATOR_TCP.split(":")[1]}:5555`))();
+await within(60, `adb to connect to ${EMULATOR_TCP}`, succeeds(() => adb("connect", EMULATOR_TCP).includes("connected") && adb("-s", EMULATOR_TCP, "get-state").trim() === "device"));
+for (const port of [WEB, SERVER, RELAY]) {
+  await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`)));
+}

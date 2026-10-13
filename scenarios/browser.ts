@@ -22,6 +22,9 @@ export type RealKind = BrowserKind | "mac";
 const root = new URL("..", import.meta.url).pathname;
 // inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
 export const WEB = 58565, SERVER = 58566, RELAY = 58568;
+/** The emulator's adbd over TCP, through its port redirect: its own adb pipe drops every connection on it under load, a
+ * few times an hour on some runners, and the page with them. scripts/android.ts connects it. */
+export const EMULATOR_TCP = "127.0.0.1:5600";
 /** The web app's version, so that its service worker runs as on breezy.k5d.de. */
 const VERSION = "scenarios";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -352,7 +355,11 @@ export class RealWorld {
 
   /** Chrome on the phone or emulator adb sees, at its own size, reaching this Mac's servers at its own localhost. */
   private async android() {
-    const [device] = await _android.devices();
+    const devices = await _android.devices();
+    // an emulator by TCP, its touchscreen through its console
+    const device = devices.find((d) => d.serial() === EMULATOR_TCP) ?? devices[0];
+    const emulator = devices.find((d) => d.serial().startsWith("emulator-"))?.serial();
+    for (const d of devices) if (d !== device) await d.close();
     if (!device) throw new Error("no Android device: run node scripts/android.ts");
     // closed even when what follows fails, else its connection keeps the run from ending
     const opened: [AndroidDevice, BrowserContext?] = [device];
@@ -368,7 +375,7 @@ export class RealWorld {
     await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
     await cdp.detach();
     // an emulator's touchscreen; a phone's touches go through DevTools
-    const touchscreen = device.serial().startsWith("emulator-") ? await Touchscreen.of(device.serial(), page) : undefined;
+    const touchscreen = emulator ? await Touchscreen.of(emulator, page) : undefined;
     return [page, touchscreen] as const;
   }
 
