@@ -23,13 +23,12 @@ const pairs: [RealKind, RealKind][] = [["chromium", "webkit"], ["webkit", "firef
 for (const c of cases) {
   for (const [a, b] of pairs) {
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && a === "android") continue;
-    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].includes("android") && noAndroid, timeout: 90_000 }, async () => {
-      const w = await RealWorld.start([a, b]);
-      try {
-        await c.run({ devices: w.devices, settle: () => w.settle() });
-      } finally {
-        await w.stop();
-      }
+    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].includes("android") && noAndroid, timeout: 90_000 }, async (t) => {
+      const w = new RealWorld();
+      // also after a timeout, which leaves the test's own code waiting
+      t.after(() => w.stop());
+      await w.start([a, b]);
+      await c.run({ devices: w.devices, settle: () => w.settle() });
     });
   }
 }

@@ -313,40 +313,34 @@ export class RealWorld {
   private readonly dirs: string[] = [];
   private web?: ReturnType<typeof createServer>;
 
-  /** Browsers and Macs of `kinds`, in one space with one board that all of them show. */
-  static async start(kinds: RealKind[]): Promise<RealWorld> {
-    const w = new RealWorld();
-    try {
-      await w.serve();
-      const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
-      const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
-      for (const [i, kind] of kinds.entries()) {
-        if (kind === "mac") {
-          const mac = await MacDevice.start(58570 + i, `d${i}`);
-          w.devices.push(mac);
-          await mac.command({ cmd: "join", link });
-          const board = i === 0
-            ? await mac.command<string>({ cmd: "createBoard", title: "Board" })
-            : await until("the board on the Mac", async () => (await mac.command<string[]>({ cmd: "boards" }))[0]);
-          await mac.command({ cmd: "open", board });
-          continue;
-        }
-        const [page, touchscreen] = kind === "android" ? await w.android() : [await w.browser(kind)];
-        const d = new BrowserDevice(kind, page, touchscreen);
-        w.devices.push(d);
-        await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
-        if (i === 0) {
-          await press(page, "section.boards-group:has(header .edit) button.new");
-          await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
-          await page.fill("#sheet input", "Board");
-          await press(page, '#sheet [data-sheet="ok"]');
-        }
-        await openBoard(page);
+  /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
+   * or never ends. */
+  async start(kinds: RealKind[]) {
+    await this.serve();
+    const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
+    const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
+    for (const [i, kind] of kinds.entries()) {
+      if (kind === "mac") {
+        const mac = await MacDevice.start(58570 + i, `d${i}`);
+        this.devices.push(mac);
+        await mac.command({ cmd: "join", link });
+        const board = i === 0
+          ? await mac.command<string>({ cmd: "createBoard", title: "Board" })
+          : await until("the board on the Mac", async () => (await mac.command<string[]>({ cmd: "boards" }))[0]);
+        await mac.command({ cmd: "open", board });
+        continue;
       }
-      return w;
-    } catch (e) {
-      await w.stop();
-      throw e;
+      const [page, touchscreen] = kind === "android" ? await this.android() : [await this.browser(kind)];
+      const d = new BrowserDevice(kind, page, touchscreen);
+      this.devices.push(d);
+      await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
+      if (i === 0) {
+        await press(page, "section.boards-group:has(header .edit) button.new");
+        await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
+        await page.fill("#sheet input", "Board");
+        await press(page, '#sheet [data-sheet="ok"]');
+      }
+      await openBoard(page);
     }
   }
 
@@ -418,11 +412,12 @@ export class RealWorld {
     throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${boards[i]}`).join("; ")}`);
   }
 
+  /** Everything it started, each part even when another part fails to stop, as when the phone's adb connection broke. */
   async stop() {
     for (const b of this.browsers) await b.close().catch(() => {});
     for (const [d, c] of this.androids) {
       await c?.close().catch(() => {});
-      await d.close();
+      await d.close().catch(() => {});
     }
     for (const d of this.devices) if (d instanceof MacDevice) d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
