@@ -427,6 +427,8 @@ export class RealWorld {
   async stop() {
     for (const b of this.browsers) await b.close().catch(() => {});
     for (const [d, c] of this.androids) {
+      // closing the context leaves Chrome's tabs open on a phone, and it restores every one when it starts again
+      for (const p of c?.pages() ?? []) await p.close().catch(() => {});
       await c?.close().catch(() => {});
       await d.close().catch(() => {});
     }
