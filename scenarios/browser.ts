@@ -220,9 +220,13 @@ export class BrowserDevice extends Device {
     await this.page.context().setOffline(off);
   }
 
+  /** Once the board shows the cards and lanes it showed before, which it reads from storage after it opens. */
   override async relaunch() {
+    const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
+    const had = ids(await this.scene());
     await this.page.goto(`http://localhost:${WEB}/`);
     await openBoard(this.page);
+    await until(`${this.kind} to show its board again`, async () => ids(await this.scene()) === had);
   }
 
   async wait(ms: number) {
@@ -392,18 +396,26 @@ export class RealWorld {
     await until("the server", () => fetch(`http://127.0.0.1:${SERVER}/sync.php`).then(() => true, () => false));
   }
 
-  /** Until what every device shows stays the same for half a second. */
-  /** Until every device shows the same cards and lanes, and nothing has changed for 500 ms. */
+  /**
+   * Until every device shows the same board, and nothing has changed for 500 ms. What a device holds floats where only
+   * it draws it, and a card's size is its own font's.
+   */
   async settle(ms = 15_000) {
-    let last = "", since = Date.now(), ids: string[] = [];
+    let last = "", since = Date.now(), boards: string[] = [];
     for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
       const scenes = await Promise.all(this.devices.map((d) => d.scene()));
-      ids = scenes.map((s) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" "));
+      const held = new Set(scenes.flatMap((s) => [...s.cards, ...s.lanes].filter((i) => i.held).map((i) => i.id)));
+      const at = (i: SceneItem) => held.has(i.id) ? {} : { x: Math.round(i.x), y: Math.round(i.y) };
+      const byId = (a: { id: string }, b: { id: string }) => a.id < b.id ? -1 : 1;
+      boards = scenes.map((s) => JSON.stringify([
+        s.cards.map((c) => ({ id: c.id, ...at(c), color: c.color, text: c.text })).sort(byId),
+        s.lanes.map((l) => ({ id: l.id, ...at(l), ...held.has(l.id) ? {} : { w: Math.round(l.w), h: Math.round(l.h) }, title: l.title })).sort(byId),
+      ]));
       const now = JSON.stringify(scenes);
       if (now !== last) [last, since] = [now, Date.now()];
-      else if (Date.now() - since >= 500 && ids.every((i) => i === ids[0])) return;
+      else if (Date.now() - since >= 500 && boards.every((b) => b === boards[0])) return;
     }
-    throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${ids[i] || "nothing"}`).join("; ")}`);
+    throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${boards[i]}`).join("; ")}`);
   }
 
   async stop() {
