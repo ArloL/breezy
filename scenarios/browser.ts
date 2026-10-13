@@ -4,7 +4,7 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -21,7 +21,8 @@ export type BrowserKind = "chromium" | "webkit" | "firefox" | "android";
 export type RealKind = BrowserKind | "mac";
 
 const root = new URL("..", import.meta.url).pathname;
-const WEB = 58565, SERVER = 58566, RELAY = 58568;
+// inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
+export const WEB = 58565, SERVER = 58566, RELAY = 58568;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function until<T>(what: string, test: () => Promise<T | false | null | undefined> | T | false | null | undefined, ms = 20_000): Promise<T> {
@@ -105,7 +106,18 @@ export class Touchscreen {
         return t;
       }
     }
-    throw new Error("the page sees no touches: something of Chrome's covers it");
+    throw new Error(`the page sees no touches: something of Chrome's covers it, showing ${t.texts()}`);
+  }
+
+  /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
+  private texts() {
+    try {
+      writeFileSync(join(root, "build", "android-touches.png"), execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"]));
+      const ui = execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8" });
+      return [...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ");
+    } catch (e) {
+      return `nothing uiautomator could read: ${e}`;
+    }
   }
 
   /** Fingers changing in one frame of the touchscreen, at page points. */
@@ -227,6 +239,13 @@ export class BrowserDevice extends Device {
 
   override async type(text: string) {
     await this.page.keyboard.type(text);
+    // a touchscreen's touches reach the page by another way than DevTools' keys, and could overtake them
+    if (this.touchscreen) {
+      await this.page.waitForFunction((t) => {
+        const e = document.activeElement;
+        return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").endsWith(t);
+      }, text, { timeout: 5000 });
+    }
   }
 
   override async typeInto(id: string, text: string) {
@@ -261,7 +280,7 @@ export class BrowserDevice extends Device {
 export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
-  private readonly androids: [AndroidDevice, BrowserContext][] = [];
+  private readonly androids: [AndroidDevice, BrowserContext?][] = [];
   private readonly children: ChildProcess[] = [];
   private readonly dirs: string[] = [];
   private web?: ReturnType<typeof createServer>;
@@ -319,11 +338,16 @@ export class RealWorld {
   /** Chrome on the phone or emulator adb sees, at its own size, reaching this Mac's servers at its own localhost. */
   private async android() {
     const [device] = await _android.devices();
-    if (!device) throw new Error("no Android device: run scripts/android.sh");
+    if (!device) throw new Error("no Android device: run node scripts/android.ts");
+    // closed even when what follows fails, else its connection keeps the run from ending
+    const opened: [AndroidDevice, BrowserContext?] = [device];
+    this.androids.push(opened);
     for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`]);
-    const context = await device.launchBrowser({ reducedMotion: "reduce" });
-    this.androids.push([device, context]);
-    const page = context.pages()[0] ?? await context.newPage();
+    const context = opened[1] = await device.launchBrowser({ reducedMotion: "reduce" });
+    // the only tab, so the one on screen: a first launch also restores the tab Chrome's first run left
+    const page = await context.newPage();
+    for (const p of context.pages()) if (p !== page) await p.close();
+    await page.bringToFront();
     // Chrome keeps its profile from run to run
     const cdp = await context.newCDPSession(page);
     await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
@@ -364,7 +388,10 @@ export class RealWorld {
 
   async stop() {
     for (const b of this.browsers) await b.close().catch(() => {});
-    for (const [d, c] of this.androids) await c.close().then(() => d.close(), () => d.close());
+    for (const [d, c] of this.androids) {
+      await c?.close().catch(() => {});
+      await d.close();
+    }
     for (const d of this.devices) if (d instanceof MacDevice) d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
