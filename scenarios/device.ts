@@ -53,6 +53,16 @@ export abstract class Device {
     throw new Error(`${this.kind} devices cannot edit`);
   }
 
+  /** Cuts this device off the network (`off`) or puts it back, as airplane mode does. */
+  async offline(_off: boolean): Promise<void> {
+    throw new Error(`${this.kind} devices cannot go offline`);
+  }
+
+  /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
+  async relaunch(): Promise<void> {
+    throw new Error(`${this.kind} devices cannot launch again`);
+  }
+
   /** Where world point `p` is on this device's screen now. */
   async screen(p: Point): Promise<Point> {
     const { camera: c } = await this.scene();
