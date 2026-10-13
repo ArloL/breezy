@@ -198,8 +198,18 @@ async function browser(name: string) {
   };
   const click = (selector: string) => run(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); e?.click(); return !!e; })()`);
   const mouse = (type: string, x: number, y: number, extra = {}) => send("Input.dispatchMouseEvent", { type, x, y, button: "left", ...extra });
+  /** Stamped 100 ms apart, as a person's are: the app tells a double-click by the presses' times, which a slow round trip
+   * to the browser must not stretch. */
+  const doubleClick = async (x: number, y: number) => {
+    const t = Date.now() / 1000;
+    for (const clickCount of [1, 2]) {
+      const at = t + (clickCount - 1) * 0.1;
+      await mouse("mousePressed", x, y, { clickCount, timestamp: at });
+      await mouse("mouseReleased", x, y, { clickCount, timestamp: at + 0.05 });
+    }
+  };
   const key = (k: string) => send("Input.dispatchKeyEvent", { type: "keyDown", key: k, text: k, code: /\d/.test(k) ? `Digit${k}` : undefined });
-  return { name, send, run, go, click, mouse, key };
+  return { name, send, run, go, click, mouse, doubleClick, key };
 }
 
 const space = b64(16), secret = b64(32);
@@ -229,7 +239,7 @@ await a.click('#sheet [data-sheet="ok"]');
 await waitFor("the board on a", () => a.click(".boards-group[data-group^=\"space:\"] li[data-board] .open"));
 // one card, made and left on a
 await a.mouse("mouseMoved", 300, 300);
-for (const clickCount of [1, 2]) { await a.mouse("mousePressed", 300, 300, { clickCount }); await a.mouse("mouseReleased", 300, 300, { clickCount }); }
+await a.doubleClick(300, 300);
 await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
 await a.send("Input.dispatchKeyEvent", { type: "char", text: "x" });
 await a.run(`document.activeElement.blur()`);
@@ -365,7 +375,7 @@ if (only.has("type")) {
   const lags = [];
   for (let r = 0; r < RUNS; r++) {
     const c = await cardAt(a);
-    for (const clickCount of [1, 2]) { await a.mouse("mousePressed", c.x, c.y, { clickCount }); await a.mouse("mouseReleased", c.x, c.y, { clickCount }); }
+    await a.doubleClick(c.x, c.y);
     await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
     await a.run(`(() => { const e = document.querySelector("[contenteditable]"); const r = document.createRange(); r.selectNodeContents(e); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
     await sleep(800);
@@ -419,7 +429,7 @@ if (only.has("delete")) {
   for (let r = 0; r < RUNS; r++) {
     const x = 450 + (r % 3) * 220, y = 520;
     await a.mouse("mouseMoved", x, y);
-    for (const clickCount of [1, 2]) { await a.mouse("mousePressed", x, y, { clickCount }); await a.mouse("mouseReleased", x, y, { clickCount }); }
+    await a.doubleClick(x, y);
     await waitFor("a card in edit", () => a.run(`!!document.querySelector("[contenteditable]")`));
     await a.send("Input.dispatchKeyEvent", { type: "char", text: "d" });
     await a.run(`document.activeElement.blur()`);
@@ -585,7 +595,7 @@ if (only.has("converge")) {
       const k = rand();
       if (!pick || k < 0.25) {
         const x = 100 + rand() * 900, y = 160 + rand() * 480;
-        for (const clickCount of [1, 2]) { await br.mouse("mousePressed", x, y, { clickCount }); await br.mouse("mouseReleased", x, y, { clickCount }); }
+        await br.doubleClick(x, y);
         await sleep(100);
         await br.send("Input.dispatchKeyEvent", { type: "char", text: `${tag}${i}` });
         await br.run(`document.activeElement?.blur?.()`);
