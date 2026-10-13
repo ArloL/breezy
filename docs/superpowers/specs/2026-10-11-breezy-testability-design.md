@@ -28,7 +28,7 @@ Every interaction, dragging included, is tested without a hand on the Mac or the
 | `android` | Android's own touch, through the emulator's touchscreen (a phone's through DevTools); keys through DevTools | read back off the DOM | yes | yes |
 | `mac` | `NSEvent`s sent to the board window | `CanvasCore.scene`, camera from the scroll view | yes | yes, ⌘ through the menu |
 
-A case says what it needs of the first device (touch, editing, keys); the runners skip the pairs that lack it. A phone acts only with a finger, on a screen too narrow for a lane and a card beside it; `size` tells a case so.
+A case says what it needs of the first device (touch, editing, keys, going offline); the runners skip the pairs that lack it. Only browsers go `offline` and `relaunch`: the scenarios serve the web app with a version, so its service worker keeps it as on breezy.k5d.de, and a launch without network runs from that. A phone acts only with a finger, on a screen too narrow for a lane and a card beside it; `size` tells a case so.
 
 ## Scenes
 
@@ -57,6 +57,7 @@ The hub's devices answer the fuzzer's commands plus `pointer`, `key` and `scene`
 | What | Why it matters |
 |---|---|
 | The Mac's editing in BreezyKit | cases that type run on the hub's web devices and on real devices, not on the hub's Swift ones |
+| Going offline and launching again on the hub's devices and the Mac's control port | the offline case runs only where a browser acts |
 | Zoom, pan and edge scroll in `CanvasCore` | the hub's Swift devices have a fixed camera, so cases keep to what one screen shows |
 | Replacing the rules tests mirrored by hand between `rules.test.ts` and `StackingTests`/`EditsTests` with conformance cases | one change, one test |
 | Contract suites per port, beside the cases: scenes applied to the DOM view and read back; native events against what the fakes inject | a fake that drifts shows as a contract failure, not as a case that passes on fakes alone |

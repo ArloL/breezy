@@ -9,7 +9,6 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
-import { buildWeb } from "../scripts/build-web.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
 import { MacDevice } from "./mac.ts";
@@ -23,6 +22,8 @@ export type RealKind = BrowserKind | "mac";
 const root = new URL("..", import.meta.url).pathname;
 // inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
 export const WEB = 58565, SERVER = 58566, RELAY = 58568;
+/** The web app's version, so that its service worker runs as on breezy.k5d.de. */
+const VERSION = "scenarios";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function until<T>(what: string, test: () => Promise<T | false | null | undefined> | T | false | null | undefined, ms = 20_000): Promise<T> {
@@ -198,6 +199,21 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(readScene);
   }
 
+  /** Once its service worker keeps this version, as on a phone that launched it before. */
+  override async offline(off: boolean) {
+    if (off) await until("the service worker's snapshot", () => this.page.evaluate((version) => navigator.serviceWorker.ready.then((reg) => new Promise<boolean>((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (e) => resolve(e.data.current === version);
+      reg.active!.postMessage({ type: "check" }, [channel.port2]);
+    })), VERSION));
+    await this.page.context().setOffline(off);
+  }
+
+  override async relaunch() {
+    await this.page.goto(`http://localhost:${WEB}/`);
+    await openBoard(this.page);
+  }
+
   async wait(ms: number) {
     await sleep(ms);
   }
@@ -307,20 +323,13 @@ export class RealWorld {
         const d = new BrowserDevice(kind, page, touchscreen);
         w.devices.push(d);
         await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
-        // as direct-e2e.ts does: the list may be laid out out of sight, which a person's click could not reach either
-        const press = (selector: string) => until(selector, () => page.evaluate((sel) => {
-          const e = document.querySelector<HTMLElement>(sel);
-          e?.click();
-          return !!e;
-        }, selector));
         if (i === 0) {
-          await press("section.boards-group:has(header .edit) button.new");
+          await press(page, "section.boards-group:has(header .edit) button.new");
           await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
           await page.fill("#sheet input", "Board");
-          await press('#sheet [data-sheet="ok"]');
+          await press(page, '#sheet [data-sheet="ok"]');
         }
-        await press('.boards-group[data-group^="space:"] li[data-board] .open');
-        await page.waitForSelector('body[data-screen="board"]');
+        await openBoard(page);
       }
       return w;
     } catch (e) {
@@ -359,7 +368,7 @@ export class RealWorld {
 
   private async serve() {
     const site = join(root, "build", "web-scenarios");
-    buildWeb(site);
+    execFileSync(join(root, "scripts/build-site.sh"), [site, VERSION], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
     const types: Record<string, string> = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
     this.web = createServer((req, res) => {
       const path = join(site, new URL(req.url!, "http://x").pathname.replace(/\/$/, "/index.html"));
@@ -400,6 +409,19 @@ export class RealWorld {
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();
   }
+}
+
+// as direct-e2e.ts does: the list may be laid out out of sight, which a person's click could not reach either
+const press = (page: Page, selector: string) => until(selector, () => page.evaluate((sel) => {
+  const e = document.querySelector<HTMLElement>(sel);
+  e?.click();
+  return !!e;
+}, selector));
+
+/** Opens the space's board from the board list. */
+async function openBoard(page: Page) {
+  await press(page, '.boards-group[data-group^="space:"] li[data-board] .open');
+  await page.waitForSelector('body[data-screen="board"]');
 }
 
 /** Joins the space of invite `hash` as `name`, as a person does from the link. */
