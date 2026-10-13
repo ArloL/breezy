@@ -129,7 +129,7 @@ jobs:
       run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
     - name: Capture the emulator's screen
       if: ${{ failure() }}
-      run: mise exec -- adb exec-out screencap -p > build/android-screen.png || true
+      run: mise exec -- adb -e exec-out screencap -p > build/android-screen.png || true
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       if: ${{ failure() }}
       with:
