@@ -223,6 +223,10 @@ export class BrowserDevice extends Device {
     await this.page.context().setOffline(off);
   }
 
+  override async syncStatus() {
+    return this.page.evaluate(() => document.querySelector(".menu.more .status")?.textContent ?? "");
+  }
+
   /** Once the board shows the cards and lanes it showed before, which it reads from storage after it opens. */
   override async relaunch() {
     const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
