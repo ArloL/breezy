@@ -58,6 +58,11 @@ export abstract class Device {
     throw new Error(`${this.kind} devices cannot go offline`);
   }
 
+  /** What the app says of its sync, for a failure to tell where a change stopped. */
+  async syncStatus(): Promise<string> {
+    return "";
+  }
+
   /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
   async relaunch(): Promise<void> {
     throw new Error(`${this.kind} devices cannot launch again`);

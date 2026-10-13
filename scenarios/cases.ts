@@ -93,7 +93,7 @@ export const cases: Case[] = [
       await a.offline(false);
       // quality goal 3a: both show it 10 s after both are online
       const there = await eventually(b, 10_000, async () => JSON.stringify(await within(b, lane, card)) === JSON.stringify({ x: 24, y: 72 }));
-      assert.ok(there, `the other device shows it at ${JSON.stringify(await within(b, lane, card))} 10 s after the first came online`);
+      assert.ok(there, `the other device shows it at ${JSON.stringify(await within(b, lane, card))} 10 s after the first came online; the first says "${await a.syncStatus()}", the other "${await b.syncStatus()}"`);
     },
   },
   {
