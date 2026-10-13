@@ -376,14 +376,17 @@ export class RealWorld {
   }
 
   /** Until what every device shows stays the same for half a second. */
+  /** Until every device shows the same cards and lanes, and nothing has changed for 500 ms. */
   async settle(ms = 15_000) {
-    let last = "", since = Date.now();
+    let last = "", since = Date.now(), ids: string[] = [];
     for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
-      const now = JSON.stringify(await Promise.all(this.devices.map((d) => d.scene())));
+      const scenes = await Promise.all(this.devices.map((d) => d.scene()));
+      ids = scenes.map((s) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" "));
+      const now = JSON.stringify(scenes);
       if (now !== last) [last, since] = [now, Date.now()];
-      else if (Date.now() - since >= 500) return;
+      else if (Date.now() - since >= 500 && ids.every((i) => i === ids[0])) return;
     }
-    throw new Error("the devices did not settle");
+    throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${ids[i] || "nothing"}`).join("; ")}`);
   }
 
   async stop() {
