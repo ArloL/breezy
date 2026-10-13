@@ -81,6 +81,8 @@ device = ["-s", EMULATOR_TCP];
 for (const port of [WEB, SERVER, RELAY]) {
   await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
 }
+// a crash of some app of Android's own puts a dialog over Chrome, as Digital Wellbeing's did over its first run
+adb("shell", "settings", "put", "global", "hide_error_dialogs", "1");
 // the Play Store updates Google Play services and itself while the scenarios run, and Chrome quits when Play services is
 // replaced, closing the page under a case
 await within(60, "the Play Store to be off", succeeds(() => adb("shell", "pm", "disable-user", "--user", "0", "com.android.vending").includes("disabled")));
@@ -101,6 +103,12 @@ await within(90, "Chrome to get past its first-run screens", () => {
     ui = adb("shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml");
   } catch {
     // fails while the screen is still changing
+    return false;
+  }
+  // one shown before they were turned off
+  const crash = /text="Close app"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui)?.slice(1).map(Number);
+  if (crash) {
+    adb("shell", "input", "tap", String(Math.round((crash[0]! + crash[2]!) / 2)), String(Math.round((crash[1]! + crash[3]!) / 2)));
     return false;
   }
   // a tap meant for Chrome lands on whatever is there instead: the home screen's search bar sits under "Got it"
