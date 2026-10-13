@@ -1,11 +1,11 @@
 // The web app built as it ships, in headless Chromium, WebKit and Firefox and in Chrome on Android, against sync.php and
 // the relay under wrangler dev, on the wall clock: the same scenarios as on the hub, through the browsers' own input and
 // the DOM.
-import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { promisify } from "node:util";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
@@ -67,14 +67,60 @@ function readScene(): Scene {
   };
 }
 
+/**
+ * The emulator's console, kept open: a touch through it arrives a millisecond after it is sent, where `adb emu` starts a
+ * process for each and took longer than a hold on a busy runner, so a tap held and a pan dragged.
+ */
+export class EmulatorConsole {
+  private readonly socket: Socket;
+  private buffer = "";
+  /** Each command's answer, in order: OK, or KO and why. */
+  private readonly answers: ((line: string) => void)[] = [];
+
+  private constructor(socket: Socket) {
+    this.socket = socket;
+    socket.setEncoding("utf8");
+    socket.on("data", (data: string) => {
+      this.buffer += data;
+      let i;
+      while ((i = this.buffer.indexOf("\n")) >= 0) {
+        const line = this.buffer.slice(0, i).trim();
+        this.buffer = this.buffer.slice(i + 1);
+        if (line === "OK" || line.startsWith("KO")) this.answers.shift()?.(line);
+      }
+    });
+  }
+
+  /** The console of emulator `serial`, as adb names it, signed in with the token the emulator keeps in the home folder. */
+  static async open(serial: string): Promise<EmulatorConsole> {
+    const socket = connect(Number(serial.split("-")[1]), "127.0.0.1");
+    await new Promise<void>((resolve, reject) => socket.once("connect", resolve).once("error", reject));
+    const c = new EmulatorConsole(socket);
+    // the banner ends in an OK of its own
+    await new Promise((resolve) => c.answers.push(resolve));
+    await c.command(`auth ${readFileSync(join(homedir(), ".emulator_console_auth_token"), "utf8").trim()}`);
+    return c;
+  }
+
+  async command(line: string) {
+    const answer = new Promise<string>((resolve) => this.answers.push(resolve));
+    this.socket.write(`${line}\r\n`);
+    const a = await answer;
+    if (a !== "OK") throw new Error(`the emulator's console answered ${line.split(" ")[0]} with ${a}`);
+  }
+
+  close() {
+    this.socket.destroy();
+  }
+}
+
 /** The emulator's touchscreen, driven through its console: touches pass through Android's input as a finger's do. */
 export class Touchscreen {
   private readonly ids = new Map<number, number>();
   private next = 1;
   /** The device's adb serial, for shell commands. */
   private readonly serial: string;
-  /** The emulator's, whose console takes the touches. */
-  private readonly console: string;
+  private readonly console: EmulatorConsole;
   /** The screen's size in pixels. */
   private readonly px: Point;
   /** Pixels a page point. */
@@ -82,14 +128,14 @@ export class Touchscreen {
   /** Where the page starts, in points below the screen's top. */
   private top = 0;
 
-  constructor(serial: string, console: string, px: Point, dpr: number) {
+  constructor(serial: string, console: EmulatorConsole, px: Point, dpr: number) {
     this.serial = serial;
     this.console = console;
     this.px = px;
     this.dpr = dpr;
   }
 
-  static async of(serial: string, console: string, page: Page): Promise<Touchscreen> {
+  static async of(serial: string, console: EmulatorConsole, page: Page): Promise<Touchscreen> {
     const size = execFileSync("adb", ["-s", serial, "shell", "wm", "size"], { encoding: "utf8" }).match(/(\d+)x(\d+)\s*$/)!;
     const t = new Touchscreen(serial, console, { x: Number(size[1]), y: Number(size[2]) }, await page.evaluate(() => devicePixelRatio));
     // where the page starts below the status bar and Chrome's toolbar: a tap the page keeps from itself, on a page at
@@ -148,11 +194,10 @@ export class Touchscreen {
         events.push("EV_ABS:ABS_MT_PRESSURE:0", "EV_ABS:ABS_MT_TRACKING_ID:-1");
       }
     }
-    await run("adb", ["-s", this.console, "emu", "event", "send", ...events, "EV_SYN:0:0"]);
+    await this.console.command(`event send ${[...events, "EV_SYN:0:0"].join(" ")}`);
   }
 }
 
-const run = promisify(execFile);
 
 /**
  * A frame's finger pointer events, as iOS Safari sends them: one at a time, each at the element under its point, all with
@@ -322,6 +367,7 @@ export class RealWorld {
   private readonly androids: [AndroidDevice, BrowserContext?][] = [];
   private readonly children: ChildProcess[] = [];
   private readonly dirs: string[] = [];
+  private readonly consoles: EmulatorConsole[] = [];
   private web?: ReturnType<typeof createServer>;
 
   /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
@@ -387,7 +433,9 @@ export class RealWorld {
     await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
     await cdp.detach();
     // an emulator's touchscreen; a phone's touches go through DevTools
-    const touchscreen = emulator ? await Touchscreen.of(device.serial(), emulator, page) : undefined;
+    const console = emulator ? await EmulatorConsole.open(emulator) : undefined;
+    if (console) this.consoles.push(console);
+    const touchscreen = console ? await Touchscreen.of(device.serial(), console, page) : undefined;
     return [page, touchscreen] as const;
   }
 
@@ -441,6 +489,7 @@ export class RealWorld {
       // which once waited 90 s, on a connection adbd had stopped serving, after the case had passed
       await Promise.race([d.close().catch(() => {}), sleep(10_000)]);
     }
+    for (const c of this.consoles) c.close();
     for (const d of this.devices) if (d instanceof MacDevice) d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
