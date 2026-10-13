@@ -373,8 +373,8 @@ export class Live {
       this.ws = null;
       ws!.close();
     }
-    // just opened, as when the app shows again
-    if (this.ws && this.now() - this.openedAt < PONG_TIMEOUT_MS) return;
+    // just opened, as when the app shows again; one opened before the network came back may never open
+    if (this.ws && !changed && this.now() - this.openedAt < PONG_TIMEOUT_MS) return;
     if (this.ws) {
       // still opening, maybe over the network that went
       const ws = this.ws;
