@@ -121,13 +121,15 @@ await within(90, "Chrome to get past its first-run screens", () => {
   }
   if (/com\.android\.chrome:id\/(url_bar|search_box_text)/.test(ui)) return true;
   // a dump during a transition still shows the screen going away, so only a button the next dump shows too is tapped
-  const button = /text="(?:Use without an account|Stay signed out|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui);
-  const now = top + button?.[0];
+  const button = /text="(Use without an account|Stay signed out|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui);
+  // its other attributes, as whether it has focus, change from one dump to the next
+  const now = button ? `${top} ${button[1]} ${button.slice(2).join(",")}` : "";
   if (!button || now !== seen) {
     seen = now;
     return false;
   }
-  const [x0, y0, x1, y1] = button.slice(1).map(Number);
+  const [x0, y0, x1, y1] = button.slice(2).map(Number);
+  console.log(`tapping "${button[1]}"`);
   adb("shell", "input", "tap", String(Math.round((x0! + x1!) / 2)), String(Math.round((y0! + y1!) / 2)));
   seen = "";
   return false;
