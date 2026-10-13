@@ -33,6 +33,11 @@ export abstract class Device {
   /** A key as Playwright names it ("3", "Backspace", " ", "z"), with ⌘ (`meta`) or ⇧ held. */
   abstract key(key: string, mods?: { meta?: boolean; shift?: boolean }): Promise<void>;
 
+  /** Its screen in points: the scenarios' 1200 × 800 window, but on a phone. */
+  async size() {
+    return { w: 1200, h: 800 };
+  }
+
   /** Whether `typeInto` works: the hub's fakes have no editor yet. */
   get edits() {
     return false;

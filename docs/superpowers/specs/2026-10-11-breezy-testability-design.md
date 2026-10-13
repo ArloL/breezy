@@ -10,10 +10,12 @@ Every interaction, dragging included, is tested without a hand on the Mac or the
        cases.test.ts: World                    browsers.e2e.ts: RealWorld
        fuzz hub, virtual time,                 wall clock, server/dev.sh,
        sync.php, relay sim, links              wrangler dev, WebRTC
-          /              \                     /          |           \
-      swift              web              chromium     webkit         mac
-   breezy-sim:       hub process:        Playwright: the built app,   Debug Breezy.app,
-   CanvasCore        App on fakes        its own mouse, keys, touch   -BreezyControl
+          /              \                 /             |            \
+      swift              web          chromium, webkit,   android          mac
+   breezy-sim:       hub process:     firefox             Chrome on the    Debug Breezy.app,
+   CanvasCore        App on fakes     Playwright: the     emulator, at a   -BreezyControl
+                                      built app, own      phone's size
+                                      mouse, keys, touch
 ```
 
 `scenarios/device.ts` is what a case sees of any device: `pointer`, `key`, `type`, `scene`, `addCard`, `addLane`, and verbs built on them — `drag`, `click`, `touchDrag`, `tap`, `doubleTap`, `typeInto`. Points a case gives are world points; a device turns them into its screen points with its own camera, so the core's hit testing runs. A case acts on the first device and reads the second's scene.
@@ -23,9 +25,10 @@ Every interaction, dragging included, is tested without a hand on the Mac or the
 | `swift` | mouse, through `CanvasCore` | `CanvasCore.scene` | no | through `CanvasCore.key`, ⌘Z as the Edit menu |
 | `web` | mouse through `Mouse`, touch through `Gestures`, as `main.ts` hands them | `sceneOf` on the fake view | into a `FakeField` | through `keys.ts` |
 | `chromium`, `webkit` | the browser's own mouse; Chromium's own touch, WebKit's as `PointerEvent`s | read back off the DOM | yes | yes |
+| `android` | Android's own touch, through the emulator's touchscreen (a phone's through DevTools); keys through DevTools | read back off the DOM | yes | yes |
 | `mac` | `NSEvent`s sent to the board window | `CanvasCore.scene`, camera from the scroll view | yes | yes, ⌘ through the menu |
 
-A case says what it needs of the first device (touch, editing, keys); the runners skip the pairs that lack it.
+A case says what it needs of the first device (touch, editing, keys); the runners skip the pairs that lack it. A phone acts only with a finger, on a screen too narrow for a lane and a card beside it; `size` tells a case so.
 
 ## Scenes
 

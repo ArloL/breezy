@@ -1,0 +1,8 @@
+# MISE_ENV=android: the SDK for running the web app in Android's emulator; scripts/android.sh installs the rest
+[tools]
+android-sdk = { version = "23.0", build_tools = false }
+java = "temurin-21.0.12+101.0.LTS"
+
+[env]
+# avdmanager follows XDG_CONFIG_HOME, the emulator does not
+ANDROID_AVD_HOME = "{{env.HOME}}/.android/avd"

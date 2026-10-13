@@ -2,6 +2,7 @@
 // (browsers.e2e.ts). Each acts on the first device and looks at what the second shows.
 import assert from "node:assert/strict";
 import { centre, item, type Device } from "./device.ts";
+import { LANE_H, LANE_W } from "../web/rules.ts";
 
 export interface Stage {
   devices: Device[];
@@ -18,12 +19,14 @@ export interface Case {
   run(s: Stage): Promise<void>;
 }
 
-/** A lane in the middle of the first device's screen and a card beside it, made there, and seen by the others. */
+/** A lane in the middle of the first device's screen and a card beside it, made there, and seen by the others. On a
+ * phone, the lane at the top left and the card below it. */
 async function laneAndCard({ devices: [a], settle }: Stage) {
-  const middle = await a!.world({ x: 450, y: 440 });
-  const lane = await a!.addLane(middle.x, middle.y);
+  const narrow = (await a!.size()).w < 900;
+  const at = await a!.world(narrow ? { x: 24, y: 96 } : { x: 450, y: 440 });
+  const lane = await a!.addLane(narrow ? at.x + LANE_W / 2 : at.x, narrow ? at.y + LANE_H / 2 : at.y);
   const l = item(await a!.scene(), lane);
-  const card = await a!.addCard(l.x + l.w + 200, l.y + 200);
+  const card = narrow ? await a!.addCard(l.x + l.w / 2, l.y + l.h + 72) : await a!.addCard(l.x + l.w + 200, l.y + 200);
   await settle();
   return { lane, card };
 }
@@ -86,12 +89,12 @@ export const cases: Case[] = [
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
       const made = item(await a.scene(), card);
-      await a.tap({ x: made.x + made.w + 100, y: made.y + made.h + 100 });
+      await a.tap({ x: made.x + made.w + 100, y: made.y + made.h / 2 });
       await a.wait(400);
       const before = await a.scene(), seen = item(await b.scene(), card);
       const c = item(before, card);
       assert.equal(c.selected, false, "a tap on nothing clears the selection");
-      await a.touchDrag(centre(c), { x: c.x - 200, y: c.y + 100 }, { hold: false });
+      await a.touchDrag(centre(c), { x: c.x + 200, y: c.y - 100 }, { hold: false });
       await s.settle();
       const after = await a.scene();
       assert.notDeepEqual(after.camera, before.camera, "the camera moved");
@@ -225,7 +228,7 @@ export const cases: Case[] = [
       await a.wait(300);
       await a.type("from the phone");
       // a tap on the board ends the edit, as there is no Esc on a phone
-      await a.tap({ x: l.x + l.w + 500, y: l.y + 600 });
+      await a.tap({ x: l.x + l.w + 40, y: l.y + 60 });
       await s.settle();
       const made = (await b.scene()).cards.filter((c) => !had.has(c.id));
       assert.deepEqual(made.map((c) => c.text), ["from the phone"]);
@@ -277,22 +280,23 @@ export const cases: Case[] = [
       const [a] = s.devices as [Device, Device];
       await laneAndCard(s);
       const before = (await a.scene()).camera;
+      const size = await a.size(), m = { x: size.w / 2, y: size.h / 2 };
       const touch = (finger: number) => ({ kind: "touch" as const, finger });
-      await a.pointer("down", { x: 500, y: 400 }, touch(1));
-      await a.pointer("down", { x: 600, y: 400 }, touch(2));
+      await a.pointer("down", { x: m.x - 50, y: m.y }, touch(1));
+      await a.pointer("down", { x: m.x + 50, y: m.y }, touch(2));
       for (let i = 1; i <= 10; i++) {
         await a.wait(16);
-        await a.fingers("move", [[1, { x: 500 - 5 * i, y: 400 }], [2, { x: 600 + 5 * i, y: 400 }]]);
+        await a.fingers("move", [[1, { x: m.x - 50 - 5 * i, y: m.y }], [2, { x: m.x + 50 + 5 * i, y: m.y }]]);
       }
-      await a.pointer("up", { x: 450, y: 400 }, touch(1));
-      await a.pointer("up", { x: 650, y: 400 }, touch(2));
+      await a.pointer("up", { x: m.x - 100, y: m.y }, touch(1));
+      await a.pointer("up", { x: m.x + 100, y: m.y }, touch(2));
       await a.wait(1500);
       const { camera } = await a.scene();
       const zoom = Math.min(2, before.zoom * 2);
       assert.ok(Math.abs(camera.zoom - zoom) < 0.02, `zoom ${camera.zoom}, the fingers' spread doubled from ${before.zoom}`);
       // the world point first under the fingers' middle stays there, within a few points: a browser hands the app one
       // finger's move at a time, so the middle wobbles between them and the release may coast a little
-      const w0 = (550 - before.x) / before.zoom, w1 = (550 - camera.x) / camera.zoom;
+      const w0 = (m.x - before.x) / before.zoom, w1 = (m.x - camera.x) / camera.zoom;
       assert.ok(Math.abs(w1 - w0) < 4, `world x ${w1} under the middle, was ${w0}`);
     },
   },
