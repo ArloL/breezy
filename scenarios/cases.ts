@@ -259,8 +259,10 @@ export const cases: Case[] = [
       await a.doubleTap({ x: l.x + l.w + 150, y: l.y + 450 });
       await a.wait(300);
       await a.type("from the phone");
-      // a tap on the board ends the edit, as there is no Esc on a phone
-      await a.tap({ x: l.x + l.w + 40, y: l.y + 60 });
+      // a tap on the board ends the edit, as there is no Esc on a phone: just above the card, which the board keeps in
+      // sight of the keyboard
+      const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;
+      await a.tap({ x: card.x + card.w / 2, y: card.y - 40 });
       await s.settle();
       const made = (await b.scene()).cards.filter((c) => !had.has(c.id));
       assert.deepEqual(made.map((c) => c.text), ["from the phone"]);
