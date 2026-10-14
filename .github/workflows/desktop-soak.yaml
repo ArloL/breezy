@@ -1,10 +1,11 @@
 name: Desktop soak
 
 # The scenarios on real devices but Android's, Chromium, WebKit, Firefox and the Debug Mac app, over and over on many
-# macOS runners, to measure how often they fail. Main requires them, so each failure blocks a merge. A failing case
-# keeps its devices' sync logs in build/scenarios: read them before anything else. Dispatch it, or push a desktop-soak/
-# branch for its defaults; leftover desktop-soak/ branches are the repo owner's to delete.
+# macOS runners, to measure how often they fail: Main retries a failing case once, which hides a rare flake there. A
+# failing case keeps its devices' sync logs in build/scenarios: read them before anything else. Weekly, or dispatch it.
 on:
+  schedule:
+  - cron: "17 4 * * 6"
   workflow_dispatch:
     inputs:
       runners:
@@ -13,9 +14,6 @@ on:
       runs:
         description: Runs of the scenarios on each
         default: "4"
-  push:
-    branches:
-    - desktop-soak/**
 permissions: {}
 
 jobs:

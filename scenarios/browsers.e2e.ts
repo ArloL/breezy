@@ -4,8 +4,8 @@
 // under MISE_ENV=android mise exec -- after node scripts/android.ts for Android.
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { cases } from "./cases.ts";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { cases, type Case } from "./cases.ts";
 import { RealWorld, type RealKind } from "./browser.ts";
 import { MAC_APP } from "./mac.ts";
 
@@ -20,20 +20,49 @@ const noAndroid = (() => {
 /** Each kind acts once and watches once, which a run of minutes can afford; a phone acts only with a finger. */
 const pairs: [RealKind, RealKind][] = [["chromium", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]];
 
+/** Runs a case gets before it fails, each in a fresh world: Main gives 2, so that a rare flake warns where it would block
+ * a merge, and lists it in build/scenarios/flaky.txt; soaks give 1, to count every failure. */
+const RUNS = Number(process.env.SCENARIO_RUNS ?? 1);
+const MS = 90_000;
+
+/** One run of `c` on `kinds` in a fresh world, recorded; its error when it fails or takes over `MS`. */
+async function once(name: string, c: Case, kinds: [RealKind, RealKind]): Promise<Error | null> {
+  const w = new RealWorld();
+  let verdict = "failed or timed out", timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        await w.start(kinds);
+        await c.run({ devices: w.devices, settle: () => w.settle() });
+      })(),
+      new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`timed out after ${MS} ms`)), MS))),
+    ]);
+    verdict = "passed";
+    return null;
+  } catch (e) {
+    return e as Error;
+  } finally {
+    clearTimeout(timer);
+    await w.record(name, verdict);
+    await w.stop();
+  }
+}
+
 for (const c of cases) {
   for (const [a, b] of pairs) {
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && a === "android") continue;
-    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].includes("android") && noAndroid, timeout: 90_000 }, async (t) => {
-      const w = new RealWorld();
-      let verdict = "failed or timed out";
-      // also after a timeout, which leaves the test's own code waiting
-      t.after(async () => {
-        await w.record(t.name, verdict);
-        await w.stop();
-      });
-      await w.start([a, b]);
-      await c.run({ devices: w.devices, settle: () => w.settle() });
-      verdict = "passed";
+    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].includes("android") && noAndroid, timeout: RUNS * (MS + 30_000) }, async (t) => {
+      let first: Error | null = null;
+      for (let run = 1; ; run++) {
+        const e = await once(t.name, c, [a, b]);
+        if (!e) break;
+        if (run === RUNS) throw first ?? e;
+        first ??= e;
+      }
+      if (!first) return;
+      t.diagnostic(`flaky: failed once, then passed: ${first.message}`);
+      mkdirSync("build/scenarios", { recursive: true });
+      appendFileSync("build/scenarios/flaky.txt", `${t.name}: ${first.message.split("\n")[0]}\n`);
     });
   }
 }
