@@ -10,13 +10,14 @@ const rand = (n) => b64(randomBytes(n));
 
 /** Gives `space` a new epoch, as the README says to after restoring a backup; needs BREEZY_CONFIG. */
 function renewEpoch(space) {
+  // the space after --: a random one starts with "-" one time in 64, which php would take for an option
   execFileSync("php", ["-r", `
     $c = require getenv("BREEZY_CONFIG");
     $db = new PDO($c["dsn"], $c["user"] ?? null, $c["password"] ?? null);
     $st = $db->prepare("UPDATE spaces SET epoch = ? WHERE id = ?");
     $st->bindValue(1, random_bytes(16), PDO::PARAM_LOB);
     $st->bindValue(2, base64_decode(strtr($argv[1], "-_", "+/") . "=="), PDO::PARAM_LOB);
-    $st->execute();`, space]);
+    $st->execute();`, "--", space]);
 }
 
 function client(space = rand(16), token = rand(32)) {

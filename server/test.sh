@@ -12,6 +12,8 @@ export BREEZY_CONFIG=$dir/config.php
 php -d memory_limit=64M -S 127.0.0.1:58566 -t . >$dir/php.log 2>&1 &
 pid=$!
 sleep 1
+# else the tests would talk to whatever else serves there, as a dev server left running
+kill -0 $pid 2>/dev/null || { print -u2 "php could not serve on 127.0.0.1:58566:"; cat $dir/php.log >&2; exit 1 }
 export BREEZY_URL=http://127.0.0.1:58566/sync.php
 node --test test/*.test.mjs || { cat $dir/php.log; exit 1 }
 swift test --package-path ../BreezyKit --filter HTTPTransportTests
