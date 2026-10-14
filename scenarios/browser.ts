@@ -496,7 +496,7 @@ export class RealWorld {
       await Promise.race([d.close().catch(() => {}), sleep(10_000)]);
     }
     for (const c of this.consoles) c.close();
-    for (const d of this.devices) if (d instanceof MacDevice) d.stop();
+    for (const d of this.devices) if (d instanceof MacDevice) await d.stop();
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();
