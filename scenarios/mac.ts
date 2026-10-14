@@ -144,9 +144,17 @@ export class MacDevice extends Device {
     return this.made(before, "lanes");
   }
 
-  stop() {
+  /** Once the app has quit, so that the next one can take its control port; it is killed if it has not in 5 s. */
+  async stop() {
     this.socket?.destroy();
-    this.app.kill();
+    if (this.app.exitCode === null && this.app.signalCode === null) {
+      const exited = new Promise((r) => this.app.once("exit", r));
+      this.app.kill();
+      if (!(await Promise.race([exited.then(() => true), sleep(5000).then(() => false)]))) {
+        this.app.kill("SIGKILL");
+        await exited;
+      }
+    }
     rmSync(this.store, { recursive: true, force: true });
   }
 }
