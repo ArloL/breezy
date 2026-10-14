@@ -1,7 +1,7 @@
 // Scenarios written once for any kind of device: on the hub's fakes (cases.test.ts) and on real devices
 // (browsers.e2e.ts). Each acts on the first device and looks at what the second shows.
 import assert from "node:assert/strict";
-import { centre, item, type Device } from "./device.ts";
+import { centre, item, type Device, type Frame } from "./device.ts";
 import { LANE_H, LANE_W } from "../web/rules.ts";
 
 export interface Stage {
@@ -315,15 +315,15 @@ export const cases: Case[] = [
       await laneAndCard(s);
       const before = (await a.scene()).camera;
       const size = await a.size(), m = { x: size.w / 2, y: size.h / 2 };
-      const touch = (finger: number) => ({ kind: "touch" as const, finger });
-      await a.pointer("down", { x: m.x - 50, y: m.y }, touch(1));
-      await a.pointer("down", { x: m.x + 50, y: m.y }, touch(2));
-      for (let i = 1; i <= 10; i++) {
-        await a.wait(16);
-        await a.fingers("move", [[1, { x: m.x - 50 - 5 * i, y: m.y }], [2, { x: m.x + 50 + 5 * i, y: m.y }]]);
-      }
-      await a.pointer("up", { x: m.x - 100, y: m.y }, touch(1));
-      await a.pointer("up", { x: m.x + 100, y: m.y }, touch(2));
+      const spread: Frame[] = [];
+      for (let i = 1; i <= 10; i++) spread.push([16, "move", [[1, { x: m.x - 50 - 5 * i, y: m.y }], [2, { x: m.x + 50 + 5 * i, y: m.y }]]]);
+      await a.gesture([
+        [0, "down", [[1, { x: m.x - 50, y: m.y }]]],
+        [0, "down", [[2, { x: m.x + 50, y: m.y }]]],
+        ...spread,
+        [0, "up", [[1, { x: m.x - 100, y: m.y }]]],
+        [0, "up", [[2, { x: m.x + 100, y: m.y }]]],
+      ]);
       await a.wait(1500);
       const { camera } = await a.scene();
       const zoom = Math.min(2, before.zoom * 2);

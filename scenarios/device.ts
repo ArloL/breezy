@@ -11,6 +11,9 @@ export interface Modifiers {
 
 export type PointerPhase = "down" | "move" | "up" | "cancel";
 
+/** A frame of a gesture: the ms to wait first, and each finger's id and screen point. */
+export type Frame = [ms: number, phase: PointerPhase, moves: [number, Point][]];
+
 export interface PointerExtra extends Modifiers {
   /** 2 for the second press of a double-click. */
   clicks?: number;
@@ -100,13 +103,18 @@ export abstract class Device {
    */
   async touchDrag(from: Point, to: Point, { hold = true, steps = 8, ms = 16 }: { hold?: boolean; steps?: number; ms?: number } = {}) {
     const [a, b] = [await this.screen(from), await this.screen(to)];
-    const touch = { kind: "touch" as const };
     const card = hold ? (await this.scene()).cards.findLast((c) => from.x >= c.x && from.x < c.x + c.w && from.y >= c.y && from.y < c.y + c.h)?.id : undefined;
-    await this.pointer("down", a, touch);
-    await this.wait(hold ? 400 : ms);
-    if (card) await this.until(`${card} to lift under the finger`, async () => item(await this.scene(), card).raised === true);
-    await this.moveAlong(a, b, steps, ms, (p) => this.pointer("move", p, touch));
-    await this.pointer("up", b, touch);
+    const path: Frame[] = [];
+    for (let i = 1; i <= steps; i++) path.push([ms, "move", [[0, { x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps }]]]);
+    path.push([ms, "up", [[0, b]]]);
+    if (!card) {
+      path[0]![0] += hold ? 400 : ms;
+      return this.gesture([[0, "down", [[0, a]]], ...path]);
+    }
+    await this.gesture([[0, "down", [[0, a]]]]);
+    await this.wait(400);
+    await this.until(`${card} to lift under the finger`, async () => item(await this.scene(), card).raised === true);
+    await this.gesture(path);
   }
 
   /** A double-click at world point `p`. */
@@ -138,22 +146,23 @@ export abstract class Device {
     for (const [finger, p] of moves) await this.pointer(phase, p, { kind: "touch", finger });
   }
 
+  /** Frames of fingers, each after its wait in ms: a gesture whose timing is what it means, as a hold's or a double tap's. */
+  async gesture(frames: Frame[]) {
+    for (const [ms, phase, moves] of frames) {
+      if (ms) await this.wait(ms);
+      await this.fingers(phase, moves);
+    }
+  }
+
   /** Two taps at world point `p`, as quick as a double tap. */
   async doubleTap(p: Point) {
     const s = await this.screen(p);
-    for (let i = 0; i < 2; i++) {
-      await this.pointer("down", s, { kind: "touch" });
-      await this.wait(40);
-      await this.pointer("up", s, { kind: "touch" });
-      await this.wait(60);
-    }
+    await this.gesture([[0, "down", [[0, s]]], [40, "up", [[0, s]]], [60, "down", [[0, s]]], [40, "up", [[0, s]]]]);
   }
 
   async tap(p: Point) {
     const s = await this.screen(p);
-    await this.pointer("down", s, { kind: "touch" });
-    await this.wait(50);
-    await this.pointer("up", s, { kind: "touch" });
+    await this.gesture([[0, "down", [[0, s]]], [50, "up", [[0, s]]]]);
   }
 
   /** Until `test` holds, checked every 50 ms on this device's clock for at most `ms`. */
@@ -163,6 +172,8 @@ export abstract class Device {
       await this.wait(50);
     }
   }
+
+
 
   private async moveAlong(a: Point, b: Point, steps: number, ms: number, move: (p: Point) => Promise<void>) {
     for (let i = 1; i <= steps; i++) {
