@@ -93,6 +93,23 @@ test("a drag after a hold says so", () => {
   assert.deepEqual(log, [["hold", P(0, 0)], ["dragStart", P(0, 0), P(20, 0), true]]);
 });
 
+test("a move from before a hold's time that a busy page hands over after it undoes the hold: it was a drag", () => {
+  const { g, log } = setup();
+  g.down(1, 0, 0, 0);
+  g.tick(500);
+  g.move(1, 3, 0, 30);
+  g.move(1, 20, 0, 40);
+  assert.deepEqual(log, [["hold", P(0, 0)], ["holdCancel"], ["dragStart", P(0, 0), P(20, 0), false]]);
+});
+
+test("a lift from before a hold's time that a busy page hands over after it undoes the hold: it was a tap", () => {
+  const { g, log } = setup();
+  g.down(1, 0, 0, 0);
+  g.tick(500);
+  g.up(1, 0, 0, 80);
+  assert.deepEqual(log, [["hold", P(0, 0)], ["holdCancel"], ["tap", P(0, 0)]]);
+});
+
 test("a drag starting after 300 ms counts as held even if no timer fired", () => {
   const { g, log } = setup();
   g.down(1, 0, 0, 0);
