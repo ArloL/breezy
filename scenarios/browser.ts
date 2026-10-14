@@ -167,10 +167,15 @@ export class Touchscreen {
     throw new Error(`the page sees no touches: something of Chrome's covers it; ${t.texts()}`);
   }
 
+  /** The screen as a PNG. */
+  capture() {
+    return execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"], { timeout: 10_000 });
+  }
+
   /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
   texts() {
     try {
-      writeFileSync(join(root, "build", "android-touches.png"), execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"]));
+      writeFileSync(join(root, "build", "android-touches.png"), this.capture());
       const ui = execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8" });
       return `the screen shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`;
     } catch (e) {
@@ -206,6 +211,12 @@ export class Touchscreen {
 
 type Touches = [string, number, number, number, number][];
 
+/** Whether an editor has the keyboard. Runs in the page. */
+function editing() {
+  const e = document.activeElement;
+  return e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || (e as HTMLElement | null)?.isContentEditable === true;
+}
+
 /** Keeps each touch's pointer event in `touches` as it reaches the page: type, point, and its time and the time handled
  * on the page's wall clock. Runs in the page. */
 function logTouches() {
@@ -216,6 +227,13 @@ function logTouches() {
       const p = e as PointerEvent;
       if (p.pointerType !== "touch") return;
       touches.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
+    }, { capture: true });
+  }
+  // what had the keyboard, for a touch an editor kept from the board
+  for (const type of ["keydown", "focusin", "focusout"]) {
+    addEventListener(type, (e) => {
+      const what = e instanceof KeyboardEvent ? e.key : `${(e.target as Element).tagName?.toLowerCase()}.${(e.target as Element).className}`;
+      touches.push([`${type} ${what}`, 0, 0, performance.timeOrigin + e.timeStamp, performance.timeOrigin + performance.now()]);
     }, { capture: true });
   }
 }
@@ -265,6 +283,11 @@ export class BrowserDevice extends Device {
    * The touches sent to the emulator and the page's pointer events, in order on this machine's clock, ms from the first;
    * the page's clock set to this one's by a round trip. A pointer event's own time is when Android read the touch.
    */
+  /** The emulator's screen as a PNG, if this is one. */
+  capture() {
+    return this.touchscreen?.capture();
+  }
+
   async touches(): Promise<string | null> {
     if (!this.touchscreen) return null;
     const t0 = Date.now();
@@ -406,10 +429,7 @@ export class BrowserDevice extends Device {
 
   /** Once an editor has the keyboard: one a double tap opened shows a moment later on a busy phone. */
   override async type(text: string) {
-    await this.page.waitForFunction(() => {
-      const e = document.activeElement;
-      return e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || (e as HTMLElement | null)?.isContentEditable === true;
-    }, undefined, { timeout: 5000 });
+    await this.page.waitForFunction(editing, undefined, { timeout: 5000 });
     await this.page.keyboard.type(text);
     // a touchscreen's touches reach the page by another way than DevTools' keys, and could overtake them
     if (this.touchscreen) {
@@ -425,8 +445,14 @@ export class BrowserDevice extends Device {
     if (!r) throw new Error(`nothing shows ${id}`);
     const p = await this.screen({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
     await this.page.mouse.dblclick(p.x, p.y);
-    await this.page.keyboard.type(text);
+    await this.type(text);
+    await this.endEdit();
+  }
+
+  /** Esc, and until the editor has let go of the keyboard: a busy phone ends the edit a moment later. */
+  private async endEdit() {
     await this.page.keyboard.press("Escape");
+    await this.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable, undefined, { timeout: 5000 });
   }
 
   /** As a person makes one: a double-click, a title, and Esc. */
@@ -434,8 +460,8 @@ export class BrowserDevice extends Device {
     const before = await this.scene();
     const p = await this.screen({ x, y });
     await this.page.mouse.dblclick(p.x, p.y);
-    await this.page.keyboard.type("card");
-    await this.page.keyboard.press("Escape");
+    await this.type("card");
+    await this.endEdit();
     return this.made(before, "cards");
   }
 
@@ -580,7 +606,9 @@ export class RealWorld {
       const touches = await Promise.race([d.touches().catch((e: Error) => `no touches: ${e.message}`), sleep(5000).then(() => "no touches: the page did not answer in 5 s")]);
       if (touches === null) continue;
       mkdirSync(join(root, "build", "touches"), { recursive: true });
-      writeFileSync(join(root, "build", "touches", `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}.txt`), `${verdict}\n${touches}\n`);
+      const file = join(root, "build", "touches", `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}`);
+      writeFileSync(`${file}.txt`, `${verdict}\n${touches}\n`);
+      if (verdict !== "passed") try { writeFileSync(`${file}.png`, d.capture()!); } catch {}
     }
   }
 
