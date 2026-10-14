@@ -104,7 +104,7 @@ jobs:
       run: |
         serial=$(mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
         if [ -n "$serial" ]; then mise exec -- adb -s "$serial" exec-out screencap -p > build/soak/screen.png || true; fi
-        cp -R build/touches build/android-*.png build/android-emulator.log build/soak/ 2>/dev/null || true
+        cp -R build/touches build/scenarios build/android-*.png build/android-emulator.log build/soak/ 2>/dev/null || true
         cp /tmp/adb.*.log build/soak/ 2>/dev/null || true
         { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/soak/host.txt 2>&1
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
