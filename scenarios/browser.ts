@@ -383,7 +383,8 @@ export class RealWorld {
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
     for (const [i, kind] of kinds.entries()) {
       if (kind === "mac") {
-        const mac = await MacDevice.start(58570 + i, `d${i}`);
+        // below every system's ephemeral ports, which a process listening on a random port took once
+        const mac = await MacDevice.start(18570 + i, `d${i}`);
         this.devices.push(mac);
         await mac.command({ cmd: "join", link });
         const board = i === 0
