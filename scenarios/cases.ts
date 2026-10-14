@@ -18,6 +18,8 @@ export interface Case {
   edits?: boolean;
   /** Whether the first device must draw its text for the case to see, which the hub's fakes do not. */
   draws?: boolean;
+  /** Whether the first device must be kept busy, which the hub's fakes and the Mac cannot. */
+  busy?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
   run(s: Stage): Promise<void>;
@@ -295,6 +297,28 @@ export const cases: Case[] = [
       const after = await a.scene();
       assert.notDeepEqual(after.camera, before.camera, "the camera moved");
       assert.deepEqual({ x: item(after, card).x, y: item(after, card).y }, { x: c.x, y: c.y }, "the card did not");
+      assert.deepEqual({ x: item(await b.scene(), card).x, y: item(await b.scene(), card).y }, { x: seen.x, y: seen.y });
+    },
+  },
+  {
+    name: "a finger dragged across a card pans though the phone is busy for a moment just after it goes down",
+    input: "touch",
+    busy: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      const made = item(await a.scene(), card);
+      await a.tap({ x: made.x + made.w + 100, y: made.y + made.h / 2 });
+      await a.wait(400);
+      const before = await a.scene(), seen = item(await b.scene(), card);
+      const c = item(before, card);
+      // longer than a hold: the finger moved long before, but the moves reach the app after the hold's timer
+      await a.busyAfterPress(500);
+      await a.touchDrag(centre(c), { x: c.x + 200, y: c.y - 100 }, { hold: false });
+      await s.settle();
+      const after = await a.scene();
+      assert.deepEqual({ x: item(after, card).x, y: item(after, card).y }, { x: c.x, y: c.y }, "the card did not move");
+      assert.notDeepEqual(after.camera, before.camera, "the camera moved");
       assert.deepEqual({ x: item(await b.scene(), card).x, y: item(await b.scene(), card).y }, { x: seen.x, y: seen.y });
     },
   },

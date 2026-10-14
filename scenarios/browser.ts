@@ -344,12 +344,17 @@ function logTouches() {
 /**
  * Frames of finger pointer events, each after its wait in ms, as iOS Safari sends them: one at a time, each at the
  * element under its point, all with the frame's time. Timed in the page, as a round trip to it per frame can take longer
- * than a hold on a busy runner. Runs in the page.
+ * than a hold on a busy runner. Each frame's time is when it was due, as a touchscreen stamps a touch when the finger
+ * moved: a page busy past a frame gets it late but knows when it was, where a time stamped late made a pan a hold.
+ * Runs in the page.
  */
 async function touchFrames(frames: [number, [string, number, number, number][]][]) {
+  let due = performance.now();
   for (const [ms, events] of frames) {
-    if (ms) await new Promise((resolve) => setTimeout(resolve, ms));
-    const timeStamp = performance.now();
+    due += ms;
+    const wait = due - performance.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    const timeStamp = due;
     for (const [type, x, y, finger] of events) {
       const target = (type === "pointerdown" && document.elementFromPoint(x, y)) || document.body;
       const e = new PointerEvent(type, { pointerId: 10 + finger, pointerType: "touch", isPrimary: finger === 0, clientX: x, clientY: y, bubbles: true, cancelable: true, buttons: type === "pointerup" ? 0 : 1 });
@@ -474,6 +479,12 @@ export class BrowserDevice extends Device {
 
   override get draws() {
     return true;
+  }
+
+  override async busyAfterPress(ms: number) {
+    await this.page.evaluate((ms) => addEventListener("pointerdown", () => setTimeout(() => {
+      for (const end = performance.now() + ms; performance.now() < end;);
+    }), { once: true, capture: true }), ms);
   }
 
   override async editor() {

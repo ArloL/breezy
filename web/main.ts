@@ -45,6 +45,17 @@ const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
 /** A mouse press that began on the board, not in an editor, though its double-click may have opened one under it. */
 let boardClick = false;
+/**
+ * Tells the gestures a hold's time has come, at `at` on performance.now(). A timer late by more than a frame or two
+ * found the page busy, and Chrome may hand over the moves it held back meanwhile only after it: a finger that moved in
+ * time would lift the card it meant to pan. It asks again once the page has kept up for a moment.
+ */
+function holdCheck(at: number) {
+  setTimeout(() => {
+    if (performance.now() - at > 40) return holdCheck(performance.now() + 50);
+    gestures.tick(performance.now());
+  }, at - performance.now());
+}
 board.addEventListener("pointerdown", (e) => {
   boardClick = e.pointerType === "mouse" && !editor(e);
   if (editor(e)) return;
@@ -59,7 +70,7 @@ board.addEventListener("pointerdown", (e) => {
   }
   app.input.touchStart({ x: e.clientX, y: e.clientY });
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
-  setTimeout(() => gestures.tick(performance.now()), HOLD_MS + 10);
+  holdCheck(performance.now() + HOLD_MS + 10);
 });
 // A touch's compatibility mousedown comes after pointerup and would take focus from an editor that tap just opened. The
 // mousedown of a double-click that opened an editor would select the word under the pointer, which typing replaces.
