@@ -230,6 +230,12 @@ jobs:
       timeout-minutes: 30
       # a handle left open once kept node from exiting after the last case, until the job timed out
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ failure() }}
+      with:
+        name: scenarios
+        path: build/scenarios
+        if-no-files-found: ignore
   # The scenarios' Android pairs on an emulator: GitHub's Linux runners have KVM, its macOS runners cannot run one
   android:
     runs-on: ubuntu-latest
@@ -300,6 +306,7 @@ jobs:
           build/android-host.txt
           build/adb.*.log
           build/touches
+          build/scenarios
   # Sparkle reads the feed from the latest release, so each release carries its own; only main
   # can read the update-signing environment's key
   appcast:
