@@ -550,9 +550,10 @@ export class BrowserDevice extends Device {
     await this.page.keyboard.type(text);
     // a touchscreen's touches reach the page by another way than DevTools' keys, and could overtake them
     if (this.touchscreen) {
+      // a front may end in a newline that draws nothing, and DomField.text() drops, as after ⌫ on a phone
       await this.page.waitForFunction((t) => {
         const e = document.activeElement;
-        return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").endsWith(t);
+        return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").replace(/\n$/, "").endsWith(t);
       }, text, { timeout: 5000 }).catch(async (e) => {
         // a keyboard's input method may put in other characters than the keys sent
         const held = await this.page.evaluate(() => document.activeElement?.textContent ?? "");
