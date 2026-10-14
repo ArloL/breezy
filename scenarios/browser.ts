@@ -217,8 +217,8 @@ function editing() {
   return e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || (e as HTMLElement | null)?.isContentEditable === true;
 }
 
-/** Keeps each touch's pointer event in `touches` as it reaches the page: type, point, and its time and the time handled
- * on the page's wall clock. Runs in the page. */
+/** Keeps each touch's pointer event, key and focus change in `touches` as it reaches the page: type, point, and its time
+ * and the time handled on the page's wall clock. Runs in the page. */
 function logTouches() {
   const touches: Touches = [];
   (window as { touches?: typeof touches }).touches = touches;
@@ -279,15 +279,15 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
   }
 
-  /**
-   * The touches sent to the emulator and the page's pointer events, in order on this machine's clock, ms from the first;
-   * the page's clock set to this one's by a round trip. A pointer event's own time is when Android read the touch.
-   */
   /** The emulator's screen as a PNG, if this is one. */
   capture() {
     return this.touchscreen?.capture();
   }
 
+  /**
+   * The touches sent to the emulator and the page's pointer events, keys and focus, in order on this machine's clock, ms from the first;
+   * the page's clock set to this one's by a round trip. A pointer event's own time is when Android read the touch.
+   */
   async touches(): Promise<string | null> {
     if (!this.touchscreen) return null;
     const t0 = Date.now();
