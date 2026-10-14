@@ -393,6 +393,32 @@ func aFailureInTheOldSpaceLeavesTheNewOneFreeToSync(_ failure: TransportError) a
   #expect(server.records.count == 4)
 }
 
+@MainActor @Test func aCardMovedAgainAfterAPushWhoseAnswerWasLostStaysWhereItWasMovedLast() async {
+  let (_, a, b, id) = await pair()
+  a.transport.losesAnswers = true
+  a.edit(id) { $0.cards[0].x = 100 }
+  await a.engine.sync()
+  a.transport.losesAnswers = false
+  a.engine.reset()
+  a.edit(id) { $0.cards[0].x = 200 }
+  await a.engine.sync()
+  await b.engine.sync()
+  for d in [a, b] { #expect(d.store.board(id).cards.map(\.x) == [200]) }
+}
+
+@MainActor @Test func aDeviceEndedJustAfterAPushKeepsWhatItChangedSince() async throws {
+  let (server, a, b, id) = await pair()
+  var saved: SpaceState?
+  a.engine.persist = { saved = a.store.state }
+  a.edit(id) { $0.cards[0].x = 100 }
+  await a.engine.sync()
+  let again = Device(server, state: try #require(saved))
+  again.edit(id) { $0.cards[0].x = 200 }
+  await again.engine.sync()
+  await b.engine.sync()
+  for d in [again, b] { #expect(d.store.board(id).cards.map(\.x) == [200]) }
+}
+
 @MainActor @Test func anEditSyncsInOneRequest() async {
   let (_, a, b, id) = await pair()
   let c = a.store.board(id).cards[0].id

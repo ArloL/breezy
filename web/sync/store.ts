@@ -17,6 +17,9 @@ export interface RecordState {
   current: SyncRecord;
   /** The version from before a resync. */
   prior?: number;
+  /** What pushes sent since the server's last answer for it, which may have been lost: a refusal or pull that brings one
+   * back means the server took it. */
+  sent?: SyncRecord[];
 }
 
 /** A record sealed for the server: base64 id and blob. */
@@ -57,6 +60,7 @@ export const withFreshIDs = (board: Board): Board => ({
 });
 
 const empty = (): Board => ({ cards: [], lanes: [] });
+const SENT_KEPT = 16;
 
 export class Store {
   state: StoreState;
@@ -182,11 +186,22 @@ export class Store {
       .sort((a, b) => (a.id < b.id ? -1 : 1));
   }
 
+  /** `records` are about to be pushed. */
+  sending(records: Map<string, SyncRecord>): void {
+    for (const [id, record] of records) {
+      const s = this.state.records[id];
+      if (!s || s.sent?.some((r) => equalRecords(r, record))) continue;
+      this.state.records[id] = { ...s, sent: [...(s.sent ?? []), record].slice(-SENT_KEPT) };
+    }
+    this.onDirty();
+  }
+
   /** The server took `record` as `version`; edits made since it was sent stay pending. */
   accepted(id: string, version: number, record: SyncRecord): void {
     const s = this.state.records[id];
     if (!s) return;
-    this.state.records[id] = { ...s, base: record, version };
+    const { sent, ...rest } = s;
+    this.state.records[id] = { ...rest, base: record, version };
     this.onDirty();
   }
 
@@ -205,6 +220,10 @@ export class Store {
         continue;
       }
       if (old && version <= old.version) continue;
+      if (old?.sent?.some((r) => equalRecords(r, record))) {
+        this.accepted(id, version, record);
+        continue;
+      }
       let current = record;
       if (old && !equalRecords(old.current, old.base)) {
         const m = mergeRecord(old.base, old.current, record);

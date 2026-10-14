@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FakeServer, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.ts";
+import { FakeServer, FakeTransport, SERVER, device, pair, mulberry, seededIDs } from "./helpers/fake-server.ts";
 import { statusLines, TransportError, validRelay, HttpTransport, SyncEngine } from "../sync/engine.ts";
 import type { Page } from "../sync/engine.ts";
 import { SpaceKeys } from "../sync/crypto.ts";
+import type { StoreState } from "../sync/store.ts";
 import { encode, decode } from "../sync/base64.ts";
 import { inflateRawSync } from "node:zlib";
 import { newID } from "../rules.ts";
@@ -386,6 +387,36 @@ test("an edit syncs in one request", async () => {
   assert.equal(a.transport.calls, 1);
   await b.engine.sync();
   assert.equal(b.store.board(id).cards[0].color, 3);
+});
+
+test("a card moved again after a push whose answer was lost stays where it was moved last", async () => {
+  const { server, a, b, id } = await pair(newID);
+  a.transport.push = async (writes, since, epoch) => {
+    server.push(writes, since, epoch);
+    throw new TransportError("unreachable");
+  };
+  a.edit(id, (x) => (x.cards[0].x = 100));
+  await a.engine.sync();
+  a.transport.push = FakeTransport.prototype.push;
+  a.engine.reset();
+  a.edit(id, (x) => (x.cards[0].x = 200));
+  await a.engine.sync();
+  await b.engine.sync();
+  for (const d of [a, b]) assert.deepEqual(d.store.board(id).cards.map((c) => c.x), [200]);
+});
+
+test("a device ended just after a push keeps what it changed since", async () => {
+  const { server, a, b, id } = await pair(newID);
+  let saved: StoreState | undefined;
+  a.engine.persist = async () => void (saved = structuredClone(a.store.state));
+  a.edit(id, (x) => (x.cards[0].x = 100));
+  await a.engine.sync();
+  const again = device(server);
+  again.store.state = saved!;
+  again.edit(id, (x) => (x.cards[0].x = 200));
+  await again.engine.sync();
+  await b.engine.sync();
+  for (const d of [again, b]) assert.deepEqual(d.store.board(id).cards.map((c) => c.x), [200]);
 });
 
 test("a device never pulls back what it pushed", async () => {

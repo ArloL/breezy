@@ -187,6 +187,8 @@ public struct SyncStatus: Equatable, Sendable {
   public var onPulled: ((Int) -> Void)?
   /// Just before a push goes.
   public var onPushing: (() -> Void)?
+  /// Keeps the store as it is, so that a device ended before the push's answer knows what it sent.
+  public var persist: (() -> Void)?
   /// Whether a gesture others follow live is under way: what it changed so far waits for its end.
   public var holdBack: (() -> Bool)?
   /// When a cycle last ended synced, on `clock`.
@@ -311,6 +313,8 @@ public struct SyncStatus: Equatable, Sendable {
         first = nil
         if out.writes.isEmpty { break }
         let request = combined ? store.state.cursor : nil
+        store.sending(out.sent)
+        persist?()
         let result = try await transport.push(out.writes, since: request, epoch: combined ? store.state.epoch : nil)
         guard same() else { return }
         if store.note(epoch: result.epoch) {

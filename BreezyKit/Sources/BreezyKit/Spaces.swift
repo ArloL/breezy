@@ -118,6 +118,10 @@ import Foundation
       setRelay(relay, for: g)
     }
     engine.onPushing = { [weak g] in g?.live?.pushing() }
+    engine.persist = { [weak store] in
+      guard let store else { return }
+      file.save(store.state, wait: true)
+    }
     engine.onPushed = { [weak g] in g?.live?.sendPushed($0) }
     engine.onPulled = { [weak g] in g?.live?.noteCursor($0, epoch: g?.store.state.epoch) }
     file.onError = { [weak self] in self?.onError?($0) }
