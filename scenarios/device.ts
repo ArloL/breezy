@@ -114,6 +114,12 @@ export abstract class Device {
     return "";
   }
 
+  /** How many changes wait to be pushed, which a board shown alike everywhere does not say: what a device made can show
+   * on another from the live layer before the server has it. */
+  async unpushed(): Promise<number> {
+    return 0;
+  }
+
   /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
   async relaunch(): Promise<void> {
     throw new Error(`${this.kind} devices cannot launch again`);
