@@ -79,25 +79,34 @@ await within(60, `adb to connect to ${EMULATOR_TCP}`, succeeds(() => {
   return adb("connect", EMULATOR_TCP).includes("connected") && adb("-s", EMULATOR_TCP, "get-state").trim() === "device";
 }));
 device = ["-s", EMULATOR_TCP];
+/** Until `adb` with `args` succeeds, connecting again after each failure: adbd drops its TCP connections for a few
+ * seconds now and then right after it listens there. */
+const settled = (what: string, ...args: string[]) => within(60, what, () => {
+  if (succeeds(() => adb(...args))()) return true;
+  succeeds(() => run("adb", ["connect", EMULATOR_TCP]))();
+  return false;
+});
 // before Android's own connections take them
 for (const port of [WEB, SERVER, RELAY]) {
   await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
 }
 // Android's own animations, which a software-rendered screen draws on the CPU the page needs too
-for (const scale of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) adb("shell", "settings", "put", "global", scale, "0");
+for (const scale of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) {
+  await settled(`${scale} 0`, "shell", "settings", "put", "global", scale, "0");
+}
 // the emulator's touchscreen says it is a stylus too, and Gboard puts its stylus tutorial over the page as an editor opens
-adb("shell", "settings", "put", "secure", "stylus_handwriting_enabled", "0");
+await settled("handwriting off", "shell", "settings", "put", "secure", "stylus_handwriting_enabled", "0");
 // a crash of some app of Android's own puts a dialog over Chrome, as Digital Wellbeing's did over its first run
-adb("shell", "settings", "put", "global", "hide_error_dialogs", "1");
+await settled("error dialogs hidden", "shell", "settings", "put", "global", "hide_error_dialogs", "1");
 // the Play Store updates Google Play services and itself while the scenarios run, and Chrome quits when Play services is
 // replaced, closing the page under a case
 await within(60, "the Play Store to be off", succeeds(() => adb("shell", "pm", "disable-user", "--user", "0", "com.android.vending").includes("disabled")));
 // a cold boot reports itself completed before the package manager knows Chrome
 await within(60, "the package manager to know Chrome", succeeds(() => adb("shell", "pm", "path", "com.android.chrome")));
 // a user build's Chrome reads the command line Playwright writes only as the debug app
-adb("shell", "am", "set-debug-app", "--persistent", "com.android.chrome");
+await settled("Chrome the debug app", "shell", "am", "set-debug-app", "--persistent", "com.android.chrome");
 // else Chrome asks for it over the page
-adb("shell", "pm", "grant", "com.android.chrome", "android.permission.POST_NOTIFICATIONS");
+await settled("Chrome's notifications granted", "shell", "pm", "grant", "com.android.chrome", "android.permission.POST_NOTIFICATIONS");
 // Chrome's first-run screens, which Playwright's --disable-fre does not skip; after a cold boot its activity shows up a
 // while after its package
 const chrome = () => adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main");
