@@ -553,7 +553,12 @@ export class BrowserDevice extends Device {
       await this.page.waitForFunction((t) => {
         const e = document.activeElement;
         return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").endsWith(t);
-      }, text, { timeout: 5000 });
+      }, text, { timeout: 5000 }).catch(async (e) => {
+        // a keyboard's input method may put in other characters than the keys sent
+        const held = await this.page.evaluate(() => document.activeElement?.textContent ?? "");
+        const end = [...held.slice(-text.length - 4)].map((c) => c.codePointAt(0)!.toString(16)).join(" ");
+        throw new Error(`${JSON.stringify(text)} typed, the editor ends in ${end}`, { cause: e });
+      });
       // the board keeps the editor in sight of the keyboard, which opened with it
       await this.still("the keyboard to open and the board to stand still");
     }
