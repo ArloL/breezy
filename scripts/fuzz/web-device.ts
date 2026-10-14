@@ -478,7 +478,7 @@ class WebDevice {
       const id = e.finger ?? 0;
       if (e.phase === "down") {
         o.app.touching = true;
-        o.app.input.touchStart();
+        o.app.input.touchStart(p);
         o.gestures.down(id, p.x, p.y, t);
         setTimeout(() => this.open?.gestures.tick(performance.now()), HOLD_MS + 10);
         return null;
