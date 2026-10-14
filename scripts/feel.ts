@@ -161,7 +161,8 @@ async function browser(name: string) {
   const dir = mkdtempSync(join(tmpdir(), `breezy-feel-${name}-`));
   dirs.push(dir);
   children.push(spawnGroup(chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "--disable-renderer-backgrounding", "--disable-background-timer-throttling", "about:blank"], { stdio: "ignore" }));
-  await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")));
+  // a macOS runner checks a browser it has not run before for a while first
+  await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")), 60_000);
   const port = readFileSync(join(dir, "DevToolsActivePort"), "utf8").split("\n")[0];
   let page: { type: string; webSocketDebuggerUrl: string } | undefined;
   await waitFor(`${name} page`, async () => (page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((p: { type: string }) => p.type === "page")));
