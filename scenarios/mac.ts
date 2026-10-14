@@ -113,6 +113,11 @@ export class MacDevice extends Device {
     return true;
   }
 
+  /** What its menus say of the sync, a line for each space. */
+  override async syncStatus() {
+    return (await this.command<string[]>({ cmd: "status" })).join("\n");
+  }
+
   override get draws() {
     return true;
   }
