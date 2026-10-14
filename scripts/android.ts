@@ -5,7 +5,7 @@
 // wait is bounded and names what it waited for.
 // Stop it with adb emu kill.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync } from "node:fs";
 import { arch } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -52,14 +52,7 @@ if (!existsSync(join(avds, `${avd}.ini`))) {
   mkdirSync(avds, { recursive: true });
   run("avdmanager", ["create", "avd", "--name", avd, "--package", image, "--device", "pixel_8a"], { input: "no\n" });
 }
-// Temporary knobs for the soak to compare: EMULATOR_LCD as 540x1200@210, EMULATOR_CORES as 2
-const config = join(avds, `${avd}.avd`, "config.ini");
-const lcd = /^(\d+)x(\d+)@(\d+)$/.exec(process.env.EMULATOR_LCD ?? "1080x2400@420");
-if (lcd) {
-  const set = { "hw.lcd.width": lcd[1], "hw.lcd.height": lcd[2], "hw.lcd.density": lcd[3] } as Record<string, string>;
-  const lines = readFileSync(config, "utf8").split("\n").filter((l) => !(l.split("=")[0]! in set));
-  writeFileSync(config, [...lines.filter((l) => l), ...Object.entries(set).map(([k, v]) => `${k}=${v}`), ""].join("\n"));
-}
+// Temporary knob for the soak to compare: EMULATOR_CORES as 2
 const cores = process.env.EMULATOR_CORES ? ["-cores", process.env.EMULATOR_CORES] : [];
 // the emulator alone, as the adb commands below name no device; this run connects TCP again
 succeeds(() => adb("disconnect", EMULATOR_TCP))();
