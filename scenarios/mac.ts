@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { Device, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
+import { Device, type Editor, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
 import type { Point } from "../web/types.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -111,6 +111,19 @@ export class MacDevice extends Device {
 
   override get edits() {
     return true;
+  }
+
+  override get draws() {
+    return true;
+  }
+
+  override async editor() {
+    return this.command<Editor | null>({ cmd: "editor" });
+  }
+
+  /** A card at rest is drawn from `Typo.front(text)` alone. */
+  override async weights() {
+    return null;
   }
 
   override async type(text: string) {
