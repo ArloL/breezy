@@ -82,6 +82,8 @@ jobs:
     - name: Boot the emulator
       timeout-minutes: 8
       run: |
+        # else tee's success hides a failed boot, and the soak runs on an emulator half set up
+        set -o pipefail
         mkdir -p build/soak
         mise exec -- node scripts/android.ts 2>&1 | tee build/soak/boot.txt
     - name: The scenarios on Android, over and over
