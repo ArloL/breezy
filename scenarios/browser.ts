@@ -455,12 +455,22 @@ export class BrowserDevice extends Device {
     return this.touchscreen?.capture();
   }
 
+  /** Whether its touches go through an emulator's touchscreen. */
+  get phone() {
+    return !!this.touchscreen;
+  }
+
   /**
    * The touches sent to the emulator and the page's pointer events, keys and focus, in order on this machine's clock, ms from the first;
    * the page's clock set to this one's by a round trip. A pointer event's own time is when Android read the touch.
    */
   async touches(): Promise<string | null> {
-    if (!this.touchscreen) return null;
+    if (!this.touchscreen) {
+      // dispatched in the page or sent through DevTools: what the page saw, and how late it handled each
+      const seen = [...this.seenBefore, ...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? [])];
+      const start = seen[0]?.[3] ?? 0;
+      return [`${seen.length} seen`, ...seen.map(([type, x, y, t, handled]) => `${`${Math.round(t - start)}`.padStart(6)}   page ${type} ${x},${y}${handled - t > 20 ? ` (handled ${Math.round(handled - t)} ms later)` : ""}`)].join("\n");
+    }
     const t0 = Date.now();
     const [now, seenNow] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { touches?: Touches }).touches ?? []] as const);
     const seen = [...this.seenBefore, ...seenNow];
@@ -578,7 +588,7 @@ export class BrowserDevice extends Device {
   override async relaunch() {
     const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
     const had = ids(await this.scene());
-    if (this.touchscreen) this.seenBefore.push(...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? []));
+    this.seenBefore.push(...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? []));
     this.note("launches again");
     await this.page.goto(`http://localhost:${WEB}/`);
     await openBoard(this.page);
@@ -739,7 +749,9 @@ export class RealWorld {
   private async browser(kind: Exclude<BrowserKind, "android">) {
     const browser = await { chromium, webkit, firefox }[kind].launch();
     this.browsers.push(browser);
-    return (await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" })).newPage();
+    const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" });
+    await context.addInitScript(logTouches);
+    return context.newPage();
   }
 
   /** Chrome on the phone or emulator adb sees, at its own size, reaching this Mac's servers at its own localhost. */
@@ -826,7 +838,8 @@ export class RealWorld {
   async record(name: string, verdict: string) {
     if (verdict !== "passed") await this.recordSync(name, verdict);
     for (const d of this.devices) {
-      if (!(d instanceof BrowserDevice)) continue;
+      // a phone's for every case, as its touches go through Android; a desktop browser's for a failing one
+      if (!(d instanceof BrowserDevice) || !d.phone && verdict === "passed") continue;
       const touches = await Promise.race([d.touches().catch((e: Error) => `no touches: ${e.message}`), sleep(5000).then(() => "no touches: the page did not answer in 5 s")]);
       if (touches === null) continue;
       mkdirSync(join(root, "build", "touches"), { recursive: true });
