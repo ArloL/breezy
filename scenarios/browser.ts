@@ -229,6 +229,10 @@ function logTouches() {
       touches.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
     }, { capture: true });
   }
+  // the page's size, which the keyboard changes
+  const size = () => touches.push([`resize ${innerHeight} ${Math.round(visualViewport!.height)}`, 0, 0, performance.timeOrigin + performance.now(), performance.timeOrigin + performance.now()]);
+  addEventListener("resize", size);
+  visualViewport!.addEventListener("resize", size);
   // what had the keyboard, for a touch an editor kept from the board
   for (const type of ["keydown", "focusin", "focusout"]) {
     addEventListener(type, (e) => {
@@ -437,6 +441,8 @@ export class BrowserDevice extends Device {
         const e = document.activeElement;
         return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").endsWith(t);
       }, text, { timeout: 5000 });
+      // the board keeps the editor in sight of the keyboard, which opened with it
+      await this.still("the keyboard to open and the board to stand still");
     }
   }
 
@@ -449,10 +455,25 @@ export class BrowserDevice extends Device {
     await this.endEdit();
   }
 
-  /** Esc, and until the editor has let go of the keyboard: a busy phone ends the edit a moment later. */
+  /**
+   * Esc, and until the editor has let go of the keyboard: a busy phone ends the edit a moment later. On a phone, until
+   * its keyboard has gone too and the board stands still, as a person waits to see it: the board moves as the keyboard
+   * goes, and a finger aimed before lands elsewhere.
+   */
   private async endEdit() {
     await this.page.keyboard.press("Escape");
     await this.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable, undefined, { timeout: 5000 });
+    if (this.touchscreen) await this.still("the keyboard to go and the board to stand still");
+  }
+
+  /** Until the page's size and the board's camera have not changed for 500 ms. */
+  private async still(what: string) {
+    let last = "", since = Date.now();
+    await until(what, async () => {
+      const now = JSON.stringify([await this.page.evaluate(() => [innerHeight, visualViewport!.height, visualViewport!.offsetTop]), (await this.scene()).camera]);
+      if (now !== last) [last, since] = [now, Date.now()];
+      return Date.now() - since >= 500;
+    }, 5000);
   }
 
   /** As a person makes one: a double-click, a title, and Esc. */
