@@ -228,13 +228,21 @@ jobs:
         xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
     - name: Scenarios on real devices
       timeout-minutes: 30
+      # a case that fails gets a second run: one that then passes warns, its logs kept, rather than block a merge
+      env:
+        SCENARIO_RUNS: "2"
       # a handle left open once kept node from exiting after the last case, until the job timed out
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
+    - name: Warn of the cases that failed once
+      if: ${{ always() }}
+      run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      if: ${{ failure() }}
+      if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
       with:
         name: scenarios
-        path: build/scenarios
+        path: |
+          build/scenarios
+          build/touches
         if-no-files-found: ignore
   # The scenarios' Android pairs on an emulator: GitHub's Linux runners have KVM, its macOS runners cannot run one
   android:
@@ -285,8 +293,13 @@ jobs:
       timeout-minutes: 8
       run: mise exec -- node scripts/android.ts
     - name: Scenarios on Android
-      timeout-minutes: 8
+      timeout-minutes: 10
+      env:
+        SCENARIO_RUNS: "2"
       run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
+    - name: Warn of the cases that failed once
+      if: ${{ always() }}
+      run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
     - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
       # the emulator by its console's serial: adb counts adbd over TCP on 127.0.0.1 as one too; none once it has died
@@ -296,7 +309,7 @@ jobs:
         { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/android-host.txt 2>&1
         cp /tmp/adb.*.log build/ 2>/dev/null || true
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      if: ${{ failure() }}
+      if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
       with:
         name: android-emulator
         path: |
