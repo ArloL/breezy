@@ -200,7 +200,7 @@ export class Touchscreen {
     }
     const at = Date.now();
     await this.console.command(`event send ${[...events, "EV_SYN:0:0"].join(" ")}`);
-    this.sent.push({ at, ok: Date.now(), what: fingers.map(([finger, phase]) => `${phase}${finger}`).join(" ") });
+    this.sent.push({ at, ok: Date.now(), what: fingers.map(([finger, phase, p]) => `${phase}${finger} ${Math.round(p.x)},${Math.round(p.y)}`).join(" ") });
   }
 }
 
