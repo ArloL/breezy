@@ -170,12 +170,23 @@ function readWeights(id: string): number[] {
  * change stopped. Ids are the records' and the relay's first 8 characters. */
 export type SyncLog = [ms: number, what: string][];
 
-/** Notes in `log` each request to sync.php and its answer, each frame on the relay, and the page's errors. */
+/** Notes in `log` each request to sync.php and its answer, each file the page loads, its navigations, each frame on the
+ * relay, and the page's errors. */
 function logSync(page: Page, log: SyncLog, t0: number) {
   const note = (what: string) => log.push([Math.round(performance.now() - t0), what]);
   const id = (r: { id: string }) => r.id.slice(0, 8);
   const ours = (url: string) => url.includes(`:${SERVER}/`);
+  const site = (url: string) => url.includes(`:${WEB}/`);
+  page.on("framenavigated", (f) => f === page.mainFrame() && note(`navigates to ${f.url().slice(0, 40)}`));
+  page.on("domcontentloaded", () => note("DOM content loaded"));
+  page.on("load", () => note("loaded"));
+  page.on("requestfinished", async (r) => {
+    if (!site(r.url())) return;
+    const res = await r.response().catch(() => null);
+    note(`  got ${new URL(r.url()).pathname} ${res?.status()}${res?.fromServiceWorker() ? " from the service worker" : ""}`);
+  });
   page.on("request", (r) => {
+    if (site(r.url())) return note(`get ${new URL(r.url()).pathname}`);
     if (!ours(r.url())) return;
     const body = r.postDataBuffer();
     if (!body) return note(`pull since ${new URL(r.url()).searchParams.get("since")}`);
@@ -197,7 +208,7 @@ function logSync(page: Page, log: SyncLog, t0: number) {
       log.push([at, `  ${res.status()}, its body unread: ${e}`]);
     }
   });
-  page.on("requestfailed", (r) => ours(r.url()) && note(`  failed: ${r.failure()?.errorText}`));
+  page.on("requestfailed", (r) => (ours(r.url()) || site(r.url())) && note(`  failed ${new URL(r.url()).pathname}: ${r.failure()?.errorText}`));
   page.on("websocket", (ws) => {
     note(`relay opens ${ws.url()}`);
     ws.on("close", () => note("relay closes"));
