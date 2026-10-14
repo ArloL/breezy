@@ -132,12 +132,14 @@ jobs:
     - name: Scenarios on Android
       timeout-minutes: 8
       run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
-    - name: Capture the emulator's screen
+    - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
-      # the emulator by its console's serial: adb counts adbd over TCP on 127.0.0.1 as one too
+      # the emulator by its console's serial: adb counts adbd over TCP on 127.0.0.1 as one too; none once it has died
       run: |
-        serial=$(mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*")
-        mise exec -- adb -s "$serial" exec-out screencap -p > build/android-screen.png || true
+        serial=$(mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
+        if [ -n "$serial" ]; then mise exec -- adb -s "$serial" exec-out screencap -p > build/android-screen.png || true; fi
+        { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/android-host.txt 2>&1
+        cp /tmp/adb.*.log build/ 2>/dev/null || true
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       if: ${{ failure() }}
       with:
@@ -146,6 +148,8 @@ jobs:
           build/android-emulator.log
           build/android-screen.png
           build/android-touches.png
+          build/android-host.txt
+          build/adb.*.log
           build/touches
   bench:
     runs-on: macos-latest

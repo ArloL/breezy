@@ -5,7 +5,7 @@
 // wait is bounded and names what it waited for.
 // Stop it with adb emu kill.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, openSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { arch } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -140,4 +140,6 @@ await within(90, "Chrome to get past its first-run screens", () => {
 }).catch((e: Error) => {
   throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
 });
-console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]} on ${api}`);
+// what a run used, as the SDK's cache keeps them until it is evicted and a new emulator or image comes unannounced
+const revision = (...dir: string[]) => /^Pkg\.Revision=(.*)$/m.exec(readFileSync(join(sdk, ...dir, "source.properties"), "utf8"))?.[1];
+console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]} on ${api} image ${revision(...image.split(";"))}, emulator ${revision("emulator")}`);

@@ -1,8 +1,11 @@
 name: Android soak
 
 # The Android scenarios over and over on many emulators, to measure how often they fail, with each case's touches and the
-# emulator's log. Dispatch it, or push a soak/ branch for its defaults.
+# emulator's log. Dispatch it, or push a soak/ branch for its defaults. Weekly too, as a flake once in hundreds of cases
+# shows here long before Nightly fails of it.
 on:
+  schedule:
+  - cron: "41 3 * * 0"
   workflow_dispatch:
     inputs:
       emulators:
@@ -96,7 +99,7 @@ jobs:
       if: ${{ always() }}
       run: |
         serial=$(mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
-        [ -n "$serial" ] && mise exec -- adb -s "$serial" exec-out screencap -p > build/soak/screen.png || true
+        if [ -n "$serial" ]; then mise exec -- adb -s "$serial" exec-out screencap -p > build/soak/screen.png || true; fi
         cp -R build/touches build/android-*.png build/android-emulator.log build/soak/ 2>/dev/null || true
         cp /tmp/adb.*.log build/soak/ 2>/dev/null || true
         { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/soak/host.txt 2>&1
