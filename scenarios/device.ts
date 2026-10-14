@@ -21,6 +21,32 @@ export interface PointerExtra extends Modifiers {
   finger?: number;
 }
 
+/** A rectangle in screen points. */
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** What the editor with the keyboard draws, in screen points. */
+export interface Editor {
+  text: string;
+  /** The caret's offset in `text`. */
+  at: number;
+  caret: Box | null;
+  /** Each character as drawn, null for a newline; a front may draw one more, the newline of an empty last line. */
+  chars: (Box | null)[];
+  /** Each character's font weight, 400 regular, 600 semibold. */
+  weights: number[];
+  /** Where the first line starts. */
+  origin: { x: number; y: number };
+  /** The line height. */
+  line: number;
+  /** What of the screen shows, less a phone's keyboard. */
+  view: Box;
+}
+
 export abstract class Device {
   abstract readonly kind: string;
   /** A mouse or finger event at a screen point. */
@@ -54,6 +80,22 @@ export abstract class Device {
   /** Types `text` at the end of card `id`'s front, as a person does: a double-click, the keys, and Esc. */
   async typeInto(_id: string, _text: string): Promise<void> {
     throw new Error(`${this.kind} devices cannot edit`);
+  }
+
+  /** Whether `editor` works: the hub's fakes draw no text. */
+  get draws() {
+    return false;
+  }
+
+  /** What the editor with the keyboard draws, or null when nothing is being edited. */
+  async editor(): Promise<Editor | null> {
+    throw new Error(`${this.kind} devices draw no text`);
+  }
+
+  /** The weight of each character of card `id`'s front but its newlines, as drawn while not edited, or null where it is drawn from its
+   * text alone, as on the Mac. */
+  async weights(_id: string): Promise<number[] | null> {
+    throw new Error(`${this.kind} devices draw no text`);
   }
 
   /** Cuts this device off the network (`off`) or puts it back, as airplane mode does. */

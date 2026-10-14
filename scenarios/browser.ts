@@ -10,7 +10,7 @@ import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
-import { Device, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
+import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
 import { MacDevice } from "./mac.ts";
 import type { Point } from "../web/types.ts";
 
@@ -65,6 +65,104 @@ function readScene(): Scene {
     marquee: m.hidden ? null : { x: mt.x, y: mt.y, w: num(m.style.width), h: num(m.style.height) },
     camera: { x: world.x, y: world.y, zoom: world.scale },
   };
+}
+
+/**
+ * What the editor with the keyboard draws, read off the DOM: its text and caret as `DomField` counts them, a <br> as the
+ * newline it draws. Runs in the page.
+ */
+function readEditor(): Editor | null {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el?.isContentEditable) return null;
+  const box = (r: DOMRect | undefined) => r && { x: r.x, y: r.y, w: r.width, h: r.height };
+  const chars: (Box | null)[] = [], weights: number[] = [];
+  let all = "";
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (n.nodeName === "BR") {
+      all += "\n";
+      chars.push(null);
+      weights.push(Number.parseFloat(getComputedStyle(n.parentElement!).fontWeight));
+    }
+    if (!(n instanceof Text)) continue;
+    const weight = Number.parseFloat(getComputedStyle(n.parentElement!).fontWeight);
+    for (let i = 0; i < n.length; i++) {
+      const c = n.data[i]!;
+      if (c === "\u200b") continue;
+      all += c;
+      weights.push(weight);
+      if (c === "\n") {
+        chars.push(null);
+        continue;
+      }
+      const r = document.createRange();
+      r.setStart(n, i);
+      r.setEnd(n, i + 1);
+      chars.push(box(r.getClientRects()[0])!);
+    }
+  }
+  const sel = getSelection()!;
+  let at = 0, caret: Box | null = null;
+  if (sel.rangeCount && el.contains(sel.focusNode)) {
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.setEnd(sel.focusNode!, sel.focusOffset);
+    const plain = (n: Node): string => n instanceof Text ? n.data : n.nodeName === "BR" ? "\n" : [...n.childNodes].map(plain).join("");
+    const before = plain(r.cloneContents()).replace(/\u200b/g, "");
+    at = before.length;
+    r.collapse(false);
+    const [f, off] = [sel.focusNode!, sel.focusOffset];
+    // Where the browser draws the caret. After a newline Firefox's range is at the end of the line above, where it draws
+    // the caret only at the end of a text node (f0b3b89), else at the start of the line below. On an empty line or in an
+    // empty element Chromium's range has no rect. A mark put at the caret for a moment says where the line below starts.
+    const below = navigator.userAgent.includes("Firefox") && before.endsWith("\n") && !(f instanceof Text && off === f.length);
+    let rect = below ? undefined : r.getClientRects()[0];
+    if (!rect?.height) {
+      const saved = [sel.anchorNode!, sel.anchorOffset, f, off] as const;
+      const mark = document.createElement("span");
+      mark.textContent = "\u200b";
+      if (f instanceof Text) {
+        const tail = f.splitText(off);
+        f.after(mark);
+        rect = mark.getBoundingClientRect();
+        mark.remove();
+        f.appendData(tail.data);
+        tail.remove();
+      } else {
+        f.insertBefore(mark, f.childNodes[off] ?? null);
+        rect = mark.getBoundingClientRect();
+        mark.remove();
+      }
+      sel.setBaseAndExtent(...saved);
+    }
+    caret = rect ? { x: rect.x, y: rect.y, w: 0, h: rect.height } : null;
+  }
+  const s = getComputedStyle(el), r = el.getBoundingClientRect();
+  const zoom = r.width / el.offsetWidth;
+  const v = visualViewport!;
+  return {
+    // an empty last line is drawn from two newlines, as DomField.text() says
+    text: all.endsWith("\n") ? all.slice(0, -1) : all,
+    at,
+    caret,
+    chars,
+    weights,
+    origin: { x: r.x + Number.parseFloat(s.paddingLeft) * zoom, y: r.y + Number.parseFloat(s.paddingTop) * zoom },
+    line: Number.parseFloat(s.lineHeight) * zoom,
+    view: { x: v.offsetLeft, y: v.offsetTop, w: v.width, h: v.height },
+  };
+}
+
+/** The weight of each character of card `id`'s front as drawn, but its newlines. Runs in the page. */
+function readWeights(id: string): number[] {
+  const front = document.querySelector(`.cards > [data-id="${id}"] .front`)!;
+  const weights: number[] = [];
+  const walk = document.createTreeWalker(front, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    const w = Number.parseFloat(getComputedStyle(n.parentElement!).fontWeight);
+    for (const c of n.data) if (c !== "\u200b" && c !== "\n") weights.push(w);
+  }
+  return weights;
 }
 
 /**
@@ -372,6 +470,18 @@ export class BrowserDevice extends Device {
 
   async scene(): Promise<Scene> {
     return this.page.evaluate(readScene);
+  }
+
+  override get draws() {
+    return true;
+  }
+
+  override async editor() {
+    return this.page.evaluate(readEditor);
+  }
+
+  override async weights(id: string) {
+    return this.page.evaluate(readWeights, id);
   }
 
   /** Once its service worker keeps this version, as on a phone that launched it before. */

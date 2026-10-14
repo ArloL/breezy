@@ -117,6 +117,9 @@ import Network
     case "scene":
       guard let wc = window else { return .null }
       return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(wc.canvas.core.scene))
+    case "editor":
+      guard let wc = window, let tv = wc.window?.firstResponder as? EditorTextView else { return .null }
+      return editor(wc, tv)
     default: throw Failure(description: "unknown command \(c.cmd)")
     }
     return .null
@@ -128,6 +131,52 @@ import Network
       if item.keyEquivalent == key && item.keyEquivalentModifierMask == mods { return item }
     }
     return nil
+  }
+
+  /// What the card editor draws, as scenarios/device.ts's `Editor` says: where AppKit puts the caret and each character
+  /// for input methods, and each character's weight.
+  private static func editor(_ wc: BoardWindowController, _ tv: EditorTextView) -> JSONValue {
+    let clip = wc.scrollView.contentView
+    let zoom = wc.scrollView.magnification
+    func box(_ r: NSRect) -> JSONValue {
+      let d = wc.canvas.convert(r, from: tv)
+      return .object([
+        "x": .number((d.minX - clip.bounds.minX) * zoom), "y": .number((d.minY - clip.bounds.minY) * zoom),
+        "w": .number(d.width * zoom), "h": .number(d.height * zoom),
+      ])
+    }
+    func onScreen(_ range: NSRange) -> JSONValue {
+      let r = tv.firstRect(forCharacterRange: range, actualRange: nil)
+      guard let w = tv.window, r != .zero else { return .null }
+      return box(tv.convert(w.convertFromScreen(r), from: nil))
+    }
+    let ns = tv.string as NSString
+    let storage = tv.textStorage!
+    var chars: [JSONValue] = [], weights: [JSONValue] = []
+    for i in 0..<ns.length {
+      chars.append(ns.character(at: i) == 10 ? .null : onScreen(NSRange(location: i, length: 1)))
+      let font = storage.attribute(.font, at: i, effectiveRange: nil) as? NSFont
+      weights.append(.number(font.map(cssWeight) ?? 0))
+    }
+    let origin = box(NSRect(origin: tv.textContainerOrigin, size: .zero))
+    let size = clip.bounds.size
+    return .object([
+      "text": .string(tv.string), "at": .number(Double(tv.selectedRange().location)),
+      "caret": onScreen(NSRange(location: tv.selectedRange().location, length: 0)),
+      "chars": .array(chars), "weights": .array(weights),
+      "origin": origin, "line": .number(Typo.line * zoom),
+      "view": .object(["x": .number(0), "y": .number(0), "w": .number(size.width * zoom), "h": .number(size.height * zoom)]),
+    ])
+  }
+
+  /// A font's weight as CSS has it: 400 regular, 600 semibold.
+  private static func cssWeight(_ f: NSFont) -> Double {
+    let traits = f.fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
+    let w = traits?[.weight] as? Double ?? 0
+    let scale: [(NSFont.Weight, Double)] = [
+      (.ultraLight, 100), (.thin, 200), (.light, 300), (.regular, 400), (.medium, 500), (.semibold, 600), (.bold, 700), (.heavy, 800), (.black, 900),
+    ]
+    return scale.min { abs($0.0.rawValue - w) < abs($1.0.rawValue - w) }!.1
   }
 
   /// A mouse event at a screen point of the board: down, move, up or cancel.
