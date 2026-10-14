@@ -25,10 +25,15 @@ for (const c of cases) {
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && a === "android") continue;
     test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].includes("android") && noAndroid, timeout: 90_000 }, async (t) => {
       const w = new RealWorld();
+      let verdict = "failed or timed out";
       // also after a timeout, which leaves the test's own code waiting
-      t.after(() => w.stop());
+      t.after(async () => {
+        await w.record(t.name, verdict);
+        await w.stop();
+      });
       await w.start([a, b]);
       await c.run({ devices: w.devices, settle: () => w.settle() });
+      verdict = "passed";
     });
   }
 }
