@@ -43,7 +43,12 @@ export class MacDevice extends Device {
         });
         break;
       } catch (e) {
-        if (i > 100 || app.exitCode !== null) throw new Error(`the Mac app did not take commands: ${e}`);
+        if (i > 100 || app.exitCode !== null) {
+          // no world holds it yet to stop it
+          app.kill("SIGKILL");
+          rmSync(store, { recursive: true, force: true });
+          throw new Error(`the Mac app did not take commands: ${e}`);
+        }
         await sleep(100);
       }
     }
