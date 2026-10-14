@@ -192,6 +192,114 @@ jobs:
         include-hidden-files: true
     - name: Make sure build did not change anything
       run: git diff --exit-code
+  # The scenarios on real devices against sync.php and the relay: the web app in Chromium, WebKit and Firefox and the Debug
+  # Mac app, which they drive through -BreezyControl. Android's pairs run in the android job; the Mac → Android pair stays
+  # local, as GitHub's macOS runners cannot run the emulator and Linux's have no Mac app.
+  scenarios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    # Playwright's CDN drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium, WebKit and Firefox
+      run: npx playwright-core install chromium webkit firefox
+    - name: Build the Mac app
+      run: |
+        xcodegen generate
+        xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
+    - name: Scenarios on real devices
+      timeout-minutes: 30
+      # a handle left open once kept node from exiting after the last case, until the job timed out
+      run: node --test --test-force-exit scenarios/browsers.e2e.ts
+  # The scenarios' Android pairs on an emulator: GitHub's Linux runners have KVM, its macOS runners cannot run one
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: android
+      # no Linux build
+      MISE_DISABLE_TOOLS: xcodegen
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    - name: Install zsh, PHP's SQLite and KVM access
+      run: |
+        # a mirror mid-sync fails a download now and then
+        sudo apt-get --option Acquire::Retries=5 update
+        sudo apt-get --option Acquire::Retries=5 install --yes zsh php-cli php-sqlite3
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    # Playwright's CDN drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium
+      run: npx playwright-core install --with-deps chromium
+    # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/share/mise/installs/android-sdk
+        key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
+        # a changed script starts from the SDK before it and downloads only what is new
+        restore-keys: android-sdk-${{ runner.os }}-
+    - name: Boot the emulator
+      timeout-minutes: 8
+      run: mise exec -- node scripts/android.ts
+    - name: Scenarios on Android
+      timeout-minutes: 8
+      run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
+    - name: Capture the emulator's screen, and the runner's state
+      if: ${{ failure() }}
+      # the emulator by its console's serial: adb counts adbd over TCP on 127.0.0.1 as one too; none once it has died
+      run: |
+        serial=$(mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
+        if [ -n "$serial" ]; then mise exec -- adb -s "$serial" exec-out screencap -p > build/android-screen.png || true; fi
+        { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/android-host.txt 2>&1
+        cp /tmp/adb.*.log build/ 2>/dev/null || true
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ failure() }}
+      with:
+        name: android-emulator
+        path: |
+          build/android-emulator.log
+          build/android-screen.png
+          build/android-touches.png
+          build/android-host.txt
+          build/adb.*.log
+          build/touches
   # Sparkle reads the feed from the latest release, so each release carries its own; only main
   # can read the update-signing environment's key
   appcast:
@@ -334,6 +442,8 @@ jobs:
     needs:
     - macos
     - web
+    - scenarios
+    - android
     # GitHub Actions skips this job when any of the dependents fail. And skips
     # are considered success in their weird logic. So we always run it and fail
     # ourselves if necessary
