@@ -94,6 +94,8 @@ for (const port of [WEB, SERVER, RELAY]) {
 }
 // Android's own animations, which a software-rendered screen draws on the CPU the page needs too
 for (const scale of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) adb("shell", "settings", "put", "global", scale, "0");
+// the emulator's touchscreen says it is a stylus too, and Gboard puts its stylus tutorial over the page as an editor opens
+adb("shell", "settings", "put", "secure", "stylus_handwriting_enabled", "0");
 // a crash of some app of Android's own puts a dialog over Chrome, as Digital Wellbeing's did over its first run
 adb("shell", "settings", "put", "global", "hide_error_dialogs", "1");
 // the Play Store updates Google Play services and itself while the scenarios run, and Chrome quits when Play services is

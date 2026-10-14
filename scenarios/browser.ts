@@ -159,18 +159,20 @@ export class Touchscreen {
       const y = await page.evaluate(() => (window as { tapped?: number }).tapped);
       if (y !== undefined) {
         t.top = middle.y - y;
+        // on a page of its own
+        t.sent.length = 0;
         return t;
       }
     }
-    throw new Error(`the page sees no touches: something of Chrome's covers it, showing ${t.texts()}`);
+    throw new Error(`the page sees no touches: something of Chrome's covers it; ${t.texts()}`);
   }
 
   /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
-  private texts() {
+  texts() {
     try {
       writeFileSync(join(root, "build", "android-touches.png"), execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"]));
       const ui = execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8" });
-      return [...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ");
+      return `the screen shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`;
     } catch (e) {
       return `nothing uiautomator could read: ${e}`;
     }
@@ -202,10 +204,12 @@ export class Touchscreen {
   }
 }
 
+type Touches = [string, number, number, number, number][];
+
 /** Keeps each touch's pointer event in `touches` as it reaches the page: type, point, and its time and the time handled
  * on the page's wall clock. Runs in the page. */
 function logTouches() {
-  const touches: [string, number, number, number, number][] = [];
+  const touches: Touches = [];
   (window as { touches?: typeof touches }).touches = touches;
   for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
     addEventListener(type, (e) => {
@@ -243,6 +247,8 @@ export class BrowserDevice extends Device {
 
   /** An emulator's, which touches go through in place of DevTools. */
   private readonly touchscreen?: Touchscreen;
+  /** The pointer events of the pages before this one, which launching again cleared. */
+  private seenBefore: Touches = [];
 
   constructor(kind: BrowserKind, page: Page, touchscreen?: Touchscreen) {
     super();
@@ -262,7 +268,8 @@ export class BrowserDevice extends Device {
   async touches(): Promise<string | null> {
     if (!this.touchscreen) return null;
     const t0 = Date.now();
-    const [now, seen] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { touches?: [string, number, number, number, number][] }).touches ?? []] as const);
+    const [now, seenNow] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { touches?: Touches }).touches ?? []] as const);
+    const seen = [...this.seenBefore, ...seenNow];
     const skew = now - (t0 + Date.now()) / 2;
     const sent = this.touchscreen.sent;
     const start = Math.min(sent[0]?.at ?? Infinity, (seen[0]?.[3] ?? Infinity) - skew);
@@ -277,8 +284,43 @@ export class BrowserDevice extends Device {
     return [`clock skew ${Math.round(skew)} ms; ${sent.length} sent, ${seen.length} seen; down/up lags ${lags.join(" ")}`, ...lines.sort((a, b) => a[0] - b[0]).map(([, l]) => l)].join("\n");
   }
 
+  /** The touches the page has seen lift since it loaded. */
+  private lifts() {
+    return this.page.evaluate(() => ((window as { touches?: Touches }).touches ?? []).filter(([type]) => type === "up" || type === "cancel").length);
+  }
+
+  /** Until the page has seen `n` touches lift: one that something of Android's or Chrome's took instead fails here, not
+   * as whatever the case looks at next. */
+  private async lifted(n: number, at: Point[]) {
+    for (const end = Date.now() + 3000; (await this.lifts()) < n; await sleep(20)) {
+      if (Date.now() > end) throw new Error(`the page did not see a finger lift at ${at.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(" ")} in 3 s; ${this.touchscreen!.texts()}`);
+    }
+  }
+
+  /** Fingers changing on the emulator's touchscreen, and once one lifts, until the page has seen it. */
+  private async touchscreenSend(fingers: [number, PointerPhase, Point][]) {
+    const lifting = fingers.filter(([, phase]) => phase === "up" || phase === "cancel");
+    const before = lifting.length ? await this.lifts() : 0;
+    await this.touchscreen!.send(fingers);
+    if (lifting.length) await this.lifted(before + lifting.length, lifting.map(([, , p]) => p));
+  }
+
+  /** Both taps before looking for their lifts, which would put a round trip to the page between them. */
+  override async doubleTap(p: Point) {
+    if (!this.touchscreen) return super.doubleTap(p);
+    const s = await this.screen(p);
+    const before = await this.lifts();
+    for (let i = 0; i < 2; i++) {
+      await this.touchscreen.send([[0, "down", s]]);
+      await this.wait(40);
+      await this.touchscreen.send([[0, "up", s]]);
+      await this.wait(60);
+    }
+    await this.lifted(before + 2, [s]);
+  }
+
   override async fingers(phase: PointerPhase, moves: [number, Point][]) {
-    if (this.touchscreen) return this.touchscreen.send(moves.map(([finger, p]) => [finger, phase, p]));
+    if (this.touchscreen) return this.touchscreenSend(moves.map(([finger, p]) => [finger, phase, p]));
     if (!this.devtools) return this.page.evaluate(touchEvents, moves.map(([finger, p]): [string, number, number, number] => [TOUCH_TYPES[phase], p.x, p.y, finger]));
     if (phase !== "move") return super.fingers(phase, moves);
     for (const [finger, p] of moves) this.down.set(finger, p);
@@ -320,6 +362,7 @@ export class BrowserDevice extends Device {
   override async relaunch() {
     const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
     const had = ids(await this.scene());
+    if (this.touchscreen) this.seenBefore.push(...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? []));
     await this.page.goto(`http://localhost:${WEB}/`);
     await openBoard(this.page);
     await until(`${this.kind} to show its board again`, async () => ids(await this.scene()) === had);
@@ -330,7 +373,7 @@ export class BrowserDevice extends Device {
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
-    if (extra.kind === "touch" && this.touchscreen) return this.touchscreen.send([[extra.finger ?? 0, phase, p]]);
+    if (extra.kind === "touch" && this.touchscreen) return this.touchscreenSend([[extra.finger ?? 0, phase, p]]);
     if (extra.kind === "touch" && this.devtools) return this.touch(phase, p, extra.finger ?? 0);
     if (extra.kind === "touch") return this.fingers(phase, [[extra.finger ?? 0, p]]);
     const keys = [extra.shift && "Shift", extra.option && "Alt"].filter((k): k is string => !!k);
