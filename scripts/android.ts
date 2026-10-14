@@ -52,15 +52,13 @@ if (!existsSync(join(avds, `${avd}.ini`))) {
   mkdirSync(avds, { recursive: true });
   run("avdmanager", ["create", "avd", "--name", avd, "--package", image, "--device", "pixel_8a"], { input: "no\n" });
 }
-// Temporary knob for the soak to compare: EMULATOR_CORES as 2
-const cores = process.env.EMULATOR_CORES ? ["-cores", process.env.EMULATOR_CORES] : [];
 // the emulator alone, as the adb commands below name no device; this run connects TCP again
 succeeds(() => adb("disconnect", EMULATOR_TCP))();
 // one still listed while it shuts down is not running
 if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   mkdirSync(join(root, "build"), { recursive: true });
   const log = openSync(join(root, "build", "android-emulator.log"), "w");
-  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save", ...cores], { detached: true, stdio: ["ignore", log, log] });
+  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save"], { detached: true, stdio: ["ignore", log, log] });
   emulator.unref();
 }
 await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop", "sys.boot_completed").trim() === "1"));
