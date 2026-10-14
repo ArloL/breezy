@@ -96,6 +96,8 @@ final class FakeTransport: Transport {
   var beforePush: (() async -> Void)?
   /// Runs after each push the server took.
   var afterPush: (() -> Void)?
+  /// The server takes each push, but its answer never comes.
+  var losesAnswers = false
 
   init(_ server: FakeServer) { self.server = server }
 
@@ -112,6 +114,7 @@ final class FakeTransport: Transport {
     try check("push")
     pushArgs.append((since, epoch))
     let result = server.push(writes, since: since, epoch: epoch)
+    if losesAnswers { throw TransportError.unreachable }
     accepted += result.accepted.map(\.version)
     received += (result.records ?? []).map(\.version)
     afterPush?()
@@ -129,11 +132,12 @@ final class FakeTransport: Transport {
 let testServer = "https://example.com/breezy/sync.php"
 
 @MainActor final class Device {
-  let store = Store()
+  let store: Store
   let transport: FakeTransport
   let engine: SyncEngine
 
-  init(_ server: FakeServer, joining invite: Invite? = nil) {
+  init(_ server: FakeServer, joining invite: Invite? = nil, state: SpaceState = SpaceState()) {
+    store = Store(state: state)
     let t = FakeTransport(server)
     transport = t
     engine = SyncEngine(store: store, transport: { _, _ in t })

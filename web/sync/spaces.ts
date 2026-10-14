@@ -146,6 +146,7 @@ export class Spaces {
     engine.flushLocal = () => this.flushLocal();
     engine.onRelay = (relay) => this.setRelay(g, relay);
     engine.onPushing = () => g.live?.pushing();
+    engine.persist = () => saver.flush();
     engine.onPushed = (pushed) => g.live?.sendPushed(pushed);
     engine.onPulled = (cursor) => g.live?.noteCursor(cursor, store.state.epoch);
     // the live layer connects at once rather than after the first sync names the relay

@@ -207,6 +207,8 @@ export class SyncEngine {
   holdBack: () => boolean;
   /** Just before a push goes. */
   onPushing: () => void;
+  /** Keeps the store as it is, so that a device ended before the push's answer knows what it sent. */
+  persist: () => Promise<void>;
   /** The relay the server last named; null until it names one. */
   relay: string | null;
   onRelay: (relay: string | null) => void;
@@ -246,6 +248,7 @@ export class SyncEngine {
     this.flushLocal = () => {};
     this.holdBack = () => false;
     this.onPushing = () => {};
+    this.persist = async () => {};
     this.relay = null;
     this.onRelay = () => {};
     this.onPushed = () => {};
@@ -372,6 +375,9 @@ export class SyncEngine {
         first = null;
         if (!writes.length) break;
         const request = combined ? this.store.state.cursor : undefined;
+        this.store.sending(sent);
+        await this.persist();
+        if (!same()) return;
         const result = await transport.push(writes, request, combined ? this.store.state.epoch : undefined);
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
