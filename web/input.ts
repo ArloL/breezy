@@ -42,6 +42,8 @@ export class Input {
   drag: Drag | null;
   pinchBase: PinchBase | null;
   holdHit: Hit | null;
+  /** What the finger went down on, which a hold or drag from it acts on though the board moved under it since. */
+  pressHit: Hit | null;
   scroll: number;
   stoppedCoast: boolean;
   edgeSince!: number;
@@ -52,6 +54,7 @@ export class Input {
     this.drag = null;
     this.pinchBase = null;
     this.holdHit = null;
+    this.pressHit = null;
     this.scroll = 0;
     this.stoppedCoast = false;
   }
@@ -61,11 +64,15 @@ export class Input {
     return hitTest(model.board, view.toWorld(p), { rectOf: (c) => view.rectOf(c), zoom: view.cam.zoom, turned: state.turned, touch });
   }
 
-  /** A touch that stops the camera moving does only that: the tap that follows from it is ignored. */
-  touchStart() {
+  /**
+   * A touch at screen point `p`. One that stops the camera moving does only that: the tap that follows from it is
+   * ignored.
+   */
+  touchStart(p: Point) {
     this.stoppedCoast = this.app.view.camera.moving;
     this.stopCoast();
     this.app.ui.closeMenu();
+    this.pressHit = this.hit(p);
   }
 
   tap(p: Point) {
@@ -100,7 +107,7 @@ export class Input {
   }
 
   hold(p: Point) {
-    this.holdHit = this.hit(p);
+    this.holdHit = this.pressHit ?? this.hit(p);
     if (!isCard(this.holdHit)) return;
     const s = this.app.state;
     this.app.endEditing();
@@ -126,8 +133,9 @@ export class Input {
   }
 
   dragStart(p0: Point, p: Point, held: boolean) {
-    const h = held && this.holdHit ? this.holdHit : this.hit(p0);
+    const h = held && this.holdHit ? this.holdHit : this.pressHit ?? this.hit(p0);
     this.holdHit = null;
+    this.pressHit = null;
     // a touch box starts afresh
     this.beginDrag(dragAction(h, this.app.state.selection, held), h, p0, p, []);
   }

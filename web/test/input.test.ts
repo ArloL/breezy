@@ -49,6 +49,24 @@ test("a lane deleted elsewhere between the press and the drag is not dragged", (
   assert.equal(a.model.inGesture, false);
 });
 
+test("a hold lifts the card the finger went down on, though the board moved under it since", () => {
+  const { app: a } = app();
+  a.input.touchStart({ x: 700, y: 100 });
+  // as the keyboard going away moves the board
+  a.view.setCamera({ ...a.view.cam, y: a.view.cam.y + 60 });
+  a.input.hold({ x: 700, y: 100 });
+  assert.deepEqual([...a.state.lifted], ["a"]);
+});
+
+test("a selected card the finger went down on is dragged, though the board moved under it since", () => {
+  const { app: a, scene } = app();
+  a.select(["a"]);
+  a.input.touchStart({ x: 700, y: 100 });
+  a.view.setCamera({ ...a.view.cam, y: a.view.cam.y + 60 });
+  a.input.dragStart({ x: 700, y: 100 }, { x: 650, y: 150 }, false);
+  assert.equal(scene().cards[0]!.held, true);
+});
+
 test("a held card deleted elsewhere before the drag is not left lifted", () => {
   const { app: a } = app();
   a.input.hold({ x: 700, y: 100 });

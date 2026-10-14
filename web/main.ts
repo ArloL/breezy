@@ -57,7 +57,7 @@ board.addEventListener("pointerdown", (e) => {
     board.setPointerCapture(e.pointerId);
     return mouse.down({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey }, e.timeStamp);
   }
-  app.input.touchStart();
+  app.input.touchStart({ x: e.clientX, y: e.clientY });
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
   setTimeout(() => gestures.tick(performance.now()), HOLD_MS + 10);
 });
