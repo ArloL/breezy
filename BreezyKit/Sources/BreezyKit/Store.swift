@@ -8,6 +8,9 @@ public struct StoredRecord: Codable, Equatable, Sendable {
   public var current: Record
   /// While a resync runs, the version from before it, to tell a backup newer than this device from an older one.
   public var prior: Int?
+  /// What pushes sent since the server's last answer for it, which may have been lost: a refusal or pull that brings one
+  /// back means the server took it.
+  public var sent: [Record]?
   public var pending: Bool { current != base }
 }
 
@@ -73,6 +76,7 @@ public struct Incoming: Equatable, Sendable {
 /// board methods; the server's records through `merge` and `accepted`.
 public final class Store {
   public private(set) var state: SpaceState
+  private static let sentKept = 16
   /// After a change to what boards show, with the boards concerned and whether it came from the server.
   public var onChange: ((_ boards: Set<String>, _ remote: Bool) -> Void)?
   /// After any change, for saving.
@@ -177,11 +181,22 @@ public final class Store {
     state.records.compactMap { id, s in s.pending ? (id, s.version, s.current) : nil }.sorted { $0.id < $1.id }
   }
 
+  /// `records` are about to be pushed.
+  public func sending(_ records: [String: Record]) {
+    for (id, record) in records {
+      guard var s = state.records[id], !(s.sent ?? []).contains(record) else { continue }
+      s.sent = Array(((s.sent ?? []) + [record]).suffix(Self.sentKept))
+      state.records[id] = s
+    }
+    onDirty?()
+  }
+
   /// The server took `record` as `version`; edits made since it was sent stay pending.
   public func accepted(_ id: String, version: Int, record: Record) {
     guard var s = state.records[id] else { return }
     s.base = record
     s.version = version
+    s.sent = nil
     state.records[id] = s
     onDirty?()
   }
@@ -199,6 +214,10 @@ public final class Store {
         continue
       }
       if let old, item.version <= old.version { continue }
+      if old?.sent?.contains(item.record) == true {
+        accepted(item.id, version: item.version, record: item.record)
+        continue
+      }
       var current = item.record
       if let old, old.pending {
         let m = Merge.record(base: old.base, local: old.current, incoming: item.record)
