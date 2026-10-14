@@ -94,12 +94,17 @@ export abstract class Device {
     await this.pointer("up", s, mods);
   }
 
-  /** A finger on world point `from`, held still past a hold first when `hold`, moved to `to` and lifted. */
+  /**
+   * A finger on world point `from`, held still past a hold first when `hold`, moved to `to` and lifted. A held card is
+   * moved only once it lifts, as a person waits to see it: a busy phone reads the touch late.
+   */
   async touchDrag(from: Point, to: Point, { hold = true, steps = 8, ms = 16 }: { hold?: boolean; steps?: number; ms?: number } = {}) {
     const [a, b] = [await this.screen(from), await this.screen(to)];
     const touch = { kind: "touch" as const };
+    const card = hold ? (await this.scene()).cards.findLast((c) => from.x >= c.x && from.x < c.x + c.w && from.y >= c.y && from.y < c.y + c.h)?.id : undefined;
     await this.pointer("down", a, touch);
     await this.wait(hold ? 400 : ms);
+    if (card) await this.until(`${card} to lift under the finger`, async () => item(await this.scene(), card).raised === true);
     await this.moveAlong(a, b, steps, ms, (p) => this.pointer("move", p, touch));
     await this.pointer("up", b, touch);
   }
@@ -149,6 +154,14 @@ export abstract class Device {
     await this.pointer("down", s, { kind: "touch" });
     await this.wait(50);
     await this.pointer("up", s, { kind: "touch" });
+  }
+
+  /** Until `test` holds, checked every 50 ms on this device's clock for at most `ms`. */
+  async until(what: string, test: () => Promise<boolean>, ms = 5000) {
+    for (let t = 0; !(await test()); t += 50) {
+      if (t >= ms) throw new Error(`timed out after ${ms} ms: ${what}`);
+      await this.wait(50);
+    }
   }
 
   private async moveAlong(a: Point, b: Point, steps: number, ms: number, move: (p: Point) => Promise<void>) {

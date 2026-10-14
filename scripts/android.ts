@@ -5,7 +5,7 @@
 // wait is bounded and names what it waited for.
 // Stop it with adb emu kill.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, openSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { arch } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -52,13 +52,22 @@ if (!existsSync(join(avds, `${avd}.ini`))) {
   mkdirSync(avds, { recursive: true });
   run("avdmanager", ["create", "avd", "--name", avd, "--package", image, "--device", "pixel_8a"], { input: "no\n" });
 }
+// Temporary knobs for the soak to compare: EMULATOR_LCD as 540x1200@210, EMULATOR_CORES as 2
+const config = join(avds, `${avd}.avd`, "config.ini");
+const lcd = /^(\d+)x(\d+)@(\d+)$/.exec(process.env.EMULATOR_LCD ?? "1080x2400@420");
+if (lcd) {
+  const set = { "hw.lcd.width": lcd[1], "hw.lcd.height": lcd[2], "hw.lcd.density": lcd[3] } as Record<string, string>;
+  const lines = readFileSync(config, "utf8").split("\n").filter((l) => !(l.split("=")[0]! in set));
+  writeFileSync(config, [...lines.filter((l) => l), ...Object.entries(set).map(([k, v]) => `${k}=${v}`), ""].join("\n"));
+}
+const cores = process.env.EMULATOR_CORES ? ["-cores", process.env.EMULATOR_CORES] : [];
 // the emulator alone, as the adb commands below name no device; this run connects TCP again
 succeeds(() => adb("disconnect", EMULATOR_TCP))();
 // one still listed while it shuts down is not running
 if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   mkdirSync(join(root, "build"), { recursive: true });
   const log = openSync(join(root, "build", "android-emulator.log"), "w");
-  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save"], { detached: true, stdio: ["ignore", log, log] });
+  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save", ...cores], { detached: true, stdio: ["ignore", log, log] });
   emulator.unref();
 }
 await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop", "sys.boot_completed").trim() === "1"));
@@ -83,6 +92,8 @@ device = ["-s", EMULATOR_TCP];
 for (const port of [WEB, SERVER, RELAY]) {
   await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
 }
+// Android's own animations, which a software-rendered screen draws on the CPU the page needs too
+for (const scale of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) adb("shell", "settings", "put", "global", scale, "0");
 // a crash of some app of Android's own puts a dialog over Chrome, as Digital Wellbeing's did over its first run
 adb("shell", "settings", "put", "global", "hide_error_dialogs", "1");
 // the Play Store updates Google Play services and itself while the scenarios run, and Chrome quits when Play services is
