@@ -145,6 +145,7 @@ jobs:
           build/android-emulator.log
           build/android-screen.png
           build/android-touches.png
+          build/touches
   bench:
     runs-on: macos-latest
     timeout-minutes: 60
