@@ -81,9 +81,9 @@ jobs:
           echo "::endgroup::"
         done
         exit $failed
-    - name: Keep the failing cases' sync logs
+    - name: Keep the failing cases' sync logs and touches
       if: ${{ always() }}
-      run: cp -R build/scenarios build/soak/ 2>/dev/null || true
+      run: cp -R build/scenarios build/touches build/soak/ 2>/dev/null || true
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       if: ${{ always() }}
       with:
