@@ -3,7 +3,7 @@
 // the DOM.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
@@ -127,6 +127,8 @@ export class Touchscreen {
   private readonly dpr: number;
   /** Where the page starts, in points below the screen's top. */
   private top = 0;
+  /** Each frame sent, on this machine's clock: when it was sent, when the console answered, and its fingers. */
+  readonly sent: { at: number; ok: number; what: string }[] = [];
 
   constructor(serial: string, console: EmulatorConsole, px: Point, dpr: number) {
     this.serial = serial;
@@ -194,7 +196,23 @@ export class Touchscreen {
         events.push("EV_ABS:ABS_MT_PRESSURE:0", "EV_ABS:ABS_MT_TRACKING_ID:-1");
       }
     }
+    const at = Date.now();
     await this.console.command(`event send ${[...events, "EV_SYN:0:0"].join(" ")}`);
+    this.sent.push({ at, ok: Date.now(), what: fingers.map(([finger, phase]) => `${phase}${finger}`).join(" ") });
+  }
+}
+
+/** Keeps each touch's pointer event in `touches` as it reaches the page: type, point, and its time and the time handled
+ * on the page's wall clock. Runs in the page. */
+function logTouches() {
+  const touches: [string, number, number, number, number][] = [];
+  (window as { touches?: typeof touches }).touches = touches;
+  for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
+    addEventListener(type, (e) => {
+      const p = e as PointerEvent;
+      if (p.pointerType !== "touch") return;
+      touches.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
+    }, { capture: true });
   }
 }
 
@@ -235,6 +253,28 @@ export class BrowserDevice extends Device {
 
   override async size() {
     return this.page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+  }
+
+  /**
+   * The touches sent to the emulator and the page's pointer events, in order on this machine's clock, ms from the first;
+   * the page's clock set to this one's by a round trip. A pointer event's own time is when Android read the touch.
+   */
+  async touches(): Promise<string | null> {
+    if (!this.touchscreen) return null;
+    const t0 = Date.now();
+    const [now, seen] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { touches?: [string, number, number, number, number][] }).touches ?? []] as const);
+    const skew = now - (t0 + Date.now()) / 2;
+    const sent = this.touchscreen.sent;
+    const start = Math.min(sent[0]?.at ?? Infinity, (seen[0]?.[3] ?? Infinity) - skew);
+    const ms = (t: number) => `${Math.round(t - start)}`.padStart(6);
+    const lines: [number, string][] = [
+      ...sent.map(({ at, ok, what }): [number, string] => [at, `${ms(at)} sent ${what}${ok - at > 20 ? ` (console answered in ${ok - at} ms)` : ""}`]),
+      ...seen.map(([type, x, y, t, handled]): [number, string] => [t - skew, `${ms(t - skew)}   page ${type} ${x},${y}${handled - t > 20 ? ` (handled ${Math.round(handled - t)} ms later)` : ""}`]),
+    ];
+    // where its touches stopped being read in step with them: a down or up read later than sent
+    const downs = sent.filter((s) => /down|up/.test(s.what)), heard = seen.filter(([type]) => type === "down" || type === "up");
+    const lags = downs.map((s, i) => heard[i] ? Math.round(heard[i][3] - skew - s.at) : NaN);
+    return [`clock skew ${Math.round(skew)} ms; ${sent.length} sent, ${seen.length} seen; down/up lags ${lags.join(" ")}`, ...lines.sort((a, b) => a[0] - b[0]).map(([, l]) => l)].join("\n");
   }
 
   override async fingers(phase: PointerPhase, moves: [number, Point][]) {
@@ -431,6 +471,7 @@ export class RealWorld {
     const context = opened[1] = await launch() ?? await launch() ?? undefined;
     if (!context) throw new Error("Chrome did not launch twice in 30 s");
     // the only tab, so the one on screen: a first launch also restores the tab Chrome's first run left
+    await context.addInitScript(logTouches);
     const page = await context.newPage();
     for (const p of context.pages()) if (p !== page) await p.close();
     await page.bringToFront();
@@ -483,6 +524,17 @@ export class RealWorld {
       else if (Date.now() - since >= 500 && boards.every((b) => b === boards[0])) return;
     }
     throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${boards[i]}`).join("; ")}`);
+  }
+
+  /** Each touchscreen's touches in build/touches/, named for the case, `verdict` first, for a run to tell why one failed. */
+  async record(name: string, verdict: string) {
+    for (const d of this.devices) {
+      if (!(d instanceof BrowserDevice)) continue;
+      const touches = await Promise.race([d.touches().catch((e: Error) => `no touches: ${e.message}`), sleep(5000).then(() => "no touches: the page did not answer in 5 s")]);
+      if (touches === null) continue;
+      mkdirSync(join(root, "build", "touches"), { recursive: true });
+      writeFileSync(join(root, "build", "touches", `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}.txt`), `${verdict}\n${touches}\n`);
+    }
   }
 
   /** Everything it started, each part even when another part fails to stop, as when the phone's adb connection broke. */

@@ -1,0 +1,103 @@
+name: Android soak
+
+# The Android scenarios over and over on many emulators, to measure how often they fail, with each case's touches and the
+# emulator's log. Dispatch it, or push a soak/ branch for its defaults.
+on:
+  workflow_dispatch:
+    inputs:
+      emulators:
+        description: Emulators, each a runner
+        default: "30"
+      runs:
+        description: Runs of the scenarios on each
+        default: "5"
+  push:
+    branches:
+    - soak/**
+permissions: {}
+
+jobs:
+  shards:
+    runs-on: ubuntu-slim
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
+    steps:
+    - id: shards
+      env:
+        EMULATORS: ${{ inputs.emulators || '30' }}
+      run: echo "shards=$(seq --separator=, 1 "$EMULATORS" | sed 's/.*/[&]/')" >> "$GITHUB_OUTPUT"
+  android:
+    needs: shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.shards.outputs.shards) }}
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: android
+      MISE_DISABLE_TOOLS: xcodegen
+      RUNS: ${{ inputs.runs || '5' }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    - name: Install zsh, PHP's SQLite and KVM access
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes zsh php-cli php-sqlite3
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium
+      run: npx playwright-core install --with-deps chromium
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/share/mise/installs/android-sdk
+        key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
+        restore-keys: android-sdk-${{ runner.os }}-
+    - name: Boot the emulator
+      timeout-minutes: 8
+      run: |
+        mkdir -p build/soak
+        mise exec -- node scripts/android.ts 2>&1 | tee build/soak/boot.txt
+    - name: The scenarios on Android, over and over
+      run: |
+        failed=0
+        for i in $(seq 1 "$RUNS"); do
+          echo "::group::run $i"
+          mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts > "build/soak/run-$i.txt" 2>&1 || {
+            failed=1
+            echo "::error::run $i failed"
+          }
+          grep -E '^(✔|✖|ℹ (pass|fail))' "build/soak/run-$i.txt" || true
+          echo "::endgroup::"
+        done
+        exit $failed
+    - name: Keep the emulator's log and screen
+      if: ${{ always() }}
+      run: |
+        serial=$(mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
+        [ -n "$serial" ] && mise exec -- adb -s "$serial" exec-out screencap -p > build/soak/screen.png || true
+        cp -R build/touches build/android-*.png build/android-emulator.log build/soak/ 2>/dev/null || true
+        cp /tmp/adb.*.log build/soak/ 2>/dev/null || true
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ always() }}
+      with:
+        name: soak-${{ matrix.shard }}
+        path: build/soak
