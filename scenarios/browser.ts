@@ -385,6 +385,11 @@ function logTouches() {
   for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
     addEventListener(type, (e) => {
       const p = e as PointerEvent;
+      if (p.pointerType === "mouse" && (type === "pointerdown" || type === "pointerup")) {
+        const t = p.target as HTMLElement;
+        const on = `${t.tagName?.toLowerCase()}.${t.className}${t.isContentEditable ? " editable" : ""}`;
+        return touches.push([`mouse ${type.slice(7)} on ${on}`, Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
+      }
       if (p.pointerType !== "touch") return;
       touches.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
     }, { capture: true });
