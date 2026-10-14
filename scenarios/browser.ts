@@ -10,7 +10,7 @@ import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
-import { Device, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
+import { Device, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
 import { MacDevice } from "./mac.ts";
 import type { Point } from "../web/types.ts";
 
@@ -244,16 +244,20 @@ function logTouches() {
 
 
 /**
- * A frame's finger pointer events, as iOS Safari sends them: one at a time, each at the element under its point, all with
- * the frame's time. Runs in the page.
+ * Frames of finger pointer events, each after its wait in ms, as iOS Safari sends them: one at a time, each at the
+ * element under its point, all with the frame's time. Timed in the page, as a round trip to it per frame can take longer
+ * than a hold on a busy runner. Runs in the page.
  */
-function touchEvents(events: [string, number, number, number][]) {
-  const timeStamp = performance.now();
-  for (const [type, x, y, finger] of events) {
-    const target = (type === "pointerdown" && document.elementFromPoint(x, y)) || document.body;
-    const e = new PointerEvent(type, { pointerId: 10 + finger, pointerType: "touch", isPrimary: finger === 0, clientX: x, clientY: y, bubbles: true, cancelable: true, buttons: type === "pointerup" ? 0 : 1 });
-    Object.defineProperty(e, "timeStamp", { value: timeStamp });
-    target.dispatchEvent(e);
+async function touchFrames(frames: [number, [string, number, number, number][]][]) {
+  for (const [ms, events] of frames) {
+    if (ms) await new Promise((resolve) => setTimeout(resolve, ms));
+    const timeStamp = performance.now();
+    for (const [type, x, y, finger] of events) {
+      const target = (type === "pointerdown" && document.elementFromPoint(x, y)) || document.body;
+      const e = new PointerEvent(type, { pointerId: 10 + finger, pointerType: "touch", isPrimary: finger === 0, clientX: x, clientY: y, bubbles: true, cancelable: true, buttons: type === "pointerup" ? 0 : 1 });
+      Object.defineProperty(e, "timeStamp", { value: timeStamp });
+      target.dispatchEvent(e);
+    }
   }
 }
 
@@ -324,31 +328,30 @@ export class BrowserDevice extends Device {
     }
   }
 
-  /** Fingers changing on the emulator's touchscreen, and once one lifts, until the page has seen it. */
-  private async touchscreenSend(fingers: [number, PointerPhase, Point][]) {
-    const lifting = fingers.filter(([, phase]) => phase === "up" || phase === "cancel");
-    const before = lifting.length ? await this.lifts() : 0;
-    await this.touchscreen!.send(fingers);
-    if (lifting.length) await this.lifted(before + lifting.length, lifting.map(([, , p]) => p));
+  /**
+   * A gesture's frames with their waits and nothing between: on the emulator, its lifts looked for once it ends, not
+   * with a round trip to the page between frames; in WebKit and Firefox, timed in the page.
+   */
+  override async gesture(frames: Frame[]) {
+    if (this.touchscreen) {
+      const before = await this.lifts();
+      const lifting: Point[] = [];
+      for (const [ms, phase, moves] of frames) {
+        if (ms) await this.wait(ms);
+        await this.touchscreen.send(moves.map(([finger, p]) => [finger, phase, p]));
+        if (phase === "up" || phase === "cancel") lifting.push(...moves.map(([, p]) => p));
+      }
+      if (lifting.length) await this.lifted(before + lifting.length, lifting);
+      return;
+    }
+    if (this.devtools) return super.gesture(frames);
+    await this.page.evaluate(touchFrames, frames.map(([ms, phase, moves]): [number, [string, number, number, number][]] => [ms, moves.map(([finger, p]) => [TOUCH_TYPES[phase], p.x, p.y, finger])]));
   }
 
-  /** Both taps before looking for their lifts, which would put a round trip to the page between them. */
-  override async doubleTap(p: Point) {
-    if (!this.touchscreen) return super.doubleTap(p);
-    const s = await this.screen(p);
-    const before = await this.lifts();
-    for (let i = 0; i < 2; i++) {
-      await this.touchscreen.send([[0, "down", s]]);
-      await this.wait(40);
-      await this.touchscreen.send([[0, "up", s]]);
-      await this.wait(60);
-    }
-    await this.lifted(before + 2, [s]);
-  }
 
   override async fingers(phase: PointerPhase, moves: [number, Point][]) {
-    if (this.touchscreen) return this.touchscreenSend(moves.map(([finger, p]) => [finger, phase, p]));
-    if (!this.devtools) return this.page.evaluate(touchEvents, moves.map(([finger, p]): [string, number, number, number] => [TOUCH_TYPES[phase], p.x, p.y, finger]));
+    if (this.touchscreen) return this.gesture([[0, phase, moves]]);
+    if (!this.devtools) return this.gesture([[0, phase, moves]]);
     if (phase !== "move") return super.fingers(phase, moves);
     for (const [finger, p] of moves) this.down.set(finger, p);
     await this.touch(phase, moves[0]![1], moves[0]![0]);
@@ -400,7 +403,7 @@ export class BrowserDevice extends Device {
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
-    if (extra.kind === "touch" && this.touchscreen) return this.touchscreenSend([[extra.finger ?? 0, phase, p]]);
+    if (extra.kind === "touch" && this.touchscreen) return this.gesture([[0, phase, [[extra.finger ?? 0, p]]]]);
     if (extra.kind === "touch" && this.devtools) return this.touch(phase, p, extra.finger ?? 0);
     if (extra.kind === "touch") return this.fingers(phase, [[extra.finger ?? 0, p]]);
     const keys = [extra.shift && "Shift", extra.option && "Alt"].filter((k): k is string => !!k);
