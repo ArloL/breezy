@@ -8,6 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
@@ -163,6 +164,56 @@ function readWeights(id: string): number[] {
     for (const c of n.data) if (c !== "\u200b" && c !== "\n") weights.push(w);
   }
   return weights;
+}
+
+/** What a device did with the server and the relay, ms from the world's start: for a failing case to tell where a
+ * change stopped. Ids are the records' and the relay's first 8 characters. */
+export type SyncLog = [ms: number, what: string][];
+
+/** Notes in `log` each request to sync.php and its answer, each frame on the relay, and the page's errors. */
+function logSync(page: Page, log: SyncLog, t0: number) {
+  const note = (what: string) => log.push([Math.round(performance.now() - t0), what]);
+  const id = (r: { id: string }) => r.id.slice(0, 8);
+  const ours = (url: string) => url.includes(`:${SERVER}/`);
+  page.on("request", (r) => {
+    if (!ours(r.url())) return;
+    const body = r.postDataBuffer();
+    if (!body) return note(`pull since ${new URL(r.url()).searchParams.get("since")}`);
+    try {
+      const { writes, since, epoch } = JSON.parse((r.headers()["content-encoding"] === "deflate" ? inflateRawSync(body) : body).toString());
+      note(`push since ${since} epoch ${epoch} writes ${writes.map((w: { id: string; base: number }) => `${id(w)}@${w.base}`).join(" ")}`);
+    } catch (e) {
+      note(`push, its body unread: ${e}`);
+    }
+  });
+  page.on("response", async (res) => {
+    if (!ours(res.url())) return;
+    const at = Math.round(performance.now() - t0);
+    const list = (rs?: { id: string; version: number }[]) => (rs ?? []).map((r) => `${id(r)}@${r.version}`).join(" ");
+    try {
+      const j = await res.json();
+      log.push([at, `  ${res.status()} accepted ${list(j.accepted)} refused ${list(j.refused)} records ${list(j.records)} cursor ${j.cursor} epoch ${j.epoch}`]);
+    } catch (e) {
+      log.push([at, `  ${res.status()}, its body unread: ${e}`]);
+    }
+  });
+  page.on("requestfailed", (r) => ours(r.url()) && note(`  failed: ${r.failure()?.errorText}`));
+  page.on("websocket", (ws) => {
+    note(`relay opens ${ws.url()}`);
+    ws.on("close", () => note("relay closes"));
+    const frame = (dir: string) => ({ payload }: { payload: string | Buffer }) => {
+      if (typeof payload !== "string") return note(`relay ${dir} ${payload.length} bytes`);
+      let t = "";
+      try {
+        t = JSON.parse(payload).t ?? "";
+      } catch {}
+      note(`relay ${dir} ${t} ${payload.length} chars`);
+    };
+    ws.on("framesent", frame("sends"));
+    ws.on("framereceived", frame("gets"));
+  });
+  page.on("pageerror", (e) => note(`page error: ${e.message}`));
+  page.on("console", (m) => ["error", "warning"].includes(m.type()) && note(`console ${m.type()}: ${m.text()}`));
 }
 
 /**
@@ -379,11 +430,20 @@ export class BrowserDevice extends Device {
   /** The pointer events of the pages before this one, which launching again cleared. */
   private seenBefore: Touches = [];
 
-  constructor(kind: BrowserKind, page: Page, touchscreen?: Touchscreen) {
+  readonly log: SyncLog = [];
+  private readonly t0: number;
+
+  constructor(kind: BrowserKind, page: Page, touchscreen?: Touchscreen, t0 = performance.now()) {
     super();
     this.kind = kind;
     this.page = page;
     this.touchscreen = touchscreen;
+    this.t0 = t0;
+    logSync(page, this.log, t0);
+  }
+
+  private note(what: string) {
+    this.log.push([Math.round(performance.now() - this.t0), what]);
   }
 
   override async size() {
@@ -503,6 +563,7 @@ export class BrowserDevice extends Device {
       reg.active!.postMessage({ type: "check" }, [channel.port2]);
     })), VERSION));
     await this.page.context().setOffline(off);
+    this.note(off ? "offline" : "online");
   }
 
   override async unpushed() {
@@ -518,6 +579,7 @@ export class BrowserDevice extends Device {
     const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
     const had = ids(await this.scene());
     if (this.touchscreen) this.seenBefore.push(...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? []));
+    this.note("launches again");
     await this.page.goto(`http://localhost:${WEB}/`);
     await openBoard(this.page);
     await until(`${this.kind} to show its board again`, async () => ids(await this.scene()) === had);
@@ -638,10 +700,13 @@ export class RealWorld {
   private readonly dirs: string[] = [];
   private readonly consoles: EmulatorConsole[] = [];
   private web?: ReturnType<typeof createServer>;
+  /** When it started, on performance.now(): the devices' logs count from it. */
+  private t0 = 0;
 
   /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
    * or never ends. */
   async start(kinds: RealKind[]) {
+    this.t0 = performance.now();
     await this.serve();
     const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
@@ -658,7 +723,7 @@ export class RealWorld {
         continue;
       }
       const [page, touchscreen] = kind === "android" ? await this.android() : [await this.browser(kind)];
-      const d = new BrowserDevice(kind, page, touchscreen);
+      const d = new BrowserDevice(kind, page, touchscreen, this.t0);
       this.devices.push(d);
       await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
       if (i === 0) {
@@ -759,6 +824,7 @@ export class RealWorld {
 
   /** Each touchscreen's touches in build/touches/, named for the case, `verdict` first, for a run to tell why one failed. */
   async record(name: string, verdict: string) {
+    if (verdict !== "passed") await this.recordSync(name, verdict);
     for (const d of this.devices) {
       if (!(d instanceof BrowserDevice)) continue;
       const touches = await Promise.race([d.touches().catch((e: Error) => `no touches: ${e.message}`), sleep(5000).then(() => "no touches: the page did not answer in 5 s")]);
@@ -768,6 +834,28 @@ export class RealWorld {
       writeFileSync(`${file}.txt`, `${verdict}\n${touches}\n`);
       if (verdict !== "passed") try { writeFileSync(`${file}.png`, d.capture()!); } catch {}
     }
+  }
+
+  /**
+   * In build/scenarios, each device's sync log merged in time, then what each says of its sync and shows of the board:
+   * whether a change stopped on the device that made it, at the server, or on the one meant to show it.
+   */
+  private async recordSync(name: string, verdict: string) {
+    const answer = <T>(p: Promise<T>) => Promise.race([p.catch((e: Error) => `none: ${e.message}`), sleep(5000).then(() => "none in 5 s")]);
+    const lines: [number, string][] = [];
+    const ends: string[] = [];
+    for (const [i, d] of this.devices.entries()) {
+      const who = `d${i} ${d.kind}`;
+      if (d instanceof BrowserDevice) lines.push(...d.log.map(([ms, what]): [number, string] => [ms, `${who}: ${what}`]));
+      ends.push(`${who} says ${JSON.stringify(await answer(d.syncStatus()))}`);
+      const s = await answer(d.scene());
+      ends.push(`${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`);
+    }
+    lines.sort((a, b) => a[0] - b[0]);
+    const dir = join(root, "build", "scenarios");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}.txt`);
+    writeFileSync(file, [verdict, ...lines.map(([ms, what]) => `${String(ms).padStart(7)} ${what}`), "", ...ends, ""].join("\n"));
   }
 
   /** Everything it started, each part even when another part fails to stop, as when the phone's adb connection broke. */
