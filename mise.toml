@@ -2,5 +2,6 @@
 xcodegen = "2.46.0"
 
 # GitHub's runner path; locally: xcodes install 26.6, then ln -s /Applications/Xcode-26.6.0.app /Applications/Xcode_26.6.app
+# (on macOS 27, xcodes from its GitHub release: brew's fails to build)
 [env]
 DEVELOPER_DIR = "/Applications/Xcode_26.6.app/Contents/Developer"
