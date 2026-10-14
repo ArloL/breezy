@@ -113,6 +113,11 @@ export class MacDevice extends Device {
     return true;
   }
 
+  /** What its menus say of the sync, a line for each space. */
+  override async syncStatus() {
+    return (await this.command<string[]>({ cmd: "status" })).join("\n");
+  }
+
   override async unpushed() {
     const lines = await this.command<string[]>({ cmd: "status" });
     return lines.reduce((n, l) => n + Number(/pending (\d+)/.exec(l)?.[1] ?? 0), 0);

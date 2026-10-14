@@ -1,0 +1,91 @@
+name: Desktop soak
+
+# The scenarios on real devices but Android's, Chromium, WebKit, Firefox and the Debug Mac app, over and over on many
+# macOS runners, to measure how often they fail. Main requires them, so each failure blocks a merge. A failing case
+# keeps its devices' sync logs in build/scenarios: read them before anything else. Dispatch it, or push a desktop-soak/
+# branch for its defaults; leftover desktop-soak/ branches are the repo owner's to delete.
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: macOS runners
+        default: "10"
+      runs:
+        description: Runs of the scenarios on each
+        default: "4"
+  push:
+    branches:
+    - desktop-soak/**
+permissions: {}
+
+jobs:
+  shards:
+    runs-on: ubuntu-slim
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
+    steps:
+    - id: shards
+      env:
+        RUNNERS: ${{ inputs.runners || '10' }}
+      run: echo "shards=$(seq --separator=, 1 "$RUNNERS" | sed 's/.*/[&]/')" >> "$GITHUB_OUTPUT"
+  desktop:
+    needs: shards
+    runs-on: macos-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.shards.outputs.shards) }}
+    permissions:
+      contents: read
+    env:
+      RUNS: ${{ inputs.runs || '4' }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium, WebKit and Firefox
+      run: npx playwright-core install chromium webkit firefox
+    - name: Build the Mac app
+      run: |
+        xcodegen generate
+        xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
+    - name: The scenarios, over and over
+      run: |
+        mkdir -p build/soak
+        # what the runner is busy with, every 10 s
+        (while sleep 10; do date -u +%T; uptime; top -l 1 -n 8 -o cpu -stats pid,command,cpu,mem | tail -n 9; done > build/soak/load.txt 2>&1) &
+        failed=0
+        for i in $(seq 1 "$RUNS"); do
+          echo "::group::run $i"
+          node --test --test-force-exit --test-skip-pattern android scenarios/browsers.e2e.ts > "build/soak/run-$i.txt" 2>&1 || {
+            failed=1
+            echo "::error::run $i failed"
+          }
+          grep -E '^(✔|✖|ℹ (pass|fail))' "build/soak/run-$i.txt" || true
+          echo "::endgroup::"
+        done
+        exit $failed
+    - name: Keep the failing cases' sync logs
+      if: ${{ always() }}
+      run: cp -R build/scenarios build/soak/ 2>/dev/null || true
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ always() }}
+      with:
+        name: desktop-soak-${{ matrix.shard }}
+        path: build/soak
