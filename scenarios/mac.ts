@@ -113,6 +113,11 @@ export class MacDevice extends Device {
     return true;
   }
 
+  override async unpushed() {
+    const lines = await this.command<string[]>({ cmd: "status" });
+    return lines.reduce((n, l) => n + Number(/pending (\d+)/.exec(l)?.[1] ?? 0), 0);
+  }
+
   override get draws() {
     return true;
   }

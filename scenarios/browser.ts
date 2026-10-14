@@ -494,6 +494,10 @@ export class BrowserDevice extends Device {
     await this.page.context().setOffline(off);
   }
 
+  override async unpushed() {
+    return this.page.evaluate(() => Number(document.body.dataset.waiting ?? 0));
+  }
+
   override async syncStatus() {
     return this.page.evaluate(() => document.querySelector(".menu.more .status")?.textContent ?? "");
   }
@@ -718,11 +722,11 @@ export class RealWorld {
   }
 
   /**
-   * Until every device shows the same board, and nothing has changed for 500 ms. What a device holds floats where only
-   * it draws it, and a card's size is its own font's.
+   * Until every device shows the same board with nothing waiting to be pushed but a gesture's, and nothing has changed for
+   * 500 ms. What a device holds floats where only it draws it, and a card's size is its own font's.
    */
   async settle(ms = 15_000) {
-    let last = "", since = Date.now(), boards: string[] = [];
+    let last = "", since = Date.now(), boards: string[] = [], waiting: number[] = [];
     for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
       const scenes = await Promise.all(this.devices.map((d) => d.scene()));
       const held = new Set(scenes.flatMap((s) => [...s.cards, ...s.lanes].filter((i) => i.held).map((i) => i.id)));
@@ -732,11 +736,14 @@ export class RealWorld {
         s.cards.map((c) => ({ id: c.id, ...at(c), color: c.color, text: c.text })).sort(byId),
         s.lanes.map((l) => ({ id: l.id, ...at(l), ...held.has(l.id) ? {} : { w: Math.round(l.w), h: Math.round(l.h) }, title: l.title })).sort(byId),
       ]));
-      const now = JSON.stringify(scenes);
+      waiting = await Promise.all(this.devices.map((d) => d.unpushed()));
+      const now = JSON.stringify([scenes, waiting]);
+      // a gesture's changes wait for its end
+      const pushed = waiting.every((n, i) => n === 0 || [...scenes[i]!.cards, ...scenes[i]!.lanes].some((x) => x.held));
       if (now !== last) [last, since] = [now, Date.now()];
-      else if (Date.now() - since >= 500 && boards.every((b) => b === boards[0])) return;
+      else if (Date.now() - since >= 500 && boards.every((b) => b === boards[0]) && pushed) return;
     }
-    throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${boards[i]}`).join("; ")}`);
+    throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${boards[i]}, ${waiting[i]} waiting`).join("; ")}`);
   }
 
   /** Each touchscreen's touches in build/touches/, named for the case, `verdict` first, for a run to tell why one failed. */

@@ -82,6 +82,8 @@ export class Spaces {
   /** After a change to what a group's boards show, with the boards concerned and whether it came from the server. */
   onChange: (g: Group, boards: Set<string>, remote: boolean) => void;
   onStatus: (g: Group) => void;
+  /** After a store changed, as what waits to be pushed may have. */
+  onDirty: () => void;
   /** After a save fails. */
   onSaveError: (error: unknown) => void;
   /** Called before merging, so that edits not yet in a store get there first. */
@@ -123,6 +125,7 @@ export class Spaces {
     this.onRefused = () => {};
     this.onChange = () => {};
     this.onStatus = () => {};
+    this.onDirty = () => {};
     this.onSaveError = () => {};
     this.flushLocal = () => {};
     this.local = this.make("local", new Store(states.local ?? undefined));
@@ -137,7 +140,10 @@ export class Spaces {
     saver.enabled = !this.readOnly;
     const g = new Group(key, store, engine, saver);
     saver.onError = (error) => this.onSaveError(error);
-    store.onDirty = () => saver.schedule();
+    store.onDirty = () => {
+      saver.schedule();
+      this.onDirty();
+    };
     store.onChange = (boards, remote) => {
       if (!remote) engine.changed();
       this.onChange(g, boards, remote);
