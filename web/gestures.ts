@@ -104,6 +104,13 @@ export class Gestures {
     }
   }
 
+  /** A hold reported before a move or lift from before its time, as a busy page hands them over late: it was not one. */
+  unhold(o: One, t: number) {
+    if (o.state !== "held" || t - o.t >= HOLD_MS) return;
+    o.state = "pending";
+    this.h.holdCancel();
+  }
+
   move(id: number, x: number, y: number, t: number) {
     if (!this.points.has(id)) return;
     const p = { x, y };
@@ -125,6 +132,7 @@ export class Gestures {
     if (o.state === "drag") return this.h.dragMove(p);
     if (o.state === "zoom") return this.h.zoomDrag(p.y - o.start.y);
     if (dist(o.start, p) < SLOP) return;
+    this.unhold(o, t);
     if (o.double) {
       o.state = "zoom";
       this.lastTap = null;
@@ -150,6 +158,7 @@ export class Gestures {
     }
     const o = this.one;
     if (o?.id !== id) return;
+    this.unhold(o, t);
     this.tick(t);
     this.one = null;
     const p = { x, y };
