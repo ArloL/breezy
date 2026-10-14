@@ -76,6 +76,8 @@ export class Library {
       this.renderStatus();
       app.ui.updateSync();
     };
+    // the scenarios settle once nothing waits to be pushed: the status says it only offline
+    spaces.onDirty = () => (document.body.dataset.waiting = String(spaces.spaces.reduce((n, g) => n + g.store.pending().length, 0)));
     spaces.onSaveError = (error) => {
       console.warn("boards not saved", error);
       app.ui.updateSync();
