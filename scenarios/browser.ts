@@ -511,7 +511,11 @@ export class RealWorld {
     // Chrome's launch stalls now and then, never opening its DevTools socket, which Playwright waits for without end;
     // launching force-stops it first. Why it stalls is not known.
     const launch = () => Promise.race([device.launchBrowser({ reducedMotion: "reduce" }), sleep(30_000).then(() => null)]);
-    const context = opened[1] = await launch() ?? await launch() ?? undefined;
+    const again = () => {
+      globalThis.console.log("Chrome did not open DevTools in 30 s: launching it again");
+      return launch();
+    };
+    const context = opened[1] = await launch() ?? await again() ?? undefined;
     if (!context) throw new Error("Chrome did not launch twice in 30 s");
     // the only tab, so the one on screen: a first launch also restores the tab Chrome's first run left
     await context.addInitScript(logTouches);
