@@ -98,6 +98,12 @@ export abstract class Device {
     throw new Error(`${this.kind} devices draw no text`);
   }
 
+  /** Keeps the app's main thread busy for `ms` just after the next finger goes down, as a phone busy with something
+   * else: what the finger does meanwhile reaches the app late. */
+  async busyAfterPress(_ms: number): Promise<void> {
+    throw new Error(`${this.kind} devices cannot be kept busy`);
+  }
+
   /** Cuts this device off the network (`off`) or puts it back, as airplane mode does. */
   async offline(_off: boolean): Promise<void> {
     throw new Error(`${this.kind} devices cannot go offline`);
