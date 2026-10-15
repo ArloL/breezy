@@ -34,6 +34,8 @@ export interface Editor {
   text: string;
   /** The caret's offset in `text`. */
   at: number;
+  /** What is selected, from the offset before to the one after: both `at` when nothing is. */
+  selected: [number, number];
   caret: Box | null;
   /** Each character as drawn, null for a newline; a front may draw one more, the newline of an empty last line. */
   chars: (Box | null)[];
@@ -93,7 +95,7 @@ export abstract class Device {
   }
 
   /** The weight of each character of card `id`'s front but its newlines, as drawn while not edited, or null where it is drawn from its
-   * text alone, as on the Mac. */
+   * text alone, as on the Mac, or once it is gone. */
   async weights(_id: string): Promise<number[] | null> {
     throw new Error(`${this.kind} devices draw no text`);
   }
@@ -218,6 +220,9 @@ export abstract class Device {
     const s = await this.screen(p);
     await this.gesture([[0, "down", [[0, s]]], [50, "up", [[0, s]]]]);
   }
+
+  /** Until the board stands still, as a person waits to aim: on a phone, it moves as the keyboard comes and goes. */
+  async still(_what: string): Promise<void> {}
 
   /** Until `test` holds, checked every 50 ms on this device's clock for at most `ms`. */
   async until(what: string, test: () => Promise<boolean>, ms = 5000) {

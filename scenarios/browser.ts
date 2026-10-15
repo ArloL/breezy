@@ -103,12 +103,19 @@ function readEditor(): Editor | null {
     }
   }
   const sel = getSelection()!;
-  let at = 0, caret: Box | null = null;
+  let at = 0, anchor = 0, caret: Box | null = null;
   if (sel.rangeCount && el.contains(sel.focusNode)) {
+    const plain = (n: Node): string => n instanceof Text ? n.data : n.nodeName === "BR" ? "\n" : [...n.childNodes].map(plain).join("");
+    const upto = (node: Node, offset: number) => {
+      const q = document.createRange();
+      q.selectNodeContents(el);
+      q.setEnd(node, offset);
+      return plain(q.cloneContents()).replace(/\u200b/g, "").length;
+    };
+    anchor = upto(sel.anchorNode!, sel.anchorOffset);
     const r = document.createRange();
     r.selectNodeContents(el);
     r.setEnd(sel.focusNode!, sel.focusOffset);
-    const plain = (n: Node): string => n instanceof Text ? n.data : n.nodeName === "BR" ? "\n" : [...n.childNodes].map(plain).join("");
     const before = plain(r.cloneContents()).replace(/\u200b/g, "");
     at = before.length;
     r.collapse(false);
@@ -145,6 +152,7 @@ function readEditor(): Editor | null {
     // an empty last line is drawn from two newlines, as DomField.text() says
     text: all.endsWith("\n") ? all.slice(0, -1) : all,
     at,
+    selected: [Math.min(at, anchor), Math.max(at, anchor)],
     caret,
     chars,
     weights,
@@ -154,9 +162,10 @@ function readEditor(): Editor | null {
   };
 }
 
-/** The weight of each character of card `id`'s front as drawn, but its newlines. Runs in the page. */
-function readWeights(id: string): number[] {
-  const front = document.querySelector(`.cards > [data-id="${id}"] .front`)!;
+/** The weight of each character of card `id`'s front as drawn, but its newlines; null once it is gone. Runs in the page. */
+function readWeights(id: string): number[] | null {
+  const front = document.querySelector(`.cards > [data-id="${id}"] .front`);
+  if (!front) return null;
   const weights: number[] = [];
   const walk = document.createTreeWalker(front, NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
@@ -524,10 +533,12 @@ export class BrowserDevice extends Device {
   override async gesture(frames: Frame[]) {
     if (this.touchscreen) {
       const before = await this.lifts();
+      // the page's points, where Chrome has panned it under the screen as the keyboard came over an editor
+      const pan = await this.page.evaluate(() => ({ x: visualViewport!.offsetLeft, y: visualViewport!.offsetTop }));
       const lifting: Point[] = [];
       for (const [ms, phase, moves] of frames) {
         if (ms) await this.wait(ms);
-        await this.touchscreen.send(moves.map(([finger, p]) => [finger, phase, p]));
+        await this.touchscreen.send(moves.map(([finger, p]) => [finger, phase, { x: p.x - pan.x, y: p.y - pan.y }]));
         if (phase === "up" || phase === "cancel") lifting.push(...moves.map(([, p]) => p));
       }
       if (lifting.length) await this.lifted(before + lifting.length, lifting);
@@ -650,18 +661,22 @@ export class BrowserDevice extends Device {
   /** Once an editor has the keyboard: one a double tap opened shows a moment later on a busy phone. */
   override async type(text: string) {
     await this.page.waitForFunction(editing, undefined, { timeout: 5000 });
+    // a front may end in a newline that draws nothing, and DomField.text() drops, as after ⌫ on a phone
+    const held = () => this.page.evaluate(() => {
+      const e = document.activeElement;
+      return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").replace(/\u200b/g, "").replace(/\n$/, "");
+    });
+    const before = this.touchscreen ? await held() : "";
     await this.page.keyboard.type(text);
     // a touchscreen's touches reach the page by another way than DevTools' keys, and could overtake them
     if (this.touchscreen) {
-      // a front may end in a newline that draws nothing, and DomField.text() drops, as after ⌫ on a phone
-      await this.page.waitForFunction((t) => {
-        const e = document.activeElement;
-        return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").replace(/\n$/, "").endsWith(t);
-      }, text, { timeout: 5000 }).catch(async (e) => {
+      await until(`${JSON.stringify(text)} typed`, async () => {
+        const now = await held();
+        return now.length >= before.length + text.length && now.includes(text);
+      }, 5000).catch(async (e) => {
         // a keyboard's input method may put in other characters than the keys sent
-        const held = await this.page.evaluate(() => document.activeElement?.textContent ?? "");
-        const end = [...held.slice(-text.length - 4)].map((c) => c.codePointAt(0)!.toString(16)).join(" ");
-        throw new Error(`${JSON.stringify(text)} typed, the editor ends in ${end}`, { cause: e });
+        const now = await held();
+        throw new Error(`${JSON.stringify(text)} typed into ${JSON.stringify(before)}, the editor holds ${[...now].map((c) => c.codePointAt(0)!.toString(16)).join(" ")}`, { cause: e });
       });
       // the board keeps the editor in sight of the keyboard, which opened with it
       await this.still("the keyboard to open and the board to stand still");
@@ -685,11 +700,12 @@ export class BrowserDevice extends Device {
   private async endEdit() {
     await this.page.keyboard.press("Escape");
     await this.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable, undefined, { timeout: 5000 });
-    if (this.touchscreen) await this.still("the keyboard to go and the board to stand still");
+    await this.still("the keyboard to go and the board to stand still");
   }
 
-  /** Until the page's size and the board's camera have not changed for 500 ms. */
-  private async still(what: string) {
+  /** On a phone, until the page's size and the board's camera have not changed for 500 ms. */
+  override async still(what: string) {
+    if (!this.touchscreen) return;
     let last = "", since = Date.now();
     await until(what, async () => {
       const now = JSON.stringify([await this.page.evaluate(() => [innerHeight, visualViewport!.height, visualViewport!.offsetTop]), (await this.scene()).camera]);

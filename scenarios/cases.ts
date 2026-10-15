@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { centre, item, type Box, type Device, type Editor, type Frame } from "./device.ts";
 import { LANE_H, LANE_W } from "../web/rules.ts";
+import type { Point } from "../web/types.ts";
 
 export interface Stage {
   devices: Device[];
@@ -22,6 +23,10 @@ export interface Case {
   busy?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
+  /** How long a run may take on real devices, if longer than most. */
+  ms?: number;
+  /** The kinds of real device that may act, if not all. */
+  acts?: string[];
   run(s: Stage): Promise<void>;
 }
 
@@ -134,10 +139,10 @@ async function edit(d: Device, id: string, want: Want, steps: string[]): Promise
   return want;
 }
 
-/** A card made where nothing is, as a person makes one with `input`, and its id once it is being edited. */
-async function newCard(d: Device, input: "mouse" | "touch") {
+/** A card made where nothing is, at screen point `at`, as a person makes one with `input`, and its id once it is being edited. */
+async function newCard(d: Device, input: "mouse" | "touch", at?: Point) {
   const narrow = (await d.size()).w < 900;
-  const p = await d.world(narrow ? { x: 40, y: 200 } : { x: 400, y: 200 });
+  const p = await d.world(at ?? (narrow ? { x: 40, y: 200 } : { x: 400, y: 200 }));
   const had = new Set((await d.scene()).cards.map((c) => c.id));
   await (input === "touch" ? d.doubleTap(p) : d.doubleClick(p));
   let id = "";
@@ -146,20 +151,30 @@ async function newCard(d: Device, input: "mouse" | "touch") {
   return id;
 }
 
-/** Ends the edit as a person does: Esc, or on a phone a tap on the board just above the card, kept in sight of the
- * keyboard; and until the front at rest is semibold up to the first newline. */
-async function endEdit(d: Device, id: string, input: "mouse" | "touch") {
+/** Ends the edit as a person does: Esc, or on a phone a tap on the board, at world point `at` or just above the card,
+ * kept in sight of the keyboard; and until the front at rest is semibold up to the first newline. */
+async function endEdit(d: Device, id: string, input: "mouse" | "touch", at?: Point) {
   if (input === "touch") {
     const c = item(await d.scene(), id);
-    await d.tap({ x: c.x + c.w / 2, y: c.y - 40 });
+    await d.tap(at ?? { x: c.x + c.w / 2, y: c.y - 40 });
   } else {
     await d.key("Escape");
   }
   await d.until("the edit to end", async () => !(await d.editor()));
-  const text = item(await d.scene(), id).text!;
-  const title = text.includes("\n") ? text.indexOf("\n") : text.length;
-  const weights = await d.weights(id);
-  if (weights) assert.deepEqual(weights, [...text].filter((ch) => ch !== "\n").map((_, i) => i < title ? 600 : 400), "the weights at rest");
+  // read until the front is drawn as the text at rest: a browser trims it, and removes a card left blank, a frame later
+  for (let t = 0; ; t += 100) {
+    const card = (await d.scene()).cards.find((c) => c.id === id);
+    if (card?.text && card.text !== card.text.trimEnd() && t < 2000) {
+      await d.wait(100);
+      continue;
+    }
+    const weights = card?.text ? await d.weights(id) : null;
+    if (!card?.text || !weights) return;
+    const title = card.text.includes("\n") ? card.text.indexOf("\n") : card.text.length;
+    const want = [...card.text].filter((ch) => ch !== "\n").map((_, i) => i < title ? 600 : 400);
+    if (t >= 2000 || JSON.stringify(weights) === JSON.stringify(want)) return assert.deepEqual(weights, want, `the weights at rest of ${JSON.stringify(card.text)}`);
+    await d.wait(100);
+  }
 }
 
 /** Typing at the end of a title and the lines below it, Return, ⌫ back across them, and again. */
@@ -211,11 +226,253 @@ const wrapping = (input: "mouse" | "touch"): Case => ({
   },
 });
 
+/** mulberry32: numbers in [0, 1) from `seed`, the same on every run. */
+function random(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32;
+  };
+}
+
+/** CHAOS_SEED replays a run; CHAOS_STEPS sets its length. */
+const CHAOS_SEED = Number(process.env.CHAOS_SEED ?? Math.floor(Math.random() * 2 ** 31));
+const CHAOS_STEPS = Number(process.env.CHAOS_STEPS ?? 120);
+
+/**
+ * Keys pressed at random into cards made, opened again and deleted at random, as a monkey would: text typed anywhere,
+ * Return and ⌫ and ⌦ most often beside a newline, arrows, ⌘-arrows and a selection typed over. On a phone, what its
+ * keyboard has, the caret moved by a tap on the text, and no deleting cards. After each key the editor draws the text
+ * and caret it should, the title semibold; at rest, every card's text shows on the other device.
+ */
+const chaos = (input: "mouse" | "touch"): Case => ({
+  name: `keys pressed at random into cards made, opened and deleted at random ${input === "touch" ? "on a phone " : ""}show the caret after each key, the title semibold`,
+  input,
+  edits: true,
+  draws: true,
+  ms: 60_000 + CHAOS_STEPS * (input === "touch" ? 3000 : 500),
+  // Firefox has two caret positions at a soft wrap, so arrows move it fewer characters than pressed; WebKit loses the
+  // editor's focus on some double-clicks that open it
+  acts: ["mac", "chromium", "android"],
+  async run(s) {
+    const [a, b] = s.devices as [Device, Device];
+    const rnd = random(CHAOS_SEED);
+    /** The screen with no keyboard on it, and whether it is a phone's, where a keyboard comes up to edit. */
+    const full = (await a.size()).h, phone = (await a.size()).w < 900;
+    const keyboard = () => phone && a.until("the keyboard to come", async () => ((await a.editor())?.view.h ?? full) < full - 150);
+    const pick = <T>(xs: readonly T[]) => xs[Math.floor(rnd() * xs.length)]!;
+    const tokens = ["Milk", "eggs", "a", "x", " ", "  ", "two words", "Ünïcödé", "42", ".", "a longer line that will surely wrap at the edge of the card"];
+    /** What each card at rest should hold. */
+    const kept = new Map<string, string>();
+    const log: string[] = [];
+    let id: string | null = null, want: Want = { text: "", at: 0 };
+    /** Where a tap last put the caret on a phone. */
+    let tapped: Box | null = null;
+
+    /** Somewhere on screen with no card near, else null. */
+    const room = async (): Promise<Point | null> => {
+      await a.still("the board to stand still");
+      const sc = await a.scene(), size = await a.size(), wide = 280 * sc.camera.zoom;
+      const boxes = await Promise.all(sc.cards.map((c) => onScreen(a, c.id)));
+      const spots: Point[] = [];
+      for (let y = 140; y < size.h - 160; y += 250) for (let x = 40; x < size.w - wide; x += 300) spots.push({ x, y });
+      const free = spots.filter((p) => boxes.every((r) => p.x < r.x - 60 || p.x > r.x + r.w + wide || p.y < r.y - 60 || p.y > r.y + r.h + 200));
+      return free.length ? pick(free) : null;
+    };
+    /** A world point on card `c` that shows on screen, clear of the other cards and of a browser's bars, as a person would
+     * aim; else null. */
+    const aim = async (c: string): Promise<Point | null> => {
+      await a.still("the board to stand still");
+      const sc = await a.scene(), size = await a.size(), r = await onScreen(a, c);
+      const others = await Promise.all(sc.cards.filter((x) => x.id !== c).map((x) => onScreen(a, x.id)));
+      for (const fy of [0.5, 0.2, 0.8, 0.35, 0.65, 0.1, 0.9]) for (const fx of [0.5, 0.25, 0.75]) {
+        const p = { x: r.x + r.w * fx, y: r.y + r.h * fy };
+        const shows = p.x > 30 && p.y > 90 && p.x < size.w - 40 && p.y < size.h - 70;
+        if (shows && others.every((o) => p.x < o.x - 4 || p.x > o.x + o.w + 4 || p.y < o.y - 4 || p.y > o.y + o.h + 4)) return a.world(p);
+      }
+      return null;
+    };
+    const step = async (what: string, act: () => Promise<void>, next: (w: Want) => Want | Promise<Want>) => {
+      log.push(what);
+      const was = want;
+      await act();
+      want = await next(want);
+      await shows(a, id!, want, `${what} from ${JSON.stringify(was)}, step ${log.length}`);
+    };
+    const insert = (t: string) => (w: Want) => ({ text: w.text.slice(0, w.at) + t + w.text.slice(w.at), at: w.at + t.length });
+    const moveTo = async (to: number) => {
+      const n = to - want.at;
+      for (let i = 0; i < Math.abs(n); i++) await a.key(n < 0 ? "ArrowLeft" : "ArrowRight");
+    };
+    /** The caret where the device put it, for moves whose end depends on how lines wrap. */
+    const theirs = async (w: Want) => {
+      const e = await a.editor();
+      assert.ok(e, "nothing is being edited");
+      assert.equal(e.text, w.text, "a move changed the text");
+      return { text: w.text, at: e.at };
+    };
+    /** On a phone, a tap on the board where it shows clear of the cards, which ends the edit. */
+    const clear = async (): Promise<Point | undefined> => {
+      if (input === "mouse") return undefined;
+      await keyboard();
+      await a.still("the keyboard and the board to stand still");
+      const e = await a.editor(), sc = await a.scene();
+      assert.ok(e, "nothing is being edited");
+      const boxes = await Promise.all(sc.cards.map((c) => onScreen(a, c.id)));
+      for (let y = e.view.y + 120; y < e.view.y + e.view.h - 40; y += 40) for (let x = 30; x < e.view.w - 30; x += 40) {
+        if (boxes.every((r) => x < r.x - 20 || x > r.x + r.w + 20 || y < r.y - 20 || y > r.y + r.h + 20)) return a.world({ x, y });
+      }
+      throw new Error("no board shows clear of the cards to tap");
+    };
+    const end = async () => {
+      log.push(input === "touch" ? "tap the board" : "Esc");
+      tapped = null;
+      await endEdit(a, id!, input, await clear());
+      const text = want.text.trimEnd();
+      if (text) kept.set(id!, text);
+      else {
+        kept.delete(id!);
+        await a.until("a card left blank to be removed", async () => !(await a.scene()).cards.some((c) => c.id === id));
+      }
+      id = null;
+    };
+
+    try {
+      for (let n = 0; n < CHAOS_STEPS; n++) {
+        if (!id) {
+          const r = rnd(), spot = r < 0.5 || !kept.size ? await room() : null;
+          if (spot) {
+            log.push(`new card at ${spot.x},${spot.y}`);
+            id = await newCard(a, input, spot);
+            want = { text: "", at: 0 };
+            if (input === "touch") await a.wait(600);
+          } else if (r < 0.85 && kept.size) {
+            const c = pick([...kept.keys()]), p = await aim(c);
+            if (!p) continue;
+            log.push(`open ${c}`);
+            id = c;
+            await (input === "touch" ? a.doubleTap(p) : a.doubleClick(p));
+            want = { text: kept.get(c)!, at: kept.get(c)!.length };
+            await shows(a, c, want, `opening ${c}, step ${log.length}`);
+            // as a person waits to see it open: a tap just after a double tap is a triple tap, which selects the line
+            if (input === "touch") await a.wait(600);
+          } else if (kept.size && input === "mouse") {
+            const c = pick([...kept.keys()]), p = await aim(c);
+            if (!p) continue;
+            log.push(`delete ${c}`);
+            await a.click(p);
+            await a.key("Backspace");
+            kept.delete(c);
+            await a.until(`${c} to go`, async () => !(await a.scene()).cards.some((x) => x.id === c));
+          }
+          continue;
+        }
+        const r = rnd(), len = want.text.length;
+        const newlines = [...want.text].flatMap((c, i) => (c === "\n" ? [i] : []));
+        if (r < 0.22) {
+          const t = pick(tokens);
+          await step(`type ${JSON.stringify(t)}`, () => a.type(t), insert(t));
+        } else if (r < 0.38) {
+          const k = rnd() < 0.7 ? 1 : 2 + Math.floor(rnd() * 2);
+          await step(`Return ×${k}`, async () => { for (let i = 0; i < k; i++) await a.key("Enter"); }, insert("\n".repeat(k)));
+        } else if (r < 0.52) {
+          const k = Math.min(want.at, rnd() < 0.7 ? 1 : 2 + Math.floor(rnd() * 4));
+          await step(`⌫ ×${k}`, async () => { for (let i = 0; i < k; i++) await a.key("Backspace"); },
+            (w) => ({ text: w.text.slice(0, w.at - k) + w.text.slice(w.at), at: w.at - k }));
+        } else if (input === "touch") {
+          // a tap on a character shown above the keyboard puts the caret beside it; not near the caret or where a tap put
+          // it last, where Android draws a handle that Chrome takes taps on, which keys not typed on its keyboard leave.
+          // Aimed once the keyboard has come and the board stands still, as a finger aimed before lands on the keyboard.
+          await keyboard();
+          await a.still("the keyboard and the board to stand still");
+          const e = await a.editor();
+          assert.ok(e, "nothing is being edited");
+          const near = (c: Box, k: Box | null) => !!k && Math.abs(c.x + c.w / 2 - k.x) < 48 && c.y + c.h / 2 > k.y - k.h && c.y + c.h / 2 < k.y + 2 * k.h + 48;
+          const on = e.chars.flatMap((c, i) => c && c.y > e.view.y + 90 && c.y + c.h < e.view.y + e.view.h - 10 && !near(c, e.caret) && !near(c, tapped) ? [[i, c] as const] : []);
+          if (r < 0.9 && on.length) {
+            const [i, c] = pick(on);
+            const p = await a.world({ x: c.x + c.w / 2, y: c.y + c.h / 2 });
+            await step(`tap on ${JSON.stringify(want.text[i])} at ${i}`, async () => {
+              await a.tap(p);
+              // as a person waits to see where it went, and so that the next tap is not a double tap
+              await a.wait(400);
+              tapped = (await a.editor())?.caret ?? null;
+            }, theirs);
+          } else {
+            await end();
+          }
+        } else if (r < 0.62) {
+          const k = Math.min(len - want.at, rnd() < 0.7 ? 1 : 2 + Math.floor(rnd() * 3));
+          await step(`⌦ ×${k}`, async () => { for (let i = 0; i < k; i++) await a.key("Delete"); },
+            (w) => ({ text: w.text.slice(0, w.at) + w.text.slice(w.at + k), at: w.at }));
+        } else if (r < 0.76) {
+          // beside a newline, where Return, ⌫ and ⌦ move the title's end
+          const to = newlines.length ? pick(newlines) + (rnd() < 0.5 ? 0 : 1) : pick([0, len]);
+          await step(`arrows to ${to}`, () => moveTo(to), (w) => ({ ...w, at: to }));
+        } else if (r < 0.82) {
+          const k = 1 + Math.floor(rnd() * 5), left = rnd() < 0.5;
+          const to = Math.max(0, Math.min(len, want.at + (left ? -k : k)));
+          await step(`${left ? "←" : "→"} ×${k}`, async () => { for (let i = 0; i < k; i++) await a.key(left ? "ArrowLeft" : "ArrowRight"); },
+            (w) => ({ ...w, at: to }));
+        } else if (r < 0.86) {
+          const top = rnd() < 0.5;
+          await step(top ? "⌘↑" : "⌘↓", () => a.key(top ? "ArrowUp" : "ArrowDown", { meta: true }), (w) => ({ ...w, at: top ? 0 : len }));
+        } else if (r < 0.9) {
+          const meta = rnd() < 0.5, k = pick(meta ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"]);
+          await step(`${meta ? "⌘" : ""}${k}`, () => a.key(k, { meta }), theirs);
+        } else if (r < 0.97 && len) {
+          // a selection of up to 6 to the left or right, typed over or deleted. Where AppKit squeezes spaces that end a
+          // wrapped line to nothing, ⇧-arrows select more or fewer and ⌫ deletes yet other characters, as in any Mac text
+          // view: there the text is what the Mac made of it, still drawn as it should be.
+          const k = 1 + Math.floor(rnd() * 6), left = rnd() < 0.5;
+          const n = Math.abs(Math.max(0, Math.min(len, want.at + (left ? -k : k))) - want.at);
+          const t = rnd() < 0.5 ? "" : rnd() < 0.3 ? "\n" : pick(tokens);
+          let from = want.at, upto = want.at, squeezed = false;
+          await step(`⇧${left ? "←" : "→"} ×${n}, then ${t ? JSON.stringify(t) : "⌫"}`, async () => {
+            for (let i = 0; i < n; i++) await a.key(left ? "ArrowLeft" : "ArrowRight", { shift: true });
+            const e = await a.editor();
+            assert.ok(e, "nothing is being edited");
+            [from, upto] = e.selected;
+            squeezed = a.kind === "mac" && upto - from !== n;
+            if (!squeezed) assert.equal(upto - from, n, `${n} ⇧-arrows selected ${JSON.stringify(e.text.slice(from, upto))}`);
+            if (!t) await a.key("Backspace");
+            else if (t === "\n") await a.key("Enter");
+            else await a.type(t);
+          }, async (w) => {
+            if (squeezed) {
+              log.push("(AppKit's squeezed spaces)");
+              const e = await a.editor();
+              assert.ok(e, "nothing is being edited");
+              return { text: e.text, at: e.at };
+            }
+            return from === upto && !t
+              ? { text: w.text.slice(0, Math.max(0, from - 1)) + w.text.slice(from), at: Math.max(0, from - 1) }
+              : { text: w.text.slice(0, from) + t + w.text.slice(upto), at: from + t.length };
+          });
+        } else {
+          await end();
+        }
+      }
+      if (id) await end();
+      await s.settle();
+      const seen = new Map((await b.scene()).cards.map((c) => [c.id, c.text]));
+      assert.deepEqual(seen, kept, "the other device's cards");
+    } catch (e) {
+      throw new Error(`CHAOS_SEED=${CHAOS_SEED}: ${(e as Error).message}\n  steps: ${log.join(" · ")}`, { cause: e });
+    }
+  },
+});
+
 export const cases: Case[] = [
   lines("mouse"),
   lines("touch"),
   wrapping("mouse"),
   wrapping("touch"),
+  chaos("mouse"),
+  chaos("touch"),
   {
     name: "a card dragged into a lane shows at the top of the lane's column on the other device",
     input: "mouse",

@@ -3,7 +3,7 @@
 //   MISE_ENV=android mise install && MISE_ENV=android mise exec -- node scripts/android.ts
 // Installs the system image and creates the AVD the first time, and connects adb to the emulator over TCP as well. Each
 // wait is bounded and names what it waited for.
-// Stop it with adb emu kill.
+// Stop it with MISE_ENV=android mise exec -- adb emu kill.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { arch } from "node:os";
@@ -96,6 +96,9 @@ for (const scale of ["window_animation_scale", "transition_animation_scale", "an
 }
 // the emulator's touchscreen says it is a stylus too, and Gboard puts its stylus tutorial over the page as an editor opens
 await settled("handwriting off", "shell", "settings", "put", "secure", "stylus_handwriting_enabled", "0");
+// a tap on a word the spell checker marks opens Chrome's suggestions a moment later, and the next tap anywhere only
+// closes them
+await settled("spell checker off", "shell", "settings", "put", "secure", "spell_checker_enabled", "0");
 // a crash of some app of Android's own puts a dialog over Chrome, as Digital Wellbeing's did over its first run
 await settled("error dialogs hidden", "shell", "settings", "put", "global", "hide_error_dialogs", "1");
 // the Play Store updates Google Play services and itself while the scenarios run, and Chrome quits when Play services is

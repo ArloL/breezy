@@ -92,13 +92,18 @@ import Network
       let chars = try c.need(c.chars, "chars")
       var mods: NSEvent.ModifierFlags = []
       if c.shift == true { mods.insert(.shift) }
+      // arrows and ⌦, which the text system binds by their function-key characters
+      let function = chars.unicodeScalars.first.map { (0xF700...0xF8FF).contains($0.value) } ?? false
       if c.command == true {
-        // the menu's action along the window's responder chain, as AppKit does for the key window, which nobody makes key
         mods.insert(.command)
-        guard let item = menuItem(chars, mods, in: NSApp.mainMenu!), let action = item.action else { throw Failure(description: "no menu item for ⌘\(chars)") }
-        _ = w.firstResponder?.tryToPerform(action, with: item)
-        return .null
+        // the menu's action along the window's responder chain, as AppKit does for the key window, which nobody makes key
+        if let item = menuItem(chars, mods, in: NSApp.mainMenu!), let action = item.action {
+          _ = w.firstResponder?.tryToPerform(action, with: item)
+          return .null
+        }
+        if !function { throw Failure(description: "no menu item for ⌘\(chars)") }
       }
+      if function { mods.formUnion(c.code.map { (123...126).contains($0) } == true ? [.function, .numericPad] : .function) }
       let e = NSEvent.keyEvent(
         with: .keyDown, location: w.mouseLocationOutsideOfEventStream, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
         windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false,
@@ -162,6 +167,7 @@ import Network
     let size = clip.bounds.size
     return .object([
       "text": .string(tv.string), "at": .number(Double(tv.selectedRange().location)),
+      "selected": .array([.number(Double(tv.selectedRange().location)), .number(Double(NSMaxRange(tv.selectedRange())))]),
       "caret": onScreen(NSRange(location: tv.selectedRange().location, length: 0)),
       "chars": .array(chars), "weights": .array(weights),
       "origin": origin, "line": .number(Typo.line * zoom),

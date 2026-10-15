@@ -100,7 +100,8 @@ export class MacDevice extends Device {
   /** By key code, as AppKit has them on a US layout. */
   static readonly codes: Record<string, [string, number]> = {
     "1": ["1", 18], "2": ["2", 19], "3": ["3", 20], "4": ["4", 21], "5": ["5", 23], " ": [" ", 49], Backspace: ["\u007f", 51],
-    Escape: ["\u001b", 53], Enter: ["\r", 36], z: ["z", 6], a: ["a", 0], l: ["l", 37],
+    Escape: ["\u001b", 53], Enter: ["\r", 36], z: ["z", 6], a: ["a", 0], l: ["l", 37], Delete: ["\uf728", 117],
+    ArrowLeft: ["\uf702", 123], ArrowRight: ["\uf703", 124], ArrowDown: ["\uf701", 125], ArrowUp: ["\uf700", 126],
   };
 
   async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
