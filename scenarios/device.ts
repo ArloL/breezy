@@ -79,6 +79,12 @@ export abstract class Device {
     throw new Error(`${this.kind} devices cannot edit`);
   }
 
+  /** Sets the text an input method is composing at the caret to `text`, as a keyboard does as each key of a word is
+   * pressed; null commits it, as the keyboard does at the word's end or as the edit ends. */
+  async compose(_text: string | null): Promise<void> {
+    throw new Error(`${this.kind} devices have no input method`);
+  }
+
   /** Types `text` at the end of card `id`'s front, as a person does: a double-click, the keys, and Esc. */
   async typeInto(_id: string, _text: string): Promise<void> {
     throw new Error(`${this.kind} devices cannot edit`);

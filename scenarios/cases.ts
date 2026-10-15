@@ -226,6 +226,30 @@ const wrapping = (input: "mouse" | "touch"): Case => ({
   },
 });
 
+/** A title composed into a new card by an input method, as Samsung Keyboard composes a word until it ends. */
+const composed = (input: "mouse" | "touch"): Case => ({
+  name: `a title composed into a new card by an input method ${input === "touch" ? "on a phone " : ""}is semibold while it is composed`,
+  input,
+  edits: true,
+  draws: true,
+  // the browser whose input method DevTools drives: Android's keyboard commits a composition it did not start
+  acts: ["chromium"],
+  async run(s) {
+    const [a, b] = s.devices as [Device, Device];
+    const id = await newCard(a, input);
+    const word = "Groceries";
+    for (let i = 1; i <= word.length; i++) {
+      await a.compose(word.slice(0, i));
+      await shows(a, id, { text: word.slice(0, i), at: i }, `composing ${JSON.stringify(word.slice(0, i))}`);
+    }
+    await a.compose(null);
+    await shows(a, id, { text: word, at: word.length }, "the word committed");
+    await endEdit(a, id, input);
+    await s.settle();
+    assert.equal(item(await b.scene(), id).text, word);
+  },
+});
+
 /** mulberry32: numbers in [0, 1) from `seed`, the same on every run. */
 function random(seed: number) {
   let s = seed >>> 0;
@@ -471,6 +495,8 @@ export const cases: Case[] = [
   lines("touch"),
   wrapping("mouse"),
   wrapping("touch"),
+  composed("mouse"),
+  composed("touch"),
   chaos("mouse"),
   chaos("touch"),
   {
