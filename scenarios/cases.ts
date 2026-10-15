@@ -27,6 +27,8 @@ export interface Case {
   ms?: number;
   /** The kinds of real device that may act, if not all. */
   acts?: string[];
+  /** The kinds of real device that may watch, if not all. */
+  watches?: string[];
   run(s: Stage): Promise<void>;
 }
 
@@ -535,7 +537,10 @@ export const cases: Case[] = [
       await a.offline(true);
       await a.relaunch();
       const at = await a.scene();
-      await a.touchDrag(centre(item(at, card)), centre(item(at, lane)));
+      // by its left end: Firefox on Android leaves the board less height, and the + button a phone shows at the bottom
+      // of the screen covers the card's middle once it launches again
+      const c = item(at, card);
+      await a.touchDrag({ x: c.x + 24, y: c.y + c.h / 2 }, centre(item(at, lane)));
       await a.wait(2000);
       assert.deepEqual(await within(a, lane, card), { x: 24, y: 72 }, "where it was dragged, offline");
       assert.deepEqual(await within(b, lane, card), was, "the other device saw it while the first was offline");
@@ -694,6 +699,8 @@ export const cases: Case[] = [
   {
     name: "a card one device holds stays where it holds it when the other drags it",
     input: "mouse",
+    // a phone's screen does not show the card where the other made it, so its drag would miss it
+    watches: ["chromium", "webkit", "firefox", "mac"],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);

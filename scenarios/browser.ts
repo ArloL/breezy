@@ -1,6 +1,6 @@
-// The web app built as it ships, in headless Chromium, WebKit and Firefox and in Chrome on Android, against sync.php and
-// the relay under wrangler dev, on the wall clock: the same scenarios as on the hub, through the browsers' own input and
-// the DOM.
+// The web app built as it ships, in headless Chromium, WebKit and Firefox and in Chrome and Firefox on Android, against
+// sync.php and the relay under wrangler dev, on the wall clock: the same scenarios as on the hub, through the browsers'
+// own input and the DOM.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
 
-export type BrowserKind = "chromium" | "webkit" | "firefox" | "android";
+export type BrowserKind = "chromium" | "webkit" | "firefox" | "android" | "firefox-android";
 export type RealKind = BrowserKind | "mac";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -26,6 +26,11 @@ export const WEB = 58565, SERVER = 58566, RELAY = 58568;
 /** The emulator's adbd over TCP, through its port redirect: its own adb pipe drops every connection on it under load, a
  * few times an hour on some runners, and the page with them. scripts/android.ts connects it. */
 export const EMULATOR_TCP = "127.0.0.1:5600";
+/** Firefox for Android's package, and the port of its WebDriver BiDi on the emulator and on this machine: below both
+ * systems' ephemeral ports. */
+export const FENIX = "org.mozilla.firefox", FENIX_BIDI = 29222;
+/** The Firefox for Android scripts/android.ts installs. */
+export const FENIX_VERSION = "157.0.1";
 /** The web app's version, so that its service worker runs as on breezy.k5d.de. */
 const VERSION = "scenarios";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -750,6 +755,7 @@ export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
   private readonly androids: [AndroidDevice, BrowserContext?][] = [];
+  private readonly contexts: BrowserContext[] = [];
   private readonly children: ChildProcess[] = [];
   private readonly dirs: string[] = [];
   private readonly consoles: EmulatorConsole[] = [];
@@ -776,7 +782,7 @@ export class RealWorld {
         await mac.command({ cmd: "open", board });
         continue;
       }
-      const [page, touchscreen] = kind === "android" ? await this.android() : [await this.browser(kind)];
+      const [page, touchscreen] = kind === "android" ? await this.android() : kind === "firefox-android" ? await this.firefoxAndroid() : [await this.browser(kind)];
       const d = new BrowserDevice(kind, page, touchscreen, this.t0);
       this.devices.push(d);
       await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
@@ -790,7 +796,7 @@ export class RealWorld {
     }
   }
 
-  private async browser(kind: Exclude<BrowserKind, "android">) {
+  private async browser(kind: Exclude<BrowserKind, "android" | "firefox-android">) {
     const browser = await { chromium, webkit, firefox }[kind].launch();
     this.browsers.push(browser);
     const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" });
@@ -810,6 +816,8 @@ export class RealWorld {
     const opened: [AndroidDevice, BrowserContext?] = [device];
     this.androids.push(opened);
     for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`]);
+    // a user build's Chrome reads the command line Playwright writes only as the debug app, which Firefox's launch takes
+    execFileSync("adb", ["-s", device.serial(), "shell", "am", "set-debug-app", "--persistent", "com.android.chrome"]);
     // Chrome's launch stalls now and then, never opening its DevTools socket, which Playwright waits for without end;
     // launching force-stops it first. Why it stalls is not known.
     const launch = () => Promise.race([device.launchBrowser({ reducedMotion: "reduce" }), sleep(30_000).then(() => null)]);
@@ -833,6 +841,40 @@ export class RealWorld {
     if (console) this.consoles.push(console);
     const touchscreen = console ? await Touchscreen.of(device.serial(), console, page) : undefined;
     return [page, touchscreen] as const;
+  }
+
+  /**
+   * Firefox on the emulator, through fenix.ts: in the one profile it keeps, the site's data of the runs before cleared;
+   * its touchscreen through the emulator's console.
+   */
+  private async firefoxAndroid() {
+    const serial = execFileSync("adb", ["devices"], { encoding: "utf8" }).match(/^(emulator-\d+)\tdevice$/m)?.[1];
+    if (!serial) throw new Error("no Android emulator: run node scripts/android.ts");
+    for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`]);
+    const dir = mkdtempSync(join(tmpdir(), "breezy-scenario-fenix-"));
+    this.dirs.push(dir);
+    const context = await firefox.launchPersistentContext(dir, { channel: "moz-firefox", executablePath: join(root, "scenarios", "fenix.ts"), viewport: null, timeout: 60_000 });
+    this.contexts.push(context);
+    // the tab Firefox opened with, which is the one on screen
+    const page = context.pages()[0] ?? await context.newPage();
+    // a page the server does not have, once the service worker that would serve the app there is gone
+    const blank = `http://localhost:${WEB}/scenarios-clear`;
+    await page.goto(blank);
+    await page.evaluate(() => navigator.serviceWorker.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))));
+    await page.goto(blank);
+    const left = await page.evaluate(async () => {
+      for (const name of await caches.keys()) await caches.delete(name);
+      for (const { name } of await indexedDB.databases()) {
+        await new Promise((resolve, reject) => Object.assign(indexedDB.deleteDatabase(name!), { onsuccess: resolve, onerror: reject, onblocked: reject }));
+      }
+      localStorage.clear();
+      return [...await navigator.serviceWorker.getRegistrations(), ...await caches.keys(), ...await indexedDB.databases()].length;
+    });
+    if (left) throw new Error(`Firefox kept ${left} of the site's service workers, caches and databases`);
+    await context.addInitScript(logTouches);
+    const console = await EmulatorConsole.open(serial);
+    this.consoles.push(console);
+    return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
   }
 
   private async serve() {
@@ -918,6 +960,11 @@ export class RealWorld {
   /** Everything it started, each part even when another part fails to stop, as when the phone's adb connection broke. */
   async stop() {
     for (const b of this.browsers) await b.close().catch(() => {});
+    for (const c of this.contexts) {
+      // Firefox on Android keeps its tabs from run to run, and closes one only as its page closes
+      for (const p of c.pages()) await p.close().catch(() => {});
+      await c.close().catch(() => {});
+    }
     for (const [d, c] of this.androids) {
       // closing the context leaves Chrome's tabs open on a phone, and it restores every one when it starts again
       for (const p of c?.pages() ?? []) await p.close().catch(() => {});

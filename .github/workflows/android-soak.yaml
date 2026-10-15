@@ -6,7 +6,7 @@ name: Android soak
 # Only these runs give real failure rates: GitHub's emulators draw in software, while a Mac's has its GPU and stays quick
 # however busy the Mac is. On 2026-10-14, 2,800 case runs on 112 emulators failed none, so a failure is news: read its
 # touches, screen and host.txt. About 15–20 of this account's jobs run at once, Main's and Nightly's macOS jobs among
-# them, so 30 emulators take ~40 min. Leftover soak/ branches are the repo owner's to delete.
+# them. Leftover soak/ branches are the repo owner's to delete.
 on:
   schedule:
   - cron: "41 3 * * 0"
@@ -36,7 +36,7 @@ jobs:
   android:
     needs: shards
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -72,8 +72,9 @@ jobs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-    - name: Install Chromium
-      run: npx playwright-core install --with-deps chromium
+    # the browsers the Android devices pair with
+    - name: Install Chromium and WebKit
+      run: npx playwright-core install --with-deps chromium webkit
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.local/share/mise/installs/android-sdk
