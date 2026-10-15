@@ -683,6 +683,18 @@ export class BrowserDevice extends Device {
     }
   }
 
+  /** The text being composed, which a commit puts in. */
+  private composing = "";
+
+  /** Through DevTools, as Chrome's own input method support has it. */
+  override async compose(text: string | null) {
+    if (!this.devtools) return super.compose(text);
+    this.cdp ??= await this.page.context().newCDPSession(this.page);
+    if (text === null) await this.cdp.send("Input.insertText", { text: this.composing });
+    else await this.cdp.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+    this.composing = text ?? "";
+  }
+
   override async typeInto(id: string, text: string) {
     const r = (await this.scene()).cards.find((c) => c.id === id);
     if (!r) throw new Error(`nothing shows ${id}`);

@@ -51,20 +51,22 @@ function isDrawn(el: HTMLElement) {
   const [head, rest, ...more] = el.childNodes;
   if (!(head instanceof HTMLSpanElement) || head.className !== "headline" || more.length) return false;
   const [title, ...split] = head.childNodes;
-  return !split.length && (!title || title instanceof Text && !title.data.includes("\n"))
+  // composing's zero-width space, once it is done
+  return !split.length && (!title || title instanceof Text && !/[\n\u200b]/.test(title.data))
     && (!rest || rest instanceof Text && rest.data.startsWith("\n"));
 }
 
 /** The text of `n` as drawn, a <br> as the newline it draws. */
 function plain(n: Node): string {
-  if (n instanceof Text) return n.data;
+  if (n instanceof Text) return n.data.replace(/\u200b/g, "");
   if (n.nodeName === "BR") return "\n";
   return [...n.childNodes].map(plain).join("");
 }
 
 /**
- * Draws the front again as fillFront does when an edit has put a newline in the title, text before it or a <br> in
- * it, as Return, joining two lines or typing into an empty card do; the caret stays where it was in the text.
+ * Draws the front again as fillFront does when an edit has put a newline in the title, text before it, a <br> or
+ * composing's zero-width space in it, as Return, joining two lines, typing into an empty card or an input method do; the
+ * caret stays where it was in the text.
  */
 function redrawFront(el: HTMLElement) {
   if (isDrawn(el)) return;
@@ -80,6 +82,24 @@ function redrawFront(el: HTMLElement) {
   if (at !== null) sel.collapse(...frontPoint(el, at));
 }
 
+/**
+ * Gives an empty title a zero-width space for an input method's text to go before, as it starts composing: browsers
+ * put the caret after an empty span, and text composed there stays regular until the input method is done with it, as
+ * Samsung Keyboard is only once the edit ends.
+ */
+function composeInTitle(el: HTMLElement) {
+  const head = el.firstChild;
+  if (!(head instanceof HTMLSpanElement) || head.textContent) return;
+  const sel = getSelection()!;
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  if (sel.rangeCount) r.setEnd(sel.focusNode!, sel.focusOffset);
+  // the caret in the first line
+  if (r.toString()) return;
+  head.textContent = "\u200b";
+  sel.collapse(head.firstChild, 0);
+}
+
 /** A card side's text or a lane's title, edited in place as plain text. */
 export class DomField implements Field {
   el: HTMLElement;
@@ -87,6 +107,7 @@ export class DomField implements Field {
   kind: "front" | "notes" | "title";
   /** Redraws a front once an input method is done with it. */
   composed: () => void;
+  composing: () => void;
   /** Keeps a front's caret off the newline that only draws an empty last line, past the text's end, where Firefox's ↓ and
    * ⌘↓ put it a line below the last. */
   clamp: () => void;
@@ -95,6 +116,7 @@ export class DomField implements Field {
     this.el = el;
     this.kind = kind;
     this.composed = () => redrawFront(el);
+    this.composing = () => composeInTitle(el);
     this.clamp = () => {
       const sel = getSelection()!;
       const at = sel.isCollapsed ? this.caret() : null;
@@ -116,6 +138,7 @@ export class DomField implements Field {
       on.input();
     };
     if (this.kind === "front") {
+      el.addEventListener("compositionstart", this.composing);
       el.addEventListener("compositionend", this.composed);
       document.addEventListener("selectionchange", this.clamp);
     }
@@ -151,6 +174,7 @@ export class DomField implements Field {
 
   detach() {
     this.el.onblur = this.el.oninput = this.el.onkeydown = null;
+    this.el.removeEventListener("compositionstart", this.composing);
     this.el.removeEventListener("compositionend", this.composed);
     document.removeEventListener("selectionchange", this.clamp);
   }
