@@ -1,5 +1,5 @@
 // The cases on real devices against server/dev.sh and the relay under wrangler dev: the web app as it ships in headless
-// Chromium, WebKit and Firefox, Chrome on the Android device adb sees, and the Debug Mac app. Slower: run with
+// Chromium, WebKit and Firefox, Chrome on the Android device adb sees, Firefox on the emulator, and the Debug Mac app. Slower: run with
 //   node --test scenarios/browsers.e2e.ts
 // under MISE_ENV=android mise exec -- after node scripts/android.ts for Android.
 import { test } from "node:test";
@@ -17,10 +17,12 @@ const noAndroid = (() => {
     return "no adb: run under MISE_ENV=android mise exec --";
   }
 })();
-/** Each kind acts once and watches once, which a run of minutes can afford; a phone acts only with a finger.
+/** Each kind acts once and watches once, which a run of minutes can afford; a phone acts only with a finger, and the
+ * emulator's two browsers never share a world, as only one is on its screen.
  * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others. */
 const pairs = (process.env.SCENARIO_PAIRS?.split(" ").map((p) => p.split(":") as [RealKind, RealKind])
-  ?? [["chromium", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]]);
+  ?? [["chromium", "firefox-android"], ["firefox-android", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]]);
+const phone = (k: RealKind) => k === "android" || k === "firefox-android";
 
 /** Runs a case gets before it fails, each in a fresh world: Main gives 2, so that a rare flake warns where it would block
  * a merge, and lists it in build/scenarios/flaky.txt; soaks give 1, to count every failure. */
@@ -52,8 +54,8 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind]): Promise
 
 for (const c of cases) {
   for (const [a, b] of pairs) {
-    if (c.input === "touch" && a === "mac" || c.input === "mouse" && a === "android" || c.acts && !c.acts.includes(a)) continue;
-    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].includes("android") && noAndroid, timeout: RUNS * ((c.ms ?? MS) + 30_000) }, async (t) => {
+    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b)) continue;
+    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].some(phone) && noAndroid, timeout: RUNS * ((c.ms ?? MS) + 30_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
         const e = await once(t.name, c, [a, b]);
