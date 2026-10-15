@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Boots a headless Pixel 8a emulator whose Chrome Playwright can drive, for the scenarios' android device:
+// Boots a headless Pixel 8a emulator whose Chrome and Firefox Playwright can drive, for the scenarios' android and
+// firefox-android devices:
 //   MISE_ENV=android mise install && MISE_ENV=android mise exec -- node scripts/android.ts
 // Installs the system image and creates the AVD the first time, and connects adb to the emulator over TCP as well. Each
 // wait is bounded and names what it waited for.
@@ -9,7 +10,7 @@ import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { arch } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { EMULATOR_TCP, RELAY, SERVER, WEB } from "../scenarios/browser.ts";
+import { EMULATOR_TCP, FENIX, FENIX_VERSION, RELAY, SERVER, WEB } from "../scenarios/browser.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const sdk = process.env.ANDROID_HOME!;
@@ -108,52 +109,82 @@ await settled("error dialogs hidden", "shell", "settings", "put", "global", "hid
 await within(60, "the Play Store to be off", succeeds(() => adb("shell", "pm", "disable-user", "--user", "0", "com.android.vending").includes("disabled")));
 // a cold boot reports itself completed before the package manager knows Chrome
 await within(60, "the package manager to know Chrome", succeeds(() => adb("shell", "pm", "path", "com.android.chrome")));
-// a user build's Chrome reads the command line Playwright writes only as the debug app
+// a user build's Chrome reads the command line Playwright writes only as the debug app; Android has one, which the
+// scenarios set to the browser they launch
 await settled("Chrome the debug app", "shell", "am", "set-debug-app", "--persistent", "com.android.chrome");
 // else Chrome asks for it over the page
 await settled("Chrome's notifications granted", "shell", "pm", "grant", "com.android.chrome", "android.permission.POST_NOTIFICATIONS");
-// Chrome's first-run screens, which Playwright's --disable-fre does not skip; after a cold boot its activity shows up a
-// while after its package
-const chrome = () => adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main");
-await within(60, "Chrome's activity", succeeds(chrome));
-let ui = "", top = "", seen = "";
-await within(90, "Chrome to get past its first-run screens", () => {
-  try {
-    top = adb("shell", "dumpsys activity activities | grep -m1 topResumedActivity");
-    ui = adb("shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml");
-  } catch {
-    // fails while the screen is still changing
+/**
+ * Until the app of package `pkg`, launched by `launch`, is past its first-run screens to a screen that `done` matches,
+ * tapping the buttons `buttons` names, its own or a system dialog's over it.
+ */
+async function firstRun(name: string, pkg: string, launch: () => unknown, done: RegExp, buttons: string[]) {
+  // after a cold boot its activity shows up a while after its package
+  await within(60, `${name}'s activity`, succeeds(launch));
+  let ui = "", top = "", seen = "";
+  const tap = (b: number[]) => adb("shell", "input", "tap", String(Math.round((b[0]! + b[2]!) / 2)), String(Math.round((b[1]! + b[3]!) / 2)));
+  await within(90, `${name} to get past its first-run screens`, () => {
+    try {
+      top = adb("shell", "dumpsys activity activities | grep -m1 topResumedActivity");
+      ui = adb("shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml");
+    } catch {
+      // fails while the screen is still changing
+      return false;
+    }
+    // one shown before they were turned off, or from an earlier launch
+    const crash = /text="(?:Close app|CLOSE)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui)?.slice(1).map(Number);
+    if (crash) {
+      tap(crash);
+      return false;
+    }
+    // as Firefox asks to be the default browser
+    const dialog = top.includes("permissioncontroller");
+    // a tap meant for the app lands on whatever is there instead: the home screen's search bar sits under Chrome's
+    // "Got it" in front but not drawn, as when its launch stalled, it is launched again too
+    if (!dialog && (!top.includes(`${pkg}/`) || !ui.includes(`package="${pkg}"`))) {
+      succeeds(launch)();
+      return false;
+    }
+    if (!dialog && done.test(ui)) return true;
+    // a dump during a transition still shows the screen going away, so only a button the next dump shows too is tapped
+    const button = new RegExp(`text="(${buttons.join("|")})"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`).exec(ui);
+    // its other attributes, as whether it has focus, change from one dump to the next
+    const now = button ? `${top} ${button[1]} ${button.slice(2).join(",")}` : "";
+    if (!button || now !== seen) {
+      seen = now;
+      return false;
+    }
+    console.log(`tapping "${button[1]}"`);
+    tap(button.slice(2).map(Number));
+    seen = "";
     return false;
+  }).catch((e: Error) => {
+    throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
+  });
+}
+// which Playwright's --disable-fre does not skip
+await firstRun("Chrome", "com.android.chrome", () => adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main"),
+  /com\.android\.chrome:id\/(url_bar|search_box_text)/, ["Use without an account", "Stay signed out", "No thanks", "Got it"]);
+
+// Firefox, the release a person has: Mozilla's archive keeps each, where the Play Store is off
+const fenix = /versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", FENIX))?.[1];
+if (fenix !== FENIX_VERSION) {
+  const abi = arch() === "arm64" ? "arm64-v8a" : "x86_64";
+  // in the SDK's folder, which CI caches
+  const apk = join(sdk, "breezy", `fenix-${FENIX_VERSION}-${abi}.apk`);
+  if (!existsSync(apk)) {
+    mkdirSync(join(sdk, "breezy"), { recursive: true });
+    run("curl", ["--fail", "--silent", "--show-error", "--location", "--retry", "5", "--output", apk,
+      `https://archive.mozilla.org/pub/fenix/releases/${FENIX_VERSION}/android/fenix-${FENIX_VERSION}-android-${abi}/fenix-${FENIX_VERSION}.multi.android-${abi}.apk`], { timeout: 0 });
   }
-  // one shown before they were turned off
-  const crash = /text="Close app"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui)?.slice(1).map(Number);
-  if (crash) {
-    adb("shell", "input", "tap", String(Math.round((crash[0]! + crash[2]!) / 2)), String(Math.round((crash[1]! + crash[3]!) / 2)));
-    return false;
-  }
-  // a tap meant for Chrome lands on whatever is there instead: the home screen's search bar sits under "Got it"
-  // in front but not drawn, as when its launch stalled, it is launched again too
-  if (!top.includes("com.android.chrome/") || !ui.includes('package="com.android.chrome"')) {
-    succeeds(chrome)();
-    return false;
-  }
-  if (/com\.android\.chrome:id\/(url_bar|search_box_text)/.test(ui)) return true;
-  // a dump during a transition still shows the screen going away, so only a button the next dump shows too is tapped
-  const button = /text="(Use without an account|Stay signed out|No thanks|Got it)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(ui);
-  // its other attributes, as whether it has focus, change from one dump to the next
-  const now = button ? `${top} ${button[1]} ${button.slice(2).join(",")}` : "";
-  if (!button || now !== seen) {
-    seen = now;
-    return false;
-  }
-  const [x0, y0, x1, y1] = button.slice(2).map(Number);
-  console.log(`tapping "${button[1]}"`);
-  adb("shell", "input", "tap", String(Math.round((x0! + x1!) / 2)), String(Math.round((y0! + y1!) / 2)));
-  seen = "";
-  return false;
-}).catch((e: Error) => {
-  throw new Error(`${e.message}; ${top.trim()} shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`);
-});
+  run("adb", [...device, "install", "-r", "-d", apk], { timeout: 300_000 });
+}
+await settled("Firefox's notifications granted", "shell", "pm", "grant", FENIX, "android.permission.POST_NOTIFICATIONS");
+// Chrome stays the default browser
+await firstRun("Firefox", FENIX, () => adb("shell", "am", "start", "-n", `${FENIX}/org.mozilla.fenix.HomeActivity`),
+  /Tabs Open/, ["Continue", "Cancel", "Not now"]);
+adb("shell", "am", "force-stop", FENIX);
+
 // what a run used, as the SDK's cache keeps them until it is evicted and a new emulator or image comes unannounced
 const revision = (...dir: string[]) => /^Pkg\.Revision=(.*)$/m.exec(readFileSync(join(sdk, ...dir, "source.properties"), "utf8"))?.[1];
-console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]} on ${api} image ${revision(...image.split(";"))}, emulator ${revision("emulator")}`);
+console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]}, Firefox ${FENIX_VERSION} on ${api} image ${revision(...image.split(";"))}, emulator ${revision("emulator")}`);

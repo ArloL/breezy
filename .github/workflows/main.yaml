@@ -246,10 +246,11 @@ jobs:
           build/scenarios
           build/touches
         if-no-files-found: ignore
-  # The scenarios' Android pairs on an emulator: GitHub's Linux runners have KVM, its macOS runners cannot run one
+  # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
+  # cannot run one
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     permissions:
       contents: read
     env:
@@ -282,8 +283,9 @@ jobs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-    - name: Install Chromium
-      run: npx playwright-core install --with-deps chromium
+    # the browsers the Android devices pair with
+    - name: Install Chromium and WebKit
+      run: npx playwright-core install --with-deps chromium webkit
     # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -295,7 +297,7 @@ jobs:
       timeout-minutes: 8
       run: mise exec -- node scripts/android.ts
     - name: Scenarios on Android
-      timeout-minutes: 10
+      timeout-minutes: 25
       env:
         SCENARIO_RUNS: "2"
       run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
