@@ -664,7 +664,7 @@ export class Hub {
     this.at(V.now + up + down, "channel message", () => b.gen === gen && b.open && this.deliver(db, { cmd: "peer-msg", peer: b.peer, text: e.text, bytes: e.bytes }));
   }
 
-  /** `ep`'s channel closes; the other end hears of it unless `local` only. */
+  /** `ep`'s channel closes; the other end hears of it only when `tell`. */
   closeChannel(ep: Endpoint, tell: boolean) {
     const other = ep.other ? this.peers.get(ep.other) : null;
     ep.open = false;
