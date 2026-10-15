@@ -36,6 +36,22 @@ export interface Shown {
 }
 
 /** Draws the board as DOM in a world layer moved by the camera; measures card heights with the same CSS. */
+/** Where the character at offset `at` of `side`'s text is drawn: on an empty line, the newline ending it, where a caret
+ * draws nothing to measure. */
+function charRect(side: HTMLElement, at: number) {
+  const walk = document.createTreeWalker(side, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    if (at < n.length) {
+      const r = document.createRange();
+      r.setStart(n, at);
+      r.setEnd(n, at + 1);
+      return r.getClientRects()[0] ?? null;
+    }
+    at -= n.length;
+  }
+  return null;
+}
+
 export class View {
   root: HTMLElement;
   model: Model;
@@ -203,8 +219,9 @@ export class View {
     const r = document.createRange();
     r.setStart(node, node instanceof Text ? Math.min(offset, node.length) : 0);
     r.collapse(true);
-    const rect = r.getClientRects()[0] ?? r.getBoundingClientRect();
-    if (!rect.height) return null;
+    let rect: DOMRect | null = r.getClientRects()[0] ?? r.getBoundingClientRect();
+    if (!rect.height) rect = charRect(side, at);
+    if (!rect?.height) return null;
     return { x: rect.left, y: rect.top, h: rect.height };
   }
 

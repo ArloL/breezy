@@ -87,11 +87,20 @@ export class DomField implements Field {
   kind: "front" | "notes" | "title";
   /** Redraws a front once an input method is done with it. */
   composed: () => void;
+  /** Keeps a front's caret off the newline that only draws an empty last line, past the text's end, where Firefox's ↓ and
+   * ⌘↓ put it a line below the last. */
+  clamp: () => void;
 
   constructor(el: HTMLElement, kind: "front" | "notes" | "title") {
     this.el = el;
     this.kind = kind;
     this.composed = () => redrawFront(el);
+    this.clamp = () => {
+      const sel = getSelection()!;
+      const at = sel.isCollapsed ? this.caret() : null;
+      const end = at === null ? 0 : this.text().length;
+      if (at !== null && at > end) sel.collapse(...frontPoint(el, end));
+    };
   }
 
   /** Focus stays synchronous, so that iOS shows the keyboard. */
@@ -106,7 +115,10 @@ export class DomField implements Field {
       if (this.kind === "front" && !(ev as InputEvent).isComposing) redrawFront(el);
       on.input();
     };
-    if (this.kind === "front") el.addEventListener("compositionend", this.composed);
+    if (this.kind === "front") {
+      el.addEventListener("compositionend", this.composed);
+      document.addEventListener("selectionchange", this.clamp);
+    }
     el.onblur = () => on.done();
     if (on.enter) {
       const enter = on.enter;
@@ -140,6 +152,7 @@ export class DomField implements Field {
   detach() {
     this.el.onblur = this.el.oninput = this.el.onkeydown = null;
     this.el.removeEventListener("compositionend", this.composed);
+    document.removeEventListener("selectionchange", this.clamp);
   }
 
   close() {

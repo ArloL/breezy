@@ -75,6 +75,8 @@ export class UI {
       if (!this.$("#find").hidden && this.matches[this.index]) this.app.reveal(this.matches[this.index]);
     });
     visualViewport!.addEventListener("scroll", () => this.place());
+    // the caret moved by keys or a click, which the board keeps in sight as it does typing
+    document.addEventListener("selectionchange", () => this.app.revealEditing());
     this.update();
   }
 

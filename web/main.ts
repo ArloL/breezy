@@ -94,6 +94,8 @@ addEventListener("pointerout", (e) => {
   app.library?.pointerAt(null);
 });
 board.addEventListener("contextmenu", (e) => editor(e) || e.preventDefault());
+// a tap between the keyboard bar's buttons would take focus from the editor, which ends the edit
+document.getElementById("keys")!.addEventListener("mousedown", (e) => e.preventDefault());
 
 addEventListener("wheel", (e) => {
   if (document.body.dataset.screen === "boards") return;
