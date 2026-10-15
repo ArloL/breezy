@@ -70,6 +70,19 @@ extension CanvasView {
     layoutCards()
     window?.makeFirstResponder(tv)
     tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+    revealEditing()
+  }
+
+  /// Scrolls the card being edited into sight, 16 pt in from the edges, then its caret: of a card taller than the view,
+  /// only the caret's line.
+  func revealEditing() {
+    guard let e = editing, let c = board.card(e.id) else { return }
+    let v = visibleRect
+    var r = doc(drawnRect(c)).insetBy(dx: -16, dy: -16)
+    if r.height > v.height { (r.origin.y, r.size.height) = (v.minY, v.height) }
+    r.size.width = min(r.width, v.width)
+    scrollToVisible(r)
+    e.view.scrollRangeToVisible(e.view.selectedRange())
   }
 
   /// Typing undoes within the session; the session itself is one step on the board's history.
@@ -96,6 +109,7 @@ extension CanvasView {
       }
     }
     if let c = board.card(e.id) { e.view.place(editorFrame(c, back: e.back)) }
+    revealEditing()
   }
 
   func textDidEndEditing(_ notification: Notification) {
