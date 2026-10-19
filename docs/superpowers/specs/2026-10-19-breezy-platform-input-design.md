@@ -177,3 +177,10 @@ Each step ends with its tests committed.
 | D8 | `keys.ts` matches `e.key`, which a Cyrillic layout makes non-Latin |
 | G2 | no `translate="no"` on cards |
 | G3 | no `navigator.storage.persist()` |
+
+## Spike results
+
+| Spike | Result | Consequence |
+|---|---|---|
+| 1 Firefox emoji | Not reproduced in stock Firefox 158, with a fresh profile and with a copy of the everyday one, against localhost and breezy.k5d.de: ⌃⌘Space, Globe‑E, keyboard and mouse picks, into an existing and an empty card, and across two synced browsers. Firefox sends no composition, only `beforeinput`/`input` `insertText` with the emoji, and keeps focus | A1 is a passing row that guards against regressions, not a known red. Its cause stays open; the recorder (`?record`) captures a trace when it happens again |
+| oskeys | An app that is frontmost as the input source changes keeps the old source until it comes to the front again, about two times in three; selecting the source and then ⌘Tab and back holds every time. The picker inserts its first result only after ↓; live conversion may mark 日本 for `nihonn` | A row names its input source; the harness selects it and switches away and back before the edit opens, so the switch is not a focus change inside the row |
