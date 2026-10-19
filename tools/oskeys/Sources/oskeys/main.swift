@@ -24,6 +24,7 @@ let codes: [String: CGKeyCode] = [
 ]
 let modifiers: [String: (CGEventFlags, CGKeyCode)] = [
   "cmd": (.maskCommand, 55), "shift": (.maskShift, 56), "opt": (.maskAlternate, 58), "ctrl": (.maskControl, 59),
+  "fn": (.maskSecondaryFn, 63),
 ]
 
 nonisolated(unsafe) let source = CGEventSource(stateID: .hidSystemState)
@@ -152,6 +153,12 @@ case ("emoji", 2):
   press(codes["down"]!)
   usleep(300_000)
   press(codes["return"]!)
+case ("click", 3):
+  let p = CGPoint(x: need(Double(args[1]), "not a number: \(args[1])"), y: need(Double(args[2]), "not a number: \(args[2])"))
+  for type in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+    CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left)!.post(tap: .cghidEventTap)
+    usleep(40_000)
+  }
 case ("away", 2):
   let pid = need(pid_t(args[1]), "not a pid: \(args[1])")
   press(codes["tab"]!, ["cmd"])
@@ -162,6 +169,6 @@ case ("away", 2):
 default:
   fail("""
     usage: oskeys trusted | frontmost | activate PID | key NAME [cmd+ctrl+opt+shift] | type ASCII | text STRING
-           | source [ID] | emoji NAME | away PID
+           | source [ID] | emoji NAME | click X Y | away PID
     """)
 }
