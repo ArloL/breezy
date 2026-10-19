@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const root = new URL("../..", import.meta.url).pathname;
 const bin = (name: string) => join(root, "tools/oskeys/.build/release", name);
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function buildOskeys() {
   execFileSync("swift", ["build", "--package-path", join(root, "tools/oskeys"), "--configuration", "release"], { stdio: ["ignore", "ignore", "inherit"] });
