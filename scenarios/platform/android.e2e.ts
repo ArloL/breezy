@@ -25,12 +25,14 @@ const skip = (() => {
 })();
 
 let device: AndroidDevice, context: BrowserContext, page: Page, touchscreen: Touchscreen, emulatorConsole: EmulatorConsole;
-let site: ReturnType<typeof serveStatic>, keyboard = "";
+let site: ReturnType<typeof serveStatic>, keyboard = "", rotation: string[] = [];
+const ROTATION = ["accelerometer_rotation", "user_rotation"];
 
-/** The emulator's own keyboard back, also on ⌃C. */
-function restoreKeyboard() {
+/** The emulator's own keyboard and rotation back, also on ⌃C: a turned emulator throws the next run's touches off. */
+function restoreDevice() {
   try {
     if (keyboard) adb("shell", "ime", "set", keyboard);
+    for (const [i, value] of rotation.entries()) adb("shell", "settings", "put", "system", ROTATION[i]!, value);
   } catch {}
 }
 
@@ -44,10 +46,11 @@ before(async () => {
   } catch {}
   adb("install", "--no-incremental", join(root, "build/breezy-ime/ime.apk"));
   keyboard = adb("shell", "settings", "get", "secure", "default_input_method").trim();
-  process.once("exit", restoreKeyboard);
+  rotation = ROTATION.map((key) => adb("shell", "settings", "get", "system", key).trim());
+  process.once("exit", restoreDevice);
   for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
     process.once(signal, () => {
-      restoreKeyboard();
+      restoreDevice();
       process.exit(code);
     });
   }
@@ -75,7 +78,7 @@ before(async () => {
 });
 
 after(async () => {
-  restoreKeyboard();
+  restoreDevice();
   // either can wait without end on a connection adbd stopped serving, as RealWorld.stop found
   await Promise.race([context?.close(), sleep(10_000)]);
   await Promise.race([device?.close(), sleep(10_000)]);
@@ -104,6 +107,7 @@ for (const row of rows) {
       ime: (op, extras = {}) => void adb(...broadcastArgs(op, extras)),
       adb,
       text: () => page.evaluate(async () => ((await import("/record.js" as string)) as typeof import("../../web/record.ts")).editorState().text),
+      landscape: () => page.evaluate(() => innerWidth > innerHeight),
       wait: sleep,
     };
     const trace = await runRow(page, row, "android", IME, () => drive(n));
