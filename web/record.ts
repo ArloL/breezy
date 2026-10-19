@@ -17,6 +17,7 @@ export type Step =
   | { t: number; type: "compositionstart" | "compositionupdate" | "compositionend"; data: string }
   | { t: number; type: "beforeinput" | "input"; inputType: string; data: string | null; isComposing: boolean; range: [number, number] | null }
   | { t: number; type: "focus" | "blur"; of: "editor" | "window"; hasFocus: boolean }
+  | { t: number; type: "visibility"; hidden: boolean }
   | { t: number; type: "selection"; range: [number, number] };
 
 export interface Trace {
@@ -46,6 +47,7 @@ export interface EventFields {
   shiftKey?: boolean;
   data?: string | null;
   inputType?: string;
+  hidden?: boolean;
 }
 
 export function toStep(e: EventFields, t: number, range: [number, number] | null, hasFocus: boolean): Step | null {
@@ -69,6 +71,8 @@ export function toStep(e: EventFields, t: number, range: [number, number] | null
     case "focusout":
     case "blur":
       return { t, type: "blur", of: e.target, hasFocus };
+    case "visibilitychange":
+      return { t, type: "visibility", hidden: !!e.hidden };
     default:
       return null;
   }
@@ -98,9 +102,14 @@ export function domPoint(el: HTMLElement, at: number): [Node, number] {
   return last ? [last, last.length] : [el, el.childNodes.length];
 }
 
+/** The last editor seen, so that once an edit ends its text can still be read. */
+let lastEditor: HTMLElement | null = null;
+
 const editorEl = () => {
   const el = document.activeElement as HTMLElement | null;
-  return el?.isContentEditable ? el : document.querySelector<HTMLElement>('[contenteditable="plaintext-only"]');
+  const now = el?.isContentEditable ? el : document.querySelector<HTMLElement>('[contenteditable="plaintext-only"]');
+  if (now) lastEditor = now;
+  return now ?? (lastEditor?.isConnected ? lastEditor : null);
 };
 
 export function editorState(): EditorState {
@@ -136,6 +145,9 @@ export function install() {
   for (const type of TYPES) addEventListener(type, (e) => push(e, "editor"), true);
   addEventListener("blur", (e) => e.target === window && push(e, "window"));
   addEventListener("focus", (e) => e.target === window && push(e, "window"));
+  document.addEventListener("visibilitychange", () => {
+    if (trace) trace.steps.push(toStep({ type: "visibilitychange", target: "window", hidden: document.hidden }, performance.now() - t0, null, document.hasFocus())!);
+  });
   document.addEventListener("selectionchange", () => {
     const el = editorEl(), sel = getSelection()!;
     if (!trace || !el || !sel.rangeCount || !el.contains(sel.focusNode)) return;

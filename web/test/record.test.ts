@@ -23,3 +23,7 @@ test("focus changes keep whether the page had focus", () => {
 test("events a replay does not need are left out", () => {
   assert.equal(toStep({ ...base, type: "pointermove" }, 0, null, true), null);
 });
+
+test("the page being hidden or shown is kept, for a replay to tell a tab switch from a picker", () => {
+  assert.deepEqual(toStep({ ...base, type: "visibilitychange", hidden: true }, 5, null, false), { t: 5, type: "visibility", hidden: true });
+});

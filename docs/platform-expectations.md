@@ -55,7 +55,7 @@ Layers: 1 the platform's own input, automated; 2 replays of recorded traces, on 
 | E6 | Context menu | 1 | 1 | 1 | untested |
 | E7 | Back gesture, overscroll, pull-to-refresh | – | – | 1 | untested |
 | E8 | No double-tap zoom, magnifier or callout on the board | – | – | 1 | untested |
-| F1 | Edit survives focus leaving briefly | 1 | 1 | 1 | green on firefox-mac |
+| F1 | Edit survives focus leaving briefly | 1 | 1 | 1 | green on firefox-mac: another app or a picker keeps the edit; another tab, a minimized window or a phone app sent away (the page hidden) ends it, keeping its text |
 | F2 | Keyboard changes, rotation, split screen | – | – | 1 | untested |
 | F3 | Text survives the app being killed mid-edit | 1 | 1 | 1 | untested |
 | F4 | Sleep, wake and network changes mid-edit | 3 | 1, 3 | 1 | untested |
