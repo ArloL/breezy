@@ -222,6 +222,8 @@ jobs:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
+    - name: Platform rows and trace replays
+      run: node --test --test-force-exit scenarios/platform/*.test.ts
     - name: Build the Mac app
       run: |
         xcodegen generate
