@@ -44,8 +44,10 @@ async function within(seconds: number, what: string, ok: () => boolean) {
   }
 }
 
-if (!existsSync(join(sdk, "emulator", "emulator")) || !existsSync(join(sdk, ...image.split(";")))) {
-  run("sdkmanager", ["emulator", "platform-tools", image], { timeout: 0 });
+// build-tools and the platform build tools/breezy-ime, the keyboard the platform rows type with
+const tools = ["build-tools;35.0.0", "platforms;android-35"];
+if (!existsSync(join(sdk, "emulator", "emulator")) || !existsSync(join(sdk, ...image.split(";"))) || !tools.every((t) => existsSync(join(sdk, ...t.split(";"))))) {
+  run("sdkmanager", ["emulator", "platform-tools", image, ...tools], { timeout: 0 });
 }
 if (!existsSync(join(avds, `${avd}.ini`))) {
   // avdmanager writes elsewhere when the directory is missing
