@@ -75,4 +75,4 @@ node --test scenarios/platform/native.e2e.ts             # each row through the 
 RECORD=1 node --test scenarios/platform/native.e2e.ts    # the same, keeping each trace in scenarios/traces/
 ```
 
-Native runs need Accessibility permission for the terminal, and Japanese added once under System Settings → Keyboard → Input Sources.
+Native runs need Accessibility permission for the terminal, and Japanese added once under System Settings → Keyboard → Input Sources. They share the one keyboard: run their files one at a time (`--test-concurrency=1`), as `node --test` runs files side by side.
