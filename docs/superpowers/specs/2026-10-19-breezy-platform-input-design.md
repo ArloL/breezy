@@ -19,7 +19,7 @@ A trace records what the platform did, and a row states what should come of it. 
 | Target | Native input | State read through |
 |---|---|---|
 | `mac` | `tools/oskeys` with the board window frontmost | `-BreezyControl`, plus `record` and `replay` commands |
-| `firefox-mac` | `tools/oskeys` into stock release Firefox, headed, fresh profile | WebDriver BiDi: `scenarios/platform/firefox.ts`, reusing `BrowserDevice`'s scene and editor readers |
+| `firefox-mac` | `tools/oskeys` into stock release Firefox, headed, fresh profile | Playwright over WebDriver BiDi (`channel: "moz-firefox"`), which drives the installed Firefox |
 | `android` | `tools/breezy-ime`; real Gboard, tapped by key position, for its emoji tab and a few smoke rows | CDP, as `BrowserDevice` does |
 
 `tools/oskeys` is a SwiftPM command-line tool:
@@ -58,8 +58,8 @@ Web steps are DOM events: key, `beforeinput` and `input` with type, data and tar
 
 | Replays into | How |
 |---|---|
-| Chromium, Android | CDP's trusted `Input.imeSetComposition`, `Input.insertText`, `Input.dispatchKeyEvent` |
-| Firefox, WebKit | the engine's editing commands (`insertText`, `delete`, `insertReplacementText` over a set selection) between dispatched key, composition and focus events |
+| Chromium, Firefox, WebKit | each recorded event dispatched as recorded, each input's edit made to the DOM just before its input event; `document.hasFocus()` as the platform reported it around focus changes |
+| Android | CDP's trusted `Input.imeSetComposition`, `Input.insertText`, `Input.dispatchKeyEvent` |
 | `mac` | the same calls on `EditorTextView` through `-BreezyControl` |
 | `android`, from a phone | the trace converted to a `breezy-ime` script |
 
@@ -142,7 +142,6 @@ Rows E, F2, F3 and G on Android use `scenarios/cases.ts`' devices and gestures r
 | `scenarios/platform/rows.ts` | rows |
 | `scenarios/platform/native.e2e.ts` | layer 1 |
 | `scenarios/platform/replay.test.ts` | layer 2 |
-| `scenarios/platform/firefox.ts` | stock Firefox over WebDriver BiDi |
 | `scenarios/traces/` | traces |
 | `tools/oskeys/` | macOS input driver |
 | `tools/breezy-ime/` | Android test input method |
@@ -157,7 +156,7 @@ A native run retries once, as `SCENARIO_RUNS` does. On failure it keeps a screen
    1. With `oskeys` and the Character Viewer, does the emoji bug happen in stock Firefox, and why? If not there, in Playwright's Firefox?
    2. Do `CGEvent` posting and Accessibility work from this terminal, and on GitHub's macOS runners?
    3. Does Chrome on the emulator take a test input method's calls as it takes Gboard's?
-2. The catalogue, the trace format with `web/record.ts`, `rows.ts`, web replay, `firefox.ts`.
+2. The catalogue, the trace format with `web/record.ts`, `rows.ts`, web replay.
 3. `firefox-mac` natively: A1 first, whose trace is the first red replay; then the other `oskeys` rows.
 4. `mac`: `Record.swift`, replay, the same rows natively.
 5. `android`: `breezy-ime` and its rows, Gboard's emoji tab, the E and F rows.
