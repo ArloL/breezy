@@ -2,7 +2,9 @@
 //   node --test scenarios/platform/oskeys.e2e.ts
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
-import { buildOskeys, Echo, oskeys, restoreSourceOnExit, trusted } from "./oskeys.ts";
+import { execFile } from "node:child_process";
+import { join } from "node:path";
+import { buildOskeys, Echo, oskeys, restoreSourceOnExit, sleep, trusted } from "./oskeys.ts";
 
 if (process.platform === "darwin") buildOskeys();
 const skip = process.platform !== "darwin" ? "macOS only" : !trusted() && "the terminal lacks Accessibility permission";
@@ -56,4 +58,18 @@ test("away and back keeps the text view the keyboard's", { skip }, async () => w
   oskeys(["away", String(echo.pid)]);
   oskeys(["type", "x"], echo.pid);
   await echo.until("x", (l) => l.string === "x");
+}));
+
+test("an emoji pick stops typing once another app comes to the front", { skip }, async () => withEcho(async (echo) => {
+  const bin = join(new URL("../..", import.meta.url).pathname, "tools/oskeys/.build/release/oskeys");
+  const pick = new Promise<number>((resolve) => execFile(bin, ["emoji", "grinning"], { env: { ...process.env, OSKEYS_PID: String(echo.pid) } }, (e) => resolve(e ? 1 : 0)));
+  await sleep(400);
+  const other = await Echo.start();
+  try {
+    assert.equal(await pick, 1, "the pick went on with another app in front");
+    await sleep(300);
+    assert.deepEqual(other.lines.filter((l) => l.call === "insertText"), []);
+  } finally {
+    other.stop();
+  }
 }));

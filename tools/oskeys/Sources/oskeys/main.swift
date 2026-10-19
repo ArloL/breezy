@@ -67,6 +67,7 @@ func globe() {
 
 func typeKeys(_ s: String) {
   for c in s {
+    guardFront()
     guard let code = codes[String(c).lowercased()] else { fail("no US key for \(c)") }
     press(code, c.isUppercase ? ["shift"] : [])
   }
@@ -74,6 +75,7 @@ func typeKeys(_ s: String) {
 
 func text(_ s: String) {
   for c in s {
+    guardFront()
     let u = Array(String(c).utf16)
     for down in [true, false] {
       let e = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down)!
@@ -160,12 +162,14 @@ case ("emoji", 2):
   guardFront()
   press(codes["space"]!, ["ctrl", "cmd"])
   usleep(900_000)
-  // the picker has the keyboard now, not the process OSKEYS_PID names
+  // the picker has the keyboard, but the app it serves stays frontmost
   text(args[1])
   usleep(600_000)
   // into the results, onto the first
+  guardFront()
   press(codes["down"]!)
   usleep(300_000)
+  guardFront()
   press(codes["return"]!)
 case ("click", 3):
   let p = CGPoint(x: need(Double(args[1]), "not a number: \(args[1])"), y: need(Double(args[2]), "not a number: \(args[2])"))
