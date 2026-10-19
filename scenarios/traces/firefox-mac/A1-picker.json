@@ -13,7 +13,7 @@
   },
   "steps": [
     {
-      "t": 101,
+      "t": 98,
       "type": "keydown",
       "key": "Control",
       "code": "ControlLeft",
@@ -22,7 +22,7 @@
       "mods": "ctrl"
     },
     {
-      "t": 105,
+      "t": 104,
       "type": "keydown",
       "key": "Meta",
       "code": "MetaLeft",
@@ -40,7 +40,7 @@
       "mods": "meta+ctrl"
     },
     {
-      "t": 279,
+      "t": 275,
       "type": "keyup",
       "key": "Meta",
       "code": "MetaLeft",
@@ -49,7 +49,7 @@
       "mods": "ctrl"
     },
     {
-      "t": 279,
+      "t": 275,
       "type": "keyup",
       "key": "Control",
       "code": "ControlLeft",
@@ -58,28 +58,64 @@
       "mods": ""
     },
     {
-      "t": 1004,
+      "t": 923,
       "type": "blur",
       "of": "editor",
       "hasFocus": false
     },
     {
-      "t": 1004,
+      "t": 923,
       "type": "blur",
       "of": "window",
       "hasFocus": false
     },
     {
       "t": 2296,
+      "type": "beforeinput",
+      "inputType": "insertText",
+      "data": "🤣",
+      "isComposing": false,
+      "range": [
+        37,
+        37
+      ]
+    },
+    {
+      "t": 2298,
+      "type": "input",
+      "inputType": "insertText",
+      "data": "🤣",
+      "isComposing": false,
+      "range": [
+        37,
+        37
+      ]
+    },
+    {
+      "t": 2309,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 2309,
       "type": "focus",
       "of": "window",
+      "hasFocus": true
+    },
+    {
+      "t": 2309,
+      "type": "focus",
+      "of": "editor",
       "hasFocus": true
     }
   ],
   "after": {
-    "text": "",
-    "at": 0,
-    "kind": null,
-    "editing": false
+    "text": "Plan the offsite\nVenue, dates, budget🤣",
+    "at": 39,
+    "kind": "front",
+    "editing": true
   }
 }

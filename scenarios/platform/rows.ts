@@ -60,7 +60,7 @@ export const rows: Row[] = [
         await n.wait(800);
       },
     },
-    open: ["firefox-mac"],
+    open: [],
     expect: (b, a) => inserted(b, a, /^\p{Extended_Pictographic}$/u),
   },
   {
@@ -89,7 +89,7 @@ export const rows: Row[] = [
         await n.wait(300);
       },
     },
-    open: ["firefox-mac"],
+    open: [],
     expect: (b, a) => inserted(b, a, "x"),
   },
 ];

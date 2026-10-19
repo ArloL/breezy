@@ -12,7 +12,7 @@ For now it covers three targets: the Mac app (`mac`), stock Firefox on macOS (`f
 | 2 Replay | Each trace that layers 1 and 3 recorded, replayed into the app, checked against its row's expectation | every push |
 | 3 Manual | A guided page on a phone, or a Debug menu in the Mac app, for what no automation reaches; records a trace | when a row or platform changes |
 
-A trace records what the platform did, and a row states what should come of it. Replay checks the row, not the recorded outcome, so a trace recorded while a bug happens stays red until the fix.
+A trace records what the platform did, and a row states what should come of it. Replay checks the row, not the recorded outcome, so a trace recorded while a bug happens stays red until the fix. A bug can also change what the platform sends next, as an edit that ended takes no more input: once fixed, the row's trace is recorded again natively, and that trace keeps the fix from regressing.
 
 ## Drivers
 

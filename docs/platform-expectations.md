@@ -6,7 +6,7 @@ Layers: 1 the platform's own input, automated; 2 replays of recorded traces, on 
 
 | Row | Expectation | mac | firefox-mac | android | Status |
 |---|---|---|---|---|---|
-| A1 | Emoji picker inserts at the caret | 1 | 1 | 1, 3 | red on firefox-mac: the picker takes the window's focus and the edit ends |
+| A1 | Emoji picker inserts at the caret | 1 | 1 | 1, 3 | green on firefox-mac: the picker took the window's focus and the edit ended on the blur, fixed |
 | A2 | Input method: Enter confirms, Esc cancels, edit goes on | 1 | 1 | 1 | green on firefox-mac, where keys while composing come as `Process`; Chrome and Safari send Esc and Enter as such, with `isComposing` |
 | A3 | Korean commits a syllable on any key or click | 1 | 1 | 1 | untested |
 | A4 | Dead keys and ⌥ accents | 1 | 1 | – | untested |
@@ -55,7 +55,7 @@ Layers: 1 the platform's own input, automated; 2 replays of recorded traces, on 
 | E6 | Context menu | 1 | 1 | 1 | untested |
 | E7 | Back gesture, overscroll, pull-to-refresh | – | – | 1 | untested |
 | E8 | No double-tap zoom, magnifier or callout on the board | – | – | 1 | untested |
-| F1 | Edit survives focus leaving briefly | 1 | 1 | 1 | red on firefox-mac |
+| F1 | Edit survives focus leaving briefly | 1 | 1 | 1 | green on firefox-mac |
 | F2 | Keyboard changes, rotation, split screen | – | – | 1 | untested |
 | F3 | Text survives the app being killed mid-edit | 1 | 1 | 1 | untested |
 | F4 | Sleep, wake and network changes mid-edit | 3 | 1, 3 | 1 | untested |
