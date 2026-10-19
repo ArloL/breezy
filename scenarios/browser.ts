@@ -746,6 +746,21 @@ export class BrowserDevice extends Device {
   }
 }
 
+/** The web app as it ships, built into `dir`. */
+export function buildSite(dir: string) {
+  execFileSync(join(root, "scripts/build-site.sh"), [dir, VERSION], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+}
+
+/** Serves `dir` on 127.0.0.1:`port`. */
+export function serveStatic(dir: string, port: number) {
+  const types: Record<string, string> = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
+  return createServer((req, res) => {
+    const path = join(dir, new URL(req.url!, "http://x").pathname.replace(/\/$/, "/index.html"));
+    if (!existsSync(path)) return res.writeHead(404).end();
+    res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream" }).end(readFileSync(path));
+  }).listen(port, "127.0.0.1");
+}
+
 export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
@@ -837,13 +852,8 @@ export class RealWorld {
 
   private async serve() {
     const site = join(root, "build", "web-scenarios");
-    execFileSync(join(root, "scripts/build-site.sh"), [site, VERSION], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
-    const types: Record<string, string> = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
-    this.web = createServer((req, res) => {
-      const path = join(site, new URL(req.url!, "http://x").pathname.replace(/\/$/, "/index.html"));
-      if (!existsSync(path)) return res.writeHead(404).end();
-      res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream" }).end(readFileSync(path));
-    }).listen(WEB, "127.0.0.1");
+    buildSite(site);
+    this.web = serveStatic(site, WEB);
     const relayState = mkdtempSync(join(tmpdir(), "breezy-scenario-relay-"));
     this.dirs.push(relayState);
     const group = (cmd: string, args: string[], cwd?: string) => this.children.push(spawn(cmd, args, { cwd, stdio: "ignore", detached: true }));
