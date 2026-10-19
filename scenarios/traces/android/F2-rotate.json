@@ -1,0 +1,69 @@
+{
+  "row": "F2",
+  "variant": "rotate",
+  "target": "android",
+  "source": "native",
+  "keyboard": "de.k5d.breezy.ime/.Ime",
+  "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "before": {
+    "text": "Plan the offsite\nVenue, dates, budget",
+    "at": 37,
+    "kind": "front",
+    "editing": true
+  },
+  "steps": [
+    {
+      "t": 2120,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 2122,
+      "type": "beforeinput",
+      "inputType": "insertText",
+      "data": "x",
+      "isComposing": false,
+      "range": null
+    },
+    {
+      "t": 2122,
+      "type": "input",
+      "inputType": "insertText",
+      "data": "x",
+      "isComposing": false,
+      "range": null,
+      "edit": [
+        37,
+        37,
+        "x"
+      ]
+    },
+    {
+      "t": 2123,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 2132,
+      "type": "selection",
+      "range": [
+        38,
+        38
+      ]
+    }
+  ],
+  "after": {
+    "text": "Plan the offsite\nVenue, dates, budgetx",
+    "at": 38,
+    "kind": "front",
+    "editing": true
+  }
+}

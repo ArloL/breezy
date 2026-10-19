@@ -15,7 +15,11 @@ export interface EditorState {
 export type Step =
   | { t: number; type: "keydown" | "keyup"; key: string; code: string; isComposing: boolean; keyCode: number; mods: string }
   | { t: number; type: "compositionstart" | "compositionupdate" | "compositionend"; data: string }
-  | { t: number; type: "beforeinput" | "input"; inputType: string; data: string | null; isComposing: boolean; range: [number, number] | null }
+  | {
+    t: number; type: "beforeinput" | "input"; inputType: string; data: string | null; isComposing: boolean; range: [number, number] | null;
+    /** What the input changed: the text from `[0]` to `[1]` before it became `[2]`. */
+    edit?: [number, number, string] | null;
+  }
   | { t: number; type: "focus" | "blur"; of: "editor" | "window"; hasFocus: boolean }
   | { t: number; type: "visibility"; hidden: boolean }
   | { t: number; type: "selection"; range: [number, number] };
@@ -78,6 +82,16 @@ export function toStep(e: EventFields, t: number, range: [number, number] | null
   }
 }
 
+/** What changed from `before` to `after`, as [start, end in before, text put there], or null for nothing. */
+export function diffEdit(before: string, after: string): [number, number, string] | null {
+  if (before === after) return null;
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  let tail = 0;
+  while (tail < before.length - start && tail < after.length - start && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++;
+  return [start, before.length - tail, after.slice(start, after.length - tail)];
+}
+
 const plain = (n: Node): string => n instanceof Text ? n.data : n.nodeName === "BR" ? "\n" : [...n.childNodes].map(plain).join("");
 
 /** The offset in the editor's text, as `DomField` counts it, of DOM point (`node`, `offset`). */
@@ -126,10 +140,15 @@ export function editorState(): EditorState {
 const TYPES = ["keydown", "keyup", "compositionstart", "compositionupdate", "compositionend", "beforeinput", "input", "focusin", "focusout"];
 
 export function install() {
-  let trace: Trace | null = null, t0 = 0, pending: [number, number] | null = null;
+  let trace: Trace | null = null, t0 = 0, pending: [number, number] | null = null, last = "";
+  const text = () => {
+    const el = editorEl();
+    return el ? plain(el).replace(/\u200b/g, "") : "";
+  };
   const push = (e: Event, target: "editor" | "window") => {
     if (!trace) return;
     const el = editorEl();
+    if (e.type === "beforeinput") last = text();
     if (e.type === "beforeinput" && el) {
       const r = (e as InputEvent).getTargetRanges()[0];
       pending = r ? [textOffset(el, r.startContainer, r.startOffset), textOffset(el, r.endContainer, r.endOffset)] : null;
@@ -140,6 +159,12 @@ export function install() {
     // an event's fields are getters on its prototype, which a spread would not copy
     const fields: EventFields = { type: e.type, target, key: k.key, code: k.code, keyCode: k.keyCode, isComposing: k.isComposing, metaKey: k.metaKey, ctrlKey: k.ctrlKey, altKey: k.altKey, shiftKey: k.shiftKey, data: k.data, inputType: k.inputType };
     const step = toStep(fields, performance.now() - t0, range, document.hasFocus());
+    // Android gives no target ranges: the edit is what the text shows changed
+    if (step?.type === "input") {
+      const now = text();
+      step.edit = diffEdit(last, now);
+      last = now;
+    }
     if (step) trace.steps.push(step);
   };
   for (const type of TYPES) addEventListener(type, (e) => push(e, "editor"), true);
@@ -157,6 +182,7 @@ export function install() {
   (window as unknown as { breezyRecord: unknown }).breezyRecord = {
     start(meta: Omit<Trace, "ua" | "before" | "steps" | "after">) {
       t0 = performance.now();
+      last = text();
       trace = { ...meta, ua: navigator.userAgent, before: editorState(), steps: [], after: editorState() };
     },
     stop(): Trace {

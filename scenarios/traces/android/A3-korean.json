@@ -1,0 +1,354 @@
+{
+  "row": "A3",
+  "variant": "korean",
+  "target": "android",
+  "source": "native",
+  "keyboard": "de.k5d.breezy.ime/.Ime",
+  "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "before": {
+    "text": "Plan the offsite\nVenue, dates, budget",
+    "at": 37,
+    "kind": "front",
+    "editing": true
+  },
+  "steps": [
+    {
+      "t": 33,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 34,
+      "type": "compositionstart",
+      "data": ""
+    },
+    {
+      "t": 34,
+      "type": "compositionupdate",
+      "data": "ㅎ"
+    },
+    {
+      "t": 34,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "ㅎ",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 35,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "ㅎ",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        37,
+        37,
+        "ㅎ"
+      ]
+    },
+    {
+      "t": 36,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 62,
+      "type": "selection",
+      "range": [
+        38,
+        38
+      ]
+    },
+    {
+      "t": 382,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 383,
+      "type": "compositionupdate",
+      "data": "하"
+    },
+    {
+      "t": 383,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "하",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 383,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "하",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        37,
+        38,
+        "하"
+      ]
+    },
+    {
+      "t": 384,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 400,
+      "type": "selection",
+      "range": [
+        38,
+        38
+      ]
+    },
+    {
+      "t": 728,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 729,
+      "type": "compositionupdate",
+      "data": "한"
+    },
+    {
+      "t": 729,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "한",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 730,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "한",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        37,
+        38,
+        "한"
+      ]
+    },
+    {
+      "t": 731,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 733,
+      "type": "selection",
+      "range": [
+        38,
+        38
+      ]
+    },
+    {
+      "t": 1069,
+      "type": "compositionend",
+      "data": "한"
+    },
+    {
+      "t": 1408,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1408,
+      "type": "compositionstart",
+      "data": ""
+    },
+    {
+      "t": 1408,
+      "type": "compositionupdate",
+      "data": "ㄱ"
+    },
+    {
+      "t": 1408,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "ㄱ",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 1409,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "ㄱ",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        38,
+        38,
+        "ㄱ"
+      ]
+    },
+    {
+      "t": 1409,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1416,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 1750,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1751,
+      "type": "compositionupdate",
+      "data": "그"
+    },
+    {
+      "t": 1751,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "그",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 1751,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "그",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        38,
+        39,
+        "그"
+      ]
+    },
+    {
+      "t": 1753,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1767,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 2083,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 2083,
+      "type": "compositionupdate",
+      "data": "글"
+    },
+    {
+      "t": 2083,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "글",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 2084,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "글",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        38,
+        39,
+        "글"
+      ]
+    },
+    {
+      "t": 2085,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 2100,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 2427,
+      "type": "compositionend",
+      "data": "글"
+    }
+  ],
+  "after": {
+    "text": "Plan the offsite\nVenue, dates, budget한글",
+    "at": 39,
+    "kind": "front",
+    "editing": true
+  }
+}

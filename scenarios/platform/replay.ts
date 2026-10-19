@@ -36,14 +36,16 @@ export async function replaySteps(steps: Step[]) {
         el.dispatchEvent(new InputEvent("beforeinput", { inputType: s.inputType, data: s.data, isComposing: s.isComposing, bubbles: true, cancelable: true }));
         break;
       case "input": {
-        if (s.range && el.isContentEditable) {
+        // traces from before edits were recorded have the target range and the data
+        const edit = s.edit !== undefined ? s.edit : s.range && [s.range[0], s.range[1], s.data ?? ""] as const;
+        if (edit && el.isContentEditable) {
           const r = document.createRange();
-          r.setStart(...domPoint(el, s.range[0]));
-          r.setEnd(...domPoint(el, s.range[1]));
+          r.setStart(...domPoint(el, edit[0]));
+          r.setEnd(...domPoint(el, edit[1]));
           r.deleteContents();
-          const t = document.createTextNode(s.data ?? "");
-          if (s.data) r.insertNode(t);
-          getSelection()!.collapse(t, t.length);
+          const t = document.createTextNode(edit[2]);
+          if (edit[2]) r.insertNode(t);
+          getSelection()!.collapse(...domPoint(el, edit[0] + edit[2].length));
         }
         el.dispatchEvent(new InputEvent("input", { inputType: s.inputType, data: s.data, isComposing: s.isComposing, bubbles: true }));
         break;
