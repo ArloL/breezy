@@ -1,3 +1,4 @@
+import { composingKey } from "./ime.ts";
 import type { Card, Point } from "./types.ts";
 
 export type Command =
@@ -7,7 +8,7 @@ export type Command =
 
 export type Typing = "card" | "lane" | "field" | null;
 
-export type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
+export type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing" | "keyCode">;
 
 /** What `perform` uses of the app. */
 export interface KeyApp {
@@ -41,6 +42,7 @@ const ANYWHERE = new Set<Command>(["find", "find-next", "find-previous", "zoom-i
  * what has the keyboard: null for the board, "card", "lane" or "field" (the find field).
  */
 export function command(e: KeyEvent, { mac, typing }: { mac: boolean; typing: Typing }): Command | null {
+  if (composingKey(e)) return null;
   const mod = mac ? e.metaKey : e.ctrlKey;
   const other = mac ? e.ctrlKey : e.metaKey;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
