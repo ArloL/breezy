@@ -299,6 +299,9 @@ jobs:
       env:
         SCENARIO_RUNS: "2"
       run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
+    - name: Platform rows on Android
+      timeout-minutes: 8
+      run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
     - name: Warn of the cases that failed once
       if: ${{ always() }}
       run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi

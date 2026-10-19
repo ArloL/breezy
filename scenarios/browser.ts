@@ -761,6 +761,21 @@ export function serveStatic(dir: string, port: number) {
   }).listen(port, "127.0.0.1");
 }
 
+/**
+ * Chrome on `device`. Its launch stalls now and then, never opening its DevTools socket, which Playwright waits for
+ * without end; launching force-stops it first. Why it stalls is not known.
+ */
+export async function launchAndroidChrome(device: AndroidDevice, options: { hasTouch?: boolean } = {}): Promise<BrowserContext> {
+  const launch = () => Promise.race([device.launchBrowser({ reducedMotion: "reduce", ...options }), sleep(30_000).then(() => null)]);
+  const again = () => {
+    globalThis.console.log("Chrome did not open DevTools in 30 s: launching it again");
+    return launch();
+  };
+  const context = await launch() ?? await again();
+  if (!context) throw new Error("Chrome did not launch twice in 30 s");
+  return context;
+}
+
 export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
@@ -825,15 +840,7 @@ export class RealWorld {
     const opened: [AndroidDevice, BrowserContext?] = [device];
     this.androids.push(opened);
     for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`]);
-    // Chrome's launch stalls now and then, never opening its DevTools socket, which Playwright waits for without end;
-    // launching force-stops it first. Why it stalls is not known.
-    const launch = () => Promise.race([device.launchBrowser({ reducedMotion: "reduce" }), sleep(30_000).then(() => null)]);
-    const again = () => {
-      globalThis.console.log("Chrome did not open DevTools in 30 s: launching it again");
-      return launch();
-    };
-    const context = opened[1] = await launch() ?? await again() ?? undefined;
-    if (!context) throw new Error("Chrome did not launch twice in 30 s");
+    const context = opened[1] = await launchAndroidChrome(device);
     // the only tab, so the one on screen: a first launch also restores the tab Chrome's first run left
     await context.addInitScript(logTouches);
     const page = await context.newPage();
