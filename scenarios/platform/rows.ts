@@ -37,6 +37,8 @@ export interface Row {
   /** The input source the row types with. The harness selects it before the edit opens: an app that is frontmost as
    * the source changes takes it only once it comes to the front again, and that would be a focus change in the row. */
   source?: string;
+  /** Where the caret starts: the end of the card's text, or of its title, where what is typed is drawn semibold. */
+  start?: "end" | "title";
   native: { [T in Target]?: (n: Natives[T]) => Promise<void> };
   /** Targets where the row fails until its fix lands: their tests are todo. */
   open: Target[];
@@ -151,6 +153,19 @@ export const rows: Row[] = [
   },
   {
     id: "A2", variant: "compose", title: "Text a keyboard composes goes in once committed, and the edit goes on",
+    native: {
+      android: async (n) => {
+        await composing(n, "に", "にほ", "にほん", "日本");
+        await call(n, "commit", { text: "日本" });
+      },
+    },
+    open: [],
+    expect: (b, a) => inserted(b, a, "日本"),
+  },
+  {
+    // the title is a span of its own, which the front is drawn again around once the input method is done
+    id: "A2", variant: "title", title: "Text composed at the end of a card's title goes into the title",
+    start: "title",
     native: {
       android: async (n) => {
         await composing(n, "に", "にほ", "にほん", "日本");

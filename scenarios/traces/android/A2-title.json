@@ -1,0 +1,288 @@
+{
+  "row": "A2",
+  "variant": "title",
+  "target": "android",
+  "source": "native",
+  "keyboard": "de.k5d.breezy.ime/.Ime",
+  "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "before": {
+    "text": "Plan the offsite\nVenue, dates, budget",
+    "at": 16,
+    "kind": "front",
+    "editing": true
+  },
+  "steps": [
+    {
+      "t": 43,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 43,
+      "type": "compositionstart",
+      "data": ""
+    },
+    {
+      "t": 44,
+      "type": "compositionupdate",
+      "data": "に"
+    },
+    {
+      "t": 44,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "に",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 48,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "に",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        16,
+        16,
+        "に"
+      ]
+    },
+    {
+      "t": 49,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 64,
+      "type": "selection",
+      "range": [
+        17,
+        17
+      ]
+    },
+    {
+      "t": 392,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 392,
+      "type": "compositionupdate",
+      "data": "にほ"
+    },
+    {
+      "t": 392,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "にほ",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 393,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "にほ",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        17,
+        17,
+        "ほ"
+      ]
+    },
+    {
+      "t": 394,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 416,
+      "type": "selection",
+      "range": [
+        18,
+        18
+      ]
+    },
+    {
+      "t": 737,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 737,
+      "type": "compositionupdate",
+      "data": "にほん"
+    },
+    {
+      "t": 738,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "にほん",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 738,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "にほん",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        18,
+        18,
+        "ん"
+      ]
+    },
+    {
+      "t": 739,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 744,
+      "type": "selection",
+      "range": [
+        19,
+        19
+      ]
+    },
+    {
+      "t": 1090,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1090,
+      "type": "compositionupdate",
+      "data": "日本"
+    },
+    {
+      "t": 1090,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 1091,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": null,
+      "edit": [
+        16,
+        19,
+        "日本"
+      ]
+    },
+    {
+      "t": 1092,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1094,
+      "type": "selection",
+      "range": [
+        18,
+        18
+      ]
+    },
+    {
+      "t": 1440,
+      "type": "keydown",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1440,
+      "type": "compositionupdate",
+      "data": "日本"
+    },
+    {
+      "t": 1440,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": null
+    },
+    {
+      "t": 1441,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": null,
+      "edit": null
+    },
+    {
+      "t": 1441,
+      "type": "compositionend",
+      "data": "日本"
+    },
+    {
+      "t": 1442,
+      "type": "keyup",
+      "key": "Unidentified",
+      "code": "",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 1444,
+      "type": "selection",
+      "range": [
+        18,
+        18
+      ]
+    }
+  ],
+  "after": {
+    "text": "Plan the offsite日本\nVenue, dates, budget",
+    "at": 18,
+    "kind": "front",
+    "editing": true
+  }
+}

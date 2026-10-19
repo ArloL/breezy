@@ -101,7 +101,11 @@ for (const row of rows) {
     await sleep(60);
     await touchscreen.send([[0, "up", end]]);
     await sleep(1500);
-    await page.evaluate(() => getSelection()!.collapse(document.activeElement!, document.activeElement!.childNodes.length));
+    await page.evaluate((title) => {
+      const el = document.activeElement!, head = el.querySelector(".headline");
+      if (title && head?.firstChild) getSelection()!.collapse(head.firstChild, head.firstChild.textContent!.length);
+      else getSelection()!.collapse(el, el.childNodes.length);
+    }, row.start === "title");
     await sleep(300);
     const n: AndroidNative = {
       ime: (op, extras = {}) => void adb(...broadcastArgs(op, extras)),

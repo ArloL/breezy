@@ -68,3 +68,8 @@ test("every Android row has native steps", () => {
   for (const [id, variant] of [["A1", "commit"], ["A2", "compose"], ["A3", "korean"], ["A7", "autocorrect"], ["A10", "swipe"], ["A12", "suggestion"], ["C1", "delete"], ["D7", "select"], ["F2", "rotate"]])
     assert.ok(rowOf(id, variant).native.android, `${id}-${variant}`);
 });
+
+test("a row can start with the caret at the end of the card's title", () => {
+  assert.equal(rowOf("A2", "title").start, "title");
+  assert.ok(rowOf("A2", "title").native.android);
+});
