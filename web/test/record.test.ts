@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toStep } from "../record.ts";
+import { diffEdit, toStep } from "../record.ts";
 
 const base = { key: undefined, code: undefined, isComposing: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, data: undefined, inputType: undefined, target: "editor" as const };
 
@@ -26,4 +26,13 @@ test("events a replay does not need are left out", () => {
 
 test("the page being hidden or shown is kept, for a replay to tell a tab switch from a picker", () => {
   assert.deepEqual(toStep({ ...base, type: "visibilitychange", hidden: true }, 5, null, false), { t: 5, type: "visibility", hidden: true });
+});
+
+test("an edit is what changed between the text before and after, as Android gives no target ranges", () => {
+  assert.deepEqual(diffEdit("Plan", "Plan😀"), [4, 4, "😀"]);
+  assert.deepEqual(diffEdit("Planにほ", "Planにほん"), [6, 6, "ん"]);
+  assert.deepEqual(diffEdit("Planにほん", "Plan日本"), [4, 7, "日本"]);
+  assert.deepEqual(diffEdit("Plan budget", "Plan budgets"), [11, 11, "s"]);
+  assert.deepEqual(diffEdit("Plan👍🏽", "Plan"), [4, 8, ""]);
+  assert.deepEqual(diffEdit("Plan", "Plan"), null);
 });

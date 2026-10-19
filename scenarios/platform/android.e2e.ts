@@ -1,7 +1,8 @@
 // Each row through Android's own input: Chrome on the emulator, with tools/breezy-ime as its keyboard making the calls
 // a keyboard makes. A real touch opens each editor's keyboard, which DevTools' focus alone does not.
 //   MISE_ENV=android mise exec -- node scripts/android.ts, then
-//   MISE_ENV=android mise exec -- node --test scenarios/platform/android.e2e.ts      RECORD=1 keeps each trace
+//   MISE_ENV=android mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts      RECORD=1 keeps each
+// trace; Playwright's connection to the device keeps the run from ending by itself, as in browsers.e2e.ts
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -62,6 +63,11 @@ before(async () => {
   context = await launchAndroidChrome(device, { hasTouch: true });
   page = await context.newPage();
   for (const p of context.pages()) if (p !== page) await p.close();
+  // Chrome keeps its profile from run to run, and with it a service worker's copy of an older build
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
+  // Playwright's default keeps the page focused whatever happens, which hides every bug of focus leaving it
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: false });
   const emulator = /^(emulator-\d+)\tdevice$/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8" }))![1]!;
   emulatorConsole = await EmulatorConsole.open(emulator);
   // calibrates on a page of its own, so before the app's
@@ -70,8 +76,9 @@ before(async () => {
 
 after(async () => {
   restoreKeyboard();
-  await context?.close();
-  await device?.close();
+  // either can wait without end on a connection adbd stopped serving, as RealWorld.stop found
+  await Promise.race([context?.close(), sleep(10_000)]);
+  await Promise.race([device?.close(), sleep(10_000)]);
   emulatorConsole?.close();
   site?.close();
 });

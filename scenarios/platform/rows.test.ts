@@ -45,3 +45,26 @@ test("a tab switch ends the edit, keeping its text", () => {
   assert.match(tab.expect(state("Plan"), state("Plan", 4, true))!, /still edited/);
   assert.match(tab.expect(state("Plan"), state("", 0, false))!, /""/);
 });
+
+test("a suggestion picked replaces the word before the caret", () => {
+  const s = rowOf("A12", "suggestion");
+  assert.equal(s.expect(state("Plan budget"), state("Plan budgets")), null);
+  assert.match(s.expect(state("Plan budget"), state("Plan budgetbudgets"))!, /budgetbudgets/);
+});
+
+test("a selection set by the keyboard puts what it types there", () => {
+  const d7 = rowOf("D7", "select");
+  assert.equal(d7.expect(state("Plan budget"), state("Plan budXget", 9)), null);
+  assert.match(d7.expect(state("Plan budget"), state("Plan budgetX"))!, /budgetX/);
+});
+
+test("deleting an emoji with a skin tone deletes all of it", () => {
+  const c1 = rowOf("C1", "delete");
+  assert.equal(c1.expect(state("Plan"), state("Plan")), null);
+  assert.match(c1.expect(state("Plan"), state("Plan\u{1F44D}"))!, /👍/u);
+});
+
+test("every Android row has native steps", () => {
+  for (const [id, variant] of [["A1", "commit"], ["A2", "compose"], ["A3", "korean"], ["A7", "autocorrect"], ["A10", "swipe"], ["A12", "suggestion"], ["C1", "delete"], ["D7", "select"], ["F2", "rotate"]])
+    assert.ok(rowOf(id, variant).native.android, `${id}-${variant}`);
+});
