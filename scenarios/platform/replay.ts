@@ -36,8 +36,9 @@ export async function replaySteps(steps: Step[]) {
         el.dispatchEvent(new InputEvent("beforeinput", { inputType: s.inputType, data: s.data, isComposing: s.isComposing, bubbles: true, cancelable: true }));
         break;
       case "input": {
-        // traces from before edits were recorded have the target range and the data
-        const edit = s.edit !== undefined ? s.edit : s.range && [s.range[0], s.range[1], s.data ?? ""] as const;
+        // the browser's own range where it gave one; Android gives none, and the text's change stands in, which can't
+        // tell an insertion beside an equal character from one after it
+        const edit = s.range ? [s.range[0], s.range[1], s.data ?? ""] as const : s.edit;
         if (edit && el.isContentEditable) {
           const r = document.createRange();
           r.setStart(...domPoint(el, edit[0]));

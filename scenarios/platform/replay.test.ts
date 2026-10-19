@@ -8,7 +8,7 @@ import { chromium, firefox, webkit, type Browser } from "playwright-core";
 import { buildSite, serveStatic } from "../browser.ts";
 import { replaySteps, setCaret } from "./replay.ts";
 import { rowOf, type Target } from "./rows.ts";
-import type { EditorState, Trace } from "../../web/record.ts";
+import type { EditorState, Step, Trace } from "../../web/record.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 const PORT = 58563;
@@ -51,3 +51,17 @@ for (const [file, trace] of traces) {
     });
   }
 }
+
+test("replay puts an input where the browser's range says, not where the text's diff guesses", async () => {
+  const page = await browsers.get("chromium")!.newPage({ viewport: { width: 1200, height: 800 } });
+  try {
+    await page.goto(`http://localhost:${PORT}/?demo=edit&record`);
+    await page.waitForFunction(() => "breezyRecord" in window && (document.activeElement as HTMLElement | null)?.isContentEditable);
+    // "ff" in "offsite": an "f" typed between them is the same text change as one typed after them
+    await page.evaluate(replaySteps, [{ t: 0, type: "input", inputType: "insertText", data: "f", isComposing: false, range: [10, 10], edit: [11, 11, "f"] }] as Step[]);
+    const at = await page.evaluate(async () => ((await import("/record.js" as string)) as typeof import("../../web/record.ts")).editorState().at);
+    assert.equal(at, 11);
+  } finally {
+    await page.close();
+  }
+});
