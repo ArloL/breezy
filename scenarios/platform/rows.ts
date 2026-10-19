@@ -19,6 +19,8 @@ export interface AndroidNative {
   adb(...args: string[]): string;
   /** The editor's text as the page has it, for offsets a keyboard counts in it. */
   text(): Promise<string>;
+  /** Whether the page is wider than tall, as on a phone turned on its side. */
+  landscape(): Promise<boolean>;
   wait(ms: number): Promise<void>;
 }
 
@@ -248,6 +250,7 @@ export const rows: Row[] = [
         n.adb("shell", "settings", "put", "system", "user_rotation", "1");
         try {
           await n.wait(2000);
+          if (!await n.landscape()) throw new Error("the phone did not turn");
           await call(n, "commit", { text: "x" });
         } finally {
           n.adb("shell", "settings", "put", "system", "user_rotation", "0");
