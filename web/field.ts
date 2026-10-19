@@ -1,3 +1,4 @@
+import { composingKey } from "./ime.ts";
 import type { Field, FieldEvents } from "./ports.ts";
 
 function caretToEnd(el: HTMLElement) {
@@ -146,7 +147,7 @@ export class DomField implements Field {
     if (on.enter) {
       const enter = on.enter;
       el.onkeydown = (ev) => {
-        if (ev.key !== "Enter") return;
+        if (ev.key !== "Enter" || composingKey(ev)) return;
         ev.preventDefault();
         enter();
       };

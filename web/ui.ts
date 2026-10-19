@@ -4,6 +4,7 @@ import { Menus } from "./menu.ts";
 import { haptic } from "./haptics.ts";
 import { animate } from "./motion.ts";
 import { clampZoom } from "./view.ts";
+import { composingKey } from "./ime.ts";
 import type { App, Match } from "./app.ts";
 
 const KEYS_H = 44;
@@ -60,6 +61,7 @@ export class UI {
       this.find(field.value);
     });
     field.addEventListener("keydown", (e) => {
+      if (composingKey(e)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         return this.closeFind();

@@ -413,7 +413,7 @@ class WebDevice {
         // the field with the keyboard takes its keys first, as the focused element does in a browser
         if ((a.view as FakeView).focused?.key(o.key, !!o.meta)) return null;
         const typing = s.editing ? "card" : s.renaming ? "lane" : null;
-        const e = { key: o.key, code: o.key === "0" ? "Digit0" : "", metaKey: !!o.meta, shiftKey: !!o.shift, ctrlKey: false, altKey: false };
+        const e = { key: o.key, code: o.key === "0" ? "Digit0" : "", metaKey: !!o.meta, shiftKey: !!o.shift, ctrlKey: false, altKey: false, isComposing: false, keyCode: 0 };
         const cmd = command(e, { mac: true, typing });
         return cmd && perform(a, cmd, this.open!.mouse);
       }

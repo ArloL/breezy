@@ -4,7 +4,7 @@ import { command } from "../keys.ts";
 import type { KeyEvent, Typing } from "../keys.ts";
 
 const key = (k: string, mods: Partial<KeyEvent> = {}, ctx: { mac?: boolean; typing?: Typing } = {}) =>
-  command({ key: k, code: "", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods }, { mac: true, typing: null, ...ctx });
+  command({ key: k, code: "", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, isComposing: false, keyCode: 0, ...mods }, { mac: true, typing: null, ...ctx });
 
 test("⌘ shortcuts on the Mac, Ctrl elsewhere", () => {
   assert.equal(key("z", { metaKey: true }), "undo");
@@ -24,7 +24,7 @@ test("zoom keys: ⌘+ or ⌘=, ⌘-, ⌘0 and ⇧0 by position", () => {
   assert.equal(key("+", { metaKey: true, shiftKey: true }), "zoom-in");
   assert.equal(key("-", { metaKey: true }), "zoom-out");
   assert.equal(key("0", { metaKey: true }), "zoom-reset");
-  assert.equal(command({ key: "=", code: "Digit0", metaKey: false, ctrlKey: false, altKey: false, shiftKey: true }, { mac: true, typing: null }), "zoom-reset");
+  assert.equal(command({ key: "=", code: "Digit0", metaKey: false, ctrlKey: false, altKey: false, shiftKey: true, isComposing: false, keyCode: 0 }, { mac: true, typing: null }), "zoom-reset");
 });
 
 test("board keys", () => {
@@ -65,4 +65,11 @@ test("a lane title ends on Tab; the find field keeps its own keys", () => {
   assert.equal(key("a", { metaKey: true }, field), null);
   assert.equal(key("g", { metaKey: true }, field), "find-next");
   assert.equal(key("Backspace", {}, field), null);
+});
+
+test("keys an input method is composing with are left to it", () => {
+  assert.equal(key("Escape", { isComposing: true }, { typing: "card" }), null);
+  assert.equal(key("Tab", { isComposing: true }, { typing: "card" }), null);
+  assert.equal(key("Escape", { keyCode: 229 }), null);
+  assert.equal(key("Escape", {}, { typing: "card" }), "end-edit");
 });
