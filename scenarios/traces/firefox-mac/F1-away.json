@@ -13,7 +13,7 @@
   },
   "steps": [
     {
-      "t": 69,
+      "t": 68,
       "type": "keydown",
       "key": "Meta",
       "code": "MetaLeft",
@@ -22,7 +22,7 @@
       "mods": "meta"
     },
     {
-      "t": 88,
+      "t": 85,
       "type": "keyup",
       "key": "Meta",
       "code": "MetaLeft",
@@ -31,25 +31,31 @@
       "mods": ""
     },
     {
-      "t": 101,
+      "t": 94,
       "type": "blur",
       "of": "editor",
       "hasFocus": false
     },
     {
-      "t": 101,
+      "t": 95,
       "type": "blur",
       "of": "window",
       "hasFocus": false
     },
     {
-      "t": 880,
+      "t": 865,
       "type": "focus",
       "of": "window",
       "hasFocus": true
     },
     {
-      "t": 1411,
+      "t": 865,
+      "type": "focus",
+      "of": "editor",
+      "hasFocus": true
+    },
+    {
+      "t": 1392,
       "type": "keydown",
       "key": "x",
       "code": "KeyX",
@@ -58,19 +64,49 @@
       "mods": ""
     },
     {
-      "t": 1413,
+      "t": 1392,
+      "type": "beforeinput",
+      "inputType": "insertText",
+      "data": "x",
+      "isComposing": false,
+      "range": [
+        37,
+        37
+      ]
+    },
+    {
+      "t": 1392,
+      "type": "input",
+      "inputType": "insertText",
+      "data": "x",
+      "isComposing": false,
+      "range": [
+        37,
+        37
+      ]
+    },
+    {
+      "t": 1393,
       "type": "keyup",
       "key": "x",
       "code": "KeyX",
       "isComposing": false,
       "keyCode": 88,
       "mods": ""
+    },
+    {
+      "t": 1393,
+      "type": "selection",
+      "range": [
+        38,
+        38
+      ]
     }
   ],
   "after": {
-    "text": "",
-    "at": 0,
-    "kind": null,
-    "editing": false
+    "text": "Plan the offsite\nVenue, dates, budgetx",
+    "at": 38,
+    "kind": "front",
+    "editing": true
   }
 }

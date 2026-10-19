@@ -13,7 +13,7 @@
   },
   "steps": [
     {
-      "t": 162,
+      "t": 180,
       "type": "keydown",
       "key": "Process",
       "code": "KeyN",
@@ -22,17 +22,17 @@
       "mods": ""
     },
     {
-      "t": 162,
+      "t": 180,
       "type": "compositionstart",
       "data": ""
     },
     {
-      "t": 162,
+      "t": 180,
       "type": "compositionupdate",
       "data": "n"
     },
     {
-      "t": 162,
+      "t": 180,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "n",
@@ -43,7 +43,7 @@
       ]
     },
     {
-      "t": 163,
+      "t": 180,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "n",
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "t": 163,
+      "t": 181,
       "type": "selection",
       "range": [
         38,
@@ -62,7 +62,7 @@
       ]
     },
     {
-      "t": 166,
+      "t": 181,
       "type": "keyup",
       "key": "n",
       "code": "KeyN",
@@ -71,7 +71,7 @@
       "mods": ""
     },
     {
-      "t": 167,
+      "t": 186,
       "type": "keydown",
       "key": "Process",
       "code": "KeyI",
@@ -80,12 +80,12 @@
       "mods": ""
     },
     {
-      "t": 201,
+      "t": 226,
       "type": "compositionupdate",
       "data": "に"
     },
     {
-      "t": 201,
+      "t": 226,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "に",
@@ -96,7 +96,7 @@
       ]
     },
     {
-      "t": 201,
+      "t": 226,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "に",
@@ -107,7 +107,7 @@
       ]
     },
     {
-      "t": 202,
+      "t": 226,
       "type": "selection",
       "range": [
         38,
@@ -115,7 +115,7 @@
       ]
     },
     {
-      "t": 206,
+      "t": 230,
       "type": "keyup",
       "key": "i",
       "code": "KeyI",
@@ -124,7 +124,7 @@
       "mods": ""
     },
     {
-      "t": 213,
+      "t": 237,
       "type": "keydown",
       "key": "Process",
       "code": "KeyH",
@@ -133,12 +133,12 @@
       "mods": ""
     },
     {
-      "t": 258,
+      "t": 287,
       "type": "compositionupdate",
       "data": "にh"
     },
     {
-      "t": 258,
+      "t": 287,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "にh",
@@ -149,7 +149,7 @@
       ]
     },
     {
-      "t": 258,
+      "t": 287,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "にh",
@@ -160,7 +160,7 @@
       ]
     },
     {
-      "t": 259,
+      "t": 289,
       "type": "selection",
       "range": [
         39,
@@ -168,7 +168,7 @@
       ]
     },
     {
-      "t": 259,
+      "t": 289,
       "type": "keyup",
       "key": "h",
       "code": "KeyH",
@@ -177,7 +177,7 @@
       "mods": ""
     },
     {
-      "t": 263,
+      "t": 295,
       "type": "keydown",
       "key": "Process",
       "code": "KeyO",
@@ -186,12 +186,12 @@
       "mods": ""
     },
     {
-      "t": 299,
+      "t": 325,
       "type": "compositionupdate",
       "data": "にほ"
     },
     {
-      "t": 299,
+      "t": 325,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "にほ",
@@ -202,7 +202,7 @@
       ]
     },
     {
-      "t": 300,
+      "t": 325,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "にほ",
@@ -213,7 +213,7 @@
       ]
     },
     {
-      "t": 300,
+      "t": 326,
       "type": "selection",
       "range": [
         39,
@@ -221,7 +221,7 @@
       ]
     },
     {
-      "t": 300,
+      "t": 328,
       "type": "keyup",
       "key": "o",
       "code": "KeyO",
@@ -230,7 +230,7 @@
       "mods": ""
     },
     {
-      "t": 315,
+      "t": 329,
       "type": "keydown",
       "key": "Process",
       "code": "KeyN",
@@ -239,12 +239,12 @@
       "mods": ""
     },
     {
-      "t": 342,
+      "t": 374,
       "type": "compositionupdate",
       "data": "にほn"
     },
     {
-      "t": 342,
+      "t": 374,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "にほn",
@@ -255,7 +255,7 @@
       ]
     },
     {
-      "t": 343,
+      "t": 374,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "にほn",
@@ -266,7 +266,7 @@
       ]
     },
     {
-      "t": 343,
+      "t": 375,
       "type": "selection",
       "range": [
         40,
@@ -274,7 +274,7 @@
       ]
     },
     {
-      "t": 343,
+      "t": 383,
       "type": "keyup",
       "key": "n",
       "code": "KeyN",
@@ -283,7 +283,7 @@
       "mods": ""
     },
     {
-      "t": 348,
+      "t": 387,
       "type": "keydown",
       "key": "Process",
       "code": "KeyN",
@@ -292,12 +292,12 @@
       "mods": ""
     },
     {
-      "t": 372,
+      "t": 421,
       "type": "compositionupdate",
       "data": "日本"
     },
     {
-      "t": 372,
+      "t": 421,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "日本",
@@ -308,7 +308,7 @@
       ]
     },
     {
-      "t": 372,
+      "t": 421,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "日本",
@@ -319,7 +319,7 @@
       ]
     },
     {
-      "t": 373,
+      "t": 422,
       "type": "selection",
       "range": [
         39,
@@ -327,7 +327,7 @@
       ]
     },
     {
-      "t": 375,
+      "t": 422,
       "type": "keyup",
       "key": "n",
       "code": "KeyN",
@@ -345,12 +345,12 @@
       "mods": ""
     },
     {
-      "t": 786,
+      "t": 784,
       "type": "compositionupdate",
       "data": "にほん"
     },
     {
-      "t": 786,
+      "t": 784,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "にほん",
@@ -361,7 +361,7 @@
       ]
     },
     {
-      "t": 786,
+      "t": 784,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "にほん",
@@ -372,7 +372,7 @@
       ]
     },
     {
-      "t": 786,
+      "t": 784,
       "type": "selection",
       "range": [
         40,
@@ -380,7 +380,7 @@
       ]
     },
     {
-      "t": 788,
+      "t": 787,
       "type": "keyup",
       "key": "Escape",
       "code": "Escape",
@@ -389,7 +389,7 @@
       "mods": ""
     },
     {
-      "t": 1223,
+      "t": 1219,
       "type": "keydown",
       "key": "Process",
       "code": "Escape",
@@ -398,12 +398,12 @@
       "mods": ""
     },
     {
-      "t": 1224,
+      "t": 1221,
       "type": "compositionupdate",
       "data": " "
     },
     {
-      "t": 1224,
+      "t": 1221,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": " ",
@@ -414,7 +414,7 @@
       ]
     },
     {
-      "t": 1225,
+      "t": 1221,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": " ",
@@ -425,7 +425,7 @@
       ]
     },
     {
-      "t": 1225,
+      "t": 1222,
       "type": "selection",
       "range": [
         38,
@@ -433,12 +433,12 @@
       ]
     },
     {
-      "t": 1225,
+      "t": 1222,
       "type": "compositionupdate",
       "data": ""
     },
     {
-      "t": 1225,
+      "t": 1222,
       "type": "beforeinput",
       "inputType": "insertCompositionText",
       "data": "",
@@ -449,7 +449,7 @@
       ]
     },
     {
-      "t": 1225,
+      "t": 1222,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "",
@@ -460,12 +460,12 @@
       ]
     },
     {
-      "t": 1225,
+      "t": 1222,
       "type": "compositionend",
       "data": ""
     },
     {
-      "t": 1225,
+      "t": 1222,
       "type": "input",
       "inputType": "insertCompositionText",
       "data": "",
@@ -473,7 +473,7 @@
       "range": null
     },
     {
-      "t": 1226,
+      "t": 1222,
       "type": "selection",
       "range": [
         37,
@@ -481,7 +481,7 @@
       ]
     },
     {
-      "t": 1232,
+      "t": 1235,
       "type": "keyup",
       "key": "Escape",
       "code": "Escape",

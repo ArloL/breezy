@@ -143,7 +143,8 @@ export class DomField implements Field {
       el.addEventListener("compositionend", this.composed);
       document.addEventListener("selectionchange", this.clamp);
     }
-    el.onblur = () => on.done();
+    // Focus that leaves the window, for the emoji picker, another app or a notification, comes back to the editor.
+    el.onblur = () => document.hasFocus() && on.done();
     if (on.enter) {
       const enter = on.enter;
       el.onkeydown = (ev) => {
