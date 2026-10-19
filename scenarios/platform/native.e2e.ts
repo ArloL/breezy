@@ -4,14 +4,14 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { firefox, type BrowserContext } from "playwright-core";
 import { buildSite, serveStatic } from "../browser.ts";
 import { buildOskeys, oskeys, restoreSourceOnExit, sleep, trusted } from "./oskeys.ts";
-import { rows, type Native } from "./rows.ts";
-import type { Trace } from "../../web/record.ts";
+import { runRow } from "./harness.ts";
+import { rows, type MacNative } from "./rows.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 const PORT = 58564;
@@ -59,21 +59,14 @@ for (const row of rows) {
     await page.goto(`http://localhost:${PORT}/?demo=edit&record`);
     await page.waitForFunction(() => "breezyRecord" in window && (document.activeElement as HTMLElement | null)?.isContentEditable);
     await sleep(300);
-    await page.evaluate(([row, variant, keyboard]) => (window as any).breezyRecord.start({ row, variant, target: "firefox-mac", source: "native", keyboard }), [row.id, row.variant, keyboard]);
-    const n: Native = { pid, oskeys: (args) => oskeys(args, pid), wait: sleep };
-    try {
-      await drive(n);
-    } finally {
-      oskeys(["source", ABC]);
-    }
-    const trace: Trace = await page.evaluate(() => (window as any).breezyRecord.stop());
-    const name = `${row.id}-${row.variant}`;
-    mkdirSync(join(root, "build/platform"), { recursive: true });
-    writeFileSync(join(root, "build/platform", `${name}-firefox-mac.json`), JSON.stringify(trace, null, 2));
-    if (process.env.RECORD) {
-      mkdirSync(join(root, "scenarios/traces/firefox-mac"), { recursive: true });
-      writeFileSync(join(root, "scenarios/traces/firefox-mac", `${name}.json`), JSON.stringify(trace, null, 2) + "\n");
-    }
+    const n: MacNative = { pid, oskeys: (args) => oskeys(args, pid), wait: sleep };
+    const trace = await runRow(page, row, "firefox-mac", keyboard, async () => {
+      try {
+        await drive(n);
+      } finally {
+        oskeys(["source", ABC]);
+      }
+    });
     assert.equal(row.expect(trace.before, trace.after), null);
   });
 }

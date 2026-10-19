@@ -4,13 +4,28 @@ import type { EditorState } from "../../web/record.ts";
 
 export type Target = "mac" | "firefox-mac" | "android";
 
-/** A target's own input, for a row's native steps. */
-export interface Native {
+/** A Mac target's own input, for a row's native steps. */
+export interface MacNative {
   /** The process under test, frontmost. */
   pid: number;
   /** tools/oskeys, refusing unless `pid` is frontmost. */
   oskeys(args: string[]): string;
   wait(ms: number): Promise<void>;
+}
+
+/** Android's own input: tools/breezy-ime's calls into the editor that a real touch opened, and adb. */
+export interface AndroidNative {
+  ime(op: string, extras?: Record<string, string | number>): void;
+  adb(...args: string[]): string;
+  /** The editor's text as the page has it, for offsets a keyboard counts in it. */
+  text(): Promise<string>;
+  wait(ms: number): Promise<void>;
+}
+
+export interface Natives {
+  mac: MacNative;
+  "firefox-mac": MacNative;
+  android: AndroidNative;
 }
 
 export interface Row {
@@ -20,7 +35,7 @@ export interface Row {
   /** The input source the row types with. The harness selects it before the edit opens: an app that is frontmost as
    * the source changes takes it only once it comes to the front again, and that would be a focus change in the row. */
   source?: string;
-  native: Partial<Record<Target, (n: Native) => Promise<void>>>;
+  native: { [T in Target]?: (n: Natives[T]) => Promise<void> };
   /** Targets where the row fails until its fix lands: their tests are todo. */
   open: Target[];
   /** Why `after` breaks the row, or null. */
@@ -42,7 +57,7 @@ export function inserted(before: EditorState, after: EditorState, s: string | Re
 const KOTOERI = "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese";
 
 /** Types romaji `keys` with Japanese input, then presses each of `ends`. */
-const japanese = (keys: string, ...ends: string[]) => async (n: Native) => {
+const japanese = (keys: string, ...ends: string[]) => async (n: MacNative) => {
   n.oskeys(["type", keys]);
   await n.wait(300);
   for (const end of ends) {
