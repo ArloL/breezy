@@ -28,6 +28,7 @@ declare global {
 }
 
 const params = new URLSearchParams(location.search);
+if (params.has("record")) void import("./record.ts").then((m) => m.install());
 // ?stress and ?demo show boards that are not kept, as before
 const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : null;
 const app = new App(scratch ?? { cards: [], lanes: [] }, {
