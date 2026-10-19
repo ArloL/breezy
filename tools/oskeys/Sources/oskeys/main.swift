@@ -54,6 +54,17 @@ func press(_ code: CGKeyCode, _ mods: [String] = []) {
   usleep(30_000)
 }
 
+/// The Globe key alone: fn down and up, as the keyboard sends it.
+func globe() {
+  for flags in [CGEventFlags.maskSecondaryFn, []] {
+    let e = CGEvent(keyboardEventSource: source, virtualKey: 63, keyDown: !flags.isEmpty)!
+    e.type = .flagsChanged
+    e.flags = flags
+    e.post(tap: .cghidEventTap)
+    usleep(60_000)
+  }
+}
+
 func typeKeys(_ s: String) {
   for c in s {
     guard let code = codes[String(c).lowercased()] else { fail("no US key for \(c)") }
@@ -128,6 +139,9 @@ case ("frontmost", 1):
   print(frontmost())
 case ("activate", 2):
   activate(need(pid_t(args[1]), "not a pid: \(args[1])"))
+case ("key", 2) where args[1] == "globe":
+  guardFront()
+  globe()
 case ("key", 2), ("key", 3):
   guardFront()
   press(need(codes[args[1]], "no key \(args[1])"), args.count == 3 ? args[2].split(separator: "+").map(String.init) : [])
