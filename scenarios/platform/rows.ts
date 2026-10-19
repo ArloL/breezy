@@ -92,7 +92,27 @@ export const rows: Row[] = [
     open: [],
     expect: (b, a) => inserted(b, a, "x"),
   },
+  {
+    // a hidden page may stay hidden for hours, holding the card from other devices and their changes from the board
+    id: "F1", variant: "tab", title: "Another tab ends the edit, keeping its text",
+    native: {
+      "firefox-mac": async (n) => {
+        n.oskeys(["key", "t", "cmd"]);
+        await n.wait(800);
+        n.oskeys(["key", "w", "cmd"]);
+        await n.wait(500);
+      },
+    },
+    open: [],
+    expect: ended,
+  },
 ];
+
+/** Why `after` is not `before` with its edit ended and its text kept, or null. */
+export function ended(before: EditorState, after: EditorState): string | null {
+  if (!after.editing && after.text === before.text) return null;
+  return `wanted ${JSON.stringify(before.text)}, no longer edited; got ${JSON.stringify(after.text)}${after.editing ? ", still edited" : ""}`;
+}
 
 export function rowOf(id: string, variant: string): Row {
   const r = rows.find((r) => r.id === id && r.variant === variant);

@@ -56,6 +56,12 @@ export async function replaySteps(steps: Step[]) {
         else el.dispatchEvent(new FocusEvent(s.type));
         document.hasFocus = hasFocus;
         break;
+      case "visibility":
+        // as the platform reported it: a headless page is never hidden
+        Object.defineProperty(document, "hidden", { value: s.hidden, configurable: true });
+        Object.defineProperty(document, "visibilityState", { value: s.hidden ? "hidden" : "visible", configurable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        break;
       case "selection":
         if (el.isContentEditable) getSelection()!.setBaseAndExtent(...domPoint(el, s.range[0]), ...domPoint(el, s.range[1]));
         break;

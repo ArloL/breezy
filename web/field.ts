@@ -112,6 +112,8 @@ export class DomField implements Field {
   /** Keeps a front's caret off the newline that only draws an empty last line, past the text's end, where Firefox's ↓ and
    * ⌘↓ put it a line below the last. */
   clamp: () => void;
+  /** Ends the edit once the page is hidden, which can last hours and would hold the card from other devices. */
+  hidden: () => void = () => {};
 
   constructor(el: HTMLElement, kind: "front" | "notes" | "title") {
     this.el = el;
@@ -145,6 +147,8 @@ export class DomField implements Field {
     }
     // Focus that leaves the window, for the emoji picker, another app or a notification, comes back to the editor.
     el.onblur = () => document.hasFocus() && on.done();
+    this.hidden = () => document.hidden && on.done();
+    document.addEventListener("visibilitychange", this.hidden);
     if (on.enter) {
       const enter = on.enter;
       el.onkeydown = (ev) => {
@@ -179,6 +183,7 @@ export class DomField implements Field {
     this.el.removeEventListener("compositionstart", this.composing);
     this.el.removeEventListener("compositionend", this.composed);
     document.removeEventListener("selectionchange", this.clamp);
+    document.removeEventListener("visibilitychange", this.hidden);
   }
 
   close() {

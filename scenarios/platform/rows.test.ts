@@ -38,3 +38,10 @@ test("Esc while composing cancels the composition and nothing else", () => {
   assert.equal(rowOf("A2", "escape").expect(state("Plan"), state("Plan")), null);
   assert.match(rowOf("A2", "escape").expect(state("Plan"), state("Plan", 4, false))!, /no longer edited/);
 });
+
+test("a tab switch ends the edit, keeping its text", () => {
+  const tab = rowOf("F1", "tab");
+  assert.equal(tab.expect(state("Plan"), state("Plan", 4, false)), null);
+  assert.match(tab.expect(state("Plan"), state("Plan", 4, true))!, /still edited/);
+  assert.match(tab.expect(state("Plan"), state("", 0, false))!, /""/);
+});
