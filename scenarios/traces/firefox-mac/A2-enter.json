@@ -1,0 +1,398 @@
+{
+  "row": "A2",
+  "variant": "enter",
+  "target": "firefox-mac",
+  "source": "native",
+  "keyboard": "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese",
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+  "before": {
+    "text": "Plan the offsite\nVenue, dates, budget",
+    "at": 37,
+    "kind": "front",
+    "editing": true
+  },
+  "steps": [
+    {
+      "t": 201,
+      "type": "keydown",
+      "key": "Process",
+      "code": "KeyN",
+      "isComposing": false,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 203,
+      "type": "compositionstart",
+      "data": ""
+    },
+    {
+      "t": 203,
+      "type": "compositionupdate",
+      "data": "n"
+    },
+    {
+      "t": 205,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "n",
+      "isComposing": true,
+      "range": [
+        37,
+        37
+      ]
+    },
+    {
+      "t": 205,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "n",
+      "isComposing": true,
+      "range": [
+        37,
+        37
+      ]
+    },
+    {
+      "t": 207,
+      "type": "selection",
+      "range": [
+        38,
+        38
+      ]
+    },
+    {
+      "t": 211,
+      "type": "keyup",
+      "key": "n",
+      "code": "KeyN",
+      "isComposing": true,
+      "keyCode": 78,
+      "mods": ""
+    },
+    {
+      "t": 212,
+      "type": "keydown",
+      "key": "Process",
+      "code": "KeyI",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 251,
+      "type": "compositionupdate",
+      "data": "に"
+    },
+    {
+      "t": 251,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "に",
+      "isComposing": true,
+      "range": [
+        37,
+        38
+      ]
+    },
+    {
+      "t": 251,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "に",
+      "isComposing": true,
+      "range": [
+        37,
+        38
+      ]
+    },
+    {
+      "t": 306,
+      "type": "keyup",
+      "key": "i",
+      "code": "KeyI",
+      "isComposing": true,
+      "keyCode": 73,
+      "mods": ""
+    },
+    {
+      "t": 306,
+      "type": "keydown",
+      "key": "Process",
+      "code": "KeyH",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 306,
+      "type": "compositionupdate",
+      "data": "にh"
+    },
+    {
+      "t": 307,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "にh",
+      "isComposing": true,
+      "range": [
+        37,
+        38
+      ]
+    },
+    {
+      "t": 307,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "にh",
+      "isComposing": true,
+      "range": [
+        37,
+        38
+      ]
+    },
+    {
+      "t": 307,
+      "type": "keyup",
+      "key": "h",
+      "code": "KeyH",
+      "isComposing": true,
+      "keyCode": 72,
+      "mods": ""
+    },
+    {
+      "t": 307,
+      "type": "keydown",
+      "key": "Process",
+      "code": "KeyO",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 309,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 338,
+      "type": "compositionupdate",
+      "data": "にほ"
+    },
+    {
+      "t": 338,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "にほ",
+      "isComposing": true,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "t": 338,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "にほ",
+      "isComposing": true,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "t": 339,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 339,
+      "type": "keyup",
+      "key": "o",
+      "code": "KeyO",
+      "isComposing": true,
+      "keyCode": 79,
+      "mods": ""
+    },
+    {
+      "t": 340,
+      "type": "keydown",
+      "key": "Process",
+      "code": "KeyN",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 378,
+      "type": "compositionupdate",
+      "data": "にほn"
+    },
+    {
+      "t": 378,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "にほn",
+      "isComposing": true,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "t": 378,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "にほn",
+      "isComposing": true,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "t": 378,
+      "type": "selection",
+      "range": [
+        40,
+        40
+      ]
+    },
+    {
+      "t": 379,
+      "type": "keyup",
+      "key": "n",
+      "code": "KeyN",
+      "isComposing": true,
+      "keyCode": 78,
+      "mods": ""
+    },
+    {
+      "t": 385,
+      "type": "keydown",
+      "key": "Process",
+      "code": "KeyN",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 418,
+      "type": "compositionupdate",
+      "data": "日本"
+    },
+    {
+      "t": 418,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": [
+        37,
+        40
+      ]
+    },
+    {
+      "t": 418,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": [
+        37,
+        40
+      ]
+    },
+    {
+      "t": 419,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 419,
+      "type": "keyup",
+      "key": "n",
+      "code": "KeyN",
+      "isComposing": true,
+      "keyCode": 78,
+      "mods": ""
+    },
+    {
+      "t": 804,
+      "type": "keydown",
+      "key": "Process",
+      "code": "Enter",
+      "isComposing": true,
+      "keyCode": 229,
+      "mods": ""
+    },
+    {
+      "t": 815,
+      "type": "beforeinput",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "t": 815,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": true,
+      "range": [
+        37,
+        39
+      ]
+    },
+    {
+      "t": 816,
+      "type": "compositionend",
+      "data": "日本"
+    },
+    {
+      "t": 816,
+      "type": "input",
+      "inputType": "insertCompositionText",
+      "data": "日本",
+      "isComposing": false,
+      "range": null
+    },
+    {
+      "t": 816,
+      "type": "selection",
+      "range": [
+        39,
+        39
+      ]
+    },
+    {
+      "t": 829,
+      "type": "keyup",
+      "key": "Enter",
+      "code": "Enter",
+      "isComposing": false,
+      "keyCode": 13,
+      "mods": ""
+    }
+  ],
+  "after": {
+    "text": "Plan the offsite\nVenue, dates, budget日本",
+    "at": 39,
+    "kind": "front",
+    "editing": true
+  }
+}

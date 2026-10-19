@@ -7,7 +7,7 @@ Layers: 1 the platform's own input, automated; 2 replays of recorded traces, on 
 | Row | Expectation | mac | firefox-mac | android | Status |
 |---|---|---|---|---|---|
 | A1 | Emoji picker inserts at the caret | 1 | 1 | 1, 3 | red on firefox-mac: the picker takes the window's focus and the edit ends |
-| A2 | Input method: Enter confirms, Esc cancels, edit goes on | 1 | 1 | 1 | red on firefox-mac |
+| A2 | Input method: Enter confirms, Esc cancels, edit goes on | 1 | 1 | 1 | green on firefox-mac, where keys while composing come as `Process`; Chrome and Safari send Esc and Enter as such, with `isComposing` |
 | A3 | Korean commits a syllable on any key or click | 1 | 1 | 1 | untested |
 | A4 | Dead keys and ⌥ accents | 1 | 1 | – | untested |
 | A5 | Press-and-hold accent popup | 1 | 1 | – | untested |

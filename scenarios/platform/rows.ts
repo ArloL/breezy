@@ -41,12 +41,14 @@ export function inserted(before: EditorState, after: EditorState, s: string | Re
 
 const KOTOERI = "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese";
 
-/** Types romaji `keys` with Japanese input, then presses `end`. */
-const japanese = (keys: string, end: string) => async (n: Native) => {
+/** Types romaji `keys` with Japanese input, then presses each of `ends`. */
+const japanese = (keys: string, ...ends: string[]) => async (n: Native) => {
   n.oskeys(["type", keys]);
   await n.wait(300);
-  n.oskeys(["key", end]);
-  await n.wait(300);
+  for (const end of ends) {
+    n.oskeys(["key", end]);
+    await n.wait(300);
+  }
 };
 
 export const rows: Row[] = [
@@ -66,14 +68,15 @@ export const rows: Row[] = [
     id: "A2", variant: "enter", title: "Enter confirms an input method's text and the edit goes on",
     source: KOTOERI,
     native: { "firefox-mac": japanese("nihonn", "return") },
-    open: ["firefox-mac"],
+    open: [],
     expect: (b, a) => inserted(b, a, /^[\p{Script=Hiragana}\p{Script=Han}]+$/u),
   },
   {
+    // the first Esc takes live conversion's 日本 back to にほん, the second cancels it
     id: "A2", variant: "escape", title: "Esc cancels an input method's text and the edit goes on",
     source: KOTOERI,
-    native: { "firefox-mac": japanese("nihonn", "escape") },
-    open: ["firefox-mac"],
+    native: { "firefox-mac": japanese("nihonn", "escape", "escape") },
+    open: [],
     expect: (b, a) => inserted(b, a, ""),
   },
   {

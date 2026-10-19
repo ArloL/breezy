@@ -1,0 +1,85 @@
+{
+  "row": "A1",
+  "variant": "picker",
+  "target": "firefox-mac",
+  "source": "native",
+  "keyboard": "com.apple.keylayout.ABC",
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+  "before": {
+    "text": "Plan the offsite\nVenue, dates, budget",
+    "at": 37,
+    "kind": "front",
+    "editing": true
+  },
+  "steps": [
+    {
+      "t": 101,
+      "type": "keydown",
+      "key": "Control",
+      "code": "ControlLeft",
+      "isComposing": false,
+      "keyCode": 17,
+      "mods": "ctrl"
+    },
+    {
+      "t": 105,
+      "type": "keydown",
+      "key": "Meta",
+      "code": "MetaLeft",
+      "isComposing": false,
+      "keyCode": 224,
+      "mods": "meta+ctrl"
+    },
+    {
+      "t": 220,
+      "type": "keydown",
+      "key": " ",
+      "code": "Space",
+      "isComposing": false,
+      "keyCode": 32,
+      "mods": "meta+ctrl"
+    },
+    {
+      "t": 279,
+      "type": "keyup",
+      "key": "Meta",
+      "code": "MetaLeft",
+      "isComposing": false,
+      "keyCode": 224,
+      "mods": "ctrl"
+    },
+    {
+      "t": 279,
+      "type": "keyup",
+      "key": "Control",
+      "code": "ControlLeft",
+      "isComposing": false,
+      "keyCode": 17,
+      "mods": ""
+    },
+    {
+      "t": 1004,
+      "type": "blur",
+      "of": "editor",
+      "hasFocus": false
+    },
+    {
+      "t": 1004,
+      "type": "blur",
+      "of": "window",
+      "hasFocus": false
+    },
+    {
+      "t": 2296,
+      "type": "focus",
+      "of": "window",
+      "hasFocus": true
+    }
+  ],
+  "after": {
+    "text": "",
+    "at": 0,
+    "kind": null,
+    "editing": false
+  }
+}
