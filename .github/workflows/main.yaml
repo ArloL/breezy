@@ -110,12 +110,12 @@ jobs:
       run: |
         mkdir artifacts
         ditto -c -k --keepParent build/Build/Products/Release/Breezy.app "artifacts/${ARTIFACT}-macos.zip"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ env.ARTIFACT }}-${{ github.job }}
         path: artifacts
     # for the appcast job: this one runs on pull requests too, so it must not hold the signing key
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ needs.version.outputs.new_version != '' }}
       with:
         name: sparkle-tools
@@ -154,7 +154,7 @@ jobs:
       run: node --test scenarios/*.test.ts
     - name: Fuzz convergence
       run: node scripts/fuzz.ts --seeds 1-10 --steps 200
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ failure() }}
       with:
         name: fuzz
@@ -185,7 +185,7 @@ jobs:
       env:
         NEW_VERSION: ${{ needs.version.outputs.new_version }}
       run: scripts/build-site.sh _site "$NEW_VERSION"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: site
         path: _site
@@ -238,7 +238,7 @@ jobs:
     - name: Warn of the cases that failed once
       if: ${{ always() }}
       run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
       with:
         name: scenarios
@@ -313,7 +313,7 @@ jobs:
         if [ -n "$serial" ]; then mise exec -- adb -s "$serial" exec-out screencap -p > build/android-screen.png || true; fi
         { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/android-host.txt 2>&1
         cp /tmp/adb.*.log build/ 2>/dev/null || true
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
       with:
         name: android-emulator
@@ -356,7 +356,7 @@ jobs:
           archives <<< "${SPARKLE_PRIVATE_KEY}"
         mkdir feed
         mv archives/appcast.xml feed/
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ env.ARTIFACT }}-${{ github.job }}
         path: feed
