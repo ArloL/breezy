@@ -2,6 +2,7 @@ import * as R from "./rules.ts";
 import { Camera, clampZoom } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
 import { DomField, fillFront, frontPoint } from "./field.ts";
+import { Grid } from "./grid.ts";
 import type { Field } from "./ports.ts";
 import type { MotionValue } from "./motion.ts";
 import type { Model } from "./model.ts";
@@ -63,6 +64,7 @@ export class View {
   mFront: HTMLElement;
   mBack: HTMLElement;
   camera: Camera;
+  grid: Grid;
   els: Map<string, Shown>;
   sizes: Map<string, number>;
   frame: number;
@@ -84,6 +86,7 @@ export class View {
     const m = document.querySelector<HTMLElement>(".measure")!;
     m.innerHTML = `<div class="card">${SHEET}</div><div class="card turned">${SHEET}</div>`;
     [this.mFront, this.mBack] = m.children as HTMLCollectionOf<HTMLElement>;
+    this.grid = new Grid(root.querySelector<HTMLCanvasElement>(".grid")!);
     this.camera = new Camera((c) => this.apply(c));
     this.els = new Map();
     this.sizes = new Map();
@@ -167,10 +170,7 @@ export class View {
 
   apply({ x, y, zoom }: Cam) {
     this.world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
-    const t = R.GRID * zoom;
-    this.root.style.backgroundSize = `${t}px ${t}px`;
-    this.root.style.backgroundPosition = `${x}px ${y}px`;
-    this.root.classList.toggle("no-dots", zoom < 0.4);
+    this.grid.draw({ x, y, zoom });
     this.onCamera();
   }
 
