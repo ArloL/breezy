@@ -5,5 +5,5 @@
     "dev": "wrangler dev --port 58568",
     "deploy": "wrangler deploy"
   },
-  "devDependencies": { "wrangler": "4.149.0" }
+  "devDependencies": { "wrangler": "4.151.0" }
 }
