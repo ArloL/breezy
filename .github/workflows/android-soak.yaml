@@ -75,9 +75,20 @@ jobs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    # the packages WebKit needs, 119 MB, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/apt-archives
+        key: apt-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: apt-playwright-${{ runner.os }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
-      run: npx playwright-core install --with-deps chromium webkit
+      run: |
+        echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded
+        if compgen -G ~/apt-archives/'*.deb' > /dev/null; then sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/; fi
+        npx playwright-core install --with-deps chromium webkit
+        mkdir -p ~/apt-archives
+        if compgen -G '/var/cache/apt/archives/*.deb' > /dev/null; then cp /var/cache/apt/archives/*.deb ~/apt-archives/; fi
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.local/share/mise/installs/android-sdk
