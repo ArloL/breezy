@@ -210,6 +210,10 @@ jobs:
     # a connection whose own port is a server's keeps that server from starting
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
+    # Spotlight indexes the fresh runner and every build for its first half hour, which kept the load at 18 on 3 CPUs
+    # while Firefox ran every timer 100 ms late
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
