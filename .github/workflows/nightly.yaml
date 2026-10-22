@@ -87,10 +87,12 @@ jobs:
     - name: Build this commit and the reference
       run: |
         git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
+        # mise trusts this checkout's config, not the reference's
+        xcodegen=$(mise which xcodegen)
         for dir in . "$RUNNER_TEMP/ref"; do
           (
             cd "$dir"
-            xcodegen generate
+            "$xcodegen" generate
             xcodebuild \
               -project Breezy.xcodeproj \
               -scheme Breezy \
