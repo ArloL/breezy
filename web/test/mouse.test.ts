@@ -148,3 +148,20 @@ test("a press ends a drag left open by a lost release", () => {
   assert.ok(names(app).indexOf("end") > names(app).indexOf("drag"));
   assert.equal(app.input.drag, null);
 });
+
+test("a release past 3 pt from its press drags there though no move came, as a busy page may get none before it", () => {
+  const app = fakeApp({ "10,10": { kind: "corner", id: "l" } });
+  const m = new Mouse(app);
+  m.down(at(10, 10), 0);
+  m.up({ x: 40, y: 30 });
+  assert.deepEqual(names(app).slice(-3), ["drag", "move", "end"]);
+});
+
+test("a release away from the last move moves the drag there before it ends", () => {
+  const app = fakeApp({ "10,10": { kind: "card", id: "a" } });
+  const m = new Mouse(app);
+  m.down(at(10, 10), 0);
+  m.move({ x: 14, y: 10 });
+  m.up({ x: 60, y: 10 });
+  assert.deepEqual(names(app), ["select", "drag", "move", "end"]);
+});
