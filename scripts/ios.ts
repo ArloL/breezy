@@ -24,20 +24,7 @@ if (await iosUnfit()) spawn("safaridriver", ["-p", new URL(SAFARIDRIVER).port], 
 for (const end = Date.now() + 30_000; await iosUnfit(); await sleep(500)) {
   if (Date.now() > end) throw new Error("safaridriver did not start in 30 s: run sudo safaridriver --enable once");
 }
-// the first session on a fresh simulator took over 90 s, a case's whole time, or never came: Safari again until one does
+// the first session on a fresh simulator took over 90 s, a case's whole time, or never came
 const warm = Date.now();
-for (let attempt = 1; ; attempt++) {
-  try {
-    await (await IosPage.open()).close();
-    break;
-  } catch (e) {
-    if (attempt === 4) throw e;
-    console.log(`no first session: ${(e as Error).message.slice(0, 160)}; launching Safari again`);
-    try {
-      run("terminate", phone.udid, "com.apple.mobilesafari");
-    } catch {}
-    run("launch", phone.udid, "com.apple.mobilesafari");
-    await sleep(5000);
-  }
-}
+await (await IosPage.open()).close();
 console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, safaridriver on ${SAFARIDRIVER}, a first session in ${Math.round((Date.now() - warm) / 1000)} s`);

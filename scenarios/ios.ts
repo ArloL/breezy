@@ -2,11 +2,29 @@
 // localhost, keeps a service worker and IndexedDB as an iPhone does, and shows the board. It watches only: its touches
 // come through WebDriver a quarter second apart, as a hold or a double tap never would. scripts/ios.ts boots the
 // simulator and starts safaridriver.
+import { execFileSync, spawn } from "node:child_process";
 import { Device, type Editor, type PointerPhase, type Scene } from "./device.ts";
 import type { Point } from "../web/types.ts";
 
 export const SAFARIDRIVER = "http://127.0.0.1:4723";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** safaridriver and Safari on the booted simulator, started again. */
+export async function restartSafari() {
+  const quiet = (cmd: string, ...args: string[]) => {
+    try {
+      execFileSync(cmd, args, { timeout: 30_000, stdio: "ignore" });
+    } catch {}
+  };
+  quiet("pkill", "-x", "safaridriver");
+  quiet("xcrun", "simctl", "terminate", "booted", "com.apple.mobilesafari");
+  quiet("xcrun", "simctl", "launch", "booted", "com.apple.mobilesafari");
+  await sleep(3000);
+  spawn("safaridriver", ["-p", new URL(SAFARIDRIVER).port], { detached: true, stdio: "ignore" }).unref();
+  for (const end = Date.now() + 30_000; await iosUnfit(); await sleep(500)) {
+    if (Date.now() > end) throw new Error("safaridriver did not start again in 30 s");
+  }
+}
 
 /** Why Safari on the iOS Simulator cannot run cases here, if it cannot. */
 export async function iosUnfit(): Promise<string | false> {
@@ -25,8 +43,22 @@ export class IosPage {
     this.version = version;
   }
 
-  /** A session in Safari on the simulator scripts/ios.ts booted. */
+  /**
+   * A session in Safari on the simulator scripts/ios.ts booted. A request that timed out here may still pair Safari with
+   * a session nobody can end, and safaridriver then refuses every other: it and Safari start again, up to three times.
+   */
   static async open(): Promise<IosPage> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await IosPage.session();
+      } catch (e) {
+        if (attempt === 3) throw e;
+        await restartSafari();
+      }
+    }
+  }
+
+  private static async session(): Promise<IosPage> {
     const s = await IosPage.call("POST", "/session", { capabilities: { alwaysMatch: { browserName: "safari", platformName: "iOS", "safari:useSimulator": true } } }, 120_000);
     const c = s.capabilities ?? {};
     return new IosPage(s.sessionId, `Safari ${c.browserVersion} on ${c["safari:deviceName"]}, iOS ${c["safari:platformVersion"]}`);
