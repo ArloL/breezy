@@ -869,8 +869,8 @@ export class RealWorld {
   private started = 0;
   /** What it and the case did, each with its time and how long it took. */
   readonly steps = new Steps();
-  /** The runner's load as it ran. */
-  private readonly load: Line[] = [];
+  /** The runner's load as it ran, and what the relay and the server said. */
+  private readonly host: Line[] = [];
   private stopSampling = () => {};
   /** Worlds started and not yet stopped. A case that never ends never stops its world, which held the ports every
    * world uses from the 39 cases after it: the next world ends it. */
@@ -883,7 +883,7 @@ export class RealWorld {
     RealWorld.live.add(this);
     this.t0 = performance.now();
     this.started = Date.now();
-    this.stopSampling = sampleRunner(this.load);
+    this.stopSampling = sampleRunner(this.host);
     await this.steps.run("world", "serve", [], () => this.serve());
     const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
@@ -996,17 +996,36 @@ export class RealWorld {
   }
 
   private async serve() {
+    installed();
     await free(WEB, SERVER, RELAY);
     const site = join(root, "build", "web-scenarios");
     buildSite(site);
     this.web = serveStatic(site, WEB);
     const relayState = mkdtempSync(join(tmpdir(), "breezy-scenario-relay-"));
     this.dirs.push(relayState);
-    const group = (cmd: string, args: string[], cwd?: string) => this.children.push(spawn(cmd, args, { cwd, stdio: "ignore", detached: true }));
-    group("npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", String(RELAY), "--persist-to", relayState], join(root, "relay"));
-    group(join(root, "server/dev.sh"), []);
-    await until("the relay", () => fetch(`http://127.0.0.1:${RELAY}/`).then(() => true, () => false), 60_000);
-    await until("the server", () => fetch(`http://127.0.0.1:${SERVER}/sync.php`).then(() => true, () => false));
+    /** `cmd` in a process group of its own, what it says kept as `name`'s but php's log of each request it answered. */
+    const group = (name: string, cmd: string, args: string[], cwd?: string) => {
+      const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, WRANGLER_SEND_METRICS: "false" } });
+      this.children.push(child);
+      let rest = "";
+      const read = (data: Buffer) => {
+        const lines = (rest + data.toString()).split("\n");
+        rest = lines.pop()!;
+        for (const l of lines.map((l) => l.replace(/\x1b\[[\d;]*m/g, "").trim())) {
+          if (l && !/:\d+ (Accepted|Closing)$|\[[23]\d\d\]: \w+ \//.test(l)) this.host.push([Date.now(), name, l.slice(0, 300)]);
+        }
+      };
+      child.stdout!.on("data", read);
+      child.stderr!.on("data", read);
+      child.on("exit", (code, signal) => this.host.push([Date.now(), name, `exited with ${code ?? signal}`]));
+    };
+    group("relay", "npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", String(RELAY), "--persist-to", relayState], join(root, "relay"));
+    group("server", join(root, "server/dev.sh"), []);
+    const said = (name: string) => this.host.filter(([, n]) => n === name).slice(-20).map(([, , l]) => `  ${l}`).join("\n");
+    await until("the relay", () => fetch(`http://127.0.0.1:${RELAY}/`).then(() => true, () => false), 60_000)
+      .catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("relay")}`)));
+    await until("the server", () => fetch(`http://127.0.0.1:${SERVER}/sync.php`).then(() => true, () => false))
+      .catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("server")}`)));
   }
 
   /**
@@ -1048,7 +1067,7 @@ export class RealWorld {
     const answer = <T>(p: Promise<T>) => Promise.race([p.catch((e: Error) => `none: ${e.message.split("\n")[0]}`), sleep(5000).then(() => "none in 5 s")]);
     const failing = error ? this.steps.failed() : undefined;
     await this.steps.read();
-    const lines: Line[] = [...this.load, ...this.steps.lines()];
+    const lines: Line[] = [...this.host, ...this.steps.lines()];
     const parts = await Promise.all(this.devices.map(async (d, i) => {
       const who = `d${i} ${d.kind}`, summary: string[] = [];
       if (d instanceof BrowserDevice) {
@@ -1156,6 +1175,15 @@ for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]
   });
 }
 
+/** That npm installed what package.json names: a run on a stale install, as of wrangler, differs from CI's unseen. */
+function installed() {
+  for (const [dir, pkg] of [[".", "playwright-core"], ["relay", "wrangler"]] as const) {
+    const want = JSON.parse(readFileSync(join(root, dir, "package.json"), "utf8")).devDependencies[pkg];
+    const have = JSON.parse(readFileSync(join(root, dir, "node_modules", pkg, "package.json"), "utf8")).version;
+    if (have !== want) throw new Error(`${dir}/node_modules has ${pkg} ${have} where package.json names ${want}: npm ci${dir === "." ? "" : ` --prefix ${dir}`}`);
+  }
+}
+
 /** Until nothing listens on `ports` on this machine, for at most 10 s, else what does. */
 async function free(...ports: number[]) {
   const end = Date.now() + 10_000;
@@ -1166,10 +1194,14 @@ async function free(...ports: number[]) {
     });
     while (!await open("127.0.0.1") || !await open("::1")) {
       if (Date.now() > end) {
-        let who = "";
-        try {
-          who = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5000 });
-        } catch {}
+        // a connection whose own port it is takes it as surely as a server
+        const who = [["lsof", "-nP", `-iTCP:${port}`], ["ss", "-tanp", `sport = :${port}`]].map(([cmd, ...args]) => {
+          try {
+            return execFileSync(cmd!, args, { encoding: "utf8", timeout: 5000 });
+          } catch {
+            return "";
+          }
+        }).find((out) => out.trim().split("\n").length > 1);
         throw new Error(`port ${port} is taken${who ? `: ${who}` : ""}`);
       }
       await sleep(250);
