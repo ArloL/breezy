@@ -62,7 +62,8 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
   } finally {
     clearTimeout(timer);
     await w.record(name, { name: c.name, pair: kinds, run }, error, timedOut);
-    await w.stop();
+    // Firefox for Android kept for the next case after a pass
+    await w.stop(!error);
   }
   const serve = w.steps.list.find((s) => s.who === "world" && s.action === "serve");
   [unserved, unservedBy] = serve?.error ? [unserved + 1, serve.error] : [0, ""];

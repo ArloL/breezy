@@ -835,6 +835,19 @@ export class BrowserDevice extends Device {
   }
 }
 
+/** Firefox for Android with its profile's folder here, and whether it closed. */
+interface Fenix {
+  context: BrowserContext;
+  dir: string;
+  closed: boolean;
+}
+
+/**
+ * The Firefox for Android a world that passed kept for the next: each launch left 200 MB of the emulator's memory behind
+ * on a Linux runner, where loading the app again in one Firefox, or in a new tab of it, left none.
+ */
+let fenix: Fenix | null = null;
+
 /** What the emulator holds of this machine's memory, in MB; 0 when none runs here. */
 function emulatorMB(): number {
   try {
@@ -855,6 +868,11 @@ export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX
   hadEmulator ??= mb > 0;
   // one that quit, or that a boot before left down, is booted too, where this process began with one
   if (mb === 0 ? !hadEmulator : mb < share * totalmem() / 2 ** 20) return null;
+  if (fenix) {
+    fenix.context.close().catch(() => {});
+    rmSync(fenix.dir, { recursive: true, force: true });
+    fenix = null;
+  }
   if (mb > 0) {
     try {
       // listed offline too, as one short of memory may be
@@ -929,7 +947,8 @@ export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice)[] = [];
   private readonly browsers: Browser[] = [];
   private readonly androids: [AndroidDevice, BrowserContext?][] = [];
-  private readonly contexts: BrowserContext[] = [];
+  /** Firefox for Android, which a world that passed keeps for the next. */
+  private fenix: Fenix | null = null;
   private readonly children: ChildProcess[] = [];
   private readonly dirs: string[] = [];
   private readonly consoles: EmulatorConsole[] = [];
@@ -1048,12 +1067,37 @@ export class RealWorld {
     const serial = execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }).match(/^(emulator-\d+)\tdevice$/m)?.[1];
     if (!serial) throw new Error("no Android emulator: run node scripts/android.ts");
     for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`], { timeout: 30_000 });
-    const dir = mkdtempSync(join(tmpdir(), "breezy-scenario-fenix-"));
-    this.dirs.push(dir);
-    const context = await firefox.launchPersistentContext(dir, { channel: "moz-firefox", executablePath: join(root, "scenarios", "fenix.ts"), viewport: null, timeout: 60_000 });
-    this.contexts.push(context);
-    // the tab Firefox opened with, which is the one on screen
+    // the Firefox the world before kept, if it still answers
+    let held = fenix;
+    fenix = null;
+    const answers = (p?: Page) => p ? Promise.race([p.evaluate(() => true).catch(() => false), sleep(5000).then(() => false)]) : false;
+    if (held && (held.closed || !await answers(held.context.pages()[0]))) {
+      held.context.close().catch(() => {});
+      rmSync(held.dir, { recursive: true, force: true });
+      held = null;
+    }
+    if (!held) {
+      const dir = mkdtempSync(join(tmpdir(), "breezy-scenario-fenix-"));
+      const context = await firefox.launchPersistentContext(dir, { channel: "moz-firefox", executablePath: join(root, "scenarios", "fenix.ts"), viewport: null, timeout: 60_000 });
+      held = { context, dir, closed: false };
+      const h = held;
+      context.on("close", () => (h.closed = true));
+      await context.addInitScript(logPage);
+    }
+    else {
+      // to the front as a tap on its icon brings it, over Chrome, which a case in it may have left there
+      execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
+        "-f", "0x10200000", "-n", `${FENIX}/.App`], { timeout: 30_000, stdio: "ignore" });
+      // none resumed for a moment as it comes
+      const top = () => execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "dumpsys activity activities | grep -m1 topResumedActivity; true"], { encoding: "utf8", timeout: 10_000 });
+      await until("Firefox for Android in front", () => top().includes(`${FENIX}/`), 15_000);
+    }
+    this.fenix = held;
+    const context = held.context;
+    // the tab Firefox opened with, which is the one on screen, without what the world before listened for
     const page = context.pages()[0] ?? await context.newPage();
+    page.removeAllListeners();
+    await context.setOffline(false);
     // a page the server does not have, once the service worker that would serve the app there is gone
     const blank = `http://localhost:${WEB}/scenarios-clear`;
     await page.goto(blank);
@@ -1068,7 +1112,6 @@ export class RealWorld {
       return [...await navigator.serviceWorker.getRegistrations(), ...await caches.keys(), ...await indexedDB.databases()].length;
     });
     if (left) throw new Error(`Firefox kept ${left} of the site's service workers, caches and databases`);
-    await context.addInitScript(logPage);
     const console = await EmulatorConsole.open(serial);
     this.consoles.push(console);
     return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
@@ -1243,7 +1286,8 @@ export class RealWorld {
    * and within 10 s: Firefox's context on a wedged emulator once never closed, and held the web server's port from every
    * case after it.
    */
-  async stop() {
+  /** Everything it started, and Firefox for Android too unless `keep`. */
+  async stop(keep = false) {
     this.ended = true;
     // a world another one killed: closing its browsers on Android would close the next one's
     if (!RealWorld.live.has(this)) return;
@@ -1254,10 +1298,16 @@ export class RealWorld {
       }
     };
     for (const b of this.browsers) await bounded(`${b.browserType().name()}'s close`, b.close());
-    for (const c of this.contexts) {
+    if (this.fenix && keep && !this.fenix.closed) {
+      // off the app, whose connections and timers would run on into the next world
+      await bounded("Firefox for Android's blank page", this.fenix.context.pages()[0]?.goto("about:blank") ?? Promise.resolve());
+      fenix = this.fenix;
+    } else if (this.fenix) {
+      const c = this.fenix.context;
       // Firefox on Android keeps its tabs from run to run, and closes one only as its page closes
       for (const p of c.pages()) await bounded("a Firefox for Android page's close", p.close());
       await bounded("Firefox for Android's close", c.close());
+      rmSync(this.fenix.dir, { recursive: true, force: true });
     }
     for (const [d, c] of this.androids) {
       // closing the context leaves Chrome's tabs open on a phone, and it restores every one when it starts again
