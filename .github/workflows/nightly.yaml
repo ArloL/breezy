@@ -1,9 +1,11 @@
 name: Nightly
 
-# The measured network feel and the Mac's performance journal, each against baselines in scripts/baselines/ that runners
-# recorded: a run fails when a measure's 95 % CI lies wholly above every baseline's. One runner can measure 40 % slower
-# than the next, so the baselines are several runs' artifacts; one that fails on such a runner joins them. Pull requests
-# that change what is measured or the baselines run it too.
+# The measured network feel against baselines in scripts/baselines/feel that runners recorded, and the Mac's performance
+# journal against a reference build measured on the same runner: a run fails when a measure's 95 % CI lies wholly above
+# every baseline's. One runner can measure 40 % slower than the next, so the feel's baselines are several runs'
+# artifacts; one that fails on such a runner joins them. A deliberate change in the Mac's performance moves
+# scripts/baselines/bench-ref to the commit that made it. Pull requests that change what is measured or the baselines run
+# it too.
 on:
   schedule:
   - cron: "23 2 * * *"
@@ -68,42 +70,49 @@ jobs:
           exit 0
         fi
         node scripts/gate.ts build/feel.json "${baselines[@]}"
+  # this commit's Release build against the reference's in scripts/baselines/bench-ref, on the same runner and in turns:
+  # one runner measured zoom 4 times slower than the next, which no baseline from other runners could allow for
   bench:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+        # the reference too
+        fetch-depth: 0
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
-    - name: Generate project
-      run: xcodegen generate
-    - name: Build
+    - name: Build this commit and the reference
       run: |
-        xcodebuild \
-          -project Breezy.xcodeproj \
-          -scheme Breezy \
-          -configuration Release \
-          -derivedDataPath build \
-          build
+        git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
+        for dir in . "$RUNNER_TEMP/ref"; do
+          (
+            cd "$dir"
+            xcodegen generate
+            xcodebuild \
+              -project Breezy.xcodeproj \
+              -scheme Breezy \
+              -configuration Release \
+              -derivedDataPath build \
+              build
+          )
+        done
     - name: Measure
       run: |
         printf '{"format": 1, "cards": [], "lanes": []}' > build/empty.breezy
         python3 scripts/make-stress-board.py build/stress.breezy
-        scripts/bench.sh nightly 10 build/empty.breezy build/stress.breezy
+        # in turns, so that what slows the runner for a while slows both alike
+        for i in $(seq 10); do
+          BENCH_BUILD="$RUNNER_TEMP/ref/build" BENCH_OUT=build/bench-ref.jsonl scripts/bench.sh ref 1 build/empty.breezy build/stress.breezy
+          scripts/bench.sh nightly 1 build/empty.breezy build/stress.breezy
+        done
         python3 scripts/bench-summary.py
+        python3 scripts/bench-summary.py build/bench-ref.jsonl
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: bench
-        path: build/bench.jsonl
-    - name: Compare with the baseline
-      run: |
-        shopt -s nullglob
-        baselines=(scripts/baselines/bench/*.jsonl)
-        if [ ${#baselines[@]} -eq 0 ]; then
-          echo "::notice::No baselines in scripts/baselines/bench/: this run's artifact can be one"
-          exit 0
-        fi
-        node scripts/gate.ts build/bench.jsonl "${baselines[@]}"
+        path: build/bench*.jsonl
+    - name: Compare with the reference
+      run: node scripts/gate.ts build/bench.jsonl build/bench-ref.jsonl
