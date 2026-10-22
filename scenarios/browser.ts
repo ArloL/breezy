@@ -1391,10 +1391,16 @@ async function joinSpace(page: Page, hash: string, name: string) {
     return true;
   })).catch(async (e: Error) => {
     // where the page was instead, as Safari on iOS once showed no prompt
-    const was = await page.evaluate(() => JSON.stringify({
-      url: location.href.replace(/#join=.*/, "#join=…"), screen: document.body.dataset.screen, ready: document.readyState,
-      sheet: document.querySelector("#sheet:not([hidden]) .sheet-title")?.textContent ?? null,
-    })).catch((f: Error) => `unread: ${f.message}`);
+    // and whether the app could have started: it waits for the boards' lock and for IndexedDB before it reads the link
+    const was = await page.evaluate(async () => {
+      const within = <T>(p: Promise<T>) => Promise.race([p, new Promise<string>((r) => setTimeout(() => r("no answer in 2 s"), 2000))]);
+      const locks = await within(navigator.locks?.query().then((q) => ({ held: q.held?.map((l) => l.name), pending: q.pending?.map((l) => l.name) })) ?? Promise.resolve("none"));
+      const idb = await within(new Promise<string>((r) => Object.assign(indexedDB.open("breezy"), { onsuccess: (e: Event) => { (e.target as IDBOpenDBRequest).result.close(); r("opens"); }, onerror: () => r("fails"), onblocked: () => r("blocked") })));
+      return JSON.stringify({
+        url: location.href.replace(/#join=.*/, "#join=…"), screen: document.body.dataset.screen, ready: document.readyState,
+        sheet: document.querySelector("#sheet:not([hidden]) .sheet-title")?.textContent ?? null, locks, idb,
+      });
+    }).catch((f: Error) => `unread: ${f.message}`);
     throw new Error(`${e.message}; the page: ${was}`);
   });
 }
