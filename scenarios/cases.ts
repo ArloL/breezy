@@ -167,6 +167,8 @@ async function endEdit(d: Device, id: string, input: "mouse" | "touch", at?: Poi
     await d.key("Escape");
   }
   await d.until("the edit to end", async () => !(await d.editor()));
+  // as a person waits to see the keyboard go: Android took the first tap of a double tap 130 ms after an edit ended
+  if (input === "touch") await d.still("the keyboard to go and the board to stand still");
   // read until the front is drawn as the text at rest: a browser trims it, and removes a card left blank, a frame later
   for (let t = 0; ; t += 100) {
     const card = (await d.scene()).cards.find((c) => c.id === id);
