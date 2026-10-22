@@ -348,26 +348,23 @@ export class Touchscreen {
     return execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"], { timeout: 10_000 });
   }
 
+  /** The emulator's log since `since`, on Date.now(), its times as such. */
+  logcat(since: number) {
+    return adb(this.serial, ["logcat", "-d", "-v", "threadtime", "-v", "epoch", "-t", (since / 1000).toFixed(3)]);
+  }
+
   /**
-   * The emulator as a case failed, before anything stops: its screen, its log since `since` on Date.now(), its windows
-   * and its keyboard, as files, each bounded, and why one is missing in its place.
+   * The emulator as a case failed, before anything stops: its screen, its windows and its keyboard, as files, each
+   * bounded, and why one is missing in its place. Not after each step, as a dump takes system_server a while, and the
+   * touches with it.
    */
-  async failure(since: number): Promise<[string, Buffer | string][]> {
+  async failure(): Promise<[string, Buffer | string][]> {
     const parts: [string, Promise<Buffer | string>][] = [
       ["screen.png", adbBytes(this.serial, ["exec-out", "screencap", "-p"])],
-      ["logcat.txt", adb(this.serial, ["logcat", "-d", "-v", "threadtime", "-v", "epoch", "-t", (since / 1000).toFixed(3)])],
       ["windows.txt", adb(this.serial, ["shell", "dumpsys", "window", "windows"])],
       ["ime.txt", adb(this.serial, ["shell", "dumpsys", "input_method"])],
     ];
     return Promise.all(parts.map(async ([name, p]): Promise<[string, Buffer | string]> => [name, await p.catch((e: Error) => `none: ${e.message}\n`)]));
-  }
-
-  /** Whether Android shows the keyboard, and which window has focus. */
-  async keyboard() {
-    const out = await adb(this.serial, ["shell", "dumpsys input_method | grep -m1 mInputShown; dumpsys window | grep -m1 mCurrentFocus"], 5000);
-    const shown = /mInputShown=(\w+)/.exec(out)?.[1];
-    const focus = /mCurrentFocus=Window\{\S+ \S+ ([^}]+)\}/.exec(out)?.[1];
-    return `${shown === "true" ? "shown" : shown === "false" ? "hidden" : "unknown"}${focus ? `, focus ${focus}` : ""}`;
   }
 
   /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
@@ -442,9 +439,9 @@ function logPage() {
   // the page's size and where the visual viewport is panned to, which the keyboard changes
   let was = "";
   const size = () => {
-    const now = `resize ${innerHeight} ${Math.round(visualViewport!.height)} at ${Math.round(visualViewport!.offsetTop)}`;
+    const is = `resize ${innerHeight} ${Math.round(visualViewport!.height)} at ${Math.round(visualViewport!.offsetTop)}`;
     // the window's and the visual viewport's, mostly together
-    if (now !== was) note(was = now);
+    if (is !== was) note(was = is);
   };
   addEventListener("resize", size);
   visualViewport!.addEventListener("resize", size);
@@ -535,8 +532,13 @@ export class BrowserDevice extends Device {
   }
 
   /** On a phone, the emulator as a case failed. */
-  failure(since: number) {
-    return this.touchscreen?.failure(since);
+  failure() {
+    return this.touchscreen?.failure();
+  }
+
+  /** On a phone, the emulator's log since `since`. */
+  logcat(since: number) {
+    return this.touchscreen?.logcat(since);
   }
 
   /** Whether its touches go through an emulator's touchscreen. */
@@ -568,18 +570,17 @@ export class BrowserDevice extends Device {
     return { lines, summary };
   }
 
-  /** What it shows, the page's size and focus, and on a phone whether Android shows the keyboard. */
+  /** What it shows, and the page's size, which a phone's keyboard takes from, and focus. */
   override async state() {
-    const [scene, page, keyboard] = await Promise.all([
+    const [scene, page] = await Promise.all([
       super.state(),
       this.page.evaluate(() => {
         const v = visualViewport!, e = document.activeElement as HTMLElement | null;
         const cls = e?.getAttribute("class");
         return `view ${innerHeight} ${Math.round(v.height)} at ${Math.round(v.offsetTop)}, focus ${e?.tagName.toLowerCase()}${cls ? `.${cls}` : ""}${e?.isContentEditable ? " editable" : ""}`;
       }),
-      this.touchscreen?.keyboard(),
     ]);
-    return [scene, page, keyboard && `keyboard ${keyboard}`].filter(Boolean).join("; ");
+    return `${scene}; ${page}`;
   }
 
   /** The touches the page has seen lift since it loaded. */
@@ -1072,15 +1073,17 @@ export class RealWorld {
       const who = `d${i} ${d.kind}`, summary: string[] = [];
       if (d instanceof BrowserDevice) {
         lines.push(...d.log.map(([ms, what]): Line => [this.started + ms, who, what]));
-        const [events, failure] = await Promise.all([answer(d.events(who)), error ? d.failure(this.started) : undefined]);
+        // the emulator's log for a passing case too, for when its keyboard came and went
+        const [events, failure, logcat] = await Promise.all([answer(d.events(who)), error ? d.failure() : undefined, d.phone ? answer(d.logcat(this.started)!) : undefined]);
         if (typeof events === "string") summary.push(`${who}: no page events: ${events}`);
         else {
           lines.push(...events.lines);
           summary.push(`${who}: ${events.summary}`);
         }
-        for (const [name, data] of failure ?? []) {
-          writeFileSync(join(dir, `${who} ${name}`), data);
-          if (name === "logcat.txt") lines.push(...logcatLines(data.toString(), `${who} logcat`));
+        for (const [name, data] of failure ?? []) writeFileSync(join(dir, `${who} ${name}`), data);
+        if (logcat !== undefined) {
+          lines.push(...logcatLines(logcat, `${who} logcat`));
+          if (error) writeFileSync(join(dir, `${who} logcat.txt`), logcat);
         }
       }
       const [status, s] = await Promise.all([answer(d.syncStatus()), answer(d.scene())]);
