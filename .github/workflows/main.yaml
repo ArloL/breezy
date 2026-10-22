@@ -315,6 +315,7 @@ jobs:
       run: |
         serial=$(timeout 20 mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
         if [ -n "$serial" ]; then timeout 20 mise exec -- adb -s "$serial" exec-out screencap -p > build/android-screen.png || true; fi
+        if [ -n "$serial" ]; then timeout 20 mise exec -- adb -s "$serial" logcat -d > build/android-logcat.txt || true; fi
         { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/android-host.txt 2>&1
         cp /tmp/adb.*.log build/ 2>/dev/null || true
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -324,6 +325,7 @@ jobs:
         path: |
           build/android-emulator.log
           build/android-screen.png
+          build/android-logcat.txt
           build/android-touches.png
           build/android-host.txt
           build/adb.*.log
