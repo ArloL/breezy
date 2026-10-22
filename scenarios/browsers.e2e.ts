@@ -4,14 +4,14 @@
 // under MISE_ENV=android mise exec -- after node scripts/android.ts for Android.
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { cases, type Case } from "./cases.ts";
 import { RealWorld, type RealKind } from "./browser.ts";
-import { MAC_APP } from "./mac.ts";
+import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 
-const noMac = !existsSync(MAC_APP) && "the Debug Mac app is not built";
+const noMac = macUnfit();
 const noAndroid = (() => {
   try {
     return !/\tdevice$/m.test(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 })) && "no Android device: run node scripts/android.ts";
