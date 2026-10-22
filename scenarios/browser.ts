@@ -859,11 +859,12 @@ function emulatorMB(): number {
 }
 
 /**
- * Boots the emulator again once it holds more than `share` of this machine's memory, and says so; else nothing. Each
- * case in Firefox for Android left 200 MB of it behind on a Linux runner, where the emulator draws without a GPU: one
- * pass of the scenarios took a 16 GB runner to its last gigabyte, and a soak's second took the emulator and the runner.
+ * Boots the emulator again once it holds more than `share` of this machine's memory, and says so; else nothing. On a
+ * Linux runner, where it draws without a GPU, each launch of Firefox for Android leaves 200 MB of it behind, and Chrome's
+ * cases some: a soak's second pass took a 16 GB runner, the emulator with it, and past 60 % Firefox died under cases
+ * now and then. Kept Firefoxes make a pass grow it by 1.5 GB, from 5 GB.
  */
-export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX_SHARE ?? 0.6)): Promise<string | null> {
+export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX_SHARE ?? 0.5)): Promise<string | null> {
   const mb = emulatorMB();
   hadEmulator ??= mb > 0;
   // one that quit, or that a boot before left down, is booted too, where this process began with one
