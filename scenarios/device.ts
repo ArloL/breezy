@@ -133,6 +133,15 @@ export abstract class Device {
     throw new Error(`${this.kind} devices cannot launch again`);
   }
 
+  /** What it shows now, in a line, for a step log. */
+  async state(): Promise<string> {
+    const s = await this.scene(), c = s.camera;
+    const ids = (f: (i: SceneItem) => boolean | undefined) => [...s.cards, ...s.lanes].filter(f).map((i) => i.id.slice(0, 8)).join(" ");
+    const marks = { selected: ids((i) => i.selected), held: ids((i) => i.held), raised: ids((i) => i.raised), turned: s.turned?.slice(0, 8) };
+    return [`${s.cards.length} cards, ${s.lanes.length} lanes, camera ${Math.round(c.x)},${Math.round(c.y)} ×${c.zoom.toFixed(2)}`,
+      ...Object.entries(marks).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`), ...s.marquee ? ["marquee"] : []].join(", ");
+  }
+
   /** Where world point `p` is on this device's screen now. */
   async screen(p: Point): Promise<Point> {
     const { camera: c } = await this.scene();

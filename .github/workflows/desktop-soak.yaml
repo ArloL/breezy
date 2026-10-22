@@ -2,7 +2,8 @@ name: Desktop soak
 
 # The scenarios on real devices but Android's, Chromium, WebKit, Firefox and the Debug Mac app, over and over on many
 # macOS runners, to measure how often they fail: Main retries a failing case once, which hides a rare flake there. A
-# failing case keeps its devices' sync logs in build/scenarios: read them before anything else. Weekly, or dispatch it.
+# failing case's timeline.txt in build/scenarios has its steps, pages and sync: read it before anything else. Weekly,
+# or dispatch it.
 on:
   schedule:
   - cron: "17 4 * * 6"
@@ -79,11 +80,31 @@ jobs:
           echo "::endgroup::"
         done
         exit $failed
-    - name: Keep the failing cases' sync logs and touches
+    - name: Keep each case's record
       if: ${{ always() }}
-      run: cp -R build/scenarios build/touches build/soak/ 2>/dev/null || true
+      run: cp -R build/scenarios build/soak/ 2>/dev/null || true
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
         name: desktop-soak-${{ matrix.shard }}
         path: build/soak
+  # every shard's case runs counted together: failure rates by case, pair, step and error, and the slowest
+  summary:
+    needs: desktop
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: desktop-soak-*
+        path: build/soaks
+    - run: node scripts/scenario-stats.ts build/soaks >> "$GITHUB_STEP_SUMMARY"

@@ -173,6 +173,12 @@ export class MacDevice extends Device {
     return this.made(before, "lanes");
   }
 
+  /** The app ended at once, for a world that never stopped. */
+  kill() {
+    this.socket?.destroy();
+    this.app.kill("SIGKILL");
+  }
+
   /** Once the app has quit, so that the next one can take its control port; it is killed if it has not in 5 s. */
   async stop() {
     this.socket?.destroy();
