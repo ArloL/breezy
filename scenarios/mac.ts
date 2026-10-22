@@ -2,15 +2,31 @@
 // board window as events and its scene read off the canvas. See Breezy/Support/Control.swift.
 import { spawn, type ChildProcess } from "node:child_process";
 import { connect, type Socket } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Device, type Editor, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
 import type { Point } from "../web/types.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 export const MAC_APP = join(root, "build/Build/Products/Debug/Breezy.app/Contents/MacOS/Breezy");
+
+/** Why the Debug Mac app cannot stand for this checkout, if it cannot: not built, or older than one of its sources, as
+ * a build from a week before once ran the cases unnoticed. */
+export function macUnfit(): string | false {
+  if (!existsSync(MAC_APP)) return "the Debug Mac app is not built";
+  const built = statSync(MAC_APP).mtimeMs;
+  const newer = (dir: string): string | undefined => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, e.name);
+      const found = e.isDirectory() ? newer(path) : statSync(path).mtimeMs > built ? path : undefined;
+      if (found) return found;
+    }
+  };
+  const source = newer(join(root, "Breezy")) ?? newer(join(root, "BreezyKit", "Sources"));
+  return source ? `the Debug Mac app is older than ${relative(root, source)}: build it again` : false;
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class MacDevice extends Device {
