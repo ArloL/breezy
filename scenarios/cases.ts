@@ -417,7 +417,10 @@ const chaos = (input: "mouse" | "touch"): Case => ({
           const e = await a.editor();
           assert.ok(e, "nothing is being edited");
           const near = (c: Box, k: Box | null) => !!k && Math.abs(c.x + c.w / 2 - k.x) < 48 && c.y + c.h / 2 > k.y - k.h && c.y + c.h / 2 < k.y + 2 * k.h + 48;
-          const on = e.chars.flatMap((c, i) => c && c.y > e.view.y + 90 && c.y + c.h < e.view.y + e.view.h - 10 && !near(c, e.caret) && !near(c, tapped) ? [[i, c] as const] : []);
+          // nor under another card, which takes the tap and ends the edit
+          const others = await Promise.all((await a.scene()).cards.filter((x) => x.id !== id).map((x) => onScreen(a, x.id)));
+          const covered = (c: Box) => others.some((o) => c.x + c.w > o.x - 4 && c.x < o.x + o.w + 4 && c.y + c.h > o.y - 4 && c.y < o.y + o.h + 4);
+          const on = e.chars.flatMap((c, i) => c && c.y > e.view.y + 90 && c.y + c.h < e.view.y + e.view.h - 10 && !near(c, e.caret) && !near(c, tapped) && !covered(c) ? [[i, c] as const] : []);
           if (r < 0.9 && on.length) {
             const [i, c] = pick(on);
             const p = await a.world({ x: c.x + c.w / 2, y: c.y + c.h / 2 });
