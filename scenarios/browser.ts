@@ -1405,6 +1405,9 @@ async function joinSpace(page: Page, hash: string, name: string) {
       return JSON.stringify({
         url: location.href.replace(/#join=.*/, "#join=…"), screen: document.body.dataset.screen, ready: document.readyState,
         sheet: document.querySelector("#sheet:not([hidden]) .sheet-title")?.textContent ?? null, locks, idb,
+        // how this page came, whether the board list was drawn, and how long ago
+        came: (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type,
+        groups: document.querySelectorAll(".boards-groups > *").length, age: Math.round(performance.now()),
       });
     }).catch((f: Error) => `unread: ${f.message}`);
     throw new Error(`${e.message}; the page: ${was}`);
