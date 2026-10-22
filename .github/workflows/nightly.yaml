@@ -34,6 +34,9 @@ jobs:
       with:
         persist-credentials: false
     # a connection whose own port is a server's keeps that server from starting
+    # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -91,6 +94,9 @@ jobs:
         persist-credentials: false
         # the reference too
         fetch-depth: 0
+    # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
     - name: Build this commit and the reference
       run: |
