@@ -4,8 +4,8 @@ name: Nightly
 # journal against a reference build measured on the same runner: a run fails when a measure's 95 % CI lies wholly above
 # every baseline's. One runner can measure 40 % slower than the next, so the feel's baselines are several runs'
 # artifacts; one that fails on such a runner joins them. A deliberate change in the Mac's performance moves
-# scripts/baselines/bench-ref to the commit that made it. Pull requests that change what is measured or the baselines run
-# it too.
+# scripts/baselines/bench-ref to the commit that made it. And the sync fuzzed on seeds no run tried before. Pull requests
+# that change what is measured or the baselines run it too.
 on:
   schedule:
   - cron: "23 2 * * *"
@@ -20,6 +20,7 @@ on:
     - scripts/feel.ts
     - scripts/bench.sh
     - Breezy/Support/Bench.swift
+    - scripts/fuzz.ts
 permissions: {}
 
 jobs:
@@ -118,3 +119,42 @@ jobs:
         path: build/bench*.jsonl
     - name: Compare with the reference
       run: node scripts/gate.ts build/bench.jsonl build/bench-ref.jsonl
+  # New seeds every night, with the network profile and the mix of web and Swift devices in turn: Main fuzzes seeds 1–10
+  # of one mix only. A failing seed's trace and the smallest one that still fails are in the fuzz artifact; replay one
+  # with node scripts/fuzz.ts --replay FILE.
+  fuzz:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Install the relay
+      run: npm ci --prefix relay
+    - name: Build breezy-sim
+      run: swift build --package-path BreezyKit --product breezy-sim
+    - name: Fuzz
+      run: |
+        profiles=(mixed lan office train tether blocked-ws)
+        mixes=("2 2" "3 1" "1 3" "4 0" "0 4")
+        day=$(( $(date -u +%s) / 86400 ))
+        profile=${profiles[$(( day % ${#profiles[@]} ))]}
+        read -r web swift <<< "${mixes[$(( day / ${#profiles[@]} % ${#mixes[@]} ))]}"
+        # past Main's seeds, and none twice in years
+        first=$(( 11 + day % 10000 * 120 ))
+        echo "::notice::seeds $first-$(( first + 119 )), profile $profile, $web web and $swift Swift devices"
+        node scripts/fuzz.ts --seeds "$first-$(( first + 119 ))" --profile "$profile" --web "$web" --swift "$swift" --shrink
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ failure() }}
+      with:
+        name: fuzz
+        path: build/fuzz
