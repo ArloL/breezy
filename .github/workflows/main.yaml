@@ -320,8 +320,9 @@ jobs:
         # a changed script starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
     - name: Boot the emulator
-      timeout-minutes: 8
-      run: mise exec -- node scripts/android.ts
+      # twice, if need be
+      timeout-minutes: 16
+      run: mise exec -- scripts/android-boot.sh
     - name: Scenarios on Android
       timeout-minutes: 40
       env:
