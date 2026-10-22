@@ -2,12 +2,12 @@
 // Chromium, WebKit and Firefox, Chrome on the Android device adb sees, Firefox on the emulator, and the Debug Mac app. Slower: run with
 //   node --test scenarios/browsers.e2e.ts
 // under MISE_ENV=android mise exec -- after node scripts/android.ts for Android.
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { cases, type Case } from "./cases.ts";
-import { RealWorld, type RealKind } from "./browser.ts";
+import { RealWorld, rebootFullEmulator, type RealKind } from "./browser.ts";
 import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 
@@ -30,6 +30,13 @@ const phone = (k: RealKind) => k === "android" || k === "firefox-android";
  * a merge, and lists it in build/scenarios/flaky.txt; soaks give 1, to count every failure. */
 const RUNS = Number(process.env.SCENARIO_RUNS ?? 1);
 const MS = 90_000;
+
+// before a phone's case and outside its time: a boot takes minutes
+beforeEach(async (t) => {
+  if (noAndroid || !/android/.test(t.name)) return;
+  const said = await rebootFullEmulator();
+  if (said) console.log(said);
+});
 
 /** Worlds in a row whose servers did not start. Two say the machine cannot run any case, as when a port stayed taken,
  * and the cases left fail at once rather than each wait for the servers until the job times out. */
