@@ -1071,7 +1071,20 @@ export class RealWorld {
     let held = fenix;
     fenix = null;
     const answers = (p?: Page) => p ? Promise.race([p.evaluate(() => true).catch(() => false), sleep(5000).then(() => false)]) : false;
-    if (held && (held.closed || !await answers(held.context.pages()[0]))) {
+    if (held && !held.closed) {
+      try {
+        // to the front as a tap on its icon brings it, over Chrome, which a case in it may have left there
+        execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
+          "-f", "0x10200000", "-n", `${FENIX}/.App`], { timeout: 30_000, stdio: "ignore" });
+        // none resumed for a moment as it comes
+        const top = () => execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "dumpsys activity activities | grep -m1 topResumedActivity; true"], { encoding: "utf8", timeout: 10_000 });
+        await until("Firefox for Android in front", () => top().includes(`${FENIX}/`), 15_000);
+      } catch {}
+      // once in front: Android may have ended it behind Chrome, and bringing it back started another, which the kept
+      // session does not reach
+      if (held.closed || !await answers(held.context.pages()[0])) held.closed = true;
+    }
+    if (held?.closed) {
       held.context.close().catch(() => {});
       rmSync(held.dir, { recursive: true, force: true });
       held = null;
@@ -1083,14 +1096,6 @@ export class RealWorld {
       const h = held;
       context.on("close", () => (h.closed = true));
       await context.addInitScript(logPage);
-    }
-    else {
-      // to the front as a tap on its icon brings it, over Chrome, which a case in it may have left there
-      execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
-        "-f", "0x10200000", "-n", `${FENIX}/.App`], { timeout: 30_000, stdio: "ignore" });
-      // none resumed for a moment as it comes
-      const top = () => execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "dumpsys activity activities | grep -m1 topResumedActivity; true"], { encoding: "utf8", timeout: 10_000 });
-      await until("Firefox for Android in front", () => top().includes(`${FENIX}/`), 15_000);
     }
     this.fenix = held;
     const context = held.context;
