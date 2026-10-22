@@ -4,7 +4,7 @@
 // iPhone with xcrun simctl shutdown all.
 import { execFileSync, spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { iosUnfit, SAFARIDRIVER } from "../scenarios/ios.ts";
+import { iosUnfit, IosPage, SAFARIDRIVER } from "../scenarios/ios.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
 // the newest iPhone of the newest runtime, booted or not
@@ -24,4 +24,7 @@ if (await iosUnfit()) spawn("safaridriver", ["-p", new URL(SAFARIDRIVER).port], 
 for (const end = Date.now() + 30_000; await iosUnfit(); await sleep(500)) {
   if (Date.now() > end) throw new Error("safaridriver did not start in 30 s: run sudo safaridriver --enable once");
 }
-console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, safaridriver on ${SAFARIDRIVER}`);
+// the first session on a fresh simulator took over 90 s, a case's whole time
+const warm = Date.now();
+await (await IosPage.open()).close();
+console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, safaridriver on ${SAFARIDRIVER}, a first session in ${Math.round((Date.now() - warm) / 1000)} s`);

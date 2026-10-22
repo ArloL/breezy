@@ -1281,7 +1281,10 @@ export class RealWorld {
           if (error) writeFileSync(join(dir, `${who} logcat.txt`), logcat);
         }
       }
-      if (d instanceof IosDevice && error) await answer(d.page.screenshot().then((png) => writeFileSync(join(dir, `${who} screen.png`), png)));
+      if (d instanceof IosDevice && error) {
+        const shot = await answer(d.page.screenshot().then((png) => writeFileSync(join(dir, `${who} screen.png`), png)));
+        if (typeof shot === "string") summary.push(`${who}: no screenshot: ${shot}`);
+      }
       const [status, s] = await Promise.all([answer(d.syncStatus()), answer(d.scene())]);
       const ends = [`${who} says ${JSON.stringify(status)}`,
         `${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`];
