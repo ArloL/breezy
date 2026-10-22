@@ -93,6 +93,8 @@ const settled = (what: string, ...args: string[]) => within(60, what, () => {
 for (const port of [WEB, SERVER, RELAY]) {
   await within(90, `port ${port} to be free on the emulator`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
 }
+// room in the emulator's log for a whole run, which a failed job keeps
+await settled("a 32 MB log", "logcat", "-G", "32M");
 // Android's own animations, which a software-rendered screen draws on the CPU the page needs too
 for (const scale of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) {
   await settled(`${scale} 0`, "shell", "settings", "put", "global", scale, "0");

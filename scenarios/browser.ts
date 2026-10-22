@@ -346,6 +346,11 @@ export class Touchscreen {
     return execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"], { timeout: 10_000 });
   }
 
+  /** The emulator's log since `ms`, on Date.now(). */
+  logcat(ms: number) {
+    return execFileSync("adb", ["-s", this.serial, "logcat", "-d", "-t", (ms / 1000).toFixed(3)], { timeout: 10_000, maxBuffer: 256 * 1024 * 1024 });
+  }
+
   /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
   texts() {
     try {
@@ -483,6 +488,10 @@ export class BrowserDevice extends Device {
   /** The emulator's screen as a PNG, if this is one. */
   capture() {
     return this.touchscreen?.capture();
+  }
+
+  logcat(ms: number) {
+    return this.touchscreen?.logcat(ms);
   }
 
   /** Whether its touches go through an emulator's touchscreen. */
@@ -794,11 +803,14 @@ export class RealWorld {
   private web?: ReturnType<typeof createServer>;
   /** When it started, on performance.now(): the devices' logs count from it. */
   private t0 = 0;
+  /** When it started, on Date.now(): the emulator's log counts from it. */
+  private started = 0;
 
   /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
    * or never ends. */
   async start(kinds: RealKind[]) {
     this.t0 = performance.now();
+    this.started = Date.now();
     await this.serve();
     const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
@@ -949,6 +961,8 @@ export class RealWorld {
       const file = join(root, "build", "touches", `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}`);
       writeFileSync(`${file}.txt`, `${verdict}\n${touches}\n`);
       if (verdict !== "passed") try { writeFileSync(`${file}.png`, d.capture()!); } catch {}
+      // the emulator's for the case alone, as a soak's runs outlast its log
+      if (verdict !== "passed") try { writeFileSync(`${file}.logcat.txt`, d.logcat(this.started)!); } catch {}
     }
   }
 
@@ -971,26 +985,37 @@ export class RealWorld {
     const dir = join(root, "build", "scenarios");
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}.txt`);
-    writeFileSync(file, [verdict, ...lines.map(([ms, what]) => `${String(ms).padStart(7)} ${what}`), "", ...ends, ""].join("\n"));
+    // wall clock, to find the case in the emulator's log and the runner's load
+    const when = `started ${new Date(this.started).toISOString()}, recorded ${new Date().toISOString()}`;
+    writeFileSync(file, [verdict, when, ...lines.map(([ms, what]) => `${String(ms).padStart(7)} ${what}`), "", ...ends, ""].join("\n"));
   }
 
-  /** Everything it started, each part even when another part fails to stop, as when the phone's adb connection broke. */
+  /**
+   * Everything it started, each part even when another part fails to stop, as when the phone's adb connection broke,
+   * and within 10 s: Firefox's context on a wedged emulator once never closed, and held the web server's port from every
+   * case after it.
+   */
   async stop() {
-    for (const b of this.browsers) await b.close().catch(() => {});
+    const bounded = async (what: string, p: Promise<unknown>) => {
+      if (!await Promise.race([p.then(() => true, () => true), sleep(10_000).then(() => false)])) {
+        globalThis.console.log(`stopping the world: ${what} did not end in 10 s`);
+      }
+    };
+    for (const b of this.browsers) await bounded(`${b.browserType().name()}'s close`, b.close());
     for (const c of this.contexts) {
       // Firefox on Android keeps its tabs from run to run, and closes one only as its page closes
-      for (const p of c.pages()) await p.close().catch(() => {});
-      await c.close().catch(() => {});
+      for (const p of c.pages()) await bounded("a Firefox for Android page's close", p.close());
+      await bounded("Firefox for Android's close", c.close());
     }
     for (const [d, c] of this.androids) {
       // closing the context leaves Chrome's tabs open on a phone, and it restores every one when it starts again
-      for (const p of c?.pages() ?? []) await p.close().catch(() => {});
-      await c?.close().catch(() => {});
+      for (const p of c?.pages() ?? []) await bounded("a Chrome for Android page's close", p.close());
+      if (c) await bounded("Chrome for Android's close", c.close());
       // which once waited 90 s, on a connection adbd had stopped serving, after the case had passed
-      await Promise.race([d.close().catch(() => {}), sleep(10_000)]);
+      await bounded("the Android device's connection", d.close());
     }
     for (const c of this.consoles) c.close();
-    for (const d of this.devices) if (d instanceof MacDevice) await d.stop();
+    for (const d of this.devices) if (d instanceof MacDevice) await bounded("the Mac app's stop", d.stop());
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();

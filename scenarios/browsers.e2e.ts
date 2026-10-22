@@ -44,7 +44,7 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind]): Promise
     verdict = "passed";
     return null;
   } catch (e) {
-    verdict = `failed: ${(e as Error).message}`;
+    verdict = `failed: ${(e as Error).stack ?? e}`;
     return e as Error;
   } finally {
     clearTimeout(timer);
