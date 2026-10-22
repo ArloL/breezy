@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Fails when a measure got worse: its mean's 95 % CI lies wholly above the CI of every baseline, runs recorded on the same
-// kind of machine, whose spread from one machine to the next the envelope takes in. Every measure is lower-is-better.
+// Fails when a measure got worse: its mean's 95 % CI lies wholly above the CI of every baseline, and its mean above the
+// worst baseline's by over 10 % and 1 ms or MB, as a sub-millisecond p95 0.05 ms longer once failed a night. Baselines are
+// runs on the same machine, as of a reference build, or on the same kind of machine, whose spread from one machine to the
+// next the envelope takes in. Every measure is lower-is-better.
 // Takes feel.ts's output, whose last line holds its samples, or bench.sh's build/bench.jsonl, as the run and baselines.
 //   node scripts/gate.ts RUN BASELINE...
 import { readFileSync } from "node:fs";
@@ -40,8 +42,8 @@ for (const k of new Set(baselines.flatMap(Object.keys))) {
     continue;
   }
   const bs = baselines.filter((b) => b[k]).map((b) => ci(b[k])), r = ci(run[k]);
-  const lo = Math.min(...bs.map((b) => b.lo)), hi = Math.max(...bs.map((b) => b.hi));
-  const verdict = r.lo > hi ? "WORSE" : r.hi < lo ? "better: record new baselines" : "ok";
+  const lo = Math.min(...bs.map((b) => b.lo)), hi = Math.max(...bs.map((b) => b.hi)), worst = Math.max(...bs.map((b) => b.m));
+  const verdict = r.lo > hi && r.m > worst * 1.1 && r.m > worst + 1 ? "WORSE" : r.hi < lo ? "better: record new baselines" : "ok";
   if (verdict === "WORSE") worse++;
   console.log(`${k.padEnd(48)} ${r.text.padStart(16)} against ${`${lo.toFixed(1)} to ${hi.toFixed(1)}`.padEnd(18)} ${verdict}`);
 }
