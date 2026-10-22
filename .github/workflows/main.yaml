@@ -492,6 +492,7 @@ jobs:
         fi
         npm ci --prefix relay
         npm --prefix relay run deploy
+        node scripts/relay-check.ts
   required-status-check:
     name: main.required-status-check
     needs:
