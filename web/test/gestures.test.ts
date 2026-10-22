@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Gestures, HOLD_MS } from "../gestures.ts";
+import { Gestures, HOLD_MS, holdCheck } from "../gestures.ts";
 import type { GestureHandler } from "../gestures.ts";
 import type { Point } from "../types.ts";
 
@@ -259,4 +259,30 @@ test("a cancelled one-finger zoom is undone", () => {
   g.move(2, 10, 30, 220);
   g.cancel(2);
   assert.deepEqual(names(), ["tap", "zoomDragStart", "zoomDrag", "zoomDragCancel"]);
+});
+
+/** A clock whose timers each fire `late` ms after they are due, and `holdCheck`'s ticks on it. */
+function lateTimers(late: (n: number) => number) {
+  let now = 0, n = 0;
+  const due: [number, () => void][] = [];
+  const later = (f: () => void, ms: number) => void due.push([now + Math.max(0, ms) + late(n++), f]);
+  const ticks: number[] = [];
+  holdCheck(HOLD_MS + 10, (t) => ticks.push(t), () => now, later);
+  for (let i = 0; i < 100 && due.length; i++) {
+    due.sort((a, b) => a[0] - b[0]);
+    const [at, f] = due.shift()!;
+    now = at;
+    f();
+  }
+  return ticks;
+}
+
+test("a hold's check that runs late once asks again, and ticks once on time", () => {
+  assert.deepEqual(lateTimers((n) => (n === 0 ? 500 : 0)), [HOLD_MS + 10 + 500 + 50]);
+});
+
+test("a hold's check ticks though every timer runs late, as Firefox's did for seconds on a busy runner", () => {
+  const ticks = lateTimers(() => 100);
+  assert.equal(ticks.length, 1);
+  assert.ok(ticks[0]! < 1000, `ticked at ${ticks[0]}`);
 });

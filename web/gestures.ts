@@ -57,6 +57,20 @@ interface One {
   track: Sample[];
 }
 
+/**
+ * Calls `tick` once a hold's time `at` has come, on `now`'s clock. A timer late by more than a frame or two found the page
+ * busy, and Chrome may hand over the moves it held back meanwhile only after it: a finger that moved in time would lift
+ * the card it meant to pan. It asks again once the page has kept up for a moment, but only a few times: a page whose
+ * every timer runs late is slow, not busy for a moment, as Firefox on a busy runner was for seconds, and a card held
+ * there never lifted. A move from before the hold's time that comes after it still undoes it.
+ */
+export function holdCheck(at: number, tick: (t: number) => void, now = () => performance.now(), later: (f: () => void, ms: number) => unknown = setTimeout, asked = 0) {
+  later(() => {
+    if (now() - at > 40 && asked < 3) return holdCheck(now() + 50, tick, now, later, asked + 1);
+    tick(now());
+  }, at - now());
+}
+
 export class Gestures {
   h: GestureHandler;
   points: Map<number, Point>;
