@@ -46,12 +46,15 @@ export class Steps {
   /** `f` as a step of `who`'s; `after`, if given, read once it ends without the case waiting for it. */
   async run<T>(who: string, action: string, args: unknown[], f: () => Promise<T>, after?: () => Promise<string>): Promise<T> {
     const last = this.list.at(-1);
+    // a polling loop's waits, as one step from its first to its last, the looks between them in it
     if (action === "wait" && last?.who === who && last.action === "wait" && last.ms !== undefined) {
-      const at = Date.now();
-      const r = await f();
-      last.times = (last.times ?? 1) + 1;
-      last.ms += Date.now() - at;
-      return r;
+      last.ms = undefined;
+      try {
+        return await f();
+      } finally {
+        last.times = (last.times ?? 1) + 1;
+        last.ms = Date.now() - last.at;
+      }
     }
     const step: Step = { who, action, args: args.map(brief).join(", "), at: Date.now() };
     this.list.push(step);
