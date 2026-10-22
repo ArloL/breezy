@@ -96,7 +96,17 @@ export class Mouse {
     const d = this.press;
     this.press = null;
     if (!d) return;
-    if (d.dragging) return this.app.input.dragEnd({ x, y }, { x: 0, y: 0 });
+    const p = { x, y };
+    // where it was let go, as a busy page may get the moves before it late or not at all: a lane's resize on a busy
+    // runner ended as a click, and the lane kept its size
+    if (!d.dragging && Math.hypot(x - d.p0.x, y - d.p0.y) > (d.action === "marquee" ? 0 : SLOP)) {
+      d.dragging = true;
+      this.app.input.beginDrag(d.action, d.h, d.p0, p);
+    }
+    if (d.dragging) {
+      if (this.pointer?.x !== x || this.pointer?.y !== y) this.app.input.dragMove(p);
+      return this.app.input.dragEnd(p, { x: 0, y: 0 });
+    }
     if (d.collapse) this.app.select([d.h.id!]);
   }
 
