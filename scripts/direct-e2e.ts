@@ -5,7 +5,7 @@
 // ungoogled-chromium); BREEZY_CHROMIUM names one, else Playwright's is used: node scripts/direct-e2e.ts
 import { spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { tmpdir, homedir } from "node:os";
@@ -43,9 +43,13 @@ process.on("exit", cleanup);
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 process.on("uncaughtException", (e) => { console.error(e); process.exit(1); });
 process.on("unhandledRejection", (e) => { console.error(e); process.exit(1); });
-const spawnGroup = (cmd: string, args: string[], opts: SpawnOptions) => {
-  const c = spawn(cmd, args, { ...opts, detached: true });
-  c.on("exit", (code, signal) => { if (!done) { console.error(`${cmd} exited early (${code ?? signal})`); process.exit(1); } });
+/** What `name`, a server this starts, says: in build/e2e-NAME.log, its end told when it fails. */
+const said = (name: string) => readFileSync(join(root, "build", `e2e-${name}.log`), "utf8").split("\n").slice(-30).join("\n");
+const spawnGroup = (name: string, cmd: string, args: string[], opts: SpawnOptions) => {
+  mkdirSync(join(root, "build"), { recursive: true });
+  const log = openSync(join(root, "build", `e2e-${name}.log`), "w");
+  const c = spawn(cmd, args, { ...opts, stdio: ["ignore", log, log], detached: true });
+  c.on("exit", (code, signal) => { if (!done) { console.error(`${name} exited early (${code ?? signal}):\n${said(name)}`); process.exit(1); } });
   return c;
 };
 let done = false;
@@ -82,16 +86,16 @@ process.on("exit", () => web.close());
 
 const relayState = mkdtempSync(join(tmpdir(), "breezy-e2e-relay-"));
 dirs.push(relayState);
-children.push(spawnGroup("npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", "58568", "--persist-to", relayState], { cwd: join(root, "relay"), stdio: "ignore" }));
-children.push(spawnGroup(join(root, "server/dev.sh"), [], { stdio: "ignore" }));
-await waitFor("relay", () => fetch("http://127.0.0.1:58568/").then(() => true, () => false), 60_000);
-await waitFor("server", () => fetch("http://127.0.0.1:58566/sync.php").then(() => true, () => false));
+children.push(spawnGroup("relay", "npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", "58568", "--persist-to", relayState], { cwd: join(root, "relay") }));
+children.push(spawnGroup("server", join(root, "server/dev.sh"), [], {}));
+await waitFor("relay", () => fetch("http://127.0.0.1:58568/").then(() => true, () => false), 60_000).catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("relay")}`)));
+await waitFor("server", () => fetch("http://127.0.0.1:58566/sync.php").then(() => true, () => false)).catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("server")}`)));
 
 /** A browser with its own profile, and a DevTools session on its page. */
 async function browser(name: string) {
   const dir = mkdtempSync(join(tmpdir(), `breezy-e2e-${name}-`));
   dirs.push(dir);
-  children.push(spawnGroup(chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], { stdio: "ignore" }));
+  children.push(spawnGroup(`chromium-${name}`, chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], {}));
   // a macOS runner checks a browser it has not run before for a while first
   await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")), 60_000);
   const port = readFileSync(join(dir, "DevToolsActivePort"), "utf8").split("\n")[0];
