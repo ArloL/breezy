@@ -5,7 +5,7 @@
 //   node scripts/feel.ts [--direct] [--relay-ms 25] [--server-ms 40] [--runs 10] [--only cursor,drag,colour,outage]
 import { spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { createServer as createHttp } from "node:http";
 import { createServer, connect } from "node:net";
 import type { Server, Socket } from "node:net";
@@ -57,9 +57,13 @@ process.on("exit", () => {
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 process.on("uncaughtException", (e) => { console.error(e); process.exit(1); });
 process.on("unhandledRejection", (e) => { console.error(e); process.exit(1); });
-const spawnGroup = (cmd: string, args: string[], opts: SpawnOptions) => {
-  const c = spawn(cmd, args, { ...opts, detached: true });
-  c.on("exit", (code, signal) => { if (!done) { console.error(`${cmd} exited early (${code ?? signal})`); process.exit(1); } });
+/** What `name`, a server this starts, says: in build/feel-NAME.log, its end told when it fails. */
+const said = (name: string) => readFileSync(join(root, "build", `feel-${name}.log`), "utf8").split("\n").slice(-30).join("\n");
+const spawnGroup = (name: string, cmd: string, args: string[], opts: SpawnOptions) => {
+  mkdirSync(join(root, "build"), { recursive: true });
+  const log = openSync(join(root, "build", `feel-${name}.log`), "w");
+  const c = spawn(cmd, args, { ...opts, stdio: ["ignore", log, log], detached: true });
+  c.on("exit", (code, signal) => { if (!done) { console.error(`${name} exited early (${code ?? signal}):\n${said(name)}`); process.exit(1); } });
   return c;
 };
 
@@ -129,15 +133,15 @@ createHttp((req, res) => {
 
 const relayState = mkdtempSync(join(tmpdir(), "breezy-feel-relay-"));
 dirs.push(relayState);
-children.push(spawnGroup("npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", "58568", "--persist-to", relayState], { cwd: join(root, "relay"), stdio: "ignore" }));
-children.push(spawnGroup(join(root, "server/dev.sh"), [], { stdio: "ignore", env: { ...process.env, BREEZY_DEV_RELAY: "ws://127.0.0.1:58569/" } }));
+children.push(spawnGroup("relay", "npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", "58568", "--persist-to", relayState], { cwd: join(root, "relay") }));
+children.push(spawnGroup("server", join(root, "server/dev.sh"), [], { env: { ...process.env, BREEZY_DEV_RELAY: "ws://127.0.0.1:58569/" } }));
 // a's own way to the relay and the server, so that its network can go alone: its page rewrites the relay's port
 const proxies = {
   a: { relay: delayProxy(58570, 58568, Number(opt["relay-ms"])), server: delayProxy(58571, 58566, Number(opt["server-ms"])) },
   b: { relay: delayProxy(58569, 58568, Number(opt["relay-ms"])), server: delayProxy(58567, 58566, Number(opt["server-ms"])) },
 };
-await waitFor("relay", () => fetch("http://127.0.0.1:58568/").then(() => true, () => false), 60_000);
-await waitFor("server", () => fetch("http://127.0.0.1:58566/sync.php").then(() => true, () => false));
+await waitFor("relay", () => fetch("http://127.0.0.1:58568/").then(() => true, () => false), 60_000).catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("relay")}`)));
+await waitFor("server", () => fetch("http://127.0.0.1:58566/sync.php").then(() => true, () => false)).catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("server")}`)));
 
 // both pages share this Mac's clock: performance.timeOrigin + performance.now()
 const PROBE = `
@@ -160,7 +164,7 @@ window.__frames = [];
 async function browser(name: string) {
   const dir = mkdtempSync(join(tmpdir(), `breezy-feel-${name}-`));
   dirs.push(dir);
-  children.push(spawnGroup(chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "--disable-renderer-backgrounding", "--disable-background-timer-throttling", "about:blank"], { stdio: "ignore" }));
+  children.push(spawnGroup(`chromium-${name}`, chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "--disable-renderer-backgrounding", "--disable-background-timer-throttling", "about:blank"], {}));
   // a macOS runner checks a browser it has not run before for a while first
   await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")), 60_000);
   const port = readFileSync(join(dir, "DevToolsActivePort"), "utf8").split("\n")[0];
