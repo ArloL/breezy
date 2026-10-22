@@ -44,6 +44,10 @@ async function laneAndCard({ devices: [a], settle }: Stage) {
   return { lane, card };
 }
 
+/** Where a finger presses card `c`: by its left end, as the + button a phone shows at the bottom of the screen covers
+ * the middle of a card laneAndCard puts low there, the more so in Firefox on Android, which leaves the board less height. */
+const press = (c: { x: number; y: number; h: number }): Point => ({ x: c.x + 24, y: c.y + c.h / 2 });
+
 /** Until `test` holds, checked every 250 ms on `d`'s clock for at most `ms`. */
 async function eventually(d: Device, ms: number, test: () => Promise<boolean>) {
   for (let t = 0; t < ms; t += 250) {
@@ -524,7 +528,7 @@ export const cases: Case[] = [
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
       const at = await a.scene();
-      await a.touchDrag(centre(item(at, card)), centre(item(at, lane)));
+      await a.touchDrag(press(item(at, card)), centre(item(at, lane)));
       await s.settle();
       assert.deepEqual(await within(b, lane, card), { x: 24, y: 72 });
     },
@@ -540,10 +544,7 @@ export const cases: Case[] = [
       await a.offline(true);
       await a.relaunch();
       const at = await a.scene();
-      // by its left end: Firefox on Android leaves the board less height, and the + button a phone shows at the bottom
-      // of the screen covers the card's middle once it launches again
-      const c = item(at, card);
-      await a.touchDrag({ x: c.x + 24, y: c.y + c.h / 2 }, centre(item(at, lane)));
+      await a.touchDrag(press(item(at, card)), centre(item(at, lane)));
       await a.wait(2000);
       assert.deepEqual(await within(a, lane, card), { x: 24, y: 72 }, "where it was dragged, offline");
       assert.deepEqual(await within(b, lane, card), was, "the other device saw it while the first was offline");
@@ -583,7 +584,7 @@ export const cases: Case[] = [
       const before = await a.scene(), seen = item(await b.scene(), card);
       const c = item(before, card);
       assert.equal(c.selected, false, "a tap on nothing clears the selection");
-      await a.touchDrag(centre(c), { x: c.x + 200, y: c.y - 100 }, { hold: false });
+      await a.touchDrag(press(c), { x: c.x + 200, y: c.y - 100 }, { hold: false });
       await s.settle();
       const after = await a.scene();
       assert.notDeepEqual(after.camera, before.camera, "the camera moved");
@@ -605,7 +606,7 @@ export const cases: Case[] = [
       const c = item(before, card);
       // longer than a hold: the finger moved long before, but the moves reach the app after the hold's timer
       await a.busyAfterPress(500);
-      await a.touchDrag(centre(c), { x: c.x + 200, y: c.y - 100 }, { hold: false });
+      await a.touchDrag(press(c), { x: c.x + 200, y: c.y - 100 }, { hold: false });
       await s.settle();
       const after = await a.scene();
       assert.deepEqual({ x: item(after, card).x, y: item(after, card).y }, { x: c.x, y: c.y }, "the card did not move");
