@@ -33,7 +33,9 @@ for (let attempt = 1; ; attempt++) {
   } catch (e) {
     if (attempt === 4) throw e;
     console.log(`no first session: ${(e as Error).message.slice(0, 160)}; launching Safari again`);
-    run("terminate", phone.udid, "com.apple.mobilesafari");
+    try {
+      run("terminate", phone.udid, "com.apple.mobilesafari");
+    } catch {}
     run("launch", phone.udid, "com.apple.mobilesafari");
     await sleep(5000);
   }
