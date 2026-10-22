@@ -31,6 +31,10 @@ const phone = (k: RealKind) => k === "android" || k === "firefox-android";
 const RUNS = Number(process.env.SCENARIO_RUNS ?? 1);
 const MS = 90_000;
 
+/** Worlds in a row whose servers did not start. Two say the machine cannot run any case, as when a port stayed taken,
+ * and the cases left fail at once rather than each wait for the servers until the job times out. */
+let unserved = 0, unservedBy = "";
+
 /** One run of `c` on `kinds` in a fresh world, recorded; its error when it fails or takes over `MS`. */
 async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: number): Promise<Error | null> {
   const w = new RealWorld();
@@ -53,6 +57,10 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
     await w.record(name, { name: c.name, pair: kinds, run }, error, timedOut);
     await w.stop();
   }
+  const serve = w.steps.list.find((s) => s.who === "world" && s.action === "serve");
+  [unserved, unservedBy] = serve?.error ? [unserved + 1, serve.error] : [0, ""];
+  // now, as a job that times out never gets to node's summary of the failures
+  if (error) console.log(`run ${run} of ${name} failed: ${error.message.split("\n")[0]}`);
   return error;
 }
 
@@ -62,6 +70,7 @@ for (const c of cases) {
     test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].some(phone) && noAndroid, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
+        if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
         const e = await once(t.name, c, [a, b], run);
         if (!e) break;
         if (run === RUNS) throw first ?? e;
