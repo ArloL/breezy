@@ -32,7 +32,14 @@ execFileSync("adb", ["-s", serial, "shell", `cat > /data/local/tmp/${FENIX}-geck
 });
 // Android has one debug app, which Chrome's launch takes too
 adb("shell", "am", "set-debug-app", "--persistent", FENIX);
-adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", "about:blank", "-n", `${FENIX}/org.mozilla.fenix.IntentReceiverActivity`);
+const start = () => adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", "about:blank", "-n", `${FENIX}/org.mozilla.fenix.IntentReceiverActivity`);
+try {
+  start();
+} catch {
+  // a start that failed once in a soak, after Android ended Firefox behind Chrome: once more, from stopped
+  stop();
+  start();
+}
 // Firefox checks the Host header against its own port, so the port is the same on both ends
 adb("forward", `tcp:${FENIX_BIDI}`, `tcp:${FENIX_BIDI}`);
 const upstream = `ws://127.0.0.1:${FENIX_BIDI}/session`;
