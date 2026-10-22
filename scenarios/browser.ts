@@ -4,7 +4,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, totalmem } from "node:os";
 import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -831,6 +831,33 @@ export class BrowserDevice extends Device {
     await this.page.keyboard.press("l");
     return this.made(before, "lanes");
   }
+}
+
+/** What the emulator holds of this machine's memory, in MB; 0 when none runs here. */
+function emulatorMB(): number {
+  try {
+    return execFileSync("ps", ["-axo", "rss=,command="], { encoding: "utf8", timeout: 5000 }).split("\n")
+      .filter((l) => /qemu-system-\S+ .*-avd /.test(l)).reduce((mb, l) => mb + Number(l.trim().split(/\s+/)[0]) / 1024, 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Boots the emulator again once it holds more than `share` of this machine's memory, and says so; else nothing. Each
+ * case in Firefox for Android left 200 MB of it behind on a Linux runner, where the emulator draws without a GPU: one
+ * pass of the scenarios took a 16 GB runner to its last gigabyte, and a soak's second took the emulator and the runner.
+ */
+export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX_SHARE ?? 0.6)): Promise<string | null> {
+  const mb = emulatorMB();
+  if (mb < share * totalmem() / 2 ** 20) return null;
+  const serial = /^(emulator-\d+)\tdevice$/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))?.[1];
+  try {
+    if (serial) execFileSync("adb", ["-s", serial, "emu", "kill"], { timeout: 30_000, stdio: "ignore" });
+  } catch {}
+  await until("the emulator to quit", () => emulatorMB() === 0, 60_000);
+  execFileSync(process.execPath, [join(root, "scripts", "android.ts")], { timeout: 600_000, stdio: ["ignore", "ignore", "inherit"] });
+  return `the emulator held ${Math.round(mb)} MB of ${Math.round(totalmem() / 2 ** 20)}: booted it again, now ${Math.round(emulatorMB())} MB`;
 }
 
 /** The web app as it ships, built into `dir`. */
