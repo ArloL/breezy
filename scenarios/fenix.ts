@@ -24,7 +24,9 @@ execFileSync("adb", ["-s", serial, "shell", `cat > /data/local/tmp/${FENIX}-geck
     "args:", "  - --remote-debugging-port", `  - "${FENIX_BIDI}"`,
     "env:", '  MOZ_CRASHREPORTER: "1"', '  MOZ_CRASHREPORTER_NO_REPORT: "1"',
     // as a person allows it the first time: else Firefox asks over the page as the app asks for persistent storage
-    "prefs:", "  dom.storageManager.prompt.testing: true", "  dom.storageManager.prompt.testing.allow: true", "",
+    "prefs:", "  dom.storageManager.prompt.testing: true", "  dom.storageManager.prompt.testing.allow: true",
+    // drawn without GL: on CI's emulator, GL through SwiftShader deadlocked the display as the keyboard came up
+    "  gfx.webrender.software: true", "",
   ].join("\n"),
 });
 // Android has one debug app, which Chrome's launch takes too
