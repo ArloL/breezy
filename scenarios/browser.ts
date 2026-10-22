@@ -1317,5 +1317,12 @@ async function joinSpace(page: Page, hash: string, name: string) {
     if (!sheet?.querySelector(".sheet-title")?.textContent?.startsWith("Join")) return false;
     sheet.querySelector<HTMLElement>('[data-sheet="ok"]')!.click();
     return true;
-  }));
+  })).catch(async (e: Error) => {
+    // where the page was instead, as Safari on iOS once showed no prompt
+    const was = await page.evaluate(() => JSON.stringify({
+      url: location.href.replace(/#join=.*/, "#join=…"), screen: document.body.dataset.screen, ready: document.readyState,
+      sheet: document.querySelector("#sheet:not([hidden]) .sheet-title")?.textContent ?? null,
+    })).catch((f: Error) => `unread: ${f.message}`);
+    throw new Error(`${e.message}; the page: ${was}`);
+  });
 }
