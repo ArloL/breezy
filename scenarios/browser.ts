@@ -775,6 +775,13 @@ export class BrowserDevice extends Device {
     this.composing = text ?? "";
   }
 
+  /** Its four events in one go, as a person's come: sent one round trip each, the second press came 599 ms after the
+   * first on a busy runner, past the app's 500 ms for a double-click. */
+  override async doubleClick(p: Point) {
+    const s = await this.screen(p);
+    await this.page.mouse.dblclick(s.x, s.y);
+  }
+
   override async typeInto(id: string, text: string) {
     const r = (await this.scene()).cards.find((c) => c.id === id);
     if (!r) throw new Error(`nothing shows ${id}`);
