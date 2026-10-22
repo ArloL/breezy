@@ -300,7 +300,9 @@ jobs:
       timeout-minutes: 25
       env:
         SCENARIO_RUNS: "2"
-      run: mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
+      run: |
+        mise exec -- scripts/android-load.sh build/android-load.txt &
+        mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
     - name: Platform rows on Android
       timeout-minutes: 8
       run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
@@ -309,15 +311,9 @@ jobs:
       run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
     - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
-      # bounded, as adb waits without end on a wedged emulator, and the upload after it runs only once this step ends
-      timeout-minutes: 3
-      # the emulator by its console's serial: adb counts adbd over TCP on 127.0.0.1 as one too; none once it has died
-      run: |
-        serial=$(timeout 20 mise exec -- adb devices | grep -o -m1 "^emulator-[0-9]*") || true
-        if [ -n "$serial" ]; then timeout 20 mise exec -- adb -s "$serial" exec-out screencap -p > build/android-screen.png || true; fi
-        if [ -n "$serial" ]; then timeout 20 mise exec -- adb -s "$serial" logcat -d > build/android-logcat.txt || true; fi
-        { pgrep -a qemu || echo "no emulator running"; free -m; sudo dmesg | tail -n 50; } > build/android-host.txt 2>&1
-        cp /tmp/adb.*.log build/ 2>/dev/null || true
+      # bounded, as the upload after it runs only once this step ends
+      timeout-minutes: 5
+      run: mise exec -- scripts/android-capture.sh build
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
       with:
@@ -325,9 +321,8 @@ jobs:
         path: |
           build/android-emulator.log
           build/android-screen.png
-          build/android-logcat.txt
           build/android-touches.png
-          build/android-host.txt
+          build/android-*.txt
           build/adb.*.log
           build/touches
           build/scenarios
