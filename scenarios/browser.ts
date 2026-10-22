@@ -664,8 +664,15 @@ export class BrowserDevice extends Device {
     return until(`a new item in ${kind}`, async () => (await this.scene())[kind].find((x) => !had.has(x.id))?.id);
   }
 
+  /** ⌘ as a desktop browser off the Mac has it, as on CI's Android runner: Ctrl, with Ctrl+Home and Ctrl+End for ⌘↑ and
+   * ⌘↓, and Home and End for ⌘← and ⌘→. */
   async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
-    await this.page.keyboard.press(`${mods.meta ? "Meta+" : ""}${mods.shift ? "Shift+" : ""}${key}`);
+    const shift = mods.shift ? "Shift+" : "";
+    if (mods.meta && process.platform !== "darwin" && ["chromium", "webkit", "firefox"].includes(this.kind)) {
+      const ends: Record<string, string> = { ArrowUp: "Control+Home", ArrowDown: "Control+End", ArrowLeft: "Home", ArrowRight: "End" };
+      return this.page.keyboard.press(`${shift}${ends[key] ?? `Control+${key}`}`);
+    }
+    await this.page.keyboard.press(`${mods.meta ? "Meta+" : ""}${shift}${key}`);
   }
 
   override get edits() {
