@@ -18,6 +18,7 @@ if [[ -n $serial ]]; then
   on shell dumpsys meminfo > "$out/android-meminfo.txt"
   on shell top -b -n 1 > "$out/android-top.txt"
 fi
-{ pgrep -a qemu || echo "no emulator running"; uptime; free -m; ps -eo pid,pcpu,pmem,etime,args --sort=-pcpu | head -n 20; sudo dmesg | tail -n 50; } > "$out/android-host.txt" 2>&1
+# the sockets too: a connection whose own port was the relay's kept it from starting
+{ pgrep -a qemu || echo "no emulator running"; uptime; free -m; ps -eo pid,pcpu,pmem,etime,args --sort=-pcpu | head -n 20; sudo ss -tanp; sudo dmesg | tail -n 50; } > "$out/android-host.txt" 2>&1
 cp /tmp/adb.*.log "$out/" 2>/dev/null
 exit 0
