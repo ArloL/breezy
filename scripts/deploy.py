@@ -14,6 +14,7 @@ sits next to sync.php rather than above it.
 
 import base64
 import ftplib
+import hashlib
 import io
 import json
 import os
@@ -108,6 +109,39 @@ def config_php():
     return f"<?php return json_decode(base64_decode('{encoded}'), true);\n".encode()
 
 
+def verify(version, files):
+    """What browsers get now: the new version.json, each file uploaded as built, and sync.php answering a pull from its
+    database for a space nobody has, which writes nothing. A deploy that broke the site fails here, not for its users;
+    each check is tried a few times, as one request may fail on the way."""
+
+    def get(path, headers=None):
+        url = f"{SITE_URL}/{path}{'&' if '?' in path else '?'}t={time.time_ns()}"
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers or {}), timeout=TIMEOUT) as r:
+            return r.read()
+
+    def check(what, test):
+        for attempt in range(ATTEMPTS):
+            try:
+                problem = test()
+            except OSError as e:
+                problem = str(e)
+            if not problem:
+                return
+            time.sleep(3 * (attempt + 1))
+        sys.exit(f"deployed, but {what}: {problem}")
+
+    def live_version():
+        live = json.loads(get("version.json"))["version"]
+        return None if live == version["version"] else f"it names {live}"
+
+    check("version.json is not the new one", live_version)
+    for f in files:
+        check(f"{f} is not as built", lambda f=f: None if hashlib.sha256(get(f)).hexdigest() == version["files"][f] else "its hash differs")
+    pull = lambda: json.loads(get("sync.php?space=" + base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip("="),
+                                  {"Authorization": "Bearer " + base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")}))
+    check("sync.php does not answer a pull", lambda: None if pull().get("records") == [] else "its answer has records")
+
+
 def main():
     site = Path(sys.argv[1])
     version = json.loads((site / "version.json").read_text())
@@ -121,7 +155,8 @@ def main():
     for f in ["sync.php"] + changed + LAST:
         up.upload((site / f).read_bytes(), "httpdocs/" + f)
     up.close()
-    print(f"deployed {version['version']} to {SITE_URL}: {len(changed)} changed files in {time.time() - started:.1f}s")
+    verify(version, changed + [f for f in LAST if f in version["files"]])
+    print(f"deployed {version['version']} to {SITE_URL}: {len(changed)} changed files in {time.time() - started:.1f}s, checked")
 
 
 if __name__ == "__main__":
