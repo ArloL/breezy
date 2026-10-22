@@ -3,7 +3,7 @@
 // own input and the DOM.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir, totalmem } from "node:os";
 import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
@@ -553,7 +553,7 @@ export class BrowserDevice extends Device {
    * The page's events and the touches sent to the emulator on this machine's clock, as `who`'s, and how they kept step;
    * the page's clock set to this one's by a round trip. A pointer event's own time is when the browser read the touch.
    */
-  async events(who: string): Promise<{ lines: Line[]; summary: string }> {
+  async events(who: string): Promise<{ lines: Line[]; summary: string; skew: number }> {
     const t0 = Date.now();
     const [now, seenNow] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { pageEvents?: PageEvents }).pageEvents ?? []] as const);
     const seen = [...this.seenBefore, ...seenNow];
@@ -566,11 +566,13 @@ export class BrowserDevice extends Device {
     let summary = `page clock ${Math.round(skew)} ms ahead`;
     if (this.touchscreen) {
       // where its touches stopped being read in step with them: a down or up read later than sent
-      const downs = sent.filter((s) => /down|up/.test(s.what)), heard = seen.filter(([type]) => type.startsWith("down") || type === "up");
+      // a finger each, as a frame of two fingers is one sent and two seen, and a lift the page saw cancelled
+      const downs = sent.flatMap((s) => s.what.split(" ").filter((w) => /^(down|up|cancel)\d+$/.test(w)).map(() => s));
+      const heard = seen.filter(([type]) => type.startsWith("down") || type === "up" || type === "cancel");
       const lags = downs.map((s, i) => heard[i] ? Math.round(heard[i][3] - skew - s.at) : NaN);
       summary += `; ${sent.length} sent, ${heard.length} downs and ups seen; down/up lags ${lags.join(" ")}`;
     }
-    return { lines, summary };
+    return { lines, summary, skew };
   }
 
   /** What it shows, and the page's size, which a phone's keyboard takes from, and focus. */
@@ -851,11 +853,20 @@ function emulatorMB(): number {
 export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX_SHARE ?? 0.6)): Promise<string | null> {
   const mb = emulatorMB();
   if (mb < share * totalmem() / 2 ** 20) return null;
-  const serial = /^(emulator-\d+)\tdevice$/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))?.[1];
   try {
+    // listed offline too, as one short of memory may be
+    const serial = /^(emulator-\d+)\t/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))?.[1];
     if (serial) execFileSync("adb", ["-s", serial, "emu", "kill"], { timeout: 30_000, stdio: "ignore" });
-  } catch {}
-  await until("the emulator to quit", () => emulatorMB() === 0, 60_000);
+    await until("the emulator to quit", () => emulatorMB() === 0, 30_000);
+  } catch {
+    try {
+      execFileSync("pkill", ["-KILL", "-f", "qemu-system-.* -avd "], { timeout: 10_000 });
+    } catch {}
+    await until("the emulator to be killed", () => emulatorMB() === 0, 30_000);
+  }
+  // scripts/android.ts starts its log afresh, and the old one says what the emulator went through
+  const log = join(root, "build", "android-emulator.log");
+  if (existsSync(log)) renameSync(log, join(root, "build", `android-emulator-${new Date().toISOString().replace(/[:.]/g, "-")}.log`));
   execFileSync(process.execPath, [join(root, "scripts", "android.ts")], { timeout: 600_000, stdio: ["ignore", "ignore", "inherit"] });
   return `the emulator held ${Math.round(mb)} MB of ${Math.round(totalmem() / 2 ** 20)}: booted it again, now ${Math.round(emulatorMB())} MB`;
 }
@@ -913,20 +924,28 @@ export class RealWorld {
   /** Worlds started and not yet stopped. A case that never ends never stops its world, which held the ports every
    * world uses from the 39 cases after it: the next world ends it. */
   private static readonly live = new Set<RealWorld>();
+  /** Whether it was told to stop: a case out of time stops its world while that may still be starting. */
+  private ended = false;
 
   /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
    * or never ends. */
   async start(kinds: RealKind[]) {
+    RealWorld.hook();
     for (const w of RealWorld.live) w.kill();
     RealWorld.live.add(this);
     this.t0 = performance.now();
     this.started = Date.now();
     this.stopSampling = sampleRunner(this.host);
     await this.steps.run("world", "serve", [], () => this.serve());
+    this.late();
     const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
     for (const [i, kind] of kinds.entries()) {
-      const step = <T>(action: string, f: () => Promise<T>) => this.steps.run(`d${i} ${kind}`, action, [], f);
+      const step = async <T>(action: string, f: () => Promise<T>) => {
+        const r = await this.steps.run(`d${i} ${kind}`, action, [], f);
+        this.late(r);
+        return r;
+      };
       if (kind === "mac") {
         // below every system's ephemeral ports, which a process listening on a random port took once
         const mac = await step("launch", () => MacDevice.start(18570 + i, `d${i}`));
@@ -1110,8 +1129,10 @@ export class RealWorld {
       const who = `d${i} ${d.kind}`, summary: string[] = [];
       if (d instanceof BrowserDevice) {
         lines.push(...d.log.map(([ms, what]): Line => [this.started + ms, who, what]));
-        // the emulator's log for a passing case too, for when its keyboard came and went
-        const [events, failure, logcat] = await Promise.all([answer(d.events(who)), error ? d.failure() : undefined, d.phone ? answer(d.logcat(this.started)!) : undefined]);
+        const events = await answer(d.events(who));
+        // the emulator's log for a passing case too, for when its keyboard came and went, on its own clock: the page's
+        const skew = typeof events === "string" ? 0 : events.skew;
+        const [failure, logcat] = await Promise.all([error ? d.failure() : undefined, d.phone ? answer(d.logcat(this.started + skew)!) : undefined]);
         if (typeof events === "string") summary.push(`${who}: no page events: ${events}`);
         else {
           lines.push(...events.lines);
@@ -1119,7 +1140,7 @@ export class RealWorld {
         }
         for (const [name, data] of failure ?? []) writeFileSync(join(dir, `${who} ${name}`), data);
         if (logcat !== undefined) {
-          lines.push(...logcatLines(logcat, `${who} logcat`));
+          lines.push(...logcatLines(logcat, `${who} logcat`).map(([at, source, what]): Line => [at - skew, source, what]));
           if (error) writeFileSync(join(dir, `${who} logcat.txt`), logcat);
         }
       }
@@ -1157,6 +1178,31 @@ export class RealWorld {
     for (const w of RealWorld.live) w.kill();
   }
 
+  /** Every world killed as the process ends: the servers run in process groups of their own, which outlive a run ended
+   * by --test-force-exit or ⌃C, and held the ports from the next run's every case. Once a world starts, so that what
+   * only imports this, as fenix.ts does, keeps its own handlers. */
+  private static hook() {
+    if (RealWorld.hooked) return;
+    RealWorld.hooked = true;
+    process.once("exit", () => RealWorld.killAll());
+    for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+      process.once(signal, () => {
+        RealWorld.killAll();
+        process.exit(code);
+      });
+    }
+  }
+
+  private static hooked = false;
+
+  /** Once it was told to stop, what it started since, `made` too, ended, and the start with it. */
+  private late(made?: unknown) {
+    if (!this.ended) return;
+    if (made instanceof MacDevice) made.kill();
+    this.kill();
+    throw new Error("the world stopped as it started, as its case ran out of time");
+  }
+
   /** What of it holds a port or runs, ended at once, without waiting: a world whose case never ended. Its own stop then
    * does nothing, as it would close the browsers on Android under the world after it. */
   private kill() {
@@ -1176,7 +1222,9 @@ export class RealWorld {
    * case after it.
    */
   async stop() {
-    if (!RealWorld.live.delete(this)) return;
+    this.ended = true;
+    // a world another one killed: closing its browsers on Android would close the next one's
+    if (!RealWorld.live.has(this)) return;
     this.stopSampling();
     const bounded = async (what: string, p: Promise<unknown>) => {
       if (!await Promise.race([p.then(() => true, () => true), sleep(10_000).then(() => false)])) {
@@ -1202,17 +1250,9 @@ export class RealWorld {
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();
     this.web?.closeAllConnections();
+    // only now, so that a process ended meanwhile kills its servers
+    RealWorld.live.delete(this);
   }
-}
-
-// The servers run in process groups of their own, which outlive a run ended by --test-force-exit or ⌃C, and held the
-// ports from the next run's every case.
-process.once("exit", () => RealWorld.killAll());
-for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]] as const) {
-  process.once(signal, () => {
-    RealWorld.killAll();
-    process.exit(code);
-  });
 }
 
 /** That npm installed what package.json names: a run on a stale install, as of wrangler, differs from CI's unseen. */

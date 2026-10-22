@@ -17,14 +17,15 @@ export const MAC_APP = join(root, "build/Build/Products/Debug/Breezy.app/Content
 export function macUnfit(): string | false {
   if (!existsSync(MAC_APP)) return "the Debug Mac app is not built";
   const built = statSync(MAC_APP).mtimeMs;
+  // its Swift sources alone: a Finder's .DS_Store is none, and the app links BreezyKit, not the fuzzer's targets
   const newer = (dir: string): string | undefined => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, e.name);
-      const found = e.isDirectory() ? newer(path) : statSync(path).mtimeMs > built ? path : undefined;
+      const found = e.isDirectory() ? newer(path) : e.name.endsWith(".swift") && statSync(path).mtimeMs > built ? path : undefined;
       if (found) return found;
     }
   };
-  const source = newer(join(root, "Breezy")) ?? newer(join(root, "BreezyKit", "Sources"));
+  const source = newer(join(root, "Breezy")) ?? newer(join(root, "BreezyKit", "Sources", "BreezyKit"));
   return source ? `the Debug Mac app is older than ${relative(root, source)}: build it again` : false;
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

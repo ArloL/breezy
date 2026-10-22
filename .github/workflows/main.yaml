@@ -348,7 +348,7 @@ jobs:
       with:
         name: android-emulator
         path: |
-          build/android-emulator.log
+          build/android-emulator*.log
           build/android-screen.png
           build/android-touches.png
           build/android-*.txt
