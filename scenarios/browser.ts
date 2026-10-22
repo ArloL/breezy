@@ -852,24 +852,46 @@ function emulatorMB(): number {
  */
 export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX_SHARE ?? 0.6)): Promise<string | null> {
   const mb = emulatorMB();
-  if (mb < share * totalmem() / 2 ** 20) return null;
-  try {
-    // listed offline too, as one short of memory may be
-    const serial = /^(emulator-\d+)\t/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))?.[1];
-    if (serial) execFileSync("adb", ["-s", serial, "emu", "kill"], { timeout: 30_000, stdio: "ignore" });
-    await until("the emulator to quit", () => emulatorMB() === 0, 30_000);
-  } catch {
+  hadEmulator ??= mb > 0;
+  // one that quit, or that a boot before left down, is booted too, where this process began with one
+  if (mb === 0 ? !hadEmulator : mb < share * totalmem() / 2 ** 20) return null;
+  if (mb > 0) {
     try {
-      execFileSync("pkill", ["-KILL", "-f", "qemu-system-.* -avd "], { timeout: 10_000 });
-    } catch {}
-    await until("the emulator to be killed", () => emulatorMB() === 0, 30_000);
+      // listed offline too, as one short of memory may be
+      const serial = /^(emulator-\d+)\t/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))?.[1];
+      if (serial) execFileSync("adb", ["-s", serial, "emu", "kill"], { timeout: 30_000, stdio: "ignore" });
+      await until("the emulator to quit", () => emulatorMB() === 0, 30_000);
+    } catch {
+      try {
+        execFileSync("pkill", ["-KILL", "-f", "qemu-system-.* -avd "], { timeout: 10_000 });
+      } catch {}
+      await until("the emulator to be killed", () => emulatorMB() === 0, 30_000);
+    }
   }
   // scripts/android.ts starts its log afresh, and the old one says what the emulator went through
   const log = join(root, "build", "android-emulator.log");
   if (existsSync(log)) renameSync(log, join(root, "build", `android-emulator-${new Date().toISOString().replace(/[:.]/g, "-")}.log`));
-  execFileSync(process.execPath, [join(root, "scripts", "android.ts")], { timeout: 600_000, stdio: ["ignore", "ignore", "inherit"] });
+  // adb's server, which kept the old one's connections and never saw the new one boot, again; twice, a boot failing now
+  // and then
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync("adb", ["kill-server"], { timeout: 30_000, stdio: "ignore" });
+    } catch {}
+    try {
+      execFileSync(process.execPath, [join(root, "scripts", "android.ts")], { timeout: 600_000, stdio: ["ignore", "ignore", "inherit"] });
+      break;
+    } catch (e) {
+      if (attempt === 2) throw e;
+      try {
+        execFileSync("pkill", ["-KILL", "-f", "qemu-system-.* -avd "], { timeout: 10_000 });
+      } catch {}
+    }
+  }
   return `the emulator held ${Math.round(mb)} MB of ${Math.round(totalmem() / 2 ** 20)}: booted it again, now ${Math.round(emulatorMB())} MB`;
 }
+
+/** Whether an emulator ran as this process began. */
+let hadEmulator: boolean | undefined;
 
 /** The web app as it ships, built into `dir`. */
 export function buildSite(dir: string) {
