@@ -257,7 +257,8 @@ jobs:
   # cannot run one
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # apt and the scenarios each take half again as long on some runners
+    timeout-minutes: 60
     permissions:
       contents: read
     env:
@@ -307,7 +308,7 @@ jobs:
       timeout-minutes: 8
       run: mise exec -- node scripts/android.ts
     - name: Scenarios on Android
-      timeout-minutes: 25
+      timeout-minutes: 40
       env:
         SCENARIO_RUNS: "2"
       run: |
