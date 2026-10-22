@@ -433,7 +433,10 @@ function logPage() {
         return events.push([`mouse ${type.slice(7)} on ${on}`, Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, now()]);
       }
       if (p.pointerType !== "touch") return;
-      events.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, now()]);
+      // what a finger came down on, as a tap that missed an editor's text ends the edit
+      const t = p.target as HTMLElement, cls = t.getAttribute?.("class");
+      const on = type === "pointerdown" ? ` on ${t.tagName?.toLowerCase()}${cls ? `.${cls}` : ""}${t.isContentEditable ? " editable" : ""}` : "";
+      events.push([`${type.slice(7)}${on}`, Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, now()]);
     }, { capture: true });
   }
   // the page's size and where the visual viewport is panned to, which the keyboard changes
@@ -563,7 +566,7 @@ export class BrowserDevice extends Device {
     let summary = `page clock ${Math.round(skew)} ms ahead`;
     if (this.touchscreen) {
       // where its touches stopped being read in step with them: a down or up read later than sent
-      const downs = sent.filter((s) => /down|up/.test(s.what)), heard = seen.filter(([type]) => type === "down" || type === "up");
+      const downs = sent.filter((s) => /down|up/.test(s.what)), heard = seen.filter(([type]) => type.startsWith("down") || type === "up");
       const lags = downs.map((s, i) => heard[i] ? Math.round(heard[i][3] - skew - s.at) : NaN);
       summary += `; ${sent.length} sent, ${heard.length} downs and ups seen; down/up lags ${lags.join(" ")}`;
     }
