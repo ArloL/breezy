@@ -20,6 +20,7 @@ const stop = () => {
 stop();
 // GeckoView reads its arguments from here when it is the debug app
 execFileSync("adb", ["-s", serial, "shell", `cat > /data/local/tmp/${FENIX}-geckoview-config.yaml`], {
+  timeout: 30_000,
   input: [
     "args:", "  - --remote-debugging-port", `  - "${FENIX_BIDI}"`,
     "env:", '  MOZ_CRASHREPORTER: "1"', '  MOZ_CRASHREPORTER_NO_REPORT: "1"',

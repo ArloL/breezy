@@ -13,6 +13,7 @@ import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, 
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
 import { MacDevice } from "./mac.ts";
+import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -185,7 +186,7 @@ function readWeights(id: string): number[] | null {
 export type SyncLog = [ms: number, what: string][];
 
 /** Notes in `log` each request to sync.php and its answer, each file the page loads, its navigations, each frame on the
- * relay, and the page's errors. */
+ * relay, and the page's errors and console. */
 function logSync(page: Page, log: SyncLog, t0: number) {
   const note = (what: string) => log.push([Math.round(performance.now() - t0), what]);
   const id = (r: { id: string }) => r.id.slice(0, 8);
@@ -238,7 +239,8 @@ function logSync(page: Page, log: SyncLog, t0: number) {
     ws.on("framereceived", frame("gets"));
   });
   page.on("pageerror", (e) => note(`page error: ${e.message}`));
-  page.on("console", (m) => ["error", "warning"].includes(m.type()) && note(`console ${m.type()}: ${m.text()}`));
+  // Firefox's through WebDriver BiDi's log.entryAdded
+  page.on("console", (m) => note(`console ${m.type()}: ${m.text().slice(0, 500)}`));
 }
 
 /**
@@ -312,7 +314,7 @@ export class Touchscreen {
   }
 
   static async of(serial: string, console: EmulatorConsole, page: Page): Promise<Touchscreen> {
-    const size = execFileSync("adb", ["-s", serial, "shell", "wm", "size"], { encoding: "utf8" }).match(/(\d+)x(\d+)\s*$/)!;
+    const size = execFileSync("adb", ["-s", serial, "shell", "wm", "size"], { encoding: "utf8", timeout: 10_000 }).match(/(\d+)x(\d+)\s*$/)!;
     const t = new Touchscreen(serial, console, { x: Number(size[1]), y: Number(size[2]) }, await page.evaluate(() => devicePixelRatio));
     // where the page starts below the status bar and Chrome's toolbar: a tap the page keeps from itself, on a page at
     // the app's scale; the taps before it dismiss what Chrome shows over the page
@@ -346,16 +348,33 @@ export class Touchscreen {
     return execFileSync("adb", ["-s", this.serial, "exec-out", "screencap", "-p"], { timeout: 10_000 });
   }
 
-  /** The emulator's log since `ms`, on Date.now(). */
-  logcat(ms: number) {
-    return execFileSync("adb", ["-s", this.serial, "logcat", "-d", "-t", (ms / 1000).toFixed(3)], { timeout: 10_000, maxBuffer: 256 * 1024 * 1024 });
+  /**
+   * The emulator as a case failed, before anything stops: its screen, its log since `since` on Date.now(), its windows
+   * and its keyboard, as files, each bounded, and why one is missing in its place.
+   */
+  async failure(since: number): Promise<[string, Buffer | string][]> {
+    const parts: [string, Promise<Buffer | string>][] = [
+      ["screen.png", adbBytes(this.serial, ["exec-out", "screencap", "-p"])],
+      ["logcat.txt", adb(this.serial, ["logcat", "-d", "-v", "threadtime", "-v", "epoch", "-t", (since / 1000).toFixed(3)])],
+      ["windows.txt", adb(this.serial, ["shell", "dumpsys", "window", "windows"])],
+      ["ime.txt", adb(this.serial, ["shell", "dumpsys", "input_method"])],
+    ];
+    return Promise.all(parts.map(async ([name, p]): Promise<[string, Buffer | string]> => [name, await p.catch((e: Error) => `none: ${e.message}\n`)]));
+  }
+
+  /** Whether Android shows the keyboard, and which window has focus. */
+  async keyboard() {
+    const out = await adb(this.serial, ["shell", "dumpsys input_method | grep -m1 mInputShown; dumpsys window | grep -m1 mCurrentFocus"], 5000);
+    const shown = /mInputShown=(\w+)/.exec(out)?.[1];
+    const focus = /mCurrentFocus=Window\{\S+ \S+ ([^}]+)\}/.exec(out)?.[1];
+    return `${shown === "true" ? "shown" : shown === "false" ? "hidden" : "unknown"}${focus ? `, focus ${focus}` : ""}`;
   }
 
   /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
   texts() {
     try {
       writeFileSync(join(root, "build", "android-touches.png"), this.capture());
-      const ui = execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8" });
+      const ui = execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8", timeout: 20_000 });
       return `the screen shows ${[...ui.matchAll(/text="([^"]+)"/g)].map((m) => m[1]).join(" | ")}`;
     } catch (e) {
       return `nothing uiautomator could read: ${e}`;
@@ -388,7 +407,8 @@ export class Touchscreen {
   }
 }
 
-type Touches = [string, number, number, number, number][];
+/** What a page saw, as `logPage` keeps it: what, point, its time, and the time handled, on the page's wall clock. */
+type PageEvents = [string, number, number, number, number][];
 
 /** Whether an editor has the keyboard. Runs in the page. */
 function editing() {
@@ -396,36 +416,65 @@ function editing() {
   return e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement || (e as HTMLElement | null)?.isContentEditable === true;
 }
 
-/** Keeps each touch's pointer event, key and focus change in `touches` as it reaches the page: type, point, and its time
- * and the time handled on the page's wall clock. Runs in the page. */
-function logTouches() {
-  const touches: Touches = [];
-  (window as { touches?: typeof touches }).touches = touches;
+/**
+ * Keeps in `pageEvents` each touch's pointer event, key and focus change as it reaches the page, the page's size as the
+ * keyboard changes it, its long tasks, and each second the frames it drew and how late its timer ran: a page that drew
+ * nothing as the keyboard came up once took a day to tell from one that did not hear the touch. Runs in the page.
+ */
+function logPage() {
+  const events: PageEvents = [];
+  (window as { pageEvents?: typeof events }).pageEvents = events;
+  const now = () => performance.timeOrigin + performance.now();
+  const note = (what: string, t = now()) => events.push([what, 0, 0, t, now()]);
   for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
     addEventListener(type, (e) => {
       const p = e as PointerEvent;
       if (p.pointerType === "mouse" && (type === "pointerdown" || type === "pointerup")) {
         const t = p.target as HTMLElement;
-        const on = `${t.tagName?.toLowerCase()}.${t.className}${t.isContentEditable ? " editable" : ""}`;
-        return touches.push([`mouse ${type.slice(7)} on ${on}`, Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
+        const cls = t.getAttribute?.("class");
+        const on = `${t.tagName?.toLowerCase()}${cls ? `.${cls}` : ""}${t.isContentEditable ? " editable" : ""}`;
+        return events.push([`mouse ${type.slice(7)} on ${on}`, Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, now()]);
       }
       if (p.pointerType !== "touch") return;
-      touches.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, performance.timeOrigin + performance.now()]);
+      events.push([type.slice(7), Math.round(p.clientX), Math.round(p.clientY), performance.timeOrigin + p.timeStamp, now()]);
     }, { capture: true });
   }
-  // the page's size, which the keyboard changes
-  const size = () => touches.push([`resize ${innerHeight} ${Math.round(visualViewport!.height)}`, 0, 0, performance.timeOrigin + performance.now(), performance.timeOrigin + performance.now()]);
+  // the page's size and where the visual viewport is panned to, which the keyboard changes
+  let was = "";
+  const size = () => {
+    const now = `resize ${innerHeight} ${Math.round(visualViewport!.height)} at ${Math.round(visualViewport!.offsetTop)}`;
+    // the window's and the visual viewport's, mostly together
+    if (now !== was) note(was = now);
+  };
   addEventListener("resize", size);
   visualViewport!.addEventListener("resize", size);
+  addEventListener("visibilitychange", () => note(`visibility ${document.visibilityState}`));
   // what had the keyboard, for a touch an editor kept from the board
   for (const type of ["keydown", "focusin", "focusout"]) {
     addEventListener(type, (e) => {
-      const what = e instanceof KeyboardEvent ? e.key : `${(e.target as Element).tagName?.toLowerCase()}.${(e.target as Element).className}`;
-      touches.push([`${type} ${what}`, 0, 0, performance.timeOrigin + e.timeStamp, performance.timeOrigin + performance.now()]);
+      const t = e.target as Element, cls = t.getAttribute?.("class");
+      const what = e instanceof KeyboardEvent ? e.key : `${t.tagName?.toLowerCase()}${cls ? `.${cls}` : ""}`;
+      events.push([`${type} ${what}`, 0, 0, performance.timeOrigin + e.timeStamp, now()]);
     }, { capture: true });
   }
+  // Chromium's alone
+  if (PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+    new PerformanceObserver((l) => l.getEntries().forEach((e) => note(`long task ${Math.round(e.duration)} ms`, performance.timeOrigin + e.startTime))).observe({ type: "longtask" });
+  }
+  let frames = 0, drawn = performance.now(), due = performance.now() + 1000;
+  const frame = (t: number) => {
+    frames++;
+    drawn = t;
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+  setInterval(() => {
+    const t = performance.now();
+    note(`frames ${frames}${t - drawn > 1000 ? `, none for ${Math.round(t - drawn)} ms` : ""}${t - due > 100 ? `, timer ${Math.round(t - due)} ms late` : ""}`);
+    frames = 0;
+    due = t + 1000;
+  }, 1000);
 }
-
 
 /**
  * Frames of finger pointer events, each after its wait in ms, as iOS Safari sends them: one at a time, each at the
@@ -462,8 +511,8 @@ export class BrowserDevice extends Device {
 
   /** An emulator's, which touches go through in place of DevTools. */
   private readonly touchscreen?: Touchscreen;
-  /** The pointer events of the pages before this one, which launching again cleared. */
-  private seenBefore: Touches = [];
+  /** The events of the pages before this one, which launching again cleared. */
+  private seenBefore: PageEvents = [];
 
   readonly log: SyncLog = [];
   private readonly t0: number;
@@ -485,13 +534,9 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
   }
 
-  /** The emulator's screen as a PNG, if this is one. */
-  capture() {
-    return this.touchscreen?.capture();
-  }
-
-  logcat(ms: number) {
-    return this.touchscreen?.logcat(ms);
+  /** On a phone, the emulator as a case failed. */
+  failure(since: number) {
+    return this.touchscreen?.failure(since);
   }
 
   /** Whether its touches go through an emulator's touchscreen. */
@@ -500,36 +545,46 @@ export class BrowserDevice extends Device {
   }
 
   /**
-   * The touches sent to the emulator and the page's pointer events, keys and focus, in order on this machine's clock, ms from the first;
-   * the page's clock set to this one's by a round trip. A pointer event's own time is when Android read the touch.
+   * The page's events and the touches sent to the emulator on this machine's clock, as `who`'s, and how they kept step;
+   * the page's clock set to this one's by a round trip. A pointer event's own time is when the browser read the touch.
    */
-  async touches(): Promise<string | null> {
-    if (!this.touchscreen) {
-      // dispatched in the page or sent through DevTools: what the page saw, and how late it handled each
-      const seen = [...this.seenBefore, ...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? [])];
-      const start = seen[0]?.[3] ?? 0;
-      return [`${seen.length} seen`, ...seen.map(([type, x, y, t, handled]) => `${`${Math.round(t - start)}`.padStart(6)}   page ${type} ${x},${y}${handled - t > 20 ? ` (handled ${Math.round(handled - t)} ms later)` : ""}`)].join("\n");
-    }
+  async events(who: string): Promise<{ lines: Line[]; summary: string }> {
     const t0 = Date.now();
-    const [now, seenNow] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { touches?: Touches }).touches ?? []] as const);
+    const [now, seenNow] = await this.page.evaluate(() => [performance.timeOrigin + performance.now(), (window as { pageEvents?: PageEvents }).pageEvents ?? []] as const);
     const seen = [...this.seenBefore, ...seenNow];
     const skew = now - (t0 + Date.now()) / 2;
-    const sent = this.touchscreen.sent;
-    const start = Math.min(sent[0]?.at ?? Infinity, (seen[0]?.[3] ?? Infinity) - skew);
-    const ms = (t: number) => `${Math.round(t - start)}`.padStart(6);
-    const lines: [number, string][] = [
-      ...sent.map(({ at, ok, what }): [number, string] => [at, `${ms(at)} sent ${what}${ok - at > 20 ? ` (console answered in ${ok - at} ms)` : ""}`]),
-      ...seen.map(([type, x, y, t, handled]): [number, string] => [t - skew, `${ms(t - skew)}   page ${type} ${x},${y}${handled - t > 20 ? ` (handled ${Math.round(handled - t)} ms later)` : ""}`]),
+    const sent = this.touchscreen?.sent ?? [];
+    const lines: Line[] = [
+      ...sent.map(({ at, ok, what }): Line => [at, who, `sent ${what}${ok - at > 20 ? ` (console answered in ${ok - at} ms)` : ""}`]),
+      ...seen.map(([type, x, y, t, handled]): Line => [t - skew, who, `page ${type}${x || y ? ` ${x},${y}` : ""}${handled - t > 20 ? ` (handled ${Math.round(handled - t)} ms later)` : ""}`]),
     ];
-    // where its touches stopped being read in step with them: a down or up read later than sent
-    const downs = sent.filter((s) => /down|up/.test(s.what)), heard = seen.filter(([type]) => type === "down" || type === "up");
-    const lags = downs.map((s, i) => heard[i] ? Math.round(heard[i][3] - skew - s.at) : NaN);
-    return [`clock skew ${Math.round(skew)} ms; ${sent.length} sent, ${seen.length} seen; down/up lags ${lags.join(" ")}`, ...lines.sort((a, b) => a[0] - b[0]).map(([, l]) => l)].join("\n");
+    let summary = `page clock ${Math.round(skew)} ms ahead`;
+    if (this.touchscreen) {
+      // where its touches stopped being read in step with them: a down or up read later than sent
+      const downs = sent.filter((s) => /down|up/.test(s.what)), heard = seen.filter(([type]) => type === "down" || type === "up");
+      const lags = downs.map((s, i) => heard[i] ? Math.round(heard[i][3] - skew - s.at) : NaN);
+      summary += `; ${sent.length} sent, ${heard.length} downs and ups seen; down/up lags ${lags.join(" ")}`;
+    }
+    return { lines, summary };
+  }
+
+  /** What it shows, the page's size and focus, and on a phone whether Android shows the keyboard. */
+  override async state() {
+    const [scene, page, keyboard] = await Promise.all([
+      super.state(),
+      this.page.evaluate(() => {
+        const v = visualViewport!, e = document.activeElement as HTMLElement | null;
+        const cls = e?.getAttribute("class");
+        return `view ${innerHeight} ${Math.round(v.height)} at ${Math.round(v.offsetTop)}, focus ${e?.tagName.toLowerCase()}${cls ? `.${cls}` : ""}${e?.isContentEditable ? " editable" : ""}`;
+      }),
+      this.touchscreen?.keyboard(),
+    ]);
+    return [scene, page, keyboard && `keyboard ${keyboard}`].filter(Boolean).join("; ");
   }
 
   /** The touches the page has seen lift since it loaded. */
   private lifts() {
-    return this.page.evaluate(() => ((window as { touches?: Touches }).touches ?? []).filter(([type]) => type === "up" || type === "cancel").length);
+    return this.page.evaluate(() => ((window as { pageEvents?: PageEvents }).pageEvents ?? []).filter(([type]) => type === "up" || type === "cancel").length);
   }
 
   /** Until the page has seen `n` touches lift: one that something of Android's or Chrome's took instead fails here, not
@@ -629,7 +684,7 @@ export class BrowserDevice extends Device {
   override async relaunch() {
     const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
     const had = ids(await this.scene());
-    this.seenBefore.push(...await this.page.evaluate(() => (window as { touches?: Touches }).touches ?? []));
+    this.seenBefore.push(...await this.page.evaluate(() => (window as { pageEvents?: PageEvents }).pageEvents ?? []));
     this.note("launches again");
     await this.page.goto(`http://localhost:${WEB}/`);
     await openBoard(this.page);
@@ -788,7 +843,7 @@ export function serveStatic(dir: string, port: number) {
  */
 export async function launchAndroidChrome(device: AndroidDevice, options: { hasTouch?: boolean } = {}): Promise<BrowserContext> {
   // a user build's Chrome reads the command line Playwright writes only as the debug app, which Firefox's launch takes
-  execFileSync("adb", ["-s", device.serial(), "shell", "am", "set-debug-app", "--persistent", "com.android.chrome"]);
+  execFileSync("adb", ["-s", device.serial(), "shell", "am", "set-debug-app", "--persistent", "com.android.chrome"], { timeout: 30_000 });
   const launch = () => Promise.race([device.launchBrowser({ reducedMotion: "reduce", ...options }), sleep(30_000).then(() => null)]);
   const again = () => {
     globalThis.console.log("Chrome did not open DevTools in 30 s: launching it again");
@@ -812,46 +867,68 @@ export class RealWorld {
   private t0 = 0;
   /** When it started, on Date.now(): the emulator's log counts from it. */
   private started = 0;
+  /** What it and the case did, each with its time and how long it took. */
+  readonly steps = new Steps();
+  /** The runner's load as it ran. */
+  private readonly load: Line[] = [];
+  private stopSampling = () => {};
+  /** Worlds started and not yet stopped. A case that never ends never stops its world, which held the ports every
+   * world uses from the 39 cases after it: the next world ends it. */
+  private static readonly live = new Set<RealWorld>();
 
   /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
    * or never ends. */
   async start(kinds: RealKind[]) {
+    for (const w of RealWorld.live) w.kill();
+    RealWorld.live.add(this);
     this.t0 = performance.now();
     this.started = Date.now();
-    await this.serve();
+    this.stopSampling = sampleRunner(this.load);
+    await this.steps.run("world", "serve", [], () => this.serve());
     const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
     for (const [i, kind] of kinds.entries()) {
+      const step = <T>(action: string, f: () => Promise<T>) => this.steps.run(`d${i} ${kind}`, action, [], f);
       if (kind === "mac") {
         // below every system's ephemeral ports, which a process listening on a random port took once
-        const mac = await MacDevice.start(18570 + i, `d${i}`);
+        const mac = await step("launch", () => MacDevice.start(18570 + i, `d${i}`));
         this.devices.push(mac);
-        await mac.command({ cmd: "join", link });
+        await step("join", () => mac.command({ cmd: "join", link }));
         const board = i === 0
-          ? await mac.command<string>({ cmd: "createBoard", title: "Board" })
-          : await until("the board on the Mac", async () => (await mac.command<string[]>({ cmd: "boards" }))[0]);
-        await mac.command({ cmd: "open", board });
+          ? await step("createBoard", () => mac.command<string>({ cmd: "createBoard", title: "Board" }))
+          : await step("seeBoard", () => until("the board on the Mac", async () => (await mac.command<string[]>({ cmd: "boards" }))[0]));
+        await step("openBoard", () => mac.command({ cmd: "open", board }));
         continue;
       }
-      const [page, touchscreen] = kind === "android" ? await this.android() : kind === "firefox-android" ? await this.firefoxAndroid() : [await this.browser(kind)];
+      const [page, touchscreen] = await step("launch", async () => kind === "android" ? this.android() : kind === "firefox-android" ? this.firefoxAndroid() : [await this.browser(kind)]);
       const d = new BrowserDevice(kind, page, touchscreen, this.t0);
       this.devices.push(d);
-      await joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`);
+      await step("join", () => joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`));
       if (i === 0) {
-        await press(page, "section.boards-group:has(header .edit) button.new");
-        await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
-        await page.fill("#sheet input", "Board");
-        await press(page, '#sheet [data-sheet="ok"]');
+        await step("createBoard", async () => {
+          await press(page, "section.boards-group:has(header .edit) button.new");
+          await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
+          await page.fill("#sheet input", "Board");
+          await press(page, '#sheet [data-sheet="ok"]');
+        });
       }
-      await openBoard(page);
+      await step("openBoard", () => openBoard(page));
     }
+  }
+
+  /** The devices as a case acts on them: each call it makes a step, with what its device shows after it. */
+  stage() {
+    return {
+      devices: this.devices.map((d, i) => this.steps.wrap(d, `d${i} ${d.kind}`, () => d.state())),
+      settle: () => this.steps.run("world", "settle", [], () => this.settle()),
+    };
   }
 
   private async browser(kind: Exclude<BrowserKind, "android" | "firefox-android">) {
     const browser = await { chromium, webkit, firefox }[kind].launch();
     this.browsers.push(browser);
     const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" });
-    await context.addInitScript(logTouches);
+    await context.addInitScript(logPage);
     return context.newPage();
   }
 
@@ -866,10 +943,10 @@ export class RealWorld {
     // closed even when what follows fails, else its connection keeps the run from ending
     const opened: [AndroidDevice, BrowserContext?] = [device];
     this.androids.push(opened);
-    for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`]);
+    for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", device.serial(), "reverse", `tcp:${port}`, `tcp:${port}`], { timeout: 30_000 });
     const context = opened[1] = await launchAndroidChrome(device);
     // the only tab, so the one on screen: a first launch also restores the tab Chrome's first run left
-    await context.addInitScript(logTouches);
+    await context.addInitScript(logPage);
     const page = await context.newPage();
     for (const p of context.pages()) if (p !== page) await p.close();
     await page.bringToFront();
@@ -889,9 +966,9 @@ export class RealWorld {
    * its touchscreen through the emulator's console.
    */
   private async firefoxAndroid() {
-    const serial = execFileSync("adb", ["devices"], { encoding: "utf8" }).match(/^(emulator-\d+)\tdevice$/m)?.[1];
+    const serial = execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }).match(/^(emulator-\d+)\tdevice$/m)?.[1];
     if (!serial) throw new Error("no Android emulator: run node scripts/android.ts");
-    for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`]);
+    for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`], { timeout: 30_000 });
     const dir = mkdtempSync(join(tmpdir(), "breezy-scenario-fenix-"));
     this.dirs.push(dir);
     const context = await firefox.launchPersistentContext(dir, { channel: "moz-firefox", executablePath: join(root, "scenarios", "fenix.ts"), viewport: null, timeout: 60_000 });
@@ -912,13 +989,14 @@ export class RealWorld {
       return [...await navigator.serviceWorker.getRegistrations(), ...await caches.keys(), ...await indexedDB.databases()].length;
     });
     if (left) throw new Error(`Firefox kept ${left} of the site's service workers, caches and databases`);
-    await context.addInitScript(logTouches);
+    await context.addInitScript(logPage);
     const console = await EmulatorConsole.open(serial);
     this.consoles.push(console);
     return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
   }
 
   private async serve() {
+    await free(WEB, SERVER, RELAY);
     const site = join(root, "build", "web-scenarios");
     buildSite(site);
     this.web = serveStatic(site, WEB);
@@ -956,45 +1034,81 @@ export class RealWorld {
     throw new Error(`the devices did not settle: ${this.devices.map((d, i) => `${d.kind} shows ${boards[i]}, ${waiting[i]} waiting`).join("; ")}`);
   }
 
-  /** Each touchscreen's touches in build/touches/, named for the case, `verdict` first, for a run to tell why one failed. */
-  async record(name: string, verdict: string) {
-    if (verdict !== "passed") await this.recordSync(name, verdict);
-    for (const d of this.devices) {
-      // a phone's for every case, as its touches go through Android; a desktop browser's for a failing one
-      if (!(d instanceof BrowserDevice) || !d.phone && verdict === "passed") continue;
-      const touches = await Promise.race([d.touches().catch((e: Error) => `no touches: ${e.message}`), sleep(5000).then(() => "no touches: the page did not answer in 5 s")]);
-      if (touches === null) continue;
-      mkdirSync(join(root, "build", "touches"), { recursive: true });
-      const file = join(root, "build", "touches", `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}`);
-      writeFileSync(`${file}.txt`, `${verdict}\n${touches}\n`);
-      if (verdict !== "passed") try { writeFileSync(`${file}.png`, d.capture()!); } catch {}
-      // the emulator's for the case alone, as a soak's runs outlast its log
-      if (verdict !== "passed") try { writeFileSync(`${file}.logcat.txt`, d.logcat(this.started)!); } catch {}
-    }
+  /**
+   * Its record in build/scenarios/<when> <test>/, passing or failing: case.json, and timeline.txt, which ends in what each
+   * device says of its sync and shows of the board, to tell whether a change stopped on the device that made it, at the
+   * server, or on the one meant to show it. On a failing phone, the emulator as the case failed, before anything stops.
+   * Each part bounded, as a page or an emulator that stopped answering once cost a failure all of its record.
+   */
+  async record(test: string, c: { name: string; pair: RealKind[]; run: number }, error: Error | null, timedOut: boolean) {
+    const ended = Date.now();
+    const verdict = !error ? "passed" : timedOut ? "timed out" : "failed";
+    const dir = join(RECORDS, `${new Date(this.started).toISOString().replace(/[:.]/g, "-")} ${c.pair.join("→")} ${c.name.replace(/[^\w -]+/g, "").slice(0, 100)}`);
+    mkdirSync(dir, { recursive: true });
+    const answer = <T>(p: Promise<T>) => Promise.race([p.catch((e: Error) => `none: ${e.message.split("\n")[0]}`), sleep(5000).then(() => "none in 5 s")]);
+    const failing = error ? this.steps.failed() : undefined;
+    await this.steps.read();
+    const lines: Line[] = [...this.load, ...this.steps.lines()];
+    const parts = await Promise.all(this.devices.map(async (d, i) => {
+      const who = `d${i} ${d.kind}`, summary: string[] = [];
+      if (d instanceof BrowserDevice) {
+        lines.push(...d.log.map(([ms, what]): Line => [this.started + ms, who, what]));
+        const [events, failure] = await Promise.all([answer(d.events(who)), error ? d.failure(this.started) : undefined]);
+        if (typeof events === "string") summary.push(`${who}: no page events: ${events}`);
+        else {
+          lines.push(...events.lines);
+          summary.push(`${who}: ${events.summary}`);
+        }
+        for (const [name, data] of failure ?? []) {
+          writeFileSync(join(dir, `${who} ${name}`), data);
+          if (name === "logcat.txt") lines.push(...logcatLines(data.toString(), `${who} logcat`));
+        }
+      }
+      const [status, s] = await Promise.all([answer(d.syncStatus()), answer(d.scene())]);
+      const ends = [`${who} says ${JSON.stringify(status)}`,
+        `${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`];
+      const version = d instanceof BrowserDevice ? d.page.context().browser()?.version() ?? (d.kind === "firefox-android" ? FENIX_VERSION : undefined) : undefined;
+      return { summary, ends, device: { who, kind: d.kind, version } };
+    }));
+    const environ = await environment();
+    const at = (s: Step) => `${s.who} ${s.action}(${s.args})${s.error ? `: ${s.error}` : s.ms === undefined ? ", never ended" : ""}`;
+    writeFileSync(join(dir, "timeline.txt"), [
+      error ? `${verdict}: ${error.stack ?? error}` : verdict,
+      `${test}, run ${c.run}, ${new Date(this.started).toISOString()} to ${new Date(ended).toISOString()}`,
+      ...failing ? [`at step ${at(failing)}`] : [],
+      ...parts.flatMap((p) => p.summary),
+      "",
+      timeline(lines, this.started),
+      "",
+      ...parts.flatMap((p) => p.ends),
+      "",
+    ].join("\n"));
+    writeFileSync(join(dir, "case.json"), `${JSON.stringify({
+      test, case: c.name, pair: c.pair, run: c.run, verdict, error: error?.message, stack: error?.stack,
+      started: new Date(this.started).toISOString(), ms: ended - this.started,
+      step: failing && { who: failing.who, action: failing.action, args: failing.args, error: failing.error ?? "never ended" },
+      steps: this.steps.list.map((s) => ({ ...s, at: s.at - this.started })),
+      devices: parts.map((p) => p.device),
+      environment: environ,
+    }, null, 2)}\n`);
   }
 
-  /**
-   * In build/scenarios, each device's sync log merged in time, then what each says of its sync and shows of the board:
-   * whether a change stopped on the device that made it, at the server, or on the one meant to show it.
-   */
-  private async recordSync(name: string, verdict: string) {
-    const answer = <T>(p: Promise<T>) => Promise.race([p.catch((e: Error) => `none: ${e.message}`), sleep(5000).then(() => "none in 5 s")]);
-    const lines: [number, string][] = [];
-    const ends: string[] = [];
-    for (const [i, d] of this.devices.entries()) {
-      const who = `d${i} ${d.kind}`;
-      if (d instanceof BrowserDevice) lines.push(...d.log.map(([ms, what]): [number, string] => [ms, `${who}: ${what}`]));
-      ends.push(`${who} says ${JSON.stringify(await answer(d.syncStatus()))}`);
-      const s = await answer(d.scene());
-      ends.push(`${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`);
-    }
-    lines.sort((a, b) => a[0] - b[0]);
-    const dir = join(root, "build", "scenarios");
-    mkdirSync(dir, { recursive: true });
-    const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")} ${name.replace(/[^\w →-]+/g, "").slice(0, 120)}.txt`);
-    // wall clock, to find the case in the emulator's log and the runner's load
-    const when = `started ${new Date(this.started).toISOString()}, recorded ${new Date().toISOString()}`;
-    writeFileSync(file, [verdict, when, ...lines.map(([ms, what]) => `${String(ms).padStart(7)} ${what}`), "", ...ends, ""].join("\n"));
+  /** Every world not yet stopped, killed, as the process ends. */
+  static killAll() {
+    for (const w of RealWorld.live) w.kill();
+  }
+
+  /** What of it holds a port or runs, ended at once, without waiting: a world whose case never ended. Its own stop then
+   * does nothing, as it would close the browsers on Android under the world after it. */
+  private kill() {
+    RealWorld.live.delete(this);
+    this.stopSampling();
+    for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
+    this.web?.close();
+    this.web?.closeAllConnections();
+    for (const c of this.consoles) c.close();
+    for (const d of this.devices) if (d instanceof MacDevice) d.kill();
+    for (const b of this.browsers) b.close().catch(() => {});
   }
 
   /**
@@ -1003,6 +1117,8 @@ export class RealWorld {
    * case after it.
    */
   async stop() {
+    if (!RealWorld.live.delete(this)) return;
+    this.stopSampling();
     const bounded = async (what: string, p: Promise<unknown>) => {
       if (!await Promise.race([p.then(() => true, () => true), sleep(10_000).then(() => false)])) {
         globalThis.console.log(`stopping the world: ${what} did not end in 10 s`);
@@ -1027,6 +1143,37 @@ export class RealWorld {
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();
     this.web?.closeAllConnections();
+  }
+}
+
+// The servers run in process groups of their own, which outlive a run ended by --test-force-exit or ⌃C, and held the
+// ports from the next run's every case.
+process.once("exit", () => RealWorld.killAll());
+for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+  process.once(signal, () => {
+    RealWorld.killAll();
+    process.exit(code);
+  });
+}
+
+/** Until nothing listens on `ports` on this machine, for at most 10 s, else what does. */
+async function free(...ports: number[]) {
+  const end = Date.now() + 10_000;
+  for (const port of ports) {
+    // the relay's workerd listens on localhost, which may be IPv6's alone
+    const open = (host: string) => new Promise<boolean>((resolve) => {
+      const probe = createServer().once("error", (e: NodeJS.ErrnoException) => resolve(e.code !== "EADDRINUSE")).listen(port, host, () => probe.close(() => resolve(true)));
+    });
+    while (!await open("127.0.0.1") || !await open("::1")) {
+      if (Date.now() > end) {
+        let who = "";
+        try {
+          who = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5000 });
+        } catch {}
+        throw new Error(`port ${port} is taken${who ? `: ${who}` : ""}`);
+      }
+      await sleep(250);
+    }
   }
 }
 

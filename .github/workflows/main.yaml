@@ -237,14 +237,15 @@ jobs:
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Warn of the cases that failed once
       if: ${{ always() }}
-      run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
+      run: |
+        if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
+        node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+    # passing too, as a failure is read against a pass
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
+      if: ${{ always() }}
       with:
         name: scenarios
-        path: |
-          build/scenarios
-          build/touches
+        path: build/scenarios
         if-no-files-found: ignore
   # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
   # cannot run one
@@ -308,14 +309,17 @@ jobs:
       run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
     - name: Warn of the cases that failed once
       if: ${{ always() }}
-      run: if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
+      run: |
+        if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
+        node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
     - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
       # bounded, as the upload after it runs only once this step ends
       timeout-minutes: 5
       run: mise exec -- scripts/android-capture.sh build
+    # passing too, as a failure is read against a pass
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ failure() || hashFiles('build/scenarios/flaky.txt') != '' }}
+      if: ${{ always() }}
       with:
         name: android-emulator
         path: |
@@ -324,7 +328,6 @@ jobs:
           build/android-touches.png
           build/android-*.txt
           build/adb.*.log
-          build/touches
           build/scenarios
   # Sparkle reads the feed from the latest release, so each release carries its own; only main
   # can read the update-signing environment's key

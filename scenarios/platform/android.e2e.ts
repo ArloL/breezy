@@ -15,10 +15,10 @@ import { rows, type AndroidNative } from "./rows.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 const IME = "de.k5d.breezy.ime/.Ime";
-const adb = (...args: string[]) => execFileSync("adb", ["-s", EMULATOR_TCP, ...args], { encoding: "utf8" });
+const adb = (...args: string[]) => execFileSync("adb", ["-s", EMULATOR_TCP, ...args], { encoding: "utf8", timeout: 60_000 });
 const skip = (() => {
   try {
-    return !execFileSync("adb", ["devices"], { encoding: "utf8" }).includes(`${EMULATOR_TCP}\tdevice`) && "no emulator: run node scripts/android.ts";
+    return !execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }).includes(`${EMULATOR_TCP}\tdevice`) && "no emulator: run node scripts/android.ts";
   } catch {
     return "no adb: run under MISE_ENV=android mise exec --";
   }
@@ -71,7 +71,7 @@ before(async () => {
   await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
   // Playwright's default keeps the page focused whatever happens, which hides every bug of focus leaving it
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: false });
-  const emulator = /^(emulator-\d+)\tdevice$/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8" }))![1]!;
+  const emulator = /^(emulator-\d+)\tdevice$/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))![1]!;
   emulatorConsole = await EmulatorConsole.open(emulator);
   // calibrates on a page of its own, so before the app's
   touchscreen = await Touchscreen.of(EMULATOR_TCP, emulatorConsole, page);
