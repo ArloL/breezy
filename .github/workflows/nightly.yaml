@@ -107,7 +107,7 @@ jobs:
         printf '{"format": 1, "cards": [], "lanes": []}' > build/empty.breezy
         python3 scripts/make-stress-board.py build/stress.breezy
         # in turns, so that what slows the runner for a while slows both alike
-        for i in $(seq 10); do
+        for _ in $(seq 10); do
           BENCH_BUILD="$RUNNER_TEMP/ref/build" BENCH_OUT=build/bench-ref.jsonl scripts/bench.sh ref 1 build/empty.breezy build/stress.breezy
           scripts/bench.sh nightly 1 build/empty.breezy build/stress.breezy
         done
