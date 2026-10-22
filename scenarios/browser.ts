@@ -12,6 +12,7 @@ import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
+import { IosDevice, IosPage } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import type { Point } from "../web/types.ts";
@@ -19,7 +20,7 @@ import type { Point } from "../web/types.ts";
 export * from "./device.ts";
 
 export type BrowserKind = "chromium" | "webkit" | "firefox" | "android" | "firefox-android";
-export type RealKind = BrowserKind | "mac";
+export type RealKind = BrowserKind | "mac" | "ios-safari";
 
 const root = new URL("..", import.meta.url).pathname;
 // inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
@@ -1014,7 +1015,8 @@ export async function launchAndroidChrome(device: AndroidDevice, options: { hasT
 }
 
 export class RealWorld {
-  readonly devices: (BrowserDevice | MacDevice)[] = [];
+  readonly devices: (BrowserDevice | MacDevice | IosDevice)[] = [];
+  private readonly iosPages: IosPage[] = [];
   private readonly browsers: Browser[] = [];
   private readonly androids: [AndroidDevice, BrowserContext?][] = [];
   /** Firefox for Android, which a world that passed keeps for the next. */
@@ -1068,18 +1070,26 @@ export class RealWorld {
         await step("openBoard", () => mac.command({ cmd: "open", board }));
         continue;
       }
+      if (kind === "ios-safari") {
+        const page = await step("launch", async () => {
+          const p = await IosPage.open();
+          this.iosPages.push(p);
+          await clearSite(p as unknown as Page, "Safari on iOS");
+          return p;
+        });
+        this.devices.push(new IosDevice(page, { scene: readScene, editor: readEditor, weights: readWeights }));
+        // what it needs of a Playwright page it has
+        const like = page as unknown as Page;
+        await step("join", () => joinSpace(like, link.slice(link.indexOf("#join=")), `d${i}`));
+        if (i === 0) await step("createBoard", () => createBoard(like));
+        await step("openBoard", () => openBoard(like));
+        continue;
+      }
       const [page, touchscreen] = await step("launch", async () => kind === "android" ? this.android() : kind === "firefox-android" ? this.firefoxAndroid() : [await this.browser(kind)]);
       const d = new BrowserDevice(kind, page, touchscreen, this.t0);
       this.devices.push(d);
       await step("join", () => joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`));
-      if (i === 0) {
-        await step("createBoard", async () => {
-          await press(page, "section.boards-group:has(header .edit) button.new");
-          await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
-          await page.fill("#sheet input", "Board");
-          await press(page, '#sheet [data-sheet="ok"]');
-        });
-      }
+      if (i === 0) await step("createBoard", () => createBoard(page));
       await step("openBoard", () => openBoard(page));
     }
   }
@@ -1173,20 +1183,7 @@ export class RealWorld {
     const page = context.pages()[0] ?? await context.newPage();
     page.removeAllListeners();
     await context.setOffline(false);
-    // a page the server does not have, once the service worker that would serve the app there is gone
-    const blank = `http://localhost:${WEB}/scenarios-clear`;
-    await page.goto(blank);
-    await page.evaluate(() => navigator.serviceWorker.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))));
-    await page.goto(blank);
-    const left = await page.evaluate(async () => {
-      for (const name of await caches.keys()) await caches.delete(name);
-      for (const { name } of await indexedDB.databases()) {
-        await new Promise((resolve, reject) => Object.assign(indexedDB.deleteDatabase(name!), { onsuccess: resolve, onerror: reject, onblocked: reject }));
-      }
-      localStorage.clear();
-      return [...await navigator.serviceWorker.getRegistrations(), ...await caches.keys(), ...await indexedDB.databases()].length;
-    });
-    if (left) throw new Error(`Firefox kept ${left} of the site's service workers, caches and databases`);
+    await clearSite(page, "Firefox");
     const console = await EmulatorConsole.open(serial);
     this.consoles.push(console);
     return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
@@ -1284,10 +1281,12 @@ export class RealWorld {
           if (error) writeFileSync(join(dir, `${who} logcat.txt`), logcat);
         }
       }
+      if (d instanceof IosDevice && error) await answer(d.page.screenshot().then((png) => writeFileSync(join(dir, `${who} screen.png`), png)));
       const [status, s] = await Promise.all([answer(d.syncStatus()), answer(d.scene())]);
       const ends = [`${who} says ${JSON.stringify(status)}`,
         `${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`];
-      const version = d instanceof BrowserDevice ? d.page.context().browser()?.version() ?? (d.kind === "firefox-android" ? FENIX_VERSION : undefined) : undefined;
+      const version = d instanceof BrowserDevice ? d.page.context().browser()?.version() ?? (d.kind === "firefox-android" ? FENIX_VERSION : undefined)
+        : d instanceof IosDevice ? d.page.version : undefined;
       return { summary, ends, device: { who, kind: d.kind, version } };
     }));
     const environ = await environment();
@@ -1392,6 +1391,7 @@ export class RealWorld {
       await bounded("the Android device's connection", d.close());
     }
     for (const c of this.consoles) c.close();
+    for (const p of this.iosPages) await bounded("Safari on iOS's session", p.close());
     for (const d of this.devices) if (d instanceof MacDevice) await bounded("the Mac app's stop", d.stop());
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
@@ -1436,12 +1436,38 @@ async function free(...ports: number[]) {
   }
 }
 
+/** The site's data of the runs before cleared, in a browser that keeps one profile from run to run. */
+async function clearSite(page: Page, browser: string) {
+  // a page the server does not have, once the service worker that would serve the app there is gone
+  const blank = `http://localhost:${WEB}/scenarios-clear`;
+  await page.goto(blank);
+  await page.evaluate(() => navigator.serviceWorker.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))));
+  await page.goto(blank);
+  const left = await page.evaluate(async () => {
+    for (const name of await caches.keys()) await caches.delete(name);
+    for (const { name } of await indexedDB.databases()) {
+      await new Promise((resolve, reject) => Object.assign(indexedDB.deleteDatabase(name!), { onsuccess: resolve, onerror: reject, onblocked: reject }));
+    }
+    localStorage.clear();
+    return [...await navigator.serviceWorker.getRegistrations(), ...await caches.keys(), ...await indexedDB.databases()].length;
+  });
+  if (left) throw new Error(`${browser} kept ${left} of the site's service workers, caches and databases`);
+}
+
 // as direct-e2e.ts does: the list may be laid out out of sight, which a person's click could not reach either
 const press = (page: Page, selector: string) => until(selector, () => page.evaluate((sel) => {
   const e = document.querySelector<HTMLElement>(sel);
   e?.click();
   return !!e;
 }, selector));
+
+/** A board named Board in the space, made from the board list. */
+async function createBoard(page: Page) {
+  await press(page, "section.boards-group:has(header .edit) button.new");
+  await until("the board name prompt", () => page.evaluate(() => !document.querySelector<HTMLElement>("#sheet")!.hidden));
+  await page.fill("#sheet input", "Board");
+  await press(page, '#sheet [data-sheet="ok"]');
+}
 
 /** Opens the space's board from the board list, once it is drawn: opening draws it on the next frame. */
 async function openBoard(page: Page) {

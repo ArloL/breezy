@@ -8,10 +8,12 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { cases, type Case } from "./cases.ts";
 import { RealWorld, rebootedAndroid, rebootFullEmulator, type RealKind } from "./browser.ts";
+import { iosUnfit } from "./ios.ts";
 import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 
 const noMac = macUnfit();
+const noIos = process.env.SCENARIO_PAIRS?.includes("ios-safari") ? await iosUnfit() : "Safari on iOS runs where SCENARIO_PAIRS names it";
 const noAndroid = (() => {
   try {
     return !/\tdevice$/m.test(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 })) && "no Android device: run node scripts/android.ts";
@@ -74,8 +76,10 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
 
 for (const c of cases) {
   for (const [a, b] of pairs) {
-    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b)) continue;
-    test(`${c.name} (${a} → ${b})`, { skip: [a, b].includes("mac") && noMac || [a, b].some(phone) && noAndroid, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
+    // Safari on iOS only watches
+    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || a === "ios-safari") continue;
+    const skip = [a, b].includes("mac") && noMac || [a, b].some(phone) && noAndroid || [a, b].includes("ios-safari") && noIos;
+    test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
         if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
