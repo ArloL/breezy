@@ -848,6 +848,78 @@ interface Fenix {
  */
 let fenix: Fenix | null = null;
 
+/** Closes the Firefox for Android a world kept, if one did. */
+function dropFenix() {
+  if (!fenix) return;
+  fenix.context.close().catch(() => {});
+  rmSync(fenix.dir, { recursive: true, force: true });
+  fenix = null;
+}
+
+/** The boot of Android the world before saw, by its kernel's boot_id; null before the first, or after a new emulator. */
+let bootId: string | null = null;
+
+function readBootId(): string {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "cat", "/proc/sys/kernel/random/boot_id"], { encoding: "utf8", timeout: 10_000 }).trim();
+    } catch {
+      // adbd drops its TCP connections now and then
+      try {
+        execFileSync("adb", ["connect", EMULATOR_TCP], { timeout: 10_000, stdio: "ignore" });
+      } catch {}
+    }
+  }
+  return "";
+}
+
+/**
+ * Readies the emulator again once Android booted since the world before, and says so; else nothing. Its kernel panicked
+ * twice in one Main run, some 7 s after Firefox for Android loaded the app, and the case's second run launched Firefox
+ * on a phone still booting, under Chrome's first screens: scripts/android.ts waits for the boot, puts adbd back on TCP
+ * and passes the first runs. The kernel's log of a panic, which Android keeps in its DropBox, goes to
+ * build/android-panic-*.txt.
+ */
+export async function rebootedAndroid(): Promise<string | null> {
+  const id = readBootId();
+  if (bootId === null || id === bootId) {
+    bootId = id || null;
+    return null;
+  }
+  dropFenix();
+  // listed as a device again before android.ts looks, which boots another emulator where it sees none
+  const serial = /^(emulator-\d+)\t/m.exec(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }))?.[1];
+  if (serial) {
+    try {
+      execFileSync("adb", ["-s", serial, "wait-for-device"], { timeout: 120_000, stdio: "ignore" });
+    } catch {}
+  }
+  execFileSync(process.execPath, [join(root, "scripts", "android.ts")], { timeout: 600_000, stdio: ["ignore", "ignore", "inherit"] });
+  bootId = readBootId() || null;
+  const shell = (cmd: string) => execFileSync("adb", ["-s", EMULATOR_TCP, "shell", cmd], { encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 2 ** 20 });
+  let reason = "";
+  try {
+    reason = shell("getprop sys.boot.reason.last").trim();
+  } catch {}
+  let kept = "";
+  if (reason.includes("panic")) {
+    // Android files it a moment after the boot completes
+    const log = await until("the kernel's log of the panic", () => {
+      try {
+        const out = shell("dumpsys dropbox --print SYSTEM_LAST_KMSG");
+        return /SYSTEM_LAST_KMSG/.test(out) && out.length > 200 && out;
+      } catch {
+        return false;
+      }
+    }, 60_000).catch(() => null);
+    if (log) {
+      kept = join(root, "build", `android-panic-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`);
+      writeFileSync(kept, log);
+    }
+  }
+  return `Android booted again${reason ? ` (${reason})` : ""}: readied it again${kept ? `, the kernel's log in ${kept}` : ""}`;
+}
+
 /** What the emulator holds of this machine's memory, in MB; 0 when none runs here. */
 function emulatorMB(): number {
   try {
@@ -869,11 +941,8 @@ export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX
   hadEmulator ??= mb > 0;
   // one that quit, or that a boot before left down, is booted too, where this process began with one
   if (mb === 0 ? !hadEmulator : mb < share * totalmem() / 2 ** 20) return null;
-  if (fenix) {
-    fenix.context.close().catch(() => {});
-    rmSync(fenix.dir, { recursive: true, force: true });
-    fenix = null;
-  }
+  dropFenix();
+  bootId = null;
   if (mb > 0) {
     try {
       // listed offline too, as one short of memory may be

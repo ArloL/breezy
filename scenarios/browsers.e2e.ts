@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { cases, type Case } from "./cases.ts";
-import { RealWorld, rebootFullEmulator, type RealKind } from "./browser.ts";
+import { RealWorld, rebootedAndroid, rebootFullEmulator, type RealKind } from "./browser.ts";
 import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 
@@ -79,6 +79,11 @@ for (const c of cases) {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
         if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
+        // outside the run's time, and before a second run too, which a panic in the first leaves on a phone booting
+        if ([a, b].some(phone)) {
+          const said = await rebootedAndroid();
+          if (said) console.log(said);
+        }
         const e = await once(t.name, c, [a, b], run);
         if (!e) break;
         if (run === RUNS) throw first ?? e;
