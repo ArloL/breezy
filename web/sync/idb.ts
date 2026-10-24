@@ -56,6 +56,9 @@ function change(d: IDBDatabase, apply: (s: IDBObjectStore) => void): Promise<voi
   return new Promise((resolve, reject) => {
     const t = d.transaction("state", "readwrite");
     apply(t.objectStore("state"));
+    // now, not after this task: Safari on iOS freezes a page hidden into its back-forward cache before then, and a
+    // transaction never committed keeps every other page of the site from reading the store
+    t.commit();
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error ?? new Error("transaction aborted"));
