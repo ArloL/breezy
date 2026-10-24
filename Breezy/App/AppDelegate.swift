@@ -127,6 +127,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     guard let invite = Invite(link: input.stringValue) else {
       return tell("That isn’t an invite link", "Copy the whole link from Share Invite on the other device.")
     }
+    join(invite)
+  }
+
+  /// Joins as Join Space does: the Boards window shows the space, which keeps its relay connected and polls it.
+  @MainActor func join(_ invite: Invite) {
     let g = Library.shared.spaces.join(invite)
     Library.shared.syncNow()
     show(g)

@@ -76,8 +76,7 @@ import Network
     switch c.cmd {
     case "join":
       guard let invite = Invite(link: try c.need(c.link, "link")) else { throw Failure(description: "not an invite link") }
-      _ = lib.spaces.join(invite)
-      lib.syncNow()
+      (NSApp.delegate as! AppDelegate).join(invite)
     case "boards":
       return .array(lib.spaces.spaces.flatMap { $0.store.boards.map { JSONValue.string($0.id) } })
     case "createBoard":

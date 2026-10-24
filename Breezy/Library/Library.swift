@@ -88,10 +88,14 @@ extension Notification.Name {
 
   /// Every 5 s while a board or the Boards window shows.
   private func poll() {
-    let shown = NSApp.windows.contains {
-      ($0.windowController is BoardWindowController || $0.windowController is BoardsWindowController) && $0.occlusionState.contains(.visible)
+    if visibleWindows.contains(where: { $0.windowController is BoardWindowController || $0.windowController is BoardsWindowController }) {
+      spaces.syncAll(polling: true)
     }
-    if shown { spaces.syncAll(polling: true) }
+  }
+
+  private var visibleWindows: [NSWindow] {
+    // a scenario drives the windows as a person looking at them would, whether or not the screen shows them
+    DebugLaunch.control != nil ? NSApp.windows : NSApp.isHidden ? [] : NSApp.windows.filter { $0.occlusionState.contains(.visible) }
   }
 
   /// Ends edits and writes every group before quitting.
@@ -191,8 +195,7 @@ extension Notification.Name {
   /// Connects each space's live layer while one of its boards or the Boards window shows, and says which board is in front
   /// and which show.
   func updateLive() {
-    // a scenario drives the windows as a person looking at them would, whether or not the screen shows them
-    let visible = DebugLaunch.control != nil ? NSApp.windows : NSApp.isHidden ? [] : NSApp.windows.filter { $0.occlusionState.contains(.visible) }
+    let visible = visibleWindows
     let listShown = visible.contains { $0.windowController is BoardsWindowController }
     let shown = visible.compactMap { ($0.windowController?.document as? BoardDocument)?.boardID }
     let key = (NSApp.keyWindow?.windowController?.document as? BoardDocument)?.boardID
