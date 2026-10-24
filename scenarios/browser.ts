@@ -509,6 +509,8 @@ export class BrowserDevice extends Device {
   private cdp: CDPSession | null = null;
   /** The fingers down, by id, as a touch event lists them all. */
   private down = new Map<number, Point>();
+  /** When the gesture's frame being sent means its touches, on Date.now(); none outside a gesture. */
+  private stamp: number | undefined;
 
   /** An emulator's, which touches go through in place of DevTools. */
   private readonly touchscreen?: Touchscreen;
@@ -620,7 +622,21 @@ export class BrowserDevice extends Device {
       if (lifting.length) await this.lifted(before + lifting.length, lifting);
       return;
     }
-    if (this.devtools) return super.gesture(frames);
+    if (this.devtools) {
+      // each touch stamped with when its frame means it, as a phone stamps a finger as it lands: on the runner the iOS
+      // Simulator loaded, DevTools took a double tap's touches 780 ms apart, past the app's 300 ms
+      let at = Date.now();
+      try {
+        for (const [ms, phase, moves] of frames) {
+          if (ms) await this.wait(ms);
+          this.stamp = at += ms;
+          await this.fingers(phase, moves);
+        }
+      } finally {
+        this.stamp = undefined;
+      }
+      return;
+    }
     await this.page.evaluate(touchFrames, frames.map(([ms, phase, moves]): [number, [string, number, number, number][]] => [ms, moves.map(([finger, p]) => [TOUCH_TYPES[phase], p.x, p.y, finger])]));
   }
 
@@ -639,7 +655,7 @@ export class BrowserDevice extends Device {
     else this.down.delete(finger);
     const type = ({ down: "touchStart", move: "touchMove", up: "touchEnd", cancel: "touchCancel" } as const)[phase];
     const touchPoints = [...this.down].map(([id, q]) => ({ x: q.x, y: q.y, id }));
-    await this.cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
+    await this.cdp.send("Input.dispatchTouchEvent", { type, touchPoints, ...(this.stamp === undefined ? {} : { timestamp: this.stamp / 1000 }) });
   }
 
   private get devtools() {
