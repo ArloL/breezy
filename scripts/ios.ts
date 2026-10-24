@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Boots an iPhone in the iOS Simulator whose Safari the scenarios' ios-safari device drives, and starts safaridriver on
 // port 4723 for it: node scripts/ios.ts. safaridriver needs `sudo safaridriver --enable` once on this Mac. Stop the
-// iPhone with xcrun simctl shutdown all.
+// iPhone with xcrun simctl shutdown all. With --start it only starts the boot, which CI does first, for the iPhone to
+// settle while the rest installs.
 import { execFileSync, spawn } from "node:child_process";
+import { cpus, loadavg } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { iosUnfit, IosPage, SAFARIDRIVER } from "../scenarios/ios.ts";
 
@@ -13,6 +15,10 @@ const runtime = Object.keys(devices).filter((r) => r.includes("iOS") && devices[
 const phone = devices[runtime!]?.filter((d) => d.name.startsWith("iPhone")).at(-1);
 if (!phone) throw new Error("no iPhone simulator: install an iOS runtime in Xcode");
 if (phone.state !== "Booted") run("boot", phone.udid);
+if (process.argv.includes("--start")) {
+  console.log(`booting ${phone.name} on ${runtime!.split(".").at(-1)}`);
+  process.exit(0);
+}
 run("bootstatus", phone.udid, "-b");
 // Settings → Safari → Advanced → Remote Automation and Web Inspector, which safaridriver needs to find Safari
 for (const key of ["RemoteAutomationEnabled", "WebKitRemoteAutomationEnabled", "WebInspectorEnabled", "WebKitInspectorEnabled"]) {
@@ -28,3 +34,8 @@ for (const end = Date.now() + 30_000; await iosUnfit(); await sleep(500)) {
 const warm = Date.now();
 await (await IosPage.open()).close();
 console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, safaridriver on ${SAFARIDRIVER}, a first session in ${Math.round((Date.now() - warm) / 1000)} s`);
+// a fresh iPhone keeps the runner busy for minutes after its boot, at a load of 500 to 600 on 3 CPUs, and the first
+// cases failed in it
+const settling = Date.now(), most = 60 * cpus().length;
+while (loadavg()[0] > most && Date.now() - settling < 8 * 60_000) await sleep(5000);
+console.log(`the load ${loadavg()[0].toFixed(0)} of ${cpus().length} CPUs after ${Math.round((Date.now() - settling) / 1000)} s settling`);

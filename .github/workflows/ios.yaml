@@ -34,6 +34,9 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
+    # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile
+    - name: Start booting an iPhone
+      run: node scripts/ios.ts --start
     - name: Install PHP
       run: command -v php || brew install php
     - name: Install the web toolchain and the relay
