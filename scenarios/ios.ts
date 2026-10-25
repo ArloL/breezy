@@ -18,7 +18,7 @@ const KEYS: Record<string, number> = { Enter: 40, Escape: 41, Backspace: 42, Tab
 
 /** The booted iPhone's id, or null. */
 export function bootedIphone(): string | null {
-  const { devices } = JSON.parse(execFileSync("xcrun", ["simctl", "list", "devices", "booted", "--json"], { encoding: "utf8", timeout: 30_000 })) as
+  const { devices } = JSON.parse(execFileSync("xcrun", ["simctl", "list", "devices", "booted", "--json"], { encoding: "utf8", timeout: 90_000 })) as
     { devices: Record<string, { udid: string; name: string }[]> };
   return Object.values(devices).flat().find((d) => d.name.startsWith("iPhone"))?.udid ?? null;
 }

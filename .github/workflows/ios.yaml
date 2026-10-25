@@ -57,7 +57,7 @@ jobs:
       run: brew install facebook/fb/idb-companion
     - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
     - name: Boot an iPhone
-      timeout-minutes: 10
+      timeout-minutes: 15
       run: node scripts/ios.ts
     - name: Scenarios with Safari on iOS
       timeout-minutes: 60
