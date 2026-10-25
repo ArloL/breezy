@@ -26,8 +26,8 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 | L3 Hub cases on fakes | `scenarios/cases.test.ts`: `scenarios/cases.ts` on the fuzzer's virtual time | push | B1, B3, B4 across devices |
 | L4 Convergence fuzzer | `scripts/fuzz.ts`: seeds 1–10 on push, 120 new nightly | push, nightly | B4, B5's sync side |
 | L5 Platform replays | `scenarios/platform/`: recorded traces replayed into each browser | push | B2 |
-| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the weekly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, where `node scripts/ios.ts --home` added it) | push, weekly, nightly | B1, B2, B3, B5 as each platform really does them |
-| L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) weekly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
+| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the nightly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, where `node scripts/ios.ts --home` added it) | push, nightly | B1, B2, B3, B5 as each platform really does them |
+| L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) nightly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
 | L8 Production | `scripts/deploy.py`'s check of the site and `scripts/relay-check.ts`, after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
 | Hand | the owner | always | whatever escapes, logged in `docs/escapes.md` |
 
@@ -35,7 +35,9 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 ## Two jobs
 
-The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level. Until the soaks measure those budgets, a real-device case on push that fails once and then passes only warns.
+The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level: the real devices to under 1 failure in 1,000 case runs over the last 30 days of soaks (`scripts/flake-budget.ts`, weekly in `.github/workflows/flake-budget.yaml`). Over it, the level is red, and it is fixed before new features. Until the soaks have counted 1,000 runs, a real-device case on push that fails once and then passes only warns.
+
+A case over its budget on a pair leaves the checks on push for `scenarios/quarantine.ts`, with why and since when, until it is fixed; the soaks still run it. `scripts/test/discipline.test.ts` keeps the cases to conditions rather than fixed waits, each wait they keep listed with why, and to driving devices only through `scenarios/device.ts`.
 
 ## How each level is proven
 
