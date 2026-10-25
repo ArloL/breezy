@@ -142,7 +142,7 @@ Each is its own plan, in this order: the owner's pain first, then the frame that
 | 6 | `scripts/mutate.ts`, floors per module from 55 % to 100 %; its first run found `revealing()` thinly tested |
 | 7 | `scripts/flake-budget.ts`, nightly soaks, `scenarios/quarantine.ts`, `scripts/test/discipline.test.ts` |
 
-Not done: L7's plant reaches `scripts/launch.ts` alone, not `feel.ts` (hung on this Mac) or `bench.sh`; B2 has none at L5, which needs a trace of Chrome's or Safari's Esc while composing, recorded through a real keyboard; mutation testing of BreezyKit; the Home Screen app on CI, as adding it takes taps by coordinates. Found on the way: iOS's keyboard drops a word after backspaces in any editable element (`docs/platform-expectations.md`), and the iPhone kept an edit waiting 15 s once in 18 runs, which its sync log will explain next time.
+Not done: L7's plant reaches `scripts/launch.ts` alone, not `feel.ts` (hung on this Mac) or `bench.sh`; B2 has none at L5, which needs a trace of Chrome's or Safari's Esc while composing, recorded through a real keyboard; mutation testing of BreezyKit. Found on the way: iOS's keyboard drops a word after backspaces in any editable element (`docs/platform-expectations.md`), and the iPhone kept an edit waiting 15 s once in 18 runs, which its sync log will explain next time.
 
 ## Left to the builder
 
