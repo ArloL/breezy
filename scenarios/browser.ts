@@ -1133,17 +1133,17 @@ export class RealWorld {
           page.open = async (url) => {
             const u = new URL(url);
             u.searchParams.set("opened", String(++opened));
-            execFileSync("xcrun", ["simctl", "openurl", udid, u.href], { timeout: 30_000 });
+            execFileSync("xcrun", ["simctl", "openurl", udid, u.href], { timeout: 90_000 });
           };
           // Safari afresh, so that no tab of a world before holds the boards' lock; a URL opened while it starts goes
           // nowhere, so it is opened again until a page asks
           try {
-            execFileSync("xcrun", ["simctl", "terminate", udid, "com.apple.mobilesafari"], { timeout: 30_000, stdio: "ignore" });
+            execFileSync("xcrun", ["simctl", "terminate", udid, "com.apple.mobilesafari"], { timeout: 90_000, stdio: "ignore" });
           } catch {}
           // and no tabs: a tab restored in the background kept the site's database open, and clearing it waited on that
           const state = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/Safari");
           for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(state, f + x), { force: true });
-          execFileSync("xcrun", ["simctl", "launch", udid, "com.apple.mobilesafari"], { timeout: 30_000, stdio: "ignore" });
+          execFileSync("xcrun", ["simctl", "launch", udid, "com.apple.mobilesafari"], { timeout: 90_000, stdio: "ignore" });
           for (let attempt = 1; ; attempt++) {
             await page.open(`http://localhost:${WEB}/scenarios-clear`);
             try {
