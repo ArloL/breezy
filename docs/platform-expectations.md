@@ -77,3 +77,5 @@ MISE_ENV=android mise exec -- node --test --test-force-exit scenarios/platform/a
 ```
 
 Native runs need Accessibility permission for the terminal, and Japanese added once under System Settings → Keyboard → Input Sources. They share the one keyboard: run their files one at a time (`--test-concurrency=1`), as `node --test` runs files side by side.
+
+Chrome on Android reads `visualViewport.height` at the keyboard's new height before it fires `resize`: up to half a second before on CI's emulator, or locally with `SCENARIO_SLOWDOWN=4`, about a frame on a quick phone. The app moves the board on `resize`, so the scenarios count the board as still only once the page has had the event for the height it reads.
