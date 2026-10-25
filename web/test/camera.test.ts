@@ -137,3 +137,35 @@ test("revealing a card opened at 25 % while the zoom to 100 % springs keeps the 
   assert.ok(s.x >= area.left && s.x + card.w <= area.right, `x ${s.x}`);
   assert.ok(s.y >= area.top && s.y + card.h <= area.bottom, `y ${s.y}`);
 });
+
+test("revealing pans each way the least it can, 16 pt in from the edge, at any zoom", () => {
+  const a = { top: 100, bottom: 500, left: 0, right: 400 };
+  const cam = { x: 0, y: 0, zoom: 2 };
+  // world rects 50 × 20, shown 100 × 40 at zoom 2
+  const cases: [string, { x: number; y: number }, { x: number; y: number } | null][] = [
+    ["inside", { x: 50, y: 100 }, null],
+    ["left of it", { x: -20, y: 100 }, { x: 56, y: 0 }],
+    ["right of it", { x: 180, y: 100 }, { x: -76, y: 0 }],
+    ["above it", { x: 50, y: 20 }, { x: 0, y: 76 }],
+    ["below it", { x: 50, y: 240 }, { x: 0, y: -36 }],
+    ["at the edge, inside the pad", { x: 2, y: 100 }, { x: 12, y: 0 }],
+  ];
+  for (const [what, at, shift] of cases) {
+    const to = revealing(cam, { ...at, w: 50, h: 20 }, a);
+    assert.deepEqual(to, shift && { x: shift.x, y: shift.y, zoom: 2 }, what);
+  }
+});
+
+test("revealing a rect too big to show shows its left edge and its preferred one", () => {
+  const a = { top: 100, bottom: 500, left: 0, right: 400 };
+  const cam = { x: 0, y: 0, zoom: 1 };
+  const big = { x: 100, y: 300, w: 500, h: 600 };
+  assert.deepEqual(revealing(cam, big, a), { x: 16 - 100, y: 116 - 300, zoom: 1 });
+  assert.deepEqual(revealing(cam, big, a, "bottom"), { x: 16 - 100, y: 484 - 900, zoom: 1 });
+});
+
+test("revealing measures an area that starts in from the screen's edge by its own width", () => {
+  // 380 shown and 16 each side is wider than the 400 from 40 to 440: its left edge shows, though its right is past 424
+  const to = revealing({ x: 0, y: 0, zoom: 2 }, { x: 50, y: 100, w: 190, h: 20 }, { top: 100, bottom: 500, left: 40, right: 440 });
+  assert.deepEqual(to, { x: 56 - 100, y: 0, zoom: 2 });
+});

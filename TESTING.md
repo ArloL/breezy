@@ -37,6 +37,16 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level. Until the soaks measure those budgets, a real-device case on push that fails once and then passes only warns.
 
+## How each level is proven
+
+| Level | Proven by | Runs |
+|---|---|---|
+| L1 | plants (`scripts/plants.ts`), and a mutation score per module held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`; survivors in `build/mutation/`) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
+| L2 | a fake made wrong on purpose fails its contract (`scenarios/field-contract.test.ts`) | push |
+| L3, L4, L6 | plants | weekly; L6 with the iPhone nightly |
+| L5 | not yet: `ime-keys` survives it | |
+| L7, L8 | not yet | |
+
 ## Matrix
 
 | Class | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 |

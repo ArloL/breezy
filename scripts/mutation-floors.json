@@ -1,0 +1,15 @@
+{
+  "web/camera.ts": 61.8,
+  "web/gestures.ts": 72.9,
+  "web/keys.ts": 82.5,
+  "web/model.ts": 100,
+  "web/mouse.ts": 80,
+  "web/press.ts": 55,
+  "web/rules.ts": 65.6,
+  "web/sync/compact.ts": 83.4,
+  "web/sync/merge.ts": 84.6,
+  "web/sync/msgpack.ts": 85.1,
+  "web/sync/order-key.ts": 97.1,
+  "web/sync/records.ts": 85,
+  "web/sync/track.ts": 75
+}
