@@ -1,7 +1,8 @@
 name: iOS scenarios
 
 # The scenarios with Safari on the iOS Simulator watching what Chromium does: whether the app loads, keeps its data and
-# shows each change in an iPhone's Safari. A workflow of its own while it proves itself, so that it fails nothing else.
+# shows each change in an iPhone's Safari, and in the app on its Home Screen. A workflow of its own while it proves itself,
+# so that it fails nothing else.
 # Nightly, on dispatch, and on pull requests that change how it runs.
 on:
   schedule:
@@ -27,6 +28,8 @@ jobs:
       matrix:
         # the size the cases are written for, and the owner's, whose board shows less above its keyboard
         iphone: [iPhone 17, iPhone 13 mini]
+        # in a Safari tab, and as the owner runs it, from the Home Screen
+        kind: [ios-safari, ios-home]
     env:
       IPHONE: ${{ matrix.iphone }}
     permissions:
@@ -66,15 +69,15 @@ jobs:
     - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
     - name: Boot an iPhone
       timeout-minutes: 15
-      run: node scripts/ios.ts
-    - name: Scenarios with Safari on iOS
+      run: node scripts/ios.ts ${{ matrix.kind == 'ios-home' && '--home' || '' }}
+    - name: Scenarios on iOS
       timeout-minutes: 60
       env:
-        SCENARIO_PAIRS: ios-safari:chromium chromium:ios-safari
+        SCENARIO_PAIRS: ${{ matrix.kind }}:chromium chromium:${{ matrix.kind }}
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
     # the real devices' plants, whatever the cases before did: a board that cannot open offline, in Chromium
     - name: Plants
-      if: ${{ !cancelled() }}
+      if: ${{ !cancelled() && matrix.kind == 'ios-safari' }}
       env:
         SCENARIO_PAIRS: ios-safari:chromium
       run: node scripts/plants.ts --level L6
@@ -84,7 +87,7 @@ jobs:
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
-        # ios-scenarios, the iPhone 17's, as it has long been named
-        name: ${{ matrix.iphone == 'iPhone 17' && 'ios-scenarios' || 'ios-scenarios-13-mini' }}
+        # ios-scenarios, the iPhone 17's Safari tab's, as the flake budget has long read it
+        name: ${{ format('{0}-scenarios{1}', matrix.kind == 'ios-safari' && 'ios' || 'ios-home', matrix.iphone == 'iPhone 17' && '' || '-13-mini') }}
         path: build/scenarios
         if-no-files-found: ignore

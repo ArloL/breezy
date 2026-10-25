@@ -39,7 +39,7 @@ jobs:
         desktop-soak.yaml
         android-soak.yaml
         main.yaml --name scenarios --name android-emulator
-        ios.yaml --name ios-scenarios
+        ios.yaml --name ios-scenarios --name ios-home-scenarios --name ios-scenarios-13-mini --name ios-home-scenarios-13-mini
         LIST
     - name: Budget
       # bash, not the default bash -e, has pipefail, else tee's success hides a budget overrun
