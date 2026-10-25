@@ -459,6 +459,11 @@ function logPage() {
   };
   addEventListener("resize", size);
   visualViewport!.addEventListener("resize", size);
+  // the visual viewport's height as its last resize event told it, which is all the app moves the board by: Chrome on
+  // CI's Android emulator reads the keyboard's height half a second before it tells
+  const told = () => (window as unknown as { breezyHeight: number }).breezyHeight = Math.round(visualViewport!.height);
+  addEventListener("load", told);
+  visualViewport!.addEventListener("resize", told);
   addEventListener("visibilitychange", () => note(`visibility ${document.visibilityState}`));
   // what had the keyboard, for a touch an editor kept from the board
   for (const type of ["keydown", "focusin", "focusout"]) {
@@ -836,8 +841,12 @@ export class BrowserDevice extends Device {
     if (!this.touchscreen) return;
     let last = "", since = Date.now();
     await until(what, async () => {
-      const now = JSON.stringify([await this.page.evaluate(() => [innerHeight, visualViewport!.height, visualViewport!.offsetTop]), (await this.scene()).camera]);
-      if (now !== last) [last, since] = [now, Date.now()];
+      const [size, told] = await this.page.evaluate(() => {
+        const was = (window as unknown as { breezyHeight?: number }).breezyHeight;
+        return [[innerHeight, visualViewport!.height, visualViewport!.offsetTop], was == null || was === Math.round(visualViewport!.height)] as const;
+      });
+      const now = JSON.stringify([size, (await this.scene()).camera]);
+      if (now !== last || !told) [last, since] = [now, Date.now()];
       return Date.now() - since >= 500;
     }, 5000);
   }
@@ -1158,7 +1167,9 @@ export class RealWorld {
     // Chrome keeps its profile from run to run
     const cdp = await context.newCDPSession(page);
     await cdp.send("Storage.clearDataForOrigin", { origin: `http://localhost:${WEB}`, storageTypes: "all" });
-    await cdp.detach();
+    // SCENARIO_SLOWDOWN=4 runs Chrome as slowly as on CI's emulator, whose timing is what fails there
+    if (process.env.SCENARIO_SLOWDOWN) await cdp.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.SCENARIO_SLOWDOWN) });
+    else await cdp.detach();
     // an emulator's touchscreen; a phone's touches go through DevTools
     const console = emulator ? await EmulatorConsole.open(emulator) : undefined;
     if (console) this.consoles.push(console);
