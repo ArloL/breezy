@@ -615,6 +615,26 @@ export const cases: Case[] = [
     },
   },
   {
+    // quality goal 4a: what one adds while the other is away shows within 5 s of the other opening the app
+    name: "a card made while the other device was away shows on it within 5 s of its launch",
+    input: "touch",
+    offline: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      await laneAndCard(s);
+      // away, as a phone put down: offline, so that nothing reaches it until it launches again
+      await a.offline(true);
+      const size = await b.size(), at = await b.world({ x: size.w / 2, y: size.h / 2 });
+      const id = await b.addCard(at.x, at.y);
+      await a.offline(false);
+      const launched = Date.now();
+      await a.relaunch();
+      const shown = await eventually(a, 5000, async () => (await a.scene()).cards.some((c) => c.id === id));
+      const ms = Date.now() - launched;
+      assert.ok(shown && ms <= 5000, `the card shows ${shown ? `${ms} ms` : "not at all 5 s"} after the launch; the first says "${await a.syncStatus()}", the other "${await b.syncStatus()}"`);
+    },
+  },
+  {
     name: "a lane dragged by its header carries the cards in it, on the other device too",
     input: "mouse",
     async run(s) {
