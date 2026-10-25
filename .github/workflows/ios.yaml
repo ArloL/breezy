@@ -72,8 +72,9 @@ jobs:
       env:
         SCENARIO_PAIRS: ios-safari:chromium chromium:ios-safari
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
-    # the iOS new card's bug put back must fail its case with the iPhone acting
+    # the iOS new card's bug put back must fail its case with the iPhone acting, whatever the cases before did
     - name: Plants
+      if: ${{ !cancelled() }}
       env:
         SCENARIO_PAIRS: ios-safari:chromium
       run: node scripts/plants.ts --level L6

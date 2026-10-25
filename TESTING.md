@@ -26,7 +26,7 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 | L3 Hub cases on fakes | `scenarios/cases.test.ts`: `scenarios/cases.ts` on the fuzzer's virtual time | push | B1, B3, B4 across devices |
 | L4 Convergence fuzzer | `scripts/fuzz.ts`: seeds 1–10 on push, 120 new nightly | push, nightly | B4, B5's sync side |
 | L5 Platform replays | `scenarios/platform/`: recorded traces replayed into each browser | push | B2 |
-| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the nightly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, where `node scripts/ios.ts --home` added it) | push, nightly | B1, B2, B3, B5 as each platform really does them |
+| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the nightly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, by hand where `node scripts/ios.ts --home` added it). The iPhone skips cases with two fingers, going offline or a busy phone, and those a case marks `notOnIphone` | push, nightly | B1, B2, B3, B5 as each platform really does them |
 | L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) nightly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
 | L8 Production | `scripts/deploy.py`'s check of the site and `scripts/relay-check.ts`, after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
 | Hand | the owner | always | whatever escapes, logged in `docs/escapes.md` |
@@ -35,16 +35,16 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 ## Two jobs
 
-The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level: the real devices to under 1 failure in 1,000 case runs over the last 30 days of soaks (`scripts/flake-budget.ts`, weekly in `.github/workflows/flake-budget.yaml`). Over it, the level is red, and it is fixed before new features. Until the soaks have counted 1,000 runs, a real-device case on push that fails once and then passes only warns.
+The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level: the real devices to at most 1 failure in 1,000 case runs over the last 30 days of main's soaks (desktop and Android; the iPhone's nightly runs are not counted yet) (`scripts/flake-budget.ts`, weekly in `.github/workflows/flake-budget.yaml`). Over it, the level is red, and it is fixed before new features. Main still gives a failing real-device case a second run and only warns when it then passes; that retry is to go once the soaks have counted 1,000 runs, by hand.
 
-A case over its budget on a pair leaves the checks on push for `scenarios/quarantine.ts`, with why and since when, until it is fixed; the soaks still run it. `scripts/test/discipline.test.ts` keeps the cases to conditions rather than fixed waits, each wait they keep listed with why, and to driving devices only through `scenarios/device.ts`.
+A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be put in `scenarios/quarantine.ts` by hand, with why and since when, until it is fixed: Main skips it there, and the soaks still run it. `scripts/test/discipline.test.ts` keeps the cases to conditions rather than fixed waits, each wait they keep listed with why, and to driving devices only through `scenarios/device.ts`.
 
 ## How each level is proven
 
 | Level | Proven by | Runs |
 |---|---|---|
 | L1 | plants (`scripts/plants.ts`), and a mutation score per module held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`, which keeps the survivors under build/mutation) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
-| L2 | a fake made wrong on purpose fails its contract (`scenarios/field-contract.test.ts`) | push |
+| L2 | the hub's field drifted on purpose, its keys telling the app nothing, fails its contract (`scenarios/field-contract.test.ts`) | push |
 | L3, L4, L6 | plants | weekly; L6 with the iPhone nightly |
 | L5 | not yet: `ime-keys` survives it | |
 | L8 | `scripts/deploy-check.ts` runs the checks after a deploy against the site as built, served here with PHP; plants | weekly |
@@ -63,7 +63,7 @@ A case over its budget on a pair leaves the checks on push for `scenarios/quaran
 | B7 | — | — | — | — | — | — | — | plant: half-uploaded |
 | B8 | — | — | — | — | — | — | claimed | — |
 
-A cell is owned only when it names a plant that `node scripts/plants.ts` shows the level failing on, and passing without (`order-all`, planted for the fuzzer, is not run there yet). `ime-keys` survives the replays (L5): their traces carry Esc and Enter only as Firefox on the Mac sends them while composing, as Process keys, and the bug it puts back was Chrome's and Safari's. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
+A cell is owned only when it names a plant that `node scripts/plants.ts` shows the level failing on, and passing without (`order-all`, planted for the fuzzer, is not run there yet). `lost-release` puts back the half of `b3003b1` that a press ends a drag left open; the other half, a move with the button up, stays. `ime-keys` survives the replays (L5): their traces carry Esc and Enter only as Firefox on the Mac sends them while composing, as Process keys, and the bug it puts back was Chrome's and Safari's. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
 
 ## When a bug escapes
 

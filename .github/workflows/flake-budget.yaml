@@ -29,9 +29,12 @@ jobs:
       run: |
         since=$(date -u -d '30 days ago' +%Y-%m-%d)
         for w in desktop-soak.yaml android-soak.yaml; do
-          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$w" --created ">=$since" --status completed --limit 100 --json databaseId --jq '.[].databaseId'); do
+          # main's alone: stability branches soak code that is unstable on purpose
+          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$w" --branch main --created ">=$since" --status completed --limit 100 --json databaseId --jq '.[].databaseId'); do
             gh run download "$id" --repo "$GITHUB_REPOSITORY" --dir "build/soaks/$id" || echo "run $id kept nothing"
           done
         done
     - name: Budget
+      # bash, not the default bash -e, has pipefail, else tee's success hides a budget overrun
+      shell: bash
       run: node scripts/flake-budget.ts build/soaks | tee -a "$GITHUB_STEP_SUMMARY"

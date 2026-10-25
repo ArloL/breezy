@@ -41,7 +41,14 @@ function fake(): FieldHarness {
 
 for (const c of FIELD_CASES) test(`the hub's field: ${c.name}`, () => c.run(fake()));
 
-test("a fake that leaves the caret where it is fails the contract", async () => {
-  const wrong = { ...fake(), caret: async () => 0 };
-  await assert.rejects(FIELD_CASES[0]!.run(wrong));
+/** The hub's field drifted as a fake can: its keys change the text without telling the app. */
+function drifted(): FieldHarness {
+  const h = fake();
+  let typed = "";
+  return { ...h, type: async (text) => void (typed += text), text: async () => (await h.text()) + typed };
+}
+
+test("a fake whose keys tell the app nothing fails the contract", async () => {
+  const failed = (await Promise.all(FIELD_CASES.map((c) => c.run(drifted()).then(() => null, () => c.name)))).filter(Boolean);
+  assert.ok(failed.length > 0, "no case saw it");
 });
