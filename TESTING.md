@@ -2,6 +2,28 @@
 
 Bugs used to reach the owner first, by hand, some long after they were made. Here each kind of bug Breezy has had is a class, each class has levels that own it, and a level owns a class only once it is shown to fail on a bug of that class planted on purpose. `docs/escapes.md` counts what still gets through. The design behind this is `docs/superpowers/specs/2026-10-25-breezy-testing-strategy-design.md`.
 
+## The quality goals, and what measures each
+
+`docs/quality-goals.md` sets the goals; this is what holds each scenario today. A gap is a goal nothing fails for.
+
+| Goal | Measured by | Gap |
+|---|---|---|
+| 1a first use from the invite | — | everything: install, join and open are run by the scenarios' harness, not as she would |
+| 1b touch: drag, pan, pinch | the touch cases on the hub's phone, Chrome and Firefox on the Android emulator, and the iPhone; `lost-release` (L1) | whether a gesture surprises her |
+| 1c writing: the keyboard never covers the line | the sight check after every step (B1), on the hub's phone and on Android and iPhone; Android keyboards' platform rows (L5, L6) | the hub's phone is an iPhone, not her Android |
+| 1d finding my new card ≤ 10 s | — | everything |
+| 1e updates never interrupt an edit | `web/test/update.test.ts`, `web/test/owner.test.ts` (L1) | no case on a device |
+| 2a drag, p95 frame ≤ 16.7 ms on Android | `scripts/bench.sh`, on the Mac | Android |
+| 2b key to glyph ≤ 50 ms on Android | `scripts/feel.ts`, in desktop Chromium | Android |
+| 2c launch ≤ 1.5 s | — | everything |
+| 2d no measure worse than its baseline | `scripts/gate.ts` nightly | no plant shows it fails (L7) |
+| 3a both offline edits shown ≤ 10 s after | the offline case on real devices; the fuzzer's partitions | the Mac offline; the 10 s |
+| 3b both edits to a card survive | the fuzzer's merge probes; `merge-local` (L1, L4) | |
+| 3c fuzzer seeds and scenarios pass | Main | |
+| 4a my card shows ≤ 5 s after her launch | — | everything |
+| 4b boards open and edit offline | the offline case on real devices; `no-snapshot` (L6) | the iPhone cannot go offline here |
+| 4c sync.php or the relay down | the fuzzer's faults: captive portals, relay restarts | "show they are offline" |
+
 ## Bug classes
 
 Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
@@ -26,8 +48,8 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 | L3 Hub cases on fakes | `scenarios/cases.test.ts`: `scenarios/cases.ts` on the fuzzer's virtual time | push | B1, B3, B4 across devices |
 | L4 Convergence fuzzer | `scripts/fuzz.ts`: seeds 1–10 on push, 120 new nightly | push, nightly | B4, B5's sync side |
 | L5 Platform replays | `scenarios/platform/`: recorded traces replayed into each browser | push | B2 |
-| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the nightly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, by hand where `node scripts/ios.ts --home` added it). The iPhone skips cases with two fingers, going offline or a busy phone, and those a case marks `notOnIphone` | push, nightly | B1, B2, B3, B5 as each platform really does them |
-| L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) nightly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
+| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the weekly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, by hand where `node scripts/ios.ts --home` added it). The iPhone skips cases with two fingers, going offline or a busy phone, and those a case marks `notOnIphone` | push, nightly | B1, B2, B3, B5 as each platform really does them |
+| L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) weekly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
 | L8 Production | `scripts/deploy.py`'s check of the site and `scripts/relay-check.ts`, after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
 | Hand | the owner | always | whatever escapes, logged in `docs/escapes.md` |
 
@@ -35,7 +57,7 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 ## Two jobs
 
-The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level: the real devices to at most 1 failure in 1,000 case runs over the last 30 days of main's soaks (desktop and Android; the iPhone's nightly runs are not counted yet) (`scripts/flake-budget.ts`, weekly in `.github/workflows/flake-budget.yaml`). Over it, the level is red, and it is fixed before new features. Main still gives a failing real-device case a second run and only warns when it then passes; that retry is to go once the soaks have counted 1,000 runs, by hand.
+The checks on every push guard: they block merging and must be red only for a bug. The nightly and soak runs discover: they find what the fakes do not know yet. Both are held to a flake budget, since a flaky run is a bug of its level: the real devices to at most 1 failure in 1,000 case runs over the last 30 days of main's runs of them: the weekly soaks, Main's, and the iPhone's nightly (`scripts/flake-budget.ts`, weekly in `.github/workflows/flake-budget.yaml`). Over it, the level is red, and it is fixed before new features. Main still gives a failing real-device case a second run and only warns when it then passes; that retry is to go once the soaks have counted 1,000 runs, by hand.
 
 A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be put in `scenarios/quarantine.ts` by hand, with why and since when, until it is fixed: Main skips it there, and the soaks still run it. `scripts/test/discipline.test.ts` keeps the cases to conditions rather than fixed waits, each wait they keep listed with why, and to driving devices only through `scenarios/device.ts`.
 

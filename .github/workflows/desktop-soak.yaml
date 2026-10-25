@@ -2,11 +2,11 @@ name: Desktop soak
 
 # The scenarios on real devices but Android's, Chromium, WebKit, Firefox and the Debug Mac app, over and over on many
 # macOS runners, to measure how often they fail: Main retries a failing case once, which hides a rare flake there. A
-# failing case's timeline.txt in build/scenarios has its steps, pages and sync: read it before anything else. Nightly,
-# for the flake budget (scripts/flake-budget.ts) to count, or dispatch it.
+# failing case's timeline.txt in build/scenarios has its steps, pages and sync: read it before anything else. Weekly,
+# or dispatch it; the flake budget (scripts/flake-budget.ts) counts these runs.
 on:
   schedule:
-  - cron: "17 4 * * *"
+  - cron: "17 4 * * 6"
   workflow_dispatch:
     inputs:
       runners:
