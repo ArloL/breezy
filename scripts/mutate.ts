@@ -80,10 +80,13 @@ function testsOf(module: string) {
   }).map((f) => join("web/test", f));
 }
 
-function run(cwd: string, tests: string[]): Promise<boolean> {
+export function run(cwd: string, tests: string[], ms = 60_000): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn("node", ["--test", ...tests], { cwd, stdio: "ignore" });
-    const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
+    // a runner of its own, not a subtest of one this runs under
+    const { NODE_TEST_CONTEXT: _, ...env } = process.env;
+    // a group of its own, killed whole: a looping mutant's test file outlived its runner and spun for hours
+    const child = spawn("node", ["--test", ...tests], { cwd, env, stdio: "ignore", detached: true });
+    const timer = setTimeout(() => process.kill(-child.pid!, "SIGKILL"), ms);
     child.on("exit", (code) => (clearTimeout(timer), resolve(code === 0)));
   });
 }
