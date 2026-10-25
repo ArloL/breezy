@@ -15,8 +15,8 @@ Bugs used to reach the owner first, by hand, some long after they were made. Her
 | 1e updates never interrupt an edit | `web/test/update.test.ts`, `web/test/owner.test.ts` (L1) | no case on a device |
 | 2a drag, p95 frame ≤ 16.7 ms on Android | `scripts/bench.sh`, on the Mac | Android |
 | 2b key to glyph ≤ 50 ms on Android | `scripts/feel.ts`, in desktop Chromium | Android |
-| 2c launch ≤ 1.5 s | — | everything |
-| 2d no measure worse than its baseline | `scripts/gate.ts` nightly | no plant shows it fails (L7) |
+| 2c launch ≤ 1.5 s | `scripts/launch.ts` nightly: a warm launch of a 500-card board in Chromium at a phone's size with its CPU slowed 4×, at most 1.5 s and no worse than the reference build; `uncached-heights` (L7) | the iPhone's and Android's own launch |
+| 2d no measure worse than its baseline | `scripts/gate.ts` nightly | a plant shows it for launch alone (L7) |
 | 3a both offline edits shown ≤ 10 s after | the offline case on real devices; the fuzzer's partitions | the Mac offline; the 10 s |
 | 3b both edits to a card survive | the fuzzer's merge probes; `merge-local` (L1, L4) | |
 | 3c fuzzer seeds and scenarios pass | Main | |
@@ -49,7 +49,7 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 | L4 Convergence fuzzer | `scripts/fuzz.ts`: seeds 1–10 on push, 120 new nightly | push, nightly | B4, B5's sync side |
 | L5 Platform replays | `scenarios/platform/`: recorded traces replayed into each browser | push | B2 |
 | L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the weekly soaks; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, by hand where `node scripts/ios.ts --home` added it). The iPhone skips cases with two fingers, going offline or a busy phone, and those a case marks `notOnIphone` | push, nightly | B1, B2, B3, B5 as each platform really does them |
-| L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) weekly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
+| L7 Long runs and measures | `scripts/feel.ts`, `scripts/launch.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) weekly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
 | L8 Production | `scripts/deploy.py`'s check of the site and `scripts/relay-check.ts`, after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
 | Hand | the owner | always | whatever escapes, logged in `docs/escapes.md` |
 
@@ -70,7 +70,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 | L3, L4, L6 | plants | weekly; L6 nightly, in the iOS workflow |
 | L5 | not yet: `ime-keys` survives it | |
 | L8 | `scripts/deploy-check.ts` runs the checks after a deploy against the site as built, served here with PHP; plants | weekly |
-| L7 | not yet | |
+| L7 | the launch measure in turns with the same build unplanted (`uncached-heights`); feel, bench and the soaks not yet | weekly, `.github/workflows/plants.yaml` |
 
 ## Matrix
 
@@ -81,7 +81,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 | B3 | plant: lost-release | claimed | claimed | — | — | claimed | claimed | — |
 | B4 | plant: merge-local | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
 | B5 | plant: half-deploy | — | — | claimed | — | plant: no-snapshot | claimed | — |
-| B6 | — | — | — | — | — | — | claimed | — |
+| B6 | — | — | — | — | — | — | plant: uncached-heights | — |
 | B7 | — | — | — | — | — | — | — | plant: half-uploaded |
 | B8 | — | — | — | — | — | — | claimed | — |
 

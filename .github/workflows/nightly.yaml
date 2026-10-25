@@ -19,6 +19,7 @@ on:
     - scripts/gate.ts
     - scripts/feel.ts
     - scripts/bench.sh
+    - scripts/launch.ts
     - Breezy/Support/Bench.swift
     - scripts/fuzz.ts
 permissions: {}
@@ -132,6 +133,43 @@ jobs:
         path: build/bench*.jsonl
     - name: Compare with the reference
       run: node scripts/gate.ts build/bench.jsonl build/bench-ref.jsonl
+  # quality goal 2c: this commit's launch on a phone's CPU against the reference's, in turns on the same runner, and at
+  # most 1.5 s from a launch to a drawn board
+  launch:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        # the reference too
+        fetch-depth: 0
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off
+    - name: Keep the servers' ports free
+      run: scripts/reserve-ports.sh
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Install the web toolchain
+      run: npm ci
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium
+      run: npx playwright-core install chromium
+    - name: Build the reference
+      run: |
+        git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
+        cd "$RUNNER_TEMP/ref"
+        npm ci
+        scripts/build-site.sh "$RUNNER_TEMP/ref-site" ref
+    - name: Measure and compare with the reference
+      run: node scripts/launch.ts --ref "$RUNNER_TEMP/ref-site"
   # New seeds every night, with the network profile and the mix of web and Swift devices in turn: Main fuzzes seeds 1–10
   # of one mix only. A failing seed's trace and the smallest one that still fails are in the fuzz artifact; replay one
   # with node scripts/fuzz.ts --replay FILE.
