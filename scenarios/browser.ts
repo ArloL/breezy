@@ -16,6 +16,7 @@ import { IosDevice, IosPage } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
+import { AGENT_SCRIPT, fromIphone, type Agent } from "./agent.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -1022,13 +1023,15 @@ export function buildSite(dir: string) {
   execFileSync(join(root, "scripts/build-site.sh"), [dir, VERSION], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
 }
 
-/** Serves `dir` on 127.0.0.1:`port`. */
-export function serveStatic(dir: string, port: number) {
+/** Serves `dir` on 127.0.0.1:`port`; with `agent`, each page served an iPhone carries the agent that reads it. */
+export function serveStatic(dir: string, port: number, agent?: Agent) {
   const types: Record<string, string> = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
   return createServer((req, res) => {
+    if (agent?.handle(req, res)) return;
     const path = join(dir, new URL(req.url!, "http://x").pathname.replace(/\/$/, "/index.html"));
     if (!existsSync(path)) return res.writeHead(404).end();
-    res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream" }).end(readFileSync(path));
+    const body = agent && extname(path) === ".html" && fromIphone(req) ? readFileSync(path, "utf8") + AGENT_SCRIPT : readFileSync(path);
+    res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream" }).end(body);
   }).listen(port, "127.0.0.1");
 }
 
