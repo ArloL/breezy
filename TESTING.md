@@ -50,7 +50,7 @@ The checks on every push guard: they block merging and must be red only for a bu
 | B7 | — | — | — | — | — | — | — | claimed |
 | B8 | — | — | — | — | — | — | claimed | — |
 
-A cell is owned only when it names a plant a test shows the level failing on (`order-all`, planted for the fuzzer, has no such test yet). `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): the card being edited, whole or by its caret's line, within a second. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
+A cell is owned only when it names a plant a test shows the level failing on (`order-all`, planted for the fuzzer, has no such test yet). `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
 
 ## When a bug escapes
 
