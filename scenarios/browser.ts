@@ -1182,6 +1182,8 @@ export class RealWorld {
   /** Firefox for Android, which a world that passed keeps for the next. */
   private fenix: Fenix | null = null;
   private readonly children: ChildProcess[] = [];
+  /** sync.php's and the relay's process groups, which an outage stops. */
+  private readonly servers: ChildProcess[] = [];
   private readonly dirs: string[] = [];
   private readonly consoles: EmulatorConsole[] = [];
   private web?: ReturnType<typeof createServer>;
@@ -1356,6 +1358,10 @@ export class RealWorld {
       devices: this.devices.map((d, i) => this.steps.wrap(watchSight(d), `d${i} ${d.kind}`, () => d.state())),
       settle: () => this.steps.run("world", "settle", [], () => this.settle()),
       invite: this.invite,
+      // as a host that stops answering: its connections open and hang, until it goes on
+      outage: (down: boolean) => this.steps.run("world", "outage", [down], async () => {
+        for (const c of this.servers) process.kill(-c.pid!, down ? "SIGSTOP" : "SIGCONT");
+      }),
     };
   }
 
@@ -1474,6 +1480,7 @@ export class RealWorld {
     };
     group("relay", "npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", String(RELAY), "--persist-to", relayState], join(root, "relay"));
     group("server", join(root, "server/dev.sh"), []);
+    this.servers.push(...this.children.slice(-2));
     const said = (name: string) => this.host.filter(([, n]) => n === name).slice(-20).map(([, , l]) => `  ${l}`).join("\n");
     await until("the relay", () => fetch(`http://127.0.0.1:${RELAY}/`).then(() => true, () => false), 60_000)
       .catch((e: Error) => Promise.reject(new Error(`${e.message}; it said:\n${said("relay")}`)));

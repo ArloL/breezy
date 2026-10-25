@@ -11,6 +11,8 @@ export interface Stage {
   settle(): Promise<void>;
   /** The space's invite link; only on real devices. */
   invite?: string;
+  /** sync.php and the relay stop answering, or go on again; only on real devices. */
+  outage?(down: boolean): Promise<void>;
 }
 
 export interface Case {
@@ -27,6 +29,8 @@ export interface Case {
   fresh?: boolean;
   /** Whether the case taps the app's buttons, which the hub's devices have none of. */
   buttons?: boolean;
+  /** Whether the case stops sync.php and the relay, which the hub's world cannot. */
+  outage?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
   /** Why the iPhone in the iOS Simulator cannot act in it, if it cannot. */
@@ -632,6 +636,30 @@ export const cases: Case[] = [
       const shown = await eventually(a, 5000, async () => (await a.scene()).cards.some((c) => c.id === id));
       const ms = Date.now() - launched;
       assert.ok(shown && ms <= 5000, `the card shows ${shown ? `${ms} ms` : "not at all 5 s"} after the launch; the first says "${await a.syncStatus()}", the other "${await b.syncStatus()}"`);
+    },
+  },
+  {
+    // quality goal 4c: with sync.php and the relay down, the app keeps working, loses nothing and says so
+    name: "a card dragged into a lane while the servers are down stays there, the app says it cannot reach them, and the other device shows it once they are back",
+    input: "touch",
+    outage: true,
+    ms: 150_000,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      await s.outage!(true);
+      try {
+        const at = await a.scene();
+        await a.touchDrag(press(item(at, card)), centre(item(at, lane)));
+        // a request gives up after 20 s
+        const said = await eventually(a, 30_000, async () => /reach server|Offline/.test(await a.syncStatus()));
+        assert.ok(said, `the app says "${await a.syncStatus()}" 30 s into the outage`);
+        assert.deepEqual(await within(a, lane, card), { x: 24, y: 72 }, "where it was dragged, while the servers are down");
+      } finally {
+        await s.outage!(false);
+      }
+      const there = await eventually(b, 30_000, async () => JSON.stringify(await within(b, lane, card)) === JSON.stringify({ x: 24, y: 72 }));
+      assert.ok(there, `the other device shows it at ${JSON.stringify(await within(b, lane, card))} 30 s after the servers came back; the first says "${await a.syncStatus()}"`);
     },
   },
   {
