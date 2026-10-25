@@ -133,7 +133,7 @@ jobs:
         path: build/bench*.jsonl
     - name: Compare with the reference
       run: node scripts/gate.ts build/bench.jsonl build/bench-ref.jsonl
-  # quality goal 2c: this commit's launch on a phone's CPU against the reference's, in turns on the same runner, and at
+  # quality goal 2c: this commit's launch on a phone's CPU against bench-ref's, the Mac's reference too, in turns on the same runner, and at
   # most 1.5 s from a launch to a drawn board
   launch:
     runs-on: macos-latest

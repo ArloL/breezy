@@ -31,11 +31,13 @@ async function launcher(browser: Browser, dir: string, port: number, plant?: str
   if (plant) await context.addInitScript((name) => (globalThis as { __breezyPlant?: string }).__breezyPlant = name, plant);
   // when the board list and then the board were first drawn, on the page's own clock
   await context.addInitScript(() => {
-    const at: At = {};
+    const at: At = {}, seen = new Set<keyof At>();
     (window as unknown as { launchAt: At }).launchAt = at;
+    // the first frame after each shows; a card of the board's, not the one .measure always holds
+    const drawn = (k: keyof At) => !seen.has(k) && seen.add(k) && requestAnimationFrame(() => at[k] ??= performance.now());
     new MutationObserver(() => {
-      if (!at.list && document.querySelector(".boards-list li[data-board] .open")) requestAnimationFrame(() => at.list = performance.now());
-      if (!at.board && document.body?.dataset.screen === "board" && document.querySelector(".card")) requestAnimationFrame(() => at.board = performance.now());
+      if (document.querySelector(".boards-list li[data-board] .open")) drawn("list");
+      if (document.body?.dataset.screen === "board" && document.querySelector(".cards > [data-id]")) drawn("board");
     }).observe(document, { subtree: true, childList: true, attributes: true });
   });
   const page = await context.newPage();
@@ -61,6 +63,8 @@ async function launcher(browser: Browser, dir: string, port: number, plant?: str
   return {
     results,
     async launch() {
+      // the board left first, as the system ends an app, so that its unload counts in no launch
+      await page.goto("about:blank");
       await page.goto(url);
       await page.waitForFunction(() => (window as unknown as { launchAt: At }).launchAt.list);
       const tapped = await page.evaluate(() => {
@@ -96,4 +100,4 @@ writeFileSync(join(tmp, "ref.json"), JSON.stringify({ opt, results: ref.results 
 const gate = spawnSync("node", [join(root, "scripts/gate.ts"), join(tmp, "run.json"), join(tmp, "ref.json")], { encoding: "utf8" });
 console.log(gate.stdout.trimEnd());
 console.log(JSON.stringify({ opt, results: run.results }));
-process.exit(mean > GOAL || gate.status ? 1 : 0);
+process.exit(mean > GOAL || gate.status !== 0 ? 1 : 0);
