@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Camera, MIN_ZOOM, MAX_ZOOM } from "../camera.ts";
+import { Camera, MIN_ZOOM, MAX_ZOOM, revealing } from "../camera.ts";
 import { projection } from "../physics.ts";
 import type { Cam } from "../types.ts";
 
@@ -101,4 +101,39 @@ test("settling inside the limits just coasts the pan", () => {
   tick(16, 400);
   near(c.cam.x, projection(1), 12);
   assert.equal(c.cam.zoom, 1);
+});
+
+test("goal is where a spring ends, and the camera itself when nothing moves", () => {
+  const { c, tick } = setup({ x: 0, y: 0, zoom: 0.25 });
+  assert.deepEqual(c.goal(), { x: 0, y: 0, zoom: 0.25 });
+  c.springTo({ x: 10, y: 20, zoom: 1 });
+  tick();
+  assert.ok(c.cam.zoom < 1);
+  const g = c.goal();
+  assert.equal(g.x, 10);
+  assert.equal(g.y, 20);
+  near(g.zoom, 1, 1e-9);
+});
+
+const DESK = { top: 0, bottom: 800, left: 0, right: 1200 };
+
+test("revealing pans the least to show a rect, and nothing when it shows", () => {
+  const cam = { x: 0, y: 0, zoom: 1 };
+  assert.deepEqual(revealing(cam, { x: 1300, y: 100, w: 240, h: 48 }, DESK), { x: 1200 - 16 - (1300 + 240), y: 0, zoom: 1 });
+  assert.equal(revealing(cam, { x: 100, y: 100, w: 240, h: 48 }, DESK), null);
+});
+
+test("revealing a card opened at 25 % while the zoom to 100 % springs keeps the card in the area at 100 %", () => {
+  // a phone's board above its keyboard, and a card whose top centre shows at (380, 500) at 25 %
+  const area = { top: 120, bottom: 538, left: 0, right: 402 };
+  const card = { x: 0, y: 0, w: 240, h: 48 };
+  const { c, tick } = setup({ x: 380 - 120 * 0.25, y: 500, zoom: 0.25 });
+  // as App.beginEdit zooms: about the card's top centre
+  c.springTo({ x: 380 - 120, y: 500, zoom: 1 });
+  tick();
+  const to = revealing(c.goal(), card, area)!;
+  near(to.zoom, 1, 1e-9);
+  const s = { x: card.x * to.zoom + to.x, y: card.y * to.zoom + to.y };
+  assert.ok(s.x >= area.left && s.x + card.w <= area.right, `x ${s.x}`);
+  assert.ok(s.y >= area.top && s.y + card.h <= area.bottom, `y ${s.y}`);
 });

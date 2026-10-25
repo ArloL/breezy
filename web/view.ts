@@ -1,5 +1,5 @@
 import * as R from "./rules.ts";
-import { Camera, clampZoom } from "./camera.ts";
+import { Camera, clampZoom, revealing } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
 import { DomField, fillFront, frontPoint } from "./field.ts";
 import { Grid } from "./grid.ts";
@@ -186,21 +186,11 @@ export class View {
     return { x: (a.left + a.right) / 2, y: (a.top + a.bottom) / 2 };
   }
 
-  /** Pans the least needed to show world rect `r`; a rect too tall to fit shows its `prefer` edge. */
+  /** Pans the least needed to show world rect `r` once the camera gets where it is going; a rect too tall to fit shows
+   * its `prefer` edge. */
   reveal(r: Rect, prefer: "top" | "bottom" = "top") {
-    const a = this.area();
-    const pad = 16;
-    const { zoom } = this.cam;
-    let { x, y } = this.cam;
-    const s = this.toScreen(r);
-    const w = r.w * zoom;
-    const h = r.h * zoom;
-    if (w + 2 * pad > a.right - a.left || s.x < a.left + pad) x += a.left + pad - s.x;
-    else if (s.x + w > a.right - pad) x += a.right - pad - (s.x + w);
-    if (h + 2 * pad > a.bottom - a.top) y += prefer === "bottom" ? a.bottom - pad - (s.y + h) : a.top + pad - s.y;
-    else if (s.y < a.top + pad) y += a.top + pad - s.y;
-    else if (s.y + h > a.bottom - pad) y += a.bottom - pad - (s.y + h);
-    if (x !== this.cam.x || y !== this.cam.y) this.setCamera({ x, y, zoom }, true);
+    const to = revealing(this.camera.goal(), r, this.area(), prefer);
+    if (to) this.setCamera(to, true);
   }
 
   centreOn(r: Rect) {

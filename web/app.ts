@@ -289,8 +289,9 @@ export class App {
     const e = this.state.editing;
     const c = e && R.card(this.model.board, e.id);
     if (!c) return;
+    // too tall at the zoom the camera is going to; the caret is drawn at the zoom it is at
     const r = this.view.rectOf(c), a = this.view.area(), { zoom } = this.view.cam;
-    const at = r.h * zoom + 32 > a.bottom - a.top ? this.view.editorOf(e.id, e.back)?.caret() : null;
+    const at = r.h * this.view.camera.goal().zoom + 32 > a.bottom - a.top ? this.view.editorOf(e.id, e.back)?.caret() : null;
     const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
     const top = caret && this.view.els.get(e.id)?.el.getBoundingClientRect().top;
     if (!caret || top == null) return this.view.reveal(r, "bottom");
