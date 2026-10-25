@@ -130,6 +130,20 @@ Each is its own plan, in this order: the owner's pain first, then the frame that
 6. Mutation testing for L1.
 7. Flake budgets, quarantine and the discipline fitness test.
 
+## As built, 2026-10-25
+
+| Step | What came of it |
+|---|---|
+| 1 | `TESTING.md`, `docs/escapes.md` (45 seeded), `scripts/test/docs.test.ts`, the `CLAUDE.md` rule |
+| 2 | `scenarios/sight.ts` after every step; the hub's phone and keyboard; the iOS new-card bug fixed (`Camera.goal()`, `revealing()`) |
+| 3 | the iPhone acts through idb, read by `scenarios/agent.ts`, in a tab on CI and from the Home Screen by hand; safaridriver was dropped, as it found no simulator session on this Mac |
+| 4 | `scripts/plants.ts`: 11 plants over B1, B2, B3, B4, B5 and B7, at L1, L3, L4, L6 and L8 |
+| 5 | the field contract over the hub's field and three browsers'; the phone contract, which found the hub's phone 28 pt, 60 pt and 135 ms off the iPhone |
+| 6 | `scripts/mutate.ts`, floors per module from 55 % to 100 %; its first run found `revealing()` thinly tested |
+| 7 | `scripts/flake-budget.ts`, nightly soaks, `scenarios/quarantine.ts`, `scripts/test/discipline.test.ts` |
+
+Not done: L7 has no plant (`feel.ts` hung on this Mac; the nightly runs it); B2 has none at L5, which needs a trace of Chrome's or Safari's Esc while composing, recorded through a real keyboard; mutation testing of BreezyKit; the Home Screen app on CI, as adding it takes taps by coordinates. Found on the way: iOS's keyboard drops a word after backspaces in any editable element (`docs/platform-expectations.md`), and the iPhone kept an edit waiting 15 s once in 18 runs, which its sync log will explain next time.
+
 ## Left to the builder
 
 Mutation tools (Stryker's command runner suits `node --test`; Swift may need planted bugs or muter), plant naming, where the visible-viewport reading lives in the scene, the B8 method for the web (screenshot diffs in headless Chromium or frame counting), how results are summarised per run.
