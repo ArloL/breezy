@@ -8,7 +8,7 @@ import { App } from "../../web/app.ts";
 import { Mouse } from "../../web/mouse.ts";
 import { Gestures, HOLD_MS } from "../../web/gestures.ts";
 import { command, perform } from "../../web/keys.ts";
-import { FakeView, fakeHeight, fakePorts } from "../../web/test/fakes.ts";
+import { DESKTOP, FakeView, fakeHeight, fakePorts, type Screen } from "../../web/test/fakes.ts";
 import type { Person } from "../../web/presence.ts";
 import type { Model } from "../../web/model.ts";
 import { Binding } from "../../web/binding.ts";
@@ -137,6 +137,8 @@ class WebDevice {
   pressedAt: { x: number; y: number } | null = null;
   /** The time a mouse event carries, which tells a double-click from two clicks. */
   clicks = 0;
+  /** Its screen: a desktop's, or a phone's that a scenario asks for. */
+  screen: Screen = DESKTOP;
 
   constructor(index: number, me: Me, seed: number) {
     this.index = index;
@@ -237,6 +239,7 @@ class WebDevice {
     this.restack(b);
     // the app's core, drawn by fakes: input goes through it as in a browser
     const app = new App(b, fakePorts);
+    (app.view as FakeView).screen = this.screen;
     const model = app.model;
     const binding = new Binding(g.store, model, id, (x) => this.restack(x));
     binding.taken = () => g.live?.taken() ?? new Set();
@@ -554,6 +557,14 @@ class WebDevice {
         return this.snapshot();
       case "scene":
         return this.scene();
+      case "screen":
+        this.screen = c.screen;
+        if (this.open) (this.open.app.view as FakeView).screen = c.screen;
+        return null;
+      case "sight":
+        return this.open ? (this.open.app.view as FakeView).sight() : null;
+      case "still":
+        return !this.open || (this.open.app.view as FakeView).still();
     }
     throw new Error(`unknown command ${c.cmd}`);
   }
