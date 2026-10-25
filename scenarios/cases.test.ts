@@ -13,7 +13,7 @@ for (const c of cases) {
     if (c.input === "mouse" && PHONES[a]) continue;
     // the Mac's editing is in its app, not in its core yet
     if (c.edits && a === "swift") continue;
-    if (c.offline || c.draws || c.busy || c.fresh || c.buttons) continue;
+    if (c.offline || c.draws || c.busy || c.fresh || c.buttons || c.outage) continue;
     for (const b of kinds.filter((k) => !PHONES[k])) {
       test(`${c.name} (${a} → ${b})`, async () => {
         const w = await World.start([a, b]);

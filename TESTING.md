@@ -22,7 +22,7 @@ Bugs used to reach the owner first, by hand, some long after they were made. Her
 | 3c fuzzer seeds and scenarios pass | Main | |
 | 4a my card shows ≤ 5 s after her launch | the case "a card made while the other device was away shows on it within 5 s of its launch", on the browsers and Android | an hour away, as offline stands in for it; no plant shows it fails |
 | 4b boards open and edit offline | the offline case on real devices; `no-snapshot` (L6) | the iPhone cannot go offline here |
-| 4c sync.php or the relay down | the fuzzer's faults: captive portals, relay restarts | "show they are offline" |
+| 4c sync.php or the relay down | the case "a card dragged into a lane while the servers are down…" on real devices, which stops both; the fuzzer's faults: captive portals, relay restarts | the Mac and the iPhone in it; no plant shows it fails |
 
 ## Bug classes
 
