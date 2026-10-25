@@ -44,15 +44,23 @@ export function watchSight<T extends Device>(d: T): T {
         // alike came 460 ms after a double tap, the keyboard just up and the app yet to move the card above it, and Safari
         // on iOS held still for a moment after a double tap before its zoom began
         if (!KEYS.has(prop)) await target.still(`the board to stand still after ${prop}`).catch(() => {});
-        let s = await target.sight(), seen = [still(s)];
-        for (let t = 0; t < MS && (seen.length < n || new Set(seen.slice(-n)).size > 1); t += gap) {
+        let s = await target.sight(), seen = [still(s)], t = 0;
+        for (; t < MS && (seen.length < n || new Set(seen.slice(-n)).size > 1); t += gap) {
           await target.wait(gap);
           s = await target.sight();
           seen.push(still(s));
         }
         const problem = s && outOfSight(s);
-        if (problem) throw new Error(`out of sight on ${target.kind} after ${prop}(${args.map(brief).join(", ")}): ${problem}`);
-        return r;
+        if (!problem) return r;
+        // late or never: a board that stood still a moment before it moved the card into sight is a fault too, but
+        // another one
+        while (t < MS && s && outOfSight(s)) {
+          await target.wait(50);
+          t += 50;
+          s = await target.sight();
+        }
+        const then = t < MS && s && !outOfSight(s) ? `in sight only ${t} ms after the step` : `and still ${MS} ms after the step`;
+        throw new Error(`out of sight on ${target.kind} after ${prop}(${args.map(brief).join(", ")}): ${problem}, ${then}`);
       };
     },
   });

@@ -86,6 +86,14 @@ test("a step that leaves the card at rest out of sight fails, naming the device 
   await assert.rejects(watchSight(new Moving(() => 520)).tap({ x: 1, y: 2 }), /^Error: out of sight on test after tap\(\{"x":1,"y":2\}\): the edited card at 20,520/);
 });
 
+test("a card at rest out of sight for good says so", async () => {
+  await assert.rejects(watchSight(new Moving(() => 520)).tap({ x: 1, y: 2 }), /, and still 5000 ms after the step$/);
+});
+
+test("a card that stands out of sight, then comes into sight, fails, saying when it came", async () => {
+  await assert.rejects(watchSight(new Moving((t) => t < 1500 ? 520 : 200)).tap({ x: 1, y: 2 }), /, in sight only 1500 ms after the step$/);
+});
+
 test("a card that comes to rest in sight passes, though it moved out of sight on the way", async () => {
   await watchSight(new Moving((t) => t < 600 ? 520 + t : 200)).tap({ x: 1, y: 2 });
 });
