@@ -7,13 +7,13 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildSite } from "../scenarios/browser.ts";
 import { planted } from "../web/sync/plant.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const PORT = 58643;
 const dir = mkdtempSync(join(tmpdir(), "breezy-deploy-check-")), site = join(dir, "site"), db = join(dir, "sync.db"), config = join(dir, "config.php");
-buildSite(site);
+// as the site is built to deploy; not through the scenarios' server, which brings Playwright
+execFileSync(join(root, "scripts/build-site.sh"), [site, "deploy-check"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
 execFileSync("php", ["-r", '$db = new PDO("sqlite:" . $argv[1]); $db->exec(file_get_contents($argv[2]));', db, join(root, "server/schema.sql")]);
 appendFileSync(config, `<?php return ['dsn' => 'sqlite:${db}'];`);
 if (planted("half-uploaded")) appendFileSync(join(site, "app.js"), "\n// cut off\n");
