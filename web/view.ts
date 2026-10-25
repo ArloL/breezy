@@ -1,3 +1,4 @@
+import { planted } from "./sync/plant.ts";
 import * as R from "./rules.ts";
 import { Camera, clampZoom, revealing } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
@@ -135,7 +136,7 @@ export class View {
   }
 
   cached(key: string, measure: () => number) {
-    let h = this.sizes.get(key);
+    let h = planted("uncached-heights") ? undefined : this.sizes.get(key);
     if (h === undefined) {
       if (this.sizes.size > 10000) this.sizes.clear();
       h = measure();

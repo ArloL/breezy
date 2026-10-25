@@ -37,6 +37,8 @@ export const PLANTS: Plant[] = [
     plant: "no-snapshot", class: "B5", level: "L6", env: { SCENARIO_PAIRS: "chromium:chromium" },
     command: test("--test-name-pattern=launched without network", "scenarios/browsers.e2e.ts"), expect: /launched without network/,
   },
+  // the measure in turns with the same build unplanted, as the nightly measures it with a reference build
+  { plant: "uncached-heights", class: "B6", level: "L7", command: ["node", "scripts/launch.ts"], expect: /to a drawn board .* WORSE/ },
   { plant: "half-uploaded", class: "B7", level: "L8", command: ["node", "scripts/deploy-check.ts"], expect: /app\.js is not as built/ },
 ];
 
