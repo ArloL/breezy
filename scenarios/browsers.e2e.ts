@@ -12,6 +12,7 @@ import { iosUnfit } from "./ios.ts";
 import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 import { exitsAfter } from "./exit.ts";
+import { quarantined } from "./quarantine.ts";
 
 const noMac = macUnfit();
 const noIos = process.env.SCENARIO_PAIRS?.includes("ios-") ? await iosUnfit() : "Safari on iOS runs where SCENARIO_PAIRS names it";
@@ -83,7 +84,8 @@ for (const c of cases) {
     // Safari on the iOS Simulator has one finger, and cannot go offline, be kept busy or start outside the space yet
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || ios(a) && ((c.fingers ?? 1) > 1 || c.offline || c.busy || c.fresh || c.notOnIphone)) continue;
     const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].some(ios) && noIos;
-    test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * (START_MS + (c.ms ?? MS) + 60_000) }, async (t) => {
+    const out = process.env.SCENARIO_QUARANTINE === "skip" && quarantined(c.name, `${a}:${b}`) || false;
+    test(`${c.name} (${a} → ${b})`, { skip: skip || out, timeout: RUNS * (START_MS + (c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
         if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);

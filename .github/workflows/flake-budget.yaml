@@ -1,0 +1,37 @@
+name: Flake budget
+
+# Whether the real devices keep to their flake budget over the last 30 days of soaks (scripts/flake-budget.ts): over it,
+# the level is red and is fixed before new features (TESTING.md).
+on:
+  schedule:
+  - cron: "47 6 * * 1"
+  workflow_dispatch:
+permissions: {}
+
+jobs:
+  budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: The soaks of the last 30 days
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        since=$(date -u -d '30 days ago' +%Y-%m-%d)
+        for w in desktop-soak.yaml android-soak.yaml; do
+          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$w" --created ">=$since" --status completed --limit 100 --json databaseId --jq '.[].databaseId'); do
+            gh run download "$id" --repo "$GITHUB_REPOSITORY" --dir "build/soaks/$id" || echo "run $id kept nothing"
+          done
+        done
+    - name: Budget
+      run: node scripts/flake-budget.ts build/soaks | tee -a "$GITHUB_STEP_SUMMARY"
