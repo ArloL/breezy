@@ -137,6 +137,11 @@ export class IosDevice extends Device {
       for (const type of ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click"]) removeEventListener(type, w.calibrating!, { capture: true });
     });
     this.offset = { x: at.x - tapped.x, y: at.y - tapped.y };
+    // what the keyboard asks of the page, for a typing failure to quote
+    await this.page.evaluate(() => {
+      const log: string[] = (window as { inputs?: string[] }).inputs = [];
+      addEventListener("beforeinput", (e) => log.push(`${e.inputType} ${JSON.stringify(e.data)}${e.getTargetRanges().length ? ` over ${e.getTargetRanges().map((r) => `${r.startOffset}-${r.endOffset}`).join(",")}` : ""}`), { capture: true });
+    });
   }
 
   override async size() {
@@ -210,7 +215,10 @@ export class IosDevice extends Device {
     for (const end = Date.now() + 5000; ; await sleep(50)) {
       const now = await held();
       if (now.length >= before.length + text.replace(/\n/g, "").length) break;
-      if (Date.now() > end) throw new Error(`${JSON.stringify(text)} typed into ${JSON.stringify(before)}, the editor holds ${JSON.stringify(now)}`);
+      if (Date.now() > end) {
+        const inputs = await this.page.evaluate(() => (window as { inputs?: string[] }).inputs?.slice(-12).join("; ") ?? "");
+        throw new Error(`${JSON.stringify(text)} typed into ${JSON.stringify(before)}, the editor holds ${JSON.stringify(now)}; the keyboard asked: ${inputs}`);
+      }
     }
     await this.still("the keyboard to open and the board to stand still");
   }
