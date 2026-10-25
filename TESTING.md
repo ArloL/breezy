@@ -20,7 +20,7 @@ Bugs used to reach the owner first, by hand, some long after they were made. Her
 | 3a both offline edits shown ≤ 10 s after | the offline case on real devices; the fuzzer's partitions | the Mac offline; the 10 s |
 | 3b both edits to a card survive | the fuzzer's merge probes; `merge-local` (L1, L4) | |
 | 3c fuzzer seeds and scenarios pass | Main | |
-| 4a my card shows ≤ 5 s after her launch | — | everything |
+| 4a my card shows ≤ 5 s after her launch | the case "a card made while the other device was away shows on it within 5 s of its launch", on the browsers and Android | an hour away, as offline stands in for it; no plant shows it fails |
 | 4b boards open and edit offline | the offline case on real devices; `no-snapshot` (L6) | the iPhone cannot go offline here |
 | 4c sync.php or the relay down | the fuzzer's faults: captive portals, relay restarts | "show they are offline" |
 
