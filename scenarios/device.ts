@@ -135,6 +135,21 @@ export abstract class Device {
     return 0;
   }
 
+  /** Opens `url` in the device's browser, as a person follows a link. */
+  async open(_url: string): Promise<void> {
+    throw new Error(`${this.kind} devices follow no links`);
+  }
+
+  /** The title of the question the app asks, its sheet's, or null when it asks none. */
+  async sheet(): Promise<string | null> {
+    throw new Error(`${this.kind} devices show no sheets`);
+  }
+
+  /** A tap or click on the first element `selector` finds that shows, and whose text is `text` when given. */
+  async tapOn(_selector: string, _text?: string): Promise<void> {
+    throw new Error(`${this.kind} devices find no elements`);
+  }
+
   /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
   async relaunch(): Promise<void> {
     throw new Error(`${this.kind} devices cannot launch again`);
