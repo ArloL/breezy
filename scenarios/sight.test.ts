@@ -55,7 +55,7 @@ class Moving extends Device {
     this.y = y;
   }
   async pointer() {}
-  async key() {}
+  async key(_key: string) {}
   async scene(): Promise<never> {
     throw new Error("no scene");
   }
