@@ -7,7 +7,9 @@
 // found by their accessibility, but the share sheet shows its buttons to nothing but the eye, so they are where an
 // iPhone 17 on iOS 27 has them; elsewhere, it says how to add it by hand.
 import { execFileSync } from "node:child_process";
-import { cpus, loadavg } from "node:os";
+import { rmSync } from "node:fs";
+import { cpus, homedir, loadavg } from "node:os";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { HOME_ICON, homeIcon, iosUnfit, SimHid } from "../scenarios/ios.ts";
 
@@ -18,6 +20,24 @@ const booted = Object.entries(devices).flatMap(([r, ds]) => ds.filter((d) => d.n
 const runtime = booted?.[0] ?? Object.keys(devices).filter((r) => r.includes("iOS") && devices[r]!.some((d) => d.name.startsWith("iPhone"))).sort().at(-1);
 const phone = booted?.[1] ?? devices[runtime!]?.filter((d) => d.name.startsWith("iPhone")).at(-1);
 if (!phone) throw new Error("no iPhone simulator: install an iOS runtime in Xcode");
+// the keyboard types what the cases type, as Android's spell checker is off for them: autocorrect wrote "neighbours" as
+// "neighbors" and dropped words, capitals and predictions came unasked. Read only as the iPhone boots.
+// The file itself, with plutil: the Mac's own preferences daemon kept what defaults wrote and the iPhone booted without it.
+const prefs = join(homedir(), "Library/Developer/CoreSimulator/Devices", phone.udid, "data/Library/Preferences/com.apple.Preferences.plist");
+const off = ["KeyboardAutocorrection", "KeyboardPrediction", "KeyboardAutocapitalization", "KeyboardCheckSpelling", "KeyboardShowPredictionBar"];
+const plutil = (...args: string[]) => execFileSync("plutil", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+const isOff = (k: string) => { try { return plutil("-extract", k, "raw", prefs) === "false"; } catch { return false; } };
+if (!off.every(isOff)) {
+  if (phone.state === "Booted") {
+    run("shutdown", phone.udid);
+    phone.state = "Shutdown";
+    // idb's companion keeps a connection to the iPhone as it was, and its record of the companion outlives it
+    try { execFileSync("pkill", ["-f", "idb_companion"]); } catch {}
+    rmSync("/tmp/idb/state", { force: true });
+  }
+  try { plutil("-lint", prefs); } catch { plutil("-create", "binary1", prefs); }
+  for (const k of off) plutil("-replace", k, "-bool", "NO", prefs);
+}
 if (phone.state !== "Booted") run("boot", phone.udid);
 if (process.argv.includes("--start")) {
   console.log(`booting ${phone.name} on ${runtime!.split(".").at(-1)}`);
