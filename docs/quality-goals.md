@@ -1,6 +1,6 @@
 # Quality goals
 
-Breezy is for two people: me on the Mac, my partner in the web app on a mid-range Android phone. We mostly use shared boards apart: one changes cards, the other sees them later. Each of the four goals below would make one of us stop using it if missed. When they conflict, the higher one wins.
+Breezy is for two people: me on the Mac and in the web app from an iPhone's Home Screen, my partner in the web app on a mid-range Android phone. We mostly use shared boards apart: one changes cards, the other sees them later. Each of the four goals below would make one of us stop using it if missed. When they conflict, the higher one wins.
 
 | # | Goal | In short |
 |---|---|---|
