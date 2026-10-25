@@ -15,6 +15,7 @@ import { Device, type Box, type Editor, type Frame, type PointerExtra, type Poin
 import { IosDevice, IosPage } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
+import { watchSight } from "./sight.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -1122,7 +1123,7 @@ export class RealWorld {
   /** The devices as a case acts on them: each call it makes a step, with what its device shows after it. */
   stage() {
     return {
-      devices: this.devices.map((d, i) => this.steps.wrap(d, `d${i} ${d.kind}`, () => d.state())),
+      devices: this.devices.map((d, i) => watchSight(this.steps.wrap(d, `d${i} ${d.kind}`, () => d.state()))),
       settle: () => this.steps.run("world", "settle", [], () => this.settle()),
     };
   }
