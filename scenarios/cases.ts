@@ -9,6 +9,8 @@ export interface Stage {
   devices: Device[];
   /** Until what one device did shows on the others. */
   settle(): Promise<void>;
+  /** The space's invite link; only on real devices. */
+  invite?: string;
 }
 
 export interface Case {
@@ -21,6 +23,8 @@ export interface Case {
   draws?: boolean;
   /** Whether the first device must be kept busy, which the hub's fakes and the Mac cannot. */
   busy?: boolean;
+  /** Whether the first device starts outside the space, as a person given the invite does, which only browsers can. */
+  fresh?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
   /** Why the iPhone in the iOS Simulator cannot act in it, if it cannot. */
@@ -561,6 +565,38 @@ export const cases: Case[] = [
       // quality goal 3a: both show it 10 s after both are online
       const there = await eventually(b, 10_000, async () => JSON.stringify(await within(b, lane, card)) === JSON.stringify({ x: 24, y: 72 }));
       assert.ok(there, `the other device shows it at ${JSON.stringify(await within(b, lane, card))} 10 s after the first came online; the first says "${await a.syncStatus()}", the other "${await b.syncStatus()}"`);
+    },
+  },
+  {
+    // quality goal 1a: from the invite link to my board as she would, by touch and keys alone, well inside 3 minutes
+    name: "the invite link followed on a phone joins the space and opens the board, with the other device's card on it",
+    input: "touch",
+    fresh: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const size = await b.size(), at = await b.world({ x: size.w / 2, y: size.h / 2 });
+      const card = await b.addCard(at.x, at.y);
+      const started = Date.now();
+      await a.open(s.invite!);
+      // each question as the app asks it, her name and whether to join, until the space's board is listed
+      const listed = async () => (await a.tapOn(".boards-list .open", "Board").then(() => true, () => false));
+      for (let t = 0; !(await a.sheet() === null && await listed()); t += 250) {
+        if (t > 30_000) throw new Error(`no board listed 30 s after the link; the app asks ${JSON.stringify(await a.sheet())}`);
+        const asks = await a.sheet();
+        if (asks === "Your Name") {
+          // the field has the keyboard as the question shows; a person waits for it to come, and types
+          await a.still("the keyboard to come");
+          await a.type("Partner").catch(async () => {
+            await a.tapOn("#sheet input");
+            await a.type("Partner");
+          });
+        }
+        if (asks !== null) await a.tapOn('#sheet [data-sheet="ok"]');
+        await a.wait(250);
+      }
+      await a.until("the other device's card", async () => (await a.scene().catch(() => null))?.cards.some((c) => c.id === card) ?? false, 15_000);
+      const ms = Date.now() - started;
+      assert.ok(ms < 180_000, `from the link to the board took ${ms} ms`);
     },
   },
   {

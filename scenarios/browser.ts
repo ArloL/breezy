@@ -768,6 +768,25 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(readEditor);
   }
 
+  override async open(url: string) {
+    await this.page.goto(url);
+  }
+
+  override async sheet() {
+    return this.page.evaluate(() => document.querySelector("#sheet:not([hidden]) .sheet-title")?.textContent ?? null);
+  }
+
+  /** As a person does it: a finger where it is drawn, on a phone or in a touch case, else the mouse. */
+  override async tapOn(selector: string, text?: string) {
+    const p = await this.page.evaluate(([s, t]) => {
+      const b = [...document.querySelectorAll(s)].filter((e) => t === null || e.textContent?.trim() === t)
+        .map((e) => e.getBoundingClientRect()).find((b) => b.width && b.height);
+      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
+    }, [selector, text ?? null] as const);
+    if (!p) throw new Error(`nothing shows ${selector}${text === undefined ? "" : ` reading ${JSON.stringify(text)}`}`);
+    await this.gesture([[0, "down", [[0, p]]], [50, "up", [[0, p]]]]);
+  }
+
   override async sight() {
     return this.page.evaluate(readSight);
   }
@@ -1159,7 +1178,11 @@ export class RealWorld {
 
   /** Browsers and Macs of `kinds`, in one space with one board that all of them show. Stop it even when this fails
    * or never ends. */
-  async start(kinds: RealKind[]) {
+  /** The space's invite, which a case's fresh device follows. */
+  invite = "";
+
+  /** A world of `kinds`; with `fresh`, the first device joins no space and opens no board, and the second makes it. */
+  async start(kinds: RealKind[], { fresh = false }: { fresh?: boolean } = {}) {
     RealWorld.hook();
     for (const w of RealWorld.live) w.kill();
     RealWorld.live.add(this);
@@ -1170,6 +1193,8 @@ export class RealWorld {
     this.late();
     const space = randomBytes(16).toString("base64url"), secret = randomBytes(32).toString("base64url");
     const link = inviteLink({ server: `http://127.0.0.1:${SERVER}/sync.php`, space, secret, name: "Scenario" });
+    this.invite = `http://localhost:${WEB}/${link.slice(link.indexOf("#join="))}`;
+    const maker = fresh ? 1 : 0;
     for (const [i, kind] of kinds.entries()) {
       const step = async <T>(action: string, f: () => Promise<T>) => {
         const r = await this.steps.run(`d${i} ${kind}`, action, [], f);
@@ -1181,7 +1206,7 @@ export class RealWorld {
         const mac = await step("launch", () => MacDevice.start(18570 + i, `d${i}`));
         this.devices.push(mac);
         await step("join", () => mac.command({ cmd: "join", link }));
-        const board = i === 0
+        const board = i === maker
           ? await step("createBoard", () => mac.command<string>({ cmd: "createBoard", title: "Board" }))
           : await step("seeBoard", () => until("the board on the Mac", async () => (await mac.command<string[]>({ cmd: "boards" }))[0]));
         await step("openBoard", () => mac.command({ cmd: "open", board }));
@@ -1230,7 +1255,7 @@ export class RealWorld {
           await iosJoin(page, link.slice(link.indexOf("#join=")), `d${i}`);
           await ios.calibrate();
         });
-        if (i === 0) await step("createBoard", () => createBoard(like));
+        if (i === maker) await step("createBoard", () => createBoard(like));
         await step("openBoard", () => openBoard(like));
         if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
         continue;
@@ -1272,7 +1297,7 @@ export class RealWorld {
           await ios.calibrate();
           await homeJoin(ios, link, `d${i}`);
         });
-        if (i === 0) await step("createBoard", () => createBoard(like));
+        if (i === maker) await step("createBoard", () => createBoard(like));
         await step("openBoard", () => openBoard(like));
         if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
         continue;
@@ -1280,8 +1305,9 @@ export class RealWorld {
       const [page, touchscreen] = await step("launch", async () => kind === "android" ? this.android() : kind === "firefox-android" ? this.firefoxAndroid() : [await this.browser(kind)]);
       const d = new BrowserDevice(kind, page, touchscreen, this.t0);
       this.devices.push(d);
+      if (fresh && i === 0) continue;
       await step("join", () => joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`));
-      if (i === 0) await step("createBoard", () => createBoard(page));
+      if (i === maker) await step("createBoard", () => createBoard(page));
       await step("openBoard", () => openBoard(page));
       if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
     }
@@ -1293,6 +1319,7 @@ export class RealWorld {
       // the check inside the step, so that a card out of sight fails the step that left it there
       devices: this.devices.map((d, i) => this.steps.wrap(watchSight(d), `d${i} ${d.kind}`, () => d.state())),
       settle: () => this.steps.run("world", "settle", [], () => this.settle()),
+      invite: this.invite,
     };
   }
 

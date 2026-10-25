@@ -439,14 +439,15 @@ export class IosDevice extends Device {
     return this.page.evaluate((w: string) => void (window as { syncLog?: [number, string][] }).syncLog?.push([Date.now(), w]), what);
   }
 
-  /** A tap on the middle of the first of what `selector` finds that shows. */
-  async tapOn(selector: string) {
-    const r = await this.page.evaluate((s: string) => {
-      const b = [...document.querySelectorAll(s)].map((e) => e.getBoundingClientRect()).find((b) => b.width && b.height);
+  /** A tap on the middle of the first of what `selector` finds that shows, and reads `text` when given. */
+  override async tapOn(selector: string, text?: string) {
+    const r = await this.page.evaluate(([s, t]: readonly [string, string | null]) => {
+      const b = [...document.querySelectorAll(s)].filter((e) => t === null || e.textContent?.trim() === t)
+        .map((e) => e.getBoundingClientRect()).find((b) => b.width && b.height);
       // in the board's frame, as a gesture aims
       const o = document.querySelector("#board")?.getBoundingClientRect() ?? { left: 0, top: 0 };
       return b ? { x: b.x + b.width / 2 - o.left, y: b.y + b.height / 2 - o.top } : null;
-    }, selector);
+    }, [selector, text ?? null] as const);
     if (!r) throw new Error(`nothing shows ${selector}`);
     await this.tapAt(r);
   }
