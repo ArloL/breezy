@@ -7,7 +7,7 @@ import { existsSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { Device, item, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
+import { Device, item, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
 import type { Point } from "../web/types.ts";
 
@@ -131,7 +131,7 @@ export class IosDevice extends Device {
   readonly kind: "ios-safari" | "ios-home";
   readonly page: AgentPage;
   readonly hid: SimHid;
-  private readonly fns: { scene: () => Scene; editor: () => Editor | null; weights: (id: string) => number[] | null };
+  private readonly fns: { scene: () => Scene; editor: () => Editor | null; weights: (id: string) => number[] | null; sight: () => Sight | null };
   /** Where the page's top left is on the screen, in points. */
   private offset: Point = { x: 0, y: 0 };
 
@@ -198,6 +198,10 @@ export class IosDevice extends Device {
 
   override editor() {
     return this.page.evaluate(this.fns.editor);
+  }
+
+  override sight() {
+    return this.page.evaluate(this.fns.sight);
   }
 
   override weights(id: string) {
