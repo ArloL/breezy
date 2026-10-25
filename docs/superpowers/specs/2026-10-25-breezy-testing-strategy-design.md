@@ -137,7 +137,7 @@ Each is its own plan, in this order: the owner's pain first, then the frame that
 | 1 | `TESTING.md`, `docs/escapes.md` (45 seeded), `scripts/test/docs.test.ts`, the `CLAUDE.md` rule |
 | 2 | `scenarios/sight.ts` after every step; the hub's phone and keyboard; the iOS new-card bug fixed (`Camera.goal()`, `revealing()`) |
 | 3 | the iPhone acts through idb, read by `scenarios/agent.ts`, in a tab on CI and from the Home Screen by hand; safaridriver was dropped, as it found no simulator session on this Mac |
-| 4 | `scripts/plants.ts`: 8 plants, 10 runs, over B1, B2, B3, B4, B5 and B7, at L1, L3, L4, L6 and L8 |
+| 4 | `scripts/plants.ts`: 8 plants, 9 runs, over B1, B2, B3, B4, B5 and B7, at L1, L3, L4, L6 and L8; `reveal-current` fails the iPhone here but not on CI, whose keyboard reveals the card again |
 | 5 | the field contract over the hub's field and three browsers'; the phone contract, which found the hub's phone 28 pt, 60 pt and 135 ms off the iPhone |
 | 6 | `scripts/mutate.ts`, floors per module from 55 % to 100 %; its first run found `revealing()` thinly tested |
 | 7 | `scripts/flake-budget.ts`, nightly soaks, `scenarios/quarantine.ts`, `scripts/test/discipline.test.ts` |

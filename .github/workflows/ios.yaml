@@ -72,7 +72,7 @@ jobs:
       env:
         SCENARIO_PAIRS: ios-safari:chromium chromium:ios-safari
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
-    # the iOS new card's bug put back must fail its case with the iPhone acting, whatever the cases before did
+    # the real devices' plants, whatever the cases before did: a board that cannot open offline, in Chromium
     - name: Plants
       if: ${{ !cancelled() }}
       env:

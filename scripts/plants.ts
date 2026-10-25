@@ -27,7 +27,6 @@ const iosNewCard = /fingers edit at 100 %|out of sight on/;
 
 export const PLANTS: Plant[] = [
   { plant: "reveal-current", class: "B1", level: "L3", command: test("--test-name-pattern=25 %", "scenarios/cases.test.ts"), expect: iosNewCard },
-  { plant: "reveal-current", class: "B1", level: "L6", command: test("--test-name-pattern=25 %", "scenarios/browsers.e2e.ts"), expect: iosNewCard },
   { plant: "ime-keys", class: "B2", level: "L1", command: test("web/test/ime.test.ts"), expect: /✖ a key an input method takes is composing/ },
   { plant: "lost-release", class: "B3", level: "L1", command: test("web/test/mouse.test.ts"), expect: /✖ a press ends a drag left open by a lost release/ },
   { plant: "merge-local", class: "B4", level: "L1", command: test("web/test/merge.test.ts"), expect: /✖ merges match the shared cases/ },

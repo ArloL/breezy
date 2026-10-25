@@ -45,7 +45,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 |---|---|---|
 | L1 | plants (`scripts/plants.ts`), and a mutation score per module held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`, which keeps the survivors under build/mutation) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
 | L2 | the hub's field drifted on purpose, its keys telling the app nothing, fails its contract (`scenarios/field-contract.test.ts`) | push |
-| L3, L4, L6 | plants | weekly; L6 with the iPhone nightly |
+| L3, L4, L6 | plants | weekly; L6 nightly, in the iOS workflow |
 | L5 | not yet: `ime-keys` survives it | |
 | L8 | `scripts/deploy-check.ts` runs the checks after a deploy against the site as built, served here with PHP; plants | weekly |
 | L7 | not yet | |
@@ -54,7 +54,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 
 | Class | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 |
 |---|---|---|---|---|---|---|---|---|
-| B1 | — | — | plant: reveal-current | — | — | plant: reveal-current | — | — |
+| B1 | — | — | plant: reveal-current | — | — | claimed | — | — |
 | B2 | plant: ime-keys | — | — | — | claimed | claimed | — | — |
 | B3 | plant: lost-release | claimed | claimed | — | — | claimed | claimed | — |
 | B4 | plant: merge-local | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
@@ -63,7 +63,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 | B7 | — | — | — | — | — | — | — | plant: half-uploaded |
 | B8 | — | — | — | — | — | — | claimed | — |
 
-A cell is owned only when it names a plant that `node scripts/plants.ts` shows the level failing on, and passing without (`order-all`, planted for the fuzzer, is not run there yet). `lost-release` puts back the half of `b3003b1` that a press ends a drag left open; the other half, a move with the button up, stays. `ime-keys` survives the replays (L5): their traces carry Esc and Enter only as Firefox on the Mac sends them while composing, as Process keys, and the bug it puts back was Chrome's and Safari's. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
+A cell is owned only when it names a plant that `node scripts/plants.ts` shows the level failing on, and passing without (`order-all`, planted for the fuzzer, is not run there yet). `lost-release` puts back the half of `b3003b1` that a press ends a drag left open; the other half, a move with the button up, stays. `ime-keys` survives the replays (L5): their traces carry Esc and Enter only as Firefox on the Mac sends them while composing, as Process keys, and the bug it puts back was Chrome's and Safari's. `reveal-current` fails the iPhone in this Mac's simulator, but not on CI's, whose keyboard comes late enough to reveal the card again, nor in Chromium, so B1's L6 cell is claimed. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
 
 ## When a bug escapes
 
