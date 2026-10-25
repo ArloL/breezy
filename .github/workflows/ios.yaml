@@ -14,6 +14,7 @@ on:
     - scenarios/agent.ts
     - scripts/ios.ts
     - scripts/sim-hid.py
+    - scripts/plants.ts
 permissions: {}
 
 jobs:
@@ -64,6 +65,11 @@ jobs:
       env:
         SCENARIO_PAIRS: ios-safari:chromium chromium:ios-safari
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
+    # the iOS new card's bug put back must fail its case with the iPhone acting
+    - name: Plants
+      env:
+        SCENARIO_PAIRS: ios-safari:chromium
+      run: node scripts/plants.ts --level L6
     - name: Count the cases
       if: ${{ always() }}
       run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"

@@ -55,6 +55,10 @@ async function prune(state: State) {
   }
 }
 
+/** As web/sync/plant.ts's, which a worker cannot import. */
+const planted = (name: string) =>
+  ((globalThis as { __breezyPlant?: string }).__breezyPlant ?? (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.BREEZY_PLANT) === name;
+
 async function hex(buffer: ArrayBuffer) {
   const digest = await crypto.subtle.digest("SHA-256", buffer);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -68,7 +72,7 @@ async function download(cache: Cache, version: string, path: string, expected: s
   if (!res.ok) throw new Error(`${path}: ${res.status}`);
   const body = await res.arrayBuffer();
   // A deploy caught halfway serves files from two versions.
-  if ((await hex(body)) !== expected) throw new Error(`${path}: not the file of ${version}`);
+  if ((await hex(body)) !== expected && !planted("half-deploy")) throw new Error(`${path}: not the file of ${version}`);
   await cache.put(url(path), new Response(body, { headers: { "content-type": res.headers.get("content-type") ?? "" } }));
 }
 

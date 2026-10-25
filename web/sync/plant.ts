@@ -3,4 +3,6 @@ declare global {
   var __breezyPlant: string | undefined;
 }
 
-export const planted = (name: string): boolean => globalThis.__breezyPlant === name;
+/** Whether bug `name` is planted: by the page's global, or else, in Node, by BREEZY_PLANT, so that any test run takes one. */
+export const planted = (name: string): boolean =>
+  (globalThis.__breezyPlant ?? (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.BREEZY_PLANT) === name;

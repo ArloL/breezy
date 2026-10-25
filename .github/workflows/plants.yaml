@@ -1,0 +1,46 @@
+name: Plants
+
+# Each plant in TESTING.md's matrix put back, and each level that claims its class required to fail with it and pass
+# without it (scripts/plants.ts). The real devices' plant runs in iOS scenarios.
+on:
+  schedule:
+  - cron: "11 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+    - .github/workflows/plants.yaml
+    - scripts/plants.ts
+permissions: {}
+
+jobs:
+  plants:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    # a connection whose own port is a server's keeps that server from starting
+    - name: Keep the servers' ports free
+      run: scripts/reserve-ports.sh
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Install the relay
+      run: npm ci --prefix relay
+    - name: Build breezy-sim
+      run: swift build --package-path BreezyKit --product breezy-sim
+    - name: Plants
+      run: node scripts/plants.ts --level L1,L3,L4
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: plants
+        path: build/plants
+        if-no-files-found: ignore

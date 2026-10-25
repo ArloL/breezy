@@ -1,6 +1,7 @@
 import * as R from "./rules.ts";
 import { pressAction } from "./policy.ts";
 import type { DragAction, Hit } from "./policy.ts";
+import { planted } from "./sync/plant.ts";
 import type { Board, HeightOf, Point } from "./types.ts";
 
 export const SLOP = 3;
@@ -60,7 +61,7 @@ export class Mouse {
     this.last = double ? null : { ...p, t };
     this.pointer = p;
     // a release lost to the system leaves its drag open
-    if (this.press?.dragging) app.input.dragEnd(p, { x: 0, y: 0 });
+    if (this.press?.dragging && !planted("lost-release")) app.input.dragEnd(p, { x: 0, y: 0 });
     this.press = null;
     app.input.stopCoast();
     app.ui.closeMenu();
