@@ -138,7 +138,7 @@ export class IosDevice extends Device {
   readonly hid: SimHid;
   private readonly fns: { scene: () => Scene; editor: () => Editor | null; weights: (id: string) => number[] | null; sight: () => Sight | null };
   /** Where the visual viewport's top left is on the screen, in points. */
-  private offset: Point = { x: 0, y: 0 };
+  offset: Point = { x: 0, y: 0 };
 
   constructor(kind: IosDevice["kind"], page: AgentPage, hid: SimHid, fns: IosDevice["fns"]) {
     super();

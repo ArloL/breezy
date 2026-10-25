@@ -12,7 +12,8 @@ import type { Board, Cam, Card, Point, Rect } from "../types.ts";
 export const fakeHeight = (text: string | undefined) => 24 + 24 * Math.max(1, String(text ?? "").split("\n").length);
 
 /** A device's screen in points: the board shows between `top` and `bottom` at rest, and a phone's keyboard, `keyboard`
- * tall, comes `keyboardMs` after an editor takes focus and goes as long after it lets go. */
+ * tall, comes `keyboardMs` after an editor takes focus and goes as long after it lets go; while it is up, the board shows
+ * from `keyboardTop`, as iOS scrolls the page up a little. */
 export interface Screen {
   w: number;
   h: number;
@@ -20,12 +21,13 @@ export interface Screen {
   bottom: number;
   keyboard: number;
   keyboardMs: number;
+  keyboardTop?: number;
 }
 
 export const DESKTOP: Screen = { w: 1200, h: 800, top: 0, bottom: 800, keyboard: 0, keyboardMs: 0 };
-/** The iPhone 17's, from its simulator: the board between the top bar and the bottom bar, and the keyboard with its
- * suggestions. To be measured against the real one by a contract suite. */
-export const PHONE: Screen = { w: 402, h: 874, top: 120, bottom: 774, keyboard: 336, keyboardMs: 300 };
+/** The iPhone 17's in the app added to its Home Screen, on iOS 27 in the simulator: at rest, the board between the top
+ * bar and the bottom bar, read off a screenshot; editing, where scenarios/phone-contract.e2e.ts measured it. */
+export const PHONE: Screen = { w: 402, h: 874, top: 120, bottom: 774, keyboard: 396, keyboardMs: 165, keyboardTop: 92 };
 /** The keys bar a phone shows on its keyboard while editing, as ui.ts's. */
 const KEYS_H = 44;
 
@@ -159,7 +161,9 @@ export class FakeView implements ViewPort {
   /** What the board shows through: between the bars, and above a phone's keyboard and its keys bar while it is up. */
   screenArea(): Area {
     const s = this.screen;
-    return { top: s.top, bottom: this.keyboard ? s.h - s.keyboard - KEYS_H : s.bottom, left: 0, right: s.w };
+    return this.keyboard
+      ? { top: s.keyboardTop ?? s.top, bottom: s.h - s.keyboard - KEYS_H, left: 0, right: s.w }
+      : { top: s.top, bottom: s.bottom, left: 0, right: s.w };
   }
 
   /** Whether the camera has stopped and no keyboard is on its way. */

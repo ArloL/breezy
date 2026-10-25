@@ -1,5 +1,5 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": { "lib": ["es2024", "dom"], "types": ["node"], "noEmit": true, "allowImportingTsExtensions": true },
-  "include": ["*.ts", "platform/*.ts"]
+  "include": ["*.ts", "platform/*.ts", "contracts/*.ts"]
 }

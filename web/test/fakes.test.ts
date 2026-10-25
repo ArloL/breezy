@@ -32,7 +32,7 @@ test("a phone's keyboard rises after an editor takes focus, and the area above i
   app.beginEdit("a");
   assert.equal(app.ui.area().bottom, 774, "not before the keyboard has come");
   await sleep(PHONE.keyboardMs + 50);
-  assert.equal(app.ui.area().bottom, 874 - 336 - 44);
+  assert.deepEqual(app.ui.area(), { top: PHONE.keyboardTop, bottom: PHONE.h - PHONE.keyboard - 44, left: 0, right: 402 });
   app.endEditing();
   await sleep(PHONE.keyboardMs + 50);
   assert.equal(app.ui.area().bottom, 774);
