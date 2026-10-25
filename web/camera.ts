@@ -1,5 +1,7 @@
 import { decay, coastOffset, rubber } from "./physics.ts";
-import type { Cam, Point } from "./types.ts";
+import { planted } from "./sync/plant.ts";
+import type { Cam, Point, Rect } from "./types.ts";
+import type { Area } from "./view.ts";
 
 export const MIN_ZOOM = 0.25;
 export const MAX_ZOOM = 2;
@@ -59,6 +61,14 @@ export class Camera {
 
   get moving() {
     return this.axes !== null;
+  }
+
+  /** Where the camera is going: a spring's end on each axis it springs, else where it is. */
+  goal(): Cam {
+    const a = this.axes;
+    if (!a || planted("reveal-current")) return { ...this.cam };
+    const to = (k: AxisKey, now: number) => a[k]?.spring?.to ?? now;
+    return { x: to("x", this.cam.x), y: to("y", this.cam.y), zoom: a.z?.spring ? Math.exp(a.z.spring.to) : this.cam.zoom };
   }
 
   set(cam: Cam) {
@@ -154,4 +164,21 @@ export class Camera {
     if (k === "z") this.cam.zoom = Math.exp(value);
     else this.cam[k] = value;
   }
+}
+
+/** The camera that pans the least from `cam` to show world rect `r` in screen area `a`, or null when it shows; a rect too
+ * tall to fit shows its `prefer` edge. */
+export function revealing(cam: Cam, r: Rect, a: Area, prefer: "top" | "bottom" = "top"): Cam | null {
+  const pad = 16;
+  const { zoom } = cam;
+  let { x, y } = cam;
+  const s = { x: r.x * zoom + cam.x, y: r.y * zoom + cam.y };
+  const w = r.w * zoom;
+  const h = r.h * zoom;
+  if (w + 2 * pad > a.right - a.left || s.x < a.left + pad) x += a.left + pad - s.x;
+  else if (s.x + w > a.right - pad) x += a.right - pad - (s.x + w);
+  if (h + 2 * pad > a.bottom - a.top) y += prefer === "bottom" ? a.bottom - pad - (s.y + h) : a.top + pad - s.y;
+  else if (s.y < a.top + pad) y += a.top + pad - s.y;
+  else if (s.y + h > a.bottom - pad) y += a.bottom - pad - (s.y + h);
+  return x === cam.x && y === cam.y ? null : { x, y, zoom };
 }
