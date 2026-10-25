@@ -1,4 +1,4 @@
-// Bugs the convergence fuzzer plants to show it finds them (scripts/fuzz.ts --plant NAME); nothing else sets this.
+// Bugs planted to show a level finds them, each named in TESTING.md's matrix: the fuzzer's by scripts/fuzz.ts --plant NAME.
 declare global {
   var __breezyPlant: string | undefined;
 }
