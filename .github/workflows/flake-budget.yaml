@@ -1,6 +1,7 @@
 name: Flake budget
 
-# Whether the real devices keep to their flake budget over the last 30 days of soaks (scripts/flake-budget.ts): over it,
+# Whether the real devices keep to their flake budget over the last 30 days of main's runs of them, in the soaks, in
+# Main and nightly with the iPhone (scripts/flake-budget.ts): over it,
 # the level is red and is fixed before new features (TESTING.md).
 on:
   schedule:
@@ -23,17 +24,23 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - name: The soaks of the last 30 days
+    - name: The real devices' runs of the last 30 days
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
         since=$(date -u -d '30 days ago' +%Y-%m-%d)
-        for w in desktop-soak.yaml android-soak.yaml; do
+        # each workflow that runs the cases on real devices, and the artifacts that keep their records
+        while read -r w names; do
           # main's alone: stability branches soak code that is unstable on purpose
           for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$w" --branch main --created ">=$since" --status completed --limit 100 --json databaseId --jq '.[].databaseId'); do
-            gh run download "$id" --repo "$GITHUB_REPOSITORY" --dir "build/soaks/$id" || echo "run $id kept nothing"
+            gh run download "$id" --repo "$GITHUB_REPOSITORY" --dir "build/soaks/$id" $names || echo "run $id kept nothing"
           done
-        done
+        done <<'LIST'
+        desktop-soak.yaml
+        android-soak.yaml
+        main.yaml --name scenarios --name android-emulator
+        ios.yaml --name ios-scenarios
+        LIST
     - name: Budget
       # bash, not the default bash -e, has pipefail, else tee's success hides a budget overrun
       shell: bash
