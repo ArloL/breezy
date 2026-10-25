@@ -778,12 +778,23 @@ export class BrowserDevice extends Device {
 
   /** As a person does it: a finger where it is drawn, on a phone or in a touch case, else the mouse. */
   override async tapOn(selector: string, text?: string) {
+    // as a person taps what shows once it stops moving: Chrome slid the page under a new keyboard for over a second on
+    // CI's emulator, and a sheet's OK was tapped through the keyboard
+    await this.still(`the screen to stand still before tapping ${selector}`);
     const p = await this.page.evaluate(([s, t]) => {
       const b = [...document.querySelectorAll(s)].filter((e) => t === null || e.textContent?.trim() === t)
         .map((e) => e.getBoundingClientRect()).find((b) => b.width && b.height);
-      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
+      const vv = visualViewport!, y = b && b.y + b.height / 2;
+      // what a person sees: the visual viewport, which a keyboard shrinks while the layout keeps its height
+      const hidden = y != null && (y < vv.offsetTop || y > vv.offsetTop + vv.height) ? `at ${Math.round(y)}, the screen showing ${Math.round(vv.offsetTop)} to ${Math.round(vv.offsetTop + vv.height)}` : null;
+      return b ? { x: b.x + b.width / 2, y: y!, hidden } : null;
     }, [selector, text ?? null] as const);
     if (!p) throw new Error(`nothing shows ${selector}${text === undefined ? "" : ` reading ${JSON.stringify(text)}`}`);
+    // a person cannot tap what the keyboard covers
+    if (p.hidden) throw new Error(`out of sight on ${this.kind}: ${selector}${text === undefined ? "" : ` reading ${JSON.stringify(text)}`} ${p.hidden}`);
+    // WebKit's and Firefox's touches here are pointer events dispatched to the page, which bring no click, as a button
+    // in a form waits for: on a desktop, a person clicks it
+    if (this.kind === "webkit" || this.kind === "firefox") return this.page.mouse.click(p.x, p.y);
     await this.gesture([[0, "down", [[0, p]]], [50, "up", [[0, p]]]]);
   }
 

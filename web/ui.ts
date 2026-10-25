@@ -177,12 +177,14 @@ export class UI {
     this.zoomTimer = setTimeout(() => swap(level, false, { opacity: 0, scale: 0.9 }), 1000);
   }
 
-  /** Puts the keyboard bar on the keyboard and the bars at the top of the screen at its top, wherever iOS has moved the
-   * visual viewport: as the keyboard came, iOS scrolled the page, and the top bar went off the screen with it. */
+  /** Puts the keyboard bar on the keyboard, the bars at the top of the screen at its top, and a sheet in what shows
+   * above the keyboard, wherever iOS has moved the visual viewport: as the keyboard came, iOS scrolled the page, and the
+   * top bar went off the screen with it; centred in the layout, Chrome on Android left a sheet's OK under the keyboard. */
   place() {
     const vv = visualViewport!;
     this.$("#keys").style.top = `${vv.offsetTop + vv.height - KEYS_H}px`;
     document.body.style.setProperty("--screen-top", `${vv.offsetTop}px`);
+    Object.assign(this.$("#sheet").style, { top: `${vv.offsetTop}px`, height: `${vv.height}px`, bottom: "auto" });
   }
 
   /** The part of the screen the board shows through: below the bars, above the keyboard, the keys bar and the bottom bar. */
