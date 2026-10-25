@@ -89,6 +89,8 @@ B1 is checked after every step of every case, not by a case of its own. A device
 
 It holds once the device stands still (`still`), and at most 1 s after the step (my call: past that, a person has seen the wrong screen). Flicker between steps is B8, not B1.
 
+The iOS bug, reproduced in a Safari tab on the simulator: `App.beginEdit` springs to zoom 1 and reveals the card at once, measured at 25 %, where it fits; the zoom then ends about the card's top centre with the caret off screen. A reveal while the keyboard rises instead springs to the half-way zoom. The reveal now aims from where the camera is going.
+
 Hub devices model the viewport and a keyboard that rises on edit; real devices read `visualViewport` and the Mac its scroll view. Until the contract suites exist (step 5), the hub's keyboard uses heights and timings measured once on each platform and written down beside the fake (my call), so step 2 does not wait for steps 3 and 5.
 
 ## The iPhone acts
