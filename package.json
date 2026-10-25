@@ -6,7 +6,7 @@
   },
   "scripts": {
     "check": "tsc -p web && tsc -p web/tsconfig.sw.json && tsc -p web/test && tsc -p scripts && tsc -p scenarios",
-    "test": "node --test web/test/*.test.ts",
+    "test": "node --test web/test/*.test.ts scripts/test/*.test.ts",
     "dev": "node scripts/serve-web.ts",
     "scenarios": "node --test scenarios/*.test.ts"
   },
