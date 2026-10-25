@@ -10,6 +10,9 @@ import { Device, type PointerExtra, type PointerPhase, type Scene, type Sight } 
 
 export * from "./device.ts";
 
+/** The plant a run was started with: read once, as a hub started with a plant sets BREEZY_PLANT for its Swift devices. */
+const PLANT = process.env.BREEZY_PLANT ?? null;
+
 /** A phone is a web device with a phone's screen and keyboard. */
 export type Kind = "web" | "swift" | "phone";
 
@@ -110,7 +113,7 @@ export class World {
   }
 
   /** Devices of `kinds`, in that order, in one space with one board that all of them show. */
-  static async start(kinds: Kind[], seed = 1, plant: string | null = process.env.BREEZY_PLANT ?? null): Promise<World> {
+  static async start(kinds: Kind[], seed = 1, plant: string | null = PLANT): Promise<World> {
     const swift = kinds.filter((k) => k === "swift").length;
     const hub = new Hub({ seed, web: kinds.length - swift, swift, profile: "lan", faults: false, steps: 0, plant });
     const w = new World(hub);
