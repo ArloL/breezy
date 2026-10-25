@@ -27,6 +27,7 @@ export const PLANTS: Plant[] = [
   { plant: "merge-local", class: "B4", level: "L4", command: ["node", "scripts/fuzz.ts", "--seeds", "1", "--web", "3", "--swift", "0"] },
   { plant: "pushed-skip", class: "B4", level: "L4", command: ["node", "scripts/fuzz.ts", "--seeds", "1", "--web", "2", "--swift", "2"] },
   { plant: "half-deploy", class: "B5", level: "L1", command: test("web/test/sw.test.ts") },
+  { plant: "half-uploaded", class: "B7", level: "L8", command: ["node", "scripts/deploy-check.ts"] },
 ];
 
 /** The fuzzer takes its plant on its command line, as its hub sets the plant for the devices it runs. */

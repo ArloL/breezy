@@ -47,7 +47,8 @@ A case over its budget on a pair leaves the checks on push for `scenarios/quaran
 | L2 | a fake made wrong on purpose fails its contract (`scenarios/field-contract.test.ts`) | push |
 | L3, L4, L6 | plants | weekly; L6 with the iPhone nightly |
 | L5 | not yet: `ime-keys` survives it | |
-| L7, L8 | not yet | |
+| L8 | `scripts/deploy-check.ts` runs the checks after a deploy against the site as built, served here with PHP; plants | weekly |
+| L7 | not yet | |
 
 ## Matrix
 
@@ -59,7 +60,7 @@ A case over its budget on a pair leaves the checks on push for `scenarios/quaran
 | B4 | plant: merge-local | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
 | B5 | plant: half-deploy | — | — | claimed | — | claimed | claimed | — |
 | B6 | — | — | — | — | — | — | claimed | — |
-| B7 | — | — | — | — | — | — | — | claimed |
+| B7 | — | — | — | — | — | — | — | plant: half-uploaded |
 | B8 | — | — | — | — | — | — | claimed | — |
 
 A cell is owned only when it names a plant that `node scripts/plants.ts` shows the level failing on, and passing without (`order-all`, planted for the fuzzer, is not run there yet). `ime-keys` survives the replays (L5): their traces carry Esc and Enter only as Firefox on the Mac sends them while composing, as Process keys, and the bug it puts back was Chrome's and Safari's. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
