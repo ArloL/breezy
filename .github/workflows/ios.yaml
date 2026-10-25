@@ -18,7 +18,8 @@ permissions: {}
 
 jobs:
   ios:
-    runs-on: macos-latest
+    # macOS 27 with Xcode 27 and iOS 27.0, the owner's iOS; macos-latest has iOS 26 alone
+    runs-on: xcode-27
     timeout-minutes: 90
     permissions:
       contents: read
@@ -36,11 +37,6 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    # the owner's iOS, not the runner's: a caret drawn on the wrong line in iOS 26.5 alone was no bug of the owner's
-    - name: Install iOS 27
-      run: |
-        brew install xcodesorg/made/xcodes
-        xcodes runtimes install "iOS 27.0"
     # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile
     - name: Start booting an iPhone
       run: node scripts/ios.ts --start
