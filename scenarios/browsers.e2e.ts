@@ -77,8 +77,8 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
 
 for (const c of cases) {
   for (const [a, b] of pairs) {
-    // Safari on the iOS Simulator has one finger
-    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || a === "ios-safari" && (c.fingers ?? 1) > 1) continue;
+    // Safari on the iOS Simulator has one finger, and cannot go offline or be kept busy yet
+    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || a === "ios-safari" && ((c.fingers ?? 1) > 1 || c.offline || c.busy)) continue;
     const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].includes("ios-safari") && noIos;
     test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
