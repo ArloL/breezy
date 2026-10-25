@@ -16,7 +16,7 @@ import { bootedIphone, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
-import { Agent, AGENT_SCRIPT, fromIphone } from "./agent.ts";
+import { Agent, AGENT_SCRIPT, fromIphone, type AgentPage } from "./agent.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -51,8 +51,9 @@ async function until<T>(what: string, test: () => Promise<T | false | null | und
 function readScene(): Scene {
   const num = (s: string) => Number.parseFloat(s) || 0;
   const translate = (t: string) => {
-    const m = t.match(/translate\((-?[\d.e+-]+)px, (-?[\d.e+-]+)px\)(?: scale\(([\d.]+)\))?/);
-    return m ? { x: Number(m[1]), y: Number(m[2]), scale: m[3] ? Number(m[3]) : 1 } : { x: 0, y: 0, scale: 1 };
+    // WebKit on iOS writes translate(96px, 0px) as translate(96px)
+    const m = t.match(/translate\((-?[\d.e+-]+)px(?:, (-?[\d.e+-]+)px)?\)(?: scale\(([\d.]+)\))?/);
+    return m ? { x: Number(m[1]), y: Number(m[2] ?? 0), scale: m[3] ? Number(m[3]) : 1 } : { x: 0, y: 0, scale: 1 };
   };
   const world = translate((document.querySelector<HTMLElement>(".world")!).style.transform);
   const item = (el: HTMLElement): SceneItem => {
@@ -163,7 +164,15 @@ function readEditor(): Editor | null {
     return b && !b.hidden && b.getClientRects().length ? b.getBoundingClientRect() : null;
   };
   const above = bar("#find") ?? bar("#top"), below = [bar("#keys"), bar("#bottom")].filter((b) => b !== null);
-  const top = Math.max(v.offsetTop, above?.bottom ?? 0), bottom = Math.min(v.offsetTop + v.height, ...below.map((b) => b.top));
+  // the visual viewport in the boxes' own space: from the layout viewport's top in Chromium, but in Safari on iOS with
+  // the keyboard up from the visual viewport's, and visualViewport.offsetTop always from the layout viewport's
+  const pin = document.createElement("div");
+  pin.style.cssText = "position:fixed;top:0;left:0;width:0;height:0";
+  document.body.append(pin);
+  const layout = pin.getBoundingClientRect();
+  pin.remove();
+  const vx = layout.left + v.offsetLeft, vy = layout.top + v.offsetTop;
+  const top = Math.max(vy, above?.bottom ?? -Infinity), bottom = Math.min(vy + v.height, ...below.map((b) => b.top));
   return {
     // an empty last line is drawn from two newlines, as DomField.text() says
     text: all.endsWith("\n") ? all.slice(0, -1) : all,
@@ -176,7 +185,8 @@ function readEditor(): Editor | null {
     line: Number.parseFloat(s.lineHeight) * zoom,
     view: { x: v.offsetLeft, y: v.offsetTop, w: v.width, h: v.height },
     card: box(el.closest(".cards > [data-id]")?.getBoundingClientRect()) ?? null,
-    board: { x: v.offsetLeft, y: top, w: v.width, h: bottom - top },
+    board: { x: vx, y: top, w: v.width, h: bottom - top },
+    how: `visual viewport ${Math.round(vy)}+${Math.round(v.height)} in ${innerHeight}, layout from ${Math.round(layout.top)}, above ${above ? Math.round(above.bottom) : "none"}, below ${below.map((b) => Math.round(b.top)).join(" ") || "none"}`,
   };
 }
 
@@ -1115,17 +1125,40 @@ export class RealWorld {
         const ios = await step("launch", async () => {
           const udid = bootedIphone();
           if (!udid) throw new Error("no booted iPhone: run node scripts/ios.ts");
-          execFileSync("xcrun", ["simctl", "openurl", udid, `http://localhost:${WEB}/scenarios-clear`], { timeout: 30_000 });
-          await page.connected();
-          await clearSite(page as unknown as Page, "Safari on iOS");
-          const d = new IosDevice(page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
-          await d.calibrate();
-          return d;
+          // each URL anew: a tab the simulator opens the URL it shows again sees no touch again either
+          let opened = 0;
+          page.open = async (url) => {
+            const u = new URL(url);
+            u.searchParams.set("opened", String(++opened));
+            execFileSync("xcrun", ["simctl", "openurl", udid, u.href], { timeout: 30_000 });
+          };
+          // Safari afresh, so that no tab of a world before holds the boards' lock; a URL opened while it starts goes
+          // nowhere, so it is opened again until a page asks
+          try {
+            execFileSync("xcrun", ["simctl", "terminate", udid, "com.apple.mobilesafari"], { timeout: 30_000, stdio: "ignore" });
+          } catch {}
+          // and no tabs: a tab restored in the background kept the site's database open, and clearing it waited on that
+          const state = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/Safari");
+          for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(state, f + x), { force: true });
+          execFileSync("xcrun", ["simctl", "launch", udid, "com.apple.mobilesafari"], { timeout: 30_000, stdio: "ignore" });
+          for (let attempt = 1; ; attempt++) {
+            await page.open(`http://localhost:${WEB}/scenarios-clear`);
+            try {
+              await page.connected(10_000);
+              break;
+            } catch (e) {
+              if (attempt === 4) throw e;
+            }
+          }
+          return new IosDevice(page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
         });
         this.devices.push(ios);
         // what it needs of a Playwright page it has
         const like = page as unknown as Page;
-        await step("join", () => joinSpace(like, link.slice(link.indexOf("#join=")), `d${i}`));
+        await step("join", async () => {
+          await iosJoin(page, link.slice(link.indexOf("#join=")), `d${i}`);
+          await ios.calibrate();
+        });
         if (i === 0) await step("createBoard", () => createBoard(like));
         await step("openBoard", () => openBoard(like));
         continue;
@@ -1442,6 +1475,8 @@ export class RealWorld {
       await bounded("the Android device's connection", d.close());
     }
     for (const c of this.consoles) c.close();
+    // the iPhone's tab let go of the boards, which a world after it would otherwise wait on
+    for (const d of this.devices) if (d instanceof IosDevice) await bounded("Safari on iOS's blank page", d.page.evaluate(() => void setTimeout(() => location.replace("about:blank"), 50), undefined));
     for (const d of this.devices) if (d instanceof IosDevice) d.stop();
     this.agent.stop();
     for (const d of this.devices) if (d instanceof MacDevice) await bounded("the Mac app's stop", d.stop());
@@ -1529,6 +1564,38 @@ async function openBoard(page: Page) {
 }
 
 /** Joins the space of invite `hash` as `name`, as a person does from the link. */
+/**
+ * As joinSpace, for Safari on the iOS Simulator, in as few loads as can be: a page loaded again there, by a script or by
+ * the simulator opening the URL it showed, never sees a touch again. The site is cleared and the device named from blank
+ * pages of its own, and the join link is the one load after them.
+ */
+async function iosJoin(page: AgentPage, hash: string, name: string) {
+  // the service worker that served this blank page stores its snapshot again as the page loads: gone first, then the
+  // rest cleared on a page it never served, at another path, as the same one opened again sees no touch
+  await page.evaluate(async () => {
+    for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+  });
+  await page.goto(`http://localhost:${WEB}/scenarios-cleared`);
+  const left = await page.evaluate(async ([device, name, idb]: readonly [string, string, string]) => {
+    for (const key of await caches.keys()) await caches.delete(key);
+    for (const { name } of await indexedDB.databases()) {
+      await new Promise((resolve, reject) => Object.assign(indexedDB.deleteDatabase(name!), { onsuccess: resolve, onerror: reject, onblocked: reject }));
+    }
+    localStorage.clear();
+    const m = await import(idb) as typeof import("../web/sync/idb.ts");
+    await m.saveState("me", { device, name });
+    return (await navigator.serviceWorker.getRegistrations()).length + (await caches.keys()).length;
+  }, [randomBytes(16).toString("base64url"), name, "/sync/idb.js"] as const);
+  if (left) throw new Error(`Safari on iOS kept ${left} of the site's service workers and caches`);
+  await page.goto(`http://localhost:${WEB}/${hash}`);
+  await until("the join prompt", () => page.evaluate(() => {
+    const sheet = document.querySelector("#sheet:not([hidden])");
+    if (!sheet?.querySelector(".sheet-title")?.textContent?.startsWith("Join")) return false;
+    sheet.querySelector<HTMLElement>('[data-sheet="ok"]')!.click();
+    return true;
+  }), 30_000);
+}
+
 async function joinSpace(page: Page, hash: string, name: string) {
   await page.goto(`http://localhost:${WEB}/`);
   await page.waitForSelector(".boards-groups > *");

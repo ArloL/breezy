@@ -35,6 +35,8 @@ export interface Sight {
   focus: Rect | null;
   caret: Rect | null;
   visible: Rect;
+  /** How a real device read `visible`, for a failure to explain itself. */
+  how?: string;
 }
 
 /** A field as a string with the caret at its end; typing goes to the one the view says has the keyboard. */

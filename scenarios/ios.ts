@@ -117,6 +117,7 @@ export class IosDevice extends Device {
       const w = window as { calibrating?: (e: Event) => void; tapped?: Point };
       w.calibrating = (e: Event) => {
         e.stopImmediatePropagation();
+        ((window as { calibrated?: string[] }).calibrated ??= []).push(e.type);
         if (e instanceof PointerEvent && e.type === "pointerdown") w.tapped = { x: e.clientX, y: e.clientY };
       };
       for (const type of ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click"]) addEventListener(type, w.calibrating, { capture: true });
@@ -126,7 +127,10 @@ export class IosDevice extends Device {
     await this.hid.touches([[0, "down", at.x, at.y], [50, "up", at.x, at.y]]);
     let tapped: Point | null = null;
     for (const end = Date.now() + 5000; !(tapped = await this.page.evaluate(() => (window as { tapped?: Point }).tapped ?? null)); await sleep(100)) {
-      if (Date.now() > end) throw new Error("the iPhone's page never saw the calibrating tap");
+      if (Date.now() > end) {
+        const page = await this.page.evaluate(() => `${location.href}, ${document.visibilityState}, saw ${(window as { calibrated?: string[] }).calibrated?.join(" ") || "nothing"}`);
+        throw new Error(`the iPhone's page never saw the calibrating tap at ${at.x},${at.y}: ${page}`);
+      }
     }
     await this.page.evaluate(() => {
       const w = window as { calibrating?: (e: Event) => void };
@@ -230,43 +234,62 @@ export class IosDevice extends Device {
     }
   }
 
-  /** As a person makes one on a phone: a double tap, a title, and a tap on the board just above it. */
+  /** As a person makes one on an iPhone: a double tap, a title, and Done. */
   async addCard(x: number, y: number): Promise<string> {
     const had = new Set((await this.scene()).cards.map((c) => c.id));
     await this.doubleTap({ x, y });
     await this.type("card");
     const id = (await this.scene()).cards.find((c) => !had.has(c.id))?.id;
     if (!id) throw new Error("the double tap made no card");
-    const c = item(await this.scene(), id);
-    await this.tap({ x: c.x + c.w / 2, y: c.y - 40 });
+    // Done on the keys bar, as a person ends it on an iPhone
+    const done = await this.page.evaluate(() => {
+      const b = document.querySelector('[data-act="key-done"]')?.getBoundingClientRect();
+      return b && b.width ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
+    });
+    if (!done) throw new Error("no Done shows on the keys bar");
+    await this.tapAt(done);
     await this.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable, undefined, { timeout: 5000 });
     await this.still("the keyboard to go and the board to stand still");
     return id;
   }
 
-  /** As a person makes one on a phone: the board dragged to bring the point to the middle, then + and Lane. */
+  /** As a person makes one on a phone: + and Lane put it in the middle, and a drag on empty board brings it to the
+   * point. */
   async addLane(x: number, y: number): Promise<string> {
     const had = new Set((await this.scene()).lanes.map((l) => l.id));
-    const size = await this.size(), from = await this.screen({ x, y }), mid = { x: size.w / 2, y: size.h / 2 };
-    const moves: Frame[] = [];
-    for (let i = 1; i <= 10; i++) moves.push([16, "move", [[0, { x: from.x + ((mid.x - from.x) * i) / 10, y: from.y + ((mid.y - from.y) * i) / 10 }]]]);
-    // a drag that starts where the point is, on empty board, pans
-    await this.gesture([[0, "down", [[0, from]]], ...moves, [300, "up", [[0, mid]]]]);
-    await this.still("the pan to settle");
     for (const sel of [".add > button", '[data-act="new-lane"]']) {
       const r = await this.page.evaluate((s: string) => {
         const b = document.querySelector(s)?.getBoundingClientRect();
         return b && b.width ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
       }, sel);
       if (!r) throw new Error(`nothing shows ${sel}`);
-      await this.gesture([[0, "down", [[0, r]]], [50, "up", [[0, r]]]]);
+      await this.tapAt(r);
       await sleep(400);
     }
-    for (const end = Date.now() + 5000; ; await sleep(100)) {
-      const id = (await this.scene()).lanes.find((l) => !had.has(l.id))?.id;
-      if (id) return id;
+    let id: string | undefined;
+    for (const end = Date.now() + 5000; !(id = (await this.scene()).lanes.find((l) => !had.has(l.id))?.id); await sleep(100)) {
       if (Date.now() > end) throw new Error("+ and Lane made no lane");
     }
+    await this.still("the lane to settle");
+    const l = item(await this.scene(), id), at = await this.screen({ x: l.x + l.w / 2, y: l.y + l.h / 2 }), to = await this.screen({ x, y });
+    const d = { x: to.x - at.x, y: to.y - at.y }, size = await this.size(), lane = await this.screen({ x: l.x, y: l.y });
+    const z = (await this.scene()).camera.zoom, box = { x: lane.x, y: lane.y, w: l.w * z, h: l.h * z };
+    const on = (p: Point) => p.x >= 10 && p.x <= size.w - 10 && p.y >= 120 && p.y <= size.h - 120;
+    const clear = (p: Point) => p.x < box.x || p.x > box.x + box.w || p.y < box.y || p.y > box.y + box.h;
+    const from = [[0.85, 0.75], [0.15, 0.75], [0.85, 0.3], [0.15, 0.3], [0.5, 0.75], [0.5, 0.3]]
+      .map(([fx, fy]) => ({ x: size.w * fx!, y: size.h * fy! })).find((p) => clear(p) && on(p) && on({ x: p.x + d.x, y: p.y + d.y }));
+    if (!from) throw new Error(`no empty board to drag the lane ${Math.round(d.x)},${Math.round(d.y)} from`);
+    const moves: Frame[] = [];
+    for (let i = 1; i <= 12; i++) moves.push([16, "move", [[0, { x: from.x + (d.x * i) / 12, y: from.y + (d.y * i) / 12 }]]]);
+    // held still at the end, so that the pan does not coast on
+    await this.gesture([[0, "down", [[0, from]]], ...moves, [300, "up", [[0, { x: from.x + d.x, y: from.y + d.y }]]]]);
+    await this.still("the pan to settle");
+    return id;
+  }
+
+  /** A tap at page point `p`. */
+  private tapAt(p: Point) {
+    return this.gesture([[0, "down", [[0, p]]], [50, "up", [[0, p]]]]);
   }
 
   stop() {

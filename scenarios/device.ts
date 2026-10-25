@@ -52,6 +52,8 @@ export interface Editor {
   card: Box | null;
   /** What of the screen shows the board: the view less the bars over it. */
   board: Box;
+  /** How `board` was read. */
+  how?: string;
 }
 
 export abstract class Device {
@@ -143,7 +145,7 @@ export abstract class Device {
   async sight(): Promise<Sight | null> {
     if (!this.draws) return null;
     const e = await this.editor();
-    return e && { focus: e.card, caret: e.caret, visible: e.board };
+    return e && { focus: e.card, caret: e.caret, visible: e.board, how: e.how };
   }
 
   /** What it shows now, in a line, for a step log. */

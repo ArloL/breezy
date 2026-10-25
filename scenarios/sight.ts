@@ -22,7 +22,7 @@ export function outOfSight(s: Sight): string | null {
   const { focus, caret, visible } = s;
   if (!focus) return null;
   if (fits(focus, visible) ? inside(focus, visible) : caret && inside(caret, visible)) return null;
-  return `the edited card at ${say(focus)}, its caret at ${say(caret)}, the board showing ${say(visible)}`;
+  return `the edited card at ${say(focus)}, its caret at ${say(caret)}, the board showing ${say(visible)}${s.how ? ` (${s.how})` : ""}`;
 }
 
 /** `d`, checking after each step a case takes on it that, once the board stands still, the card it edits is in sight;

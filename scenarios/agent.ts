@@ -2,6 +2,9 @@
 // simulator at all, and nowhere does it reach the app added to the Home Screen. The scenarios' server puts a script in
 // each page it serves an iPhone; the script asks the server for a function to run, runs it, and posts what it gave.
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 /** How long a poll waits for a function before the page asks again. */
@@ -144,6 +147,9 @@ export class Agent {
 /** The iPhone's page, with what the scenarios ask of a Playwright Page. */
 export class AgentPage {
   private readonly agent: Agent;
+  /** Loads a URL in the page's browser: by default the page goes there itself, but a page in the iOS Simulator that a
+   * script navigated never sees a touch again, so the simulator opens it instead. */
+  open: (url: string) => Promise<void> = (url) => this.evaluate((u: string) => void setTimeout(() => location.assign(u), 50), url);
 
   constructor(agent: Agent) {
     this.agent = agent;
@@ -158,7 +164,7 @@ export class AgentPage {
   async goto(url: string) {
     await this.connected();
     const was = this.agent.current;
-    await this.evaluate((u: string) => void setTimeout(() => location.assign(u), 50), url);
+    await this.open(url);
     for (const end = Date.now() + 30_000; this.agent.current === was; await sleep(50)) {
       if (Date.now() > end) throw new Error(`the iPhone's page did not load ${url} in 30 s`);
     }
@@ -192,7 +198,13 @@ export class AgentPage {
 
   /** The simulator's screen as a PNG. */
   async screenshot(): Promise<Buffer> {
-    return execFileSync("xcrun", ["simctl", "io", "booted", "screenshot", "--type=png", "-"], { timeout: 30_000, maxBuffer: 64 << 20 });
+    const dir = mkdtempSync(join(tmpdir(), "breezy-shot-")), file = join(dir, "screen.png");
+    try {
+      execFileSync("xcrun", ["simctl", "io", "booted", "screenshot", "--type=png", file], { timeout: 30_000, stdio: "ignore" });
+      return readFileSync(file);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 
   async close() {}
