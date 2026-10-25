@@ -36,6 +36,8 @@ for (const [file, trace] of traces) {
   for (const engine of Object.keys(engines)) {
     test(`${file} in ${engine}: ${row.title}`, { todo: row.open.includes(trace.target as Target) }, async () => {
       const page = await browsers.get(engine)!.newPage({ viewport: { width: 1200, height: 800 } });
+      // a plant BREEZY_PLANT names, in the page as in Node (TESTING.md)
+      if (process.env.BREEZY_PLANT) await page.addInitScript((p) => void (globalThis.__breezyPlant = p), process.env.BREEZY_PLANT);
       try {
         await page.goto(`http://localhost:${PORT}/?demo=edit&record`);
         await page.waitForFunction(() => "breezyRecord" in window && (document.activeElement as HTMLElement | null)?.isContentEditable);

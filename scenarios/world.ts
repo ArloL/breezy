@@ -110,7 +110,7 @@ export class World {
   }
 
   /** Devices of `kinds`, in that order, in one space with one board that all of them show. */
-  static async start(kinds: Kind[], seed = 1, plant: string | null = null): Promise<World> {
+  static async start(kinds: Kind[], seed = 1, plant: string | null = process.env.BREEZY_PLANT ?? null): Promise<World> {
     const swift = kinds.filter((k) => k === "swift").length;
     const hub = new Hub({ seed, web: kinds.length - swift, swift, profile: "lan", faults: false, steps: 0, plant });
     const w = new World(hub);

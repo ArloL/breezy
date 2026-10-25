@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PLANTS } from "../plants.ts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -62,6 +63,17 @@ test("every plant the matrix names is planted in the source", () => {
       }
     }
   }
+});
+
+test("the matrix's plants and scripts/plants.ts's are the same, at the same class and level", () => {
+  const [, ...levels] = read("TESTING.md").split("\n").find((l) => l.startsWith("| Class |"))!.slice(1, -1).split("|").map((c) => c.trim());
+  const matrix = new Set<string>();
+  for (const [c, ...cells] of table(read("TESTING.md"), "## Matrix")) {
+    cells.forEach((cell, i) => {
+      if (cell.startsWith("plant: ")) for (const name of cell.slice("plant: ".length).split(", ")) matrix.add(`${name} ${c} ${levels[i]}`);
+    });
+  }
+  assert.deepEqual([...matrix].sort(), PLANTS.map((p) => `${p.plant} ${p.class} ${p.level}`).sort());
 });
 
 test("every escape row is well formed", () => {

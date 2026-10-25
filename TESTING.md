@@ -41,16 +41,16 @@ The checks on every push guard: they block merging and must be red only for a bu
 
 | Class | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 |
 |---|---|---|---|---|---|---|---|---|
-| B1 | — | — | plant: reveal-current | — | — | claimed | — | — |
-| B2 | — | — | — | — | claimed | claimed | — | — |
-| B3 | claimed | claimed | claimed | — | — | claimed | claimed | — |
-| B4 | claimed | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
-| B5 | claimed | — | — | claimed | — | claimed | claimed | — |
+| B1 | — | — | plant: reveal-current | — | — | plant: reveal-current | — | — |
+| B2 | plant: ime-keys | — | — | — | claimed | claimed | — | — |
+| B3 | plant: lost-release | claimed | claimed | — | — | claimed | claimed | — |
+| B4 | plant: merge-local | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
+| B5 | plant: half-deploy | — | — | claimed | — | claimed | claimed | — |
 | B6 | — | — | — | — | — | — | claimed | — |
 | B7 | — | — | — | — | — | — | — | claimed |
 | B8 | — | — | — | — | — | — | claimed | — |
 
-A cell is owned only when it names a plant a test shows the level failing on (`order-all`, planted for the fuzzer, has no such test yet). `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
+A cell is owned only when it names a plant that `node scripts/plants.ts` shows the level failing on, and passing without (`order-all`, planted for the fuzzer, is not run there yet). `ime-keys` survives the replays (L5): their traces carry Esc and Enter only as Firefox on the Mac sends them while composing, as Process keys, and the bug it puts back was Chrome's and Safari's. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is checked after every step of every case (`scenarios/sight.ts`): once the board stands still, the card being edited shows whole, or of one too tall to, its caret's line. Search matches and selections are not checked yet, and the Mac reads its whole view as the board's.
 
 ## When a bug escapes
 
@@ -62,4 +62,4 @@ A bug found by hand, or by a nightly or soak run, is fixed with:
 
 ## Adding a plant
 
-A plant is a bug switched on by name: `planted("name")` in `web/sync/plant.ts` and `BreezyKit/Sources/BreezyKit/Plant.swift`, set by `BREEZY_PLANT` or `globalThis.__breezyPlant`. Add one where the bug would be, a test that the level fails with it on (as `scripts/fuzz/test/plant.test.ts` does for the fuzzer), and its name to the level's cell above.
+A plant is a past bug put back by name where it was fixed: `planted("name")` (`web/sync/plant.ts`, `BreezyKit/Sources/BreezyKit/Plant.swift`). `BREEZY_PLANT` sets it for Node, the hub's devices and the replays' pages, `SCENARIO_PLANT` for real devices once their board is open. Add the plant, a row in `scripts/plants.ts` with the run of each level it proves, and the plant's name in those cells above; `node scripts/plants.ts` requires each run to pass without it and fail with it, weekly in `.github/workflows/plants.yaml`.

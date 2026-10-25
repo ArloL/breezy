@@ -73,6 +73,8 @@ function worker() {
     fetch: server.fetch,
     Response, Headers, URL, TextEncoder, crypto,
     console: { warn: () => {} },
+    // a plant BREEZY_PLANT names, as a page's global would carry it (TESTING.md)
+    __breezyPlant: process.env.BREEZY_PLANT,
     // timeouts fire only when a test says so
     AbortSignal: { timeout: (ms: number) => { const c = new AbortController(); timers.push(c); return c.signal; } },
   };
