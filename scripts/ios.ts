@@ -10,7 +10,6 @@ import { execFileSync } from "node:child_process";
 import { cpus, loadavg } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { HOME_ICON, homeIcon, iosUnfit, SimHid } from "../scenarios/ios.ts";
-import { buildSite, serveStatic, WEB } from "../scenarios/browser.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
 // an iPhone already booted, as the devices take the first one booted, else the newest of the newest runtime
@@ -36,6 +35,8 @@ while (loadavg()[0] > most && Date.now() - settling < 8 * 60_000) await sleep(50
 console.log(`the load ${loadavg()[0].toFixed(0)} of ${cpus().length} CPUs after ${Math.round((Date.now() - settling) / 1000)} s settling`);
 
 if (process.argv.includes("--home") && !homeIcon(phone.udid)) {
+  // here, not at the top: CI starts the boot before it installs Playwright, which the scenarios' server brings
+  const { buildSite, serveStatic, WEB } = await import("../scenarios/browser.ts");
   const site = new URL("../build/web-scenarios", import.meta.url).pathname;
   buildSite(site);
   const web = serveStatic(site, WEB);
