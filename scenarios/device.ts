@@ -1,8 +1,9 @@
 // What a scenario does with a device of any kind: input as a person gives it, and what the device shows.
 import type { Point } from "../web/types.ts";
 import type { Scene, SceneItem } from "../web/scene.ts";
+import type { Sight } from "../web/test/fakes.ts";
 
-export type { Scene, SceneItem };
+export type { Scene, SceneItem, Sight };
 
 export interface Modifiers {
   shift?: boolean;
@@ -47,6 +48,10 @@ export interface Editor {
   line: number;
   /** What of the screen shows, less a phone's keyboard. */
   view: Box;
+  /** The card being edited as drawn; null for a lane's title. */
+  card: Box | null;
+  /** What of the screen shows the board: the view less the bars over it. */
+  board: Box;
 }
 
 export abstract class Device {
@@ -131,6 +136,14 @@ export abstract class Device {
   /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
   async relaunch(): Promise<void> {
     throw new Error(`${this.kind} devices cannot launch again`);
+  }
+
+  /** The card being edited, its caret and what of the screen shows the board, for a case to check it is in sight; null
+   * when nothing is being edited or the device cannot tell. */
+  async sight(): Promise<Sight | null> {
+    if (!this.draws) return null;
+    const e = await this.editor();
+    return e && { focus: e.card, caret: e.caret, visible: e.board };
   }
 
   /** What it shows now, in a line, for a step log. */
