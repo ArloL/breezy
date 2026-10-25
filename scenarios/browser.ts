@@ -155,6 +155,13 @@ function readEditor(): Editor | null {
   const s = getComputedStyle(el), r = el.getBoundingClientRect();
   const zoom = r.width / el.offsetWidth;
   const v = visualViewport!;
+  // what shows the board, off the DOM rather than the app's own area(): the visual viewport less the bars over it
+  const bar = (sel: string) => {
+    const b = document.querySelector<HTMLElement>(sel);
+    return b && !b.hidden && b.getClientRects().length ? b.getBoundingClientRect() : null;
+  };
+  const above = bar("#find") ?? bar("#top"), below = [bar("#keys"), bar("#bottom")].filter((b) => b !== null);
+  const top = Math.max(v.offsetTop, above?.bottom ?? 0), bottom = Math.min(v.offsetTop + v.height, ...below.map((b) => b.top));
   return {
     // an empty last line is drawn from two newlines, as DomField.text() says
     text: all.endsWith("\n") ? all.slice(0, -1) : all,
@@ -166,6 +173,8 @@ function readEditor(): Editor | null {
     origin: { x: r.x + Number.parseFloat(s.paddingLeft) * zoom, y: r.y + Number.parseFloat(s.paddingTop) * zoom },
     line: Number.parseFloat(s.lineHeight) * zoom,
     view: { x: v.offsetLeft, y: v.offsetTop, w: v.width, h: v.height },
+    card: box(el.closest(".cards > [data-id]")?.getBoundingClientRect()) ?? null,
+    board: { x: v.offsetLeft, y: top, w: v.width, h: bottom - top },
   };
 }
 

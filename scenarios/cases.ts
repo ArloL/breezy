@@ -754,6 +754,34 @@ export const cases: Case[] = [
     },
   },
   {
+    // the iOS escape of 2026-10-25: the zoom to 100 % left the caret off screen until the first key
+    name: "a card made with a double tap at 25 % zoom on a phone is in sight before any key",
+    input: "touch",
+    edits: true,
+    async run(s) {
+      const [a] = s.devices as [Device, Device];
+      await laneAndCard(s);
+      // two fingers pinched together, as far as the zoom goes
+      const size = await a.size(), m = { x: size.w / 2, y: size.h / 2 };
+      const pinch: Frame[] = [];
+      for (let i = 1; i <= 10; i++) pinch.push([16, "move", [[1, { x: m.x - 150 + 13 * i, y: m.y }], [2, { x: m.x + 150 - 13 * i, y: m.y }]]]);
+      await a.gesture([
+        [0, "down", [[1, { x: m.x - 150, y: m.y }]]],
+        [0, "down", [[2, { x: m.x + 150, y: m.y }]]],
+        ...pinch,
+        [0, "up", [[1, { x: m.x - 20, y: m.y }]]],
+        [0, "up", [[2, { x: m.x + 20, y: m.y }]]],
+      ]);
+      await a.still("the zoom to settle");
+      assert.ok((await a.scene()).camera.zoom < 0.3, `zoom ${(await a.scene()).camera.zoom}`);
+      // low and to the right, where a card at 100 % reaches past the edge and the keyboard comes up over it
+      await a.doubleTap(await a.world({ x: size.w - 30, y: size.h * 0.6 }));
+      await a.still("the zoom and the keyboard to settle");
+      assert.ok(Math.abs((await a.scene()).camera.zoom - 1) < 0.01, "fingers edit at 100 %");
+      await a.type("x");
+    },
+  },
+  {
     name: "a lane renamed from its header has the new name on the other device",
     input: "mouse",
     edits: true,
