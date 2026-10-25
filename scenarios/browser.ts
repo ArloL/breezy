@@ -11,7 +11,7 @@ import { randomBytes } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
-import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
+import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
 import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
@@ -189,6 +189,40 @@ function readEditor(): Editor | null {
     view: { x: v.offsetLeft, y: v.offsetTop, w: v.width, h: v.height },
     card: box(el.closest(".cards > [data-id]")?.getBoundingClientRect()) ?? null,
     board: { x: vx, y: top, w: v.width, h: bottom - top },
+    how: `visual viewport ${Math.round(vy)}+${Math.round(v.height)} in ${innerHeight}, layout from ${Math.round(layout.top)}, above ${above ? Math.round(above.bottom) : "none"}, below ${below.map((b) => Math.round(b.top)).join(" ") || "none"}`,
+  };
+}
+
+/**
+ * What the sight check needs of the editor, and no more: the card being edited, its caret and what of the screen shows
+ * the board, as readEditor reads them, without a box for each character, which made each key's check cost 120 ms on a
+ * runner. Null when nothing is edited. Runs in the page.
+ */
+function readSight(): Sight | null {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el?.isContentEditable) return null;
+  const box = (r: DOMRect) => ({ x: r.x, y: r.y, w: r.width, h: r.height });
+  const card = el.closest(".cards > [data-id]")?.getBoundingClientRect();
+  const sel = getSelection();
+  const range = sel?.rangeCount && el.contains(sel.focusNode) ? sel.getRangeAt(0) : null;
+  const at = range?.getClientRects()[0] ?? range?.getBoundingClientRect();
+  const v = visualViewport!;
+  const bar = (q: string) => {
+    const b = document.querySelector<HTMLElement>(q);
+    return b && !b.hidden && b.getClientRects().length ? b.getBoundingClientRect() : null;
+  };
+  const above = bar("#find") ?? bar("#top"), below = [bar("#keys"), bar("#bottom")].filter((b) => b !== null);
+  const pin = document.createElement("div");
+  pin.style.cssText = "position:fixed;top:0;left:0;width:0;height:0";
+  document.body.append(pin);
+  const layout = pin.getBoundingClientRect();
+  pin.remove();
+  const vx = layout.left + v.offsetLeft, vy = layout.top + v.offsetTop;
+  const top = Math.max(vy, above?.bottom ?? -Infinity), bottom = Math.min(vy + v.height, ...below.map((b) => b.top));
+  return {
+    focus: card ? box(card) : null,
+    caret: at?.height ? { x: at.x, y: at.y, w: 0, h: at.height } : null,
+    visible: { x: vx, y: top, w: v.width, h: bottom - top },
     how: `visual viewport ${Math.round(vy)}+${Math.round(v.height)} in ${innerHeight}, layout from ${Math.round(layout.top)}, above ${above ? Math.round(above.bottom) : "none"}, below ${below.map((b) => Math.round(b.top)).join(" ") || "none"}`,
   };
 }
@@ -709,6 +743,10 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(readEditor);
   }
 
+  override async sight() {
+    return this.page.evaluate(readSight);
+  }
+
   override async weights(id: string) {
     return this.page.evaluate(readWeights, id);
   }
@@ -1153,7 +1191,7 @@ export class RealWorld {
               if (attempt === 4) throw e;
             }
           }
-          return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
+          return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });
         });
         this.devices.push(ios);
         // what it needs of a Playwright page it has
@@ -1196,7 +1234,7 @@ export class RealWorld {
           await launch();
           // a connection that touched SpringBoard reaches no page after it
           hid.stop();
-          return new IosDevice("ios-home", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
+          return new IosDevice("ios-home", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });
         });
         this.devices.push(ios);
         const like = page as unknown as Page;
