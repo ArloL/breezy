@@ -122,6 +122,8 @@ async function launch() {
     s.next = null;
   });
   prune(state).catch(() => {});
+  // 2fcd9f7: a launch came from the network alone, so none without one
+  if (planted("no-snapshot")) return undefined;
   return fromSnapshot(state.current, "index.html");
 }
 

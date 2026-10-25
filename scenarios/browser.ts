@@ -1148,7 +1148,10 @@ export function serveStatic(dir: string, port: number, agent?: Agent) {
     const path = join(dir, new URL(req.url!, "http://x").pathname.replace(/\/$/, "/index.html"));
     // an iPhone's blank page, as clearSite asks for one, still carries the agent
     if (!existsSync(path)) return agent && fromIphone(req) ? res.writeHead(404, { "Content-Type": "text/html" }).end(`<!doctype html><meta name="viewport" content="width=device-width"><title>blank</title>${AGENT_SCRIPT}`) : res.writeHead(404).end();
-    const body = agent && extname(path) === ".html" && fromIphone(req) ? readFileSync(path, "utf8") + AGENT_SCRIPT : readFileSync(path);
+    const body = agent && extname(path) === ".html" && fromIphone(req) ? readFileSync(path, "utf8") + AGENT_SCRIPT
+      // the service worker's plant, which no page can set in it; sw.js is outside the snapshot it hashes
+      : PLANT && path.endsWith("/sw.js") ? `globalThis.__breezyPlant = ${JSON.stringify(PLANT)};\n${readFileSync(path, "utf8")}`
+      : readFileSync(path);
     res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream" }).end(body);
   }).listen(port, "127.0.0.1");
 }

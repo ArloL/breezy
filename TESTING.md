@@ -58,7 +58,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 | B2 | plant: ime-keys | — | — | — | claimed | claimed | — | — |
 | B3 | plant: lost-release | claimed | claimed | — | — | claimed | claimed | — |
 | B4 | plant: merge-local | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
-| B5 | plant: half-deploy | — | — | claimed | — | claimed | claimed | — |
+| B5 | plant: half-deploy | — | — | claimed | — | plant: no-snapshot | claimed | — |
 | B6 | — | — | — | — | — | — | claimed | — |
 | B7 | — | — | — | — | — | — | — | plant: half-uploaded |
 | B8 | — | — | — | — | — | — | claimed | — |
@@ -75,4 +75,4 @@ A bug found by hand, or by a nightly or soak run, is fixed with:
 
 ## Adding a plant
 
-A plant is a past bug put back by name where it was fixed: `planted("name")` (`web/sync/plant.ts`, `BreezyKit/Sources/BreezyKit/Plant.swift`). `BREEZY_PLANT` sets it for Node, the hub's devices and the replays' pages, `SCENARIO_PLANT` for real devices once their board is open. Add the plant, a row in `scripts/plants.ts` with the run of each level it proves, and the plant's name in those cells above; `node scripts/plants.ts` requires each run to pass without it and fail with it, weekly in `.github/workflows/plants.yaml`.
+A plant is a past bug put back by name where it was fixed: `planted("name")` (`web/sync/plant.ts`, `BreezyKit/Sources/BreezyKit/Plant.swift`). `BREEZY_PLANT` sets it for Node, the hub's devices and the replays' pages, `SCENARIO_PLANT` for real devices once their board is open, and for their service worker, as the scenarios' server serves it. Add the plant, a row in `scripts/plants.ts` with the run of each level it proves, and the plant's name in those cells above; `node scripts/plants.ts` requires each run to pass without it and fail with it, weekly in `.github/workflows/plants.yaml`.
