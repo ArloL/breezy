@@ -111,3 +111,15 @@ test("the iOS new card's case passes on a phone whose keyboard does not shrink t
     w.stop();
   }
 });
+
+test("a key is checked in two readings 20 ms apart, as nothing it starts waits to move", async () => {
+  const d = new Moving(() => 200);
+  await watchSight(d).key("a");
+  assert.equal(d.now, 20);
+});
+
+test("a tap is checked in three readings 50 ms apart, as a keyboard may be on its way", async () => {
+  const d = new Moving(() => 200);
+  await watchSight(d).tap({ x: 1, y: 2 });
+  assert.equal(d.now, 100);
+});

@@ -5,6 +5,8 @@ import type { Box, Device, Sight } from "./device.ts";
 /** How long the camera and a phone's keyboard may take to stand still after a step; the card is judged where they come
  * to rest, as a person sees it once the board stops moving. */
 const MS = 5000;
+/** Steps that only press keys. */
+const KEYS = new Set(["key", "type", "compose"]);
 /** Methods that move nothing a person sees, and so are no step to check after. */
 const PASSIVE = new Set([...LOOKS, "wait", "until", "still", "sight"]);
 
@@ -33,10 +35,12 @@ export function watchSight<T extends Device>(d: T): T {
       if (typeof prop !== "string" || PASSIVE.has(prop)) return v.bind(target);
       return async (...args: unknown[]) => {
         const r = await v.apply(target, args);
-        // three readings alike, 50 ms apart: nothing moves, nor is an editor about to open
+        // readings alike: after a key, two 20 ms apart, as what a key sets moving moves every frame; after anything
+        // else three 50 ms apart, as a phone's keyboard may still be on its way
+        const [n, gap] = KEYS.has(prop) ? [2, 20] : [3, 50];
         let s = await target.sight(), seen = [still(s)];
-        for (let t = 0; t < MS && (seen.length < 3 || new Set(seen.slice(-3)).size > 1); t += 50) {
-          await target.wait(50);
+        for (let t = 0; t < MS && (seen.length < n || new Set(seen.slice(-n)).size > 1); t += gap) {
+          await target.wait(gap);
           s = await target.sight();
           seen.push(still(s));
         }
