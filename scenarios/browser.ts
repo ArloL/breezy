@@ -12,11 +12,11 @@ import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
-import { IosDevice, IosPage } from "./ios.ts";
+import { bootedIphone, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
-import { AGENT_SCRIPT, fromIphone, type Agent } from "./agent.ts";
+import { Agent, AGENT_SCRIPT, fromIphone } from "./agent.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -1029,7 +1029,8 @@ export function serveStatic(dir: string, port: number, agent?: Agent) {
   return createServer((req, res) => {
     if (agent?.handle(req, res)) return;
     const path = join(dir, new URL(req.url!, "http://x").pathname.replace(/\/$/, "/index.html"));
-    if (!existsSync(path)) return res.writeHead(404).end();
+    // an iPhone's blank page, as clearSite asks for one, still carries the agent
+    if (!existsSync(path)) return agent && fromIphone(req) ? res.writeHead(404, { "Content-Type": "text/html" }).end(`<!doctype html><meta name="viewport" content="width=device-width"><title>blank</title>${AGENT_SCRIPT}`) : res.writeHead(404).end();
     const body = agent && extname(path) === ".html" && fromIphone(req) ? readFileSync(path, "utf8") + AGENT_SCRIPT : readFileSync(path);
     res.writeHead(200, { "Content-Type": types[extname(path)] ?? "application/octet-stream" }).end(body);
   }).listen(port, "127.0.0.1");
@@ -1054,7 +1055,8 @@ export async function launchAndroidChrome(device: AndroidDevice, options: { hasT
 
 export class RealWorld {
   readonly devices: (BrowserDevice | MacDevice | IosDevice)[] = [];
-  private readonly iosPages: IosPage[] = [];
+  /** What reads the iPhone's page, which the web server puts in it. */
+  private readonly agent = new Agent();
   private readonly browsers: Browser[] = [];
   private readonly androids: [AndroidDevice, BrowserContext?][] = [];
   /** Firefox for Android, which a world that passed keeps for the next. */
@@ -1109,13 +1111,18 @@ export class RealWorld {
         continue;
       }
       if (kind === "ios-safari") {
-        const page = await step("launch", async () => {
-          const p = await IosPage.open();
-          this.iosPages.push(p);
-          await clearSite(p as unknown as Page, "Safari on iOS");
-          return p;
+        const page = this.agent.page;
+        const ios = await step("launch", async () => {
+          const udid = bootedIphone();
+          if (!udid) throw new Error("no booted iPhone: run node scripts/ios.ts");
+          execFileSync("xcrun", ["simctl", "openurl", udid, `http://localhost:${WEB}/scenarios-clear`], { timeout: 30_000 });
+          await page.connected();
+          await clearSite(page as unknown as Page, "Safari on iOS");
+          const d = new IosDevice(page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
+          await d.calibrate();
+          return d;
         });
-        this.devices.push(new IosDevice(page, { scene: readScene, editor: readEditor, weights: readWeights }));
+        this.devices.push(ios);
         // what it needs of a Playwright page it has
         const like = page as unknown as Page;
         await step("join", () => joinSpace(like, link.slice(link.indexOf("#join=")), `d${i}`));
@@ -1235,7 +1242,7 @@ export class RealWorld {
     await free(WEB, SERVER, RELAY);
     const site = join(root, "build", "web-scenarios");
     buildSite(site);
-    this.web = serveStatic(site, WEB);
+    this.web = serveStatic(site, WEB, this.agent);
     const relayState = mkdtempSync(join(tmpdir(), "breezy-scenario-relay-"));
     this.dirs.push(relayState);
     /** `cmd` in a process group of its own, what it says kept as `name`'s but php's log of each request it answered. */
@@ -1330,7 +1337,7 @@ export class RealWorld {
       const ends = [`${who} says ${JSON.stringify(status)}`,
         `${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`];
       const version = d instanceof BrowserDevice ? d.page.context().browser()?.version() ?? (d.kind === "firefox-android" ? FENIX_VERSION : undefined)
-        : d instanceof IosDevice ? d.page.version : undefined;
+        : undefined;
       return { summary, ends, device: { who, kind: d.kind, version } };
     }));
     const environ = await environment();
@@ -1435,7 +1442,8 @@ export class RealWorld {
       await bounded("the Android device's connection", d.close());
     }
     for (const c of this.consoles) c.close();
-    for (const p of this.iosPages) await bounded("Safari on iOS's session", p.close());
+    for (const d of this.devices) if (d instanceof IosDevice) d.stop();
+    this.agent.stop();
     for (const d of this.devices) if (d instanceof MacDevice) await bounded("the Mac app's stop", d.stop());
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });

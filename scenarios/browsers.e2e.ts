@@ -26,7 +26,8 @@ const noAndroid = (() => {
  * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others. */
 const pairs = (process.env.SCENARIO_PAIRS?.split(" ").map((p) => p.split(":") as [RealKind, RealKind])
   ?? [["chromium", "firefox-android"], ["firefox-android", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]]);
-const phone = (k: RealKind) => k === "android" || k === "firefox-android";
+const phone = (k: RealKind) => k === "android" || k === "firefox-android" || k === "ios-safari";
+const android = (k: RealKind) => k === "android" || k === "firefox-android";
 
 /** Runs a case gets before it fails, each in a fresh world: Main gives 2, so that a rare flake warns where it would block
  * a merge, and lists it in build/scenarios/flaky.txt; soaks give 1, to count every failure. */
@@ -76,15 +77,15 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
 
 for (const c of cases) {
   for (const [a, b] of pairs) {
-    // Safari on iOS only watches
-    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || a === "ios-safari") continue;
-    const skip = [a, b].includes("mac") && noMac || [a, b].some(phone) && noAndroid || [a, b].includes("ios-safari") && noIos;
+    // Safari on the iOS Simulator has one finger
+    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || a === "ios-safari" && (c.fingers ?? 1) > 1) continue;
+    const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].includes("ios-safari") && noIos;
     test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
         if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
         // outside the run's time, and before a second run too, which a panic in the first leaves on a phone booting
-        if ([a, b].some(phone)) {
+        if ([a, b].some(android)) {
           const said = await rebootedAndroid();
           if (said) console.log(said);
         }
