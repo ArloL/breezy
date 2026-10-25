@@ -26,9 +26,9 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 | L3 Hub cases on fakes | `scenarios/cases.test.ts`: `scenarios/cases.ts` on the fuzzer's virtual time | push | B1, B3, B4 across devices |
 | L4 Convergence fuzzer | `scripts/fuzz.ts`: seeds 1–10 on push, 120 new nightly | push, nightly | B4, B5's sync side |
 | L5 Platform replays | `scenarios/platform/`: recorded traces replayed into each browser | push | B2 |
-| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator; Safari on the iOS Simulator, which only watches | push, soaks | B1, B2, B3, B5 as each platform really does them |
-| L7 Long runs and measures | the soaks, `scripts/ios-chaos.ts`, `scripts/feel.ts`, `scripts/bench.sh`, `scripts/gate.ts`, `scripts/selftest.sh` | nightly, weekly | B3 under load, B5 through the page's lifecycle, B6, B8 |
-| L8 Production | the checks after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
+| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push and in the weekly soaks; Safari on the iOS Simulator, which only watches, nightly in `.github/workflows/ios.yaml` | push, weekly, nightly | B1, B2, B3, B5 as each platform really does them |
+| L7 Long runs and measures | `scripts/feel.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; the soaks (`.github/workflows/desktop-soak.yaml`, `.github/workflows/android-soak.yaml`) weekly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, weekly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
+| L8 Production | `scripts/deploy.py`'s check of the site and `scripts/relay-check.ts`, after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
 | Hand | the owner | always | whatever escapes, logged in `docs/escapes.md` |
 
 `docs/superpowers/specs/2026-10-11-breezy-testability-design.md` says how scenarios drive every kind of device, `docs/platform-expectations.md` which platform input is tested where, and `docs/quality-goals.md` what all of it protects.
@@ -44,13 +44,13 @@ The checks on every push guard: they block merging and must be red only for a bu
 | B1 | — | — | — | — | — | — | — | — |
 | B2 | — | — | — | — | claimed | claimed | — | — |
 | B3 | claimed | claimed | claimed | — | — | claimed | claimed | — |
-| B4 | claimed | — | claimed | plant: pushed-skip, merge-local, order-all | — | claimed | — | — |
-| B5 | claimed | — | — | — | — | claimed | claimed | — |
+| B4 | claimed | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
+| B5 | claimed | — | — | claimed | — | claimed | claimed | — |
 | B6 | — | — | — | — | — | — | claimed | — |
 | B7 | — | — | — | — | — | — | — | claimed |
 | B8 | — | — | — | — | — | — | claimed | — |
 
-A cell is owned only when it names a plant. `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is empty: the cases tap where the board should keep a card in sight, but nothing asserts it is.
+A cell is owned only when it names a plant a test shows the level failing on (`order-all`, planted for the fuzzer, has no such test yet). `claimed` means the level has tests for the class but nothing shows they fail on it; `—` that it has none. B1 is empty: the cases tap where the board should keep a card in sight, but nothing asserts it is.
 
 ## When a bug escapes
 
