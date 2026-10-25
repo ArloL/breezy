@@ -10,6 +10,7 @@ import { Link } from "./links.ts";
 import { WebDevices } from "./web-device.ts";
 import { SwiftDevices } from "./swift-devices.ts";
 import type { IncomingHttpHeaders, OutgoingHttpHeaders } from "node:http";
+import type { Screen } from "../../web/test/fakes.ts";
 import type { ServerSocket } from "./cloudflare-shim.ts";
 import type { Attachment } from "./relay.ts";
 import type { Dest, State as LinkState } from "./links.ts";
@@ -86,7 +87,9 @@ export type Message =
   | { cmd: "peer-msg"; peer: string; text?: string; bytes?: string }
   | { cmd: "peer-candidate"; peer: string; candidate: Candidate | null };
 
-export type DeviceCommand = Message | { cmd: "op"; op: Op } | { cmd: "fire" } | { cmd: "state" } | { cmd: "scene" } | { cmd: "new"; me: Me; seed: number };
+export type DeviceCommand = Message | { cmd: "op"; op: Op } | { cmd: "fire" } | { cmd: "state" } | { cmd: "scene" } | { cmd: "new"; me: Me; seed: number }
+  // web devices only, for scenarios: a phone's screen, what of it shows the edited card, and whether it stands still
+  | { cmd: "screen"; screen: Screen } | { cmd: "sight" } | { cmd: "still" };
 
 export type Command = (DeviceCommand & { dev: number }) | { cmd: "time"; t: number; skew: Record<string, number> };
 
