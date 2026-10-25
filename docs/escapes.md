@@ -21,7 +21,7 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-07 | mac | B8 | unstated | L7 | — | 1ba97a6 |
 | 2026-10-08 | mac | B8 | unstated | L7 | — | 5c41379 |
 | 2026-10-08 | web | B5 | unstated | L1 | — | 758a839 |
-| 2026-10-08 | web | B5 | unstated | L3 | — | fa2e532 |
+| 2026-10-08 | web | B5 | unstated | L6 | — | fa2e532 |
 | 2026-10-08 | ios | B5 | unstated | L7 | — | cd9d942 |
 | 2026-10-09 | web | B4 | unstated | L4 | — | dbada5d |
 | 2026-10-10 | web | B4 | unstated | L4 | — | 169b077 |
@@ -31,16 +31,16 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-10 | web | B4 | unstated | L4 | — | 888d73a |
 | 2026-10-11 | web | B3 | unstated | L3 | — | c14e5a8 |
 | 2026-10-11 | web | B3 | unstated | L3 | — | fb49fff |
-| 2026-10-11 | web | B2 | unstated | L3 | — | c087059 |
+| 2026-10-11 | web | B2 | unstated | L6 | — | c087059 |
 | 2026-10-11 | web | B3 | unstated | L3 | — | 036aa93 |
-| 2026-10-11 | web | B8 | unstated | L3 | — | 08a38da |
+| 2026-10-11 | web | B8 | unstated | L6 | — | 08a38da |
 | 2026-10-11 | mac | B5 | unstated | L1 | — | 6bfa998 |
 | 2026-10-13 | ios | B3 | unstated | L1 | — | 830a708 |
 | 2026-10-14 | android | B3 | unstated | L3 | — | 424d4ca |
 | 2026-10-14 | web | B4 | unstated | L4 | — | 8375434 |
 | 2026-10-14 | android | B3 | unstated | L1 | — | 90d22f2 |
 | 2026-10-14 | web | B4 | unstated | L4 | — | 6dfbafd |
-| 2026-10-15 | mac | B1 | unstated | L3 | — | 8f23365 |
+| 2026-10-15 | mac | B1 | unstated | L6 | — | 8f23365 |
 | 2026-10-15 | web | B1 | unstated | L3 | — | a3ddf48 |
 | 2026-10-15 | android | B2 | unstated | L5 | — | 6cc419a |
 | 2026-10-19 | chromium | B2 | platform rows | L5 | — | d0b2795 |

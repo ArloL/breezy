@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,6 +25,9 @@ function table(text: string, heading?: string): string[][] {
 }
 
 const CLASSES = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"];
+/** Escapes before this were seeded from commit messages. */
+const SEEDED = "2026-10-25";
+const isFile = (path: string) => path !== "" && existsSync(join(root, path)) && statSync(join(root, path)).isFile();
 
 function files(dir: string, ext: string): string[] {
   return readdirSync(join(root, dir), { recursive: true, encoding: "utf8" })
@@ -76,7 +79,9 @@ test("every escape row is well formed", () => {
     assert.ok(CLASSES.includes(cls), row);
     assert.ok(found.length > 0, row);
     assert.match(level, /^L[1-8]$/, row);
-    assert.ok(t === "—" || t === "pending" || existsSync(join(root, t.replace(/^`|`$/g, ""))), row);
+    // a seeded row's test was not traced; one logged since names its test, or says it is still to come
+    if (t === "—") assert.ok(date < SEEDED, `${row}: an escape logged since ${SEEDED} names its test`);
+    else assert.ok(t === "pending" || isFile(t.replace(/^`|`$/g, "")), `${row}: test ${t} is no file`);
     if (commit === "—") assert.equal(t, "pending", `${row}: only an open escape has no commit`);
     else execFileSync("git", ["cat-file", "-e", `${commit}^{commit}`], { cwd: root, stdio: "ignore" });
   }
