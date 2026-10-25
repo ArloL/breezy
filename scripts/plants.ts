@@ -16,6 +16,8 @@ export interface Plant {
   command: string[];
   /** What the run says when the plant is what failed it, rather than a flake or a crash. */
   expect: RegExp;
+  /** What the run needs set, over what the job sets. */
+  env?: Record<string, string>;
 }
 
 const test = (...args: string[]) => ["node", "--test", "--test-force-exit", ...args];
@@ -32,6 +34,10 @@ export const PLANTS: Plant[] = [
   { plant: "merge-local", class: "B4", level: "L4", command: ["node", "scripts/fuzz.ts", "--seeds", "1", "--web", "3", "--swift", "0"], expect: /lost in the merge/ },
   { plant: "pushed-skip", class: "B4", level: "L4", command: ["node", "scripts/fuzz.ts", "--seeds", "1", "--web", "2", "--swift", "2"], expect: /boards differ/ },
   { plant: "half-deploy", class: "B5", level: "L1", command: test("web/test/sw.test.ts"), expect: /✖ a deploy caught halfway/ },
+  {
+    plant: "no-snapshot", class: "B5", level: "L6", env: { SCENARIO_PAIRS: "chromium:chromium" },
+    command: test("--test-name-pattern=launched without network", "scenarios/browsers.e2e.ts"), expect: /launched without network/,
+  },
   { plant: "half-uploaded", class: "B7", level: "L8", command: ["node", "scripts/deploy-check.ts"], expect: /app\.js is not as built/ },
 ];
 
@@ -44,7 +50,7 @@ function run(p: Plant, planted: boolean): boolean | null {
   const cmd = planted ? withPlant(p) : p.command;
   const { BREEZY_PLANT: _b, SCENARIO_PLANT: _s, ...rest } = process.env;
   const records = { SCENARIO_RECORDS: join(fileURLToPath(new URL("..", import.meta.url)), "build", "plants", "scenarios") };
-  const env = planted ? { ...rest, ...records, BREEZY_PLANT: p.plant, SCENARIO_PLANT: p.plant } : { ...rest, ...records };
+  const env = planted ? { ...rest, ...records, ...p.env, BREEZY_PLANT: p.plant, SCENARIO_PLANT: p.plant } : { ...rest, ...records, ...p.env };
   const r = spawnSync(cmd[0]!, cmd.slice(1), { env, encoding: "utf8", maxBuffer: 256 << 20, timeout: 30 * 60_000 });
   const dir = join(fileURLToPath(new URL("..", import.meta.url)), "build", "plants");
   mkdirSync(dir, { recursive: true });
