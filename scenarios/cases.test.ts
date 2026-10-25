@@ -2,19 +2,19 @@
 import { test } from "node:test";
 import { cases } from "./cases.ts";
 import { watchSight } from "./sight.ts";
-import { World, type Kind } from "./world.ts";
+import { PHONES, World, type Kind } from "./world.ts";
 
-const kinds: Kind[] = ["swift", "web", "phone"];
+const kinds: Kind[] = ["swift", "web", "phone", "android"];
 
 for (const c of cases) {
   for (const a of kinds) {
     if (c.input === "touch" && a === "swift") continue;
     // a phone acts only with a finger, and never watches
-    if (c.input === "mouse" && a === "phone") continue;
+    if (c.input === "mouse" && PHONES[a]) continue;
     // the Mac's editing is in its app, not in its core yet
     if (c.edits && a === "swift") continue;
     if (c.offline || c.draws || c.busy || c.fresh || c.buttons) continue;
-    for (const b of kinds.filter((k) => k !== "phone")) {
+    for (const b of kinds.filter((k) => !PHONES[k])) {
       test(`${c.name} (${a} → ${b})`, async () => {
         const w = await World.start([a, b]);
         try {
