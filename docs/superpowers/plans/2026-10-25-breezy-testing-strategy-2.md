@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- In sight means: the edited card's box lies inside the visible box (1 pt tolerance); for a card taller than the visible box, its caret's box does. Checked once the step ends, polled every 50 ms on the device's clock for at most 1000 ms.
+- In sight means: the edited card's box lies inside the visible box (1 pt tolerance); for a card within 32 pt of filling it, as the app judges, its caret's box does. Checked once the device stands still after the step: three readings alike 50 ms apart, within 5 s (revised after review).
 - Only the card being edited is a focus in this step; search matches and selections stay for later (the matrix says so).
 - Phone screen on the hub (my values, from a screenshot of the iPhone 17 simulator, to be replaced by step 5's contract suites): 402 × 874 pt; the board shows from y 120 (below the top bar) to y 774 (above the bottom bar) at rest; a keyboard 336 pt tall arrives 300 ms after an editor takes focus and leaves 300 ms after it loses it; while editing, the keys bar (44 pt, `KEYS_H`) sits on the keyboard.
 - Plant: `reveal-current` — `Camera.goal()` returns the camera as it is.

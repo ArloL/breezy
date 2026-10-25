@@ -774,8 +774,9 @@ export const cases: Case[] = [
       ]);
       await a.still("the zoom to settle");
       assert.ok((await a.scene()).camera.zoom < 0.3, `zoom ${(await a.scene()).camera.zoom}`);
-      // low and to the right, where a card at 100 % reaches past the edge and the keyboard comes up over it
-      await a.doubleTap(await a.world({ x: size.w - 30, y: size.h * 0.6 }));
+      // low and to the right, where the card fits at 25 % but at 100 % reaches past the edge, and the keyboard comes
+      // up over it
+      await a.doubleTap(await a.world({ x: size.w - 100, y: size.h * 0.57 }));
       await a.still("the zoom and the keyboard to settle");
       assert.ok(Math.abs((await a.scene()).camera.zoom - 1) < 0.01, "fingers edit at 100 %");
       await a.type("x");

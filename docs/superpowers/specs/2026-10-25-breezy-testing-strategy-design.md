@@ -87,7 +87,7 @@ B1 is checked after every step of every case, not by a case of its own. A device
 | the current search match | the matching card, or its caret line if taller |
 | a selection just made | the item pressed last |
 
-It holds once the device stands still (`still`), and at most 1 s after the step (my call: past that, a person has seen the wrong screen). Flicker between steps is B8, not B1.
+It holds once the device stands still: three readings alike 50 ms apart, within 5 s of the step (my call, revised after review: judged at the first in-sight reading, the check passed while the camera was still carrying the card off screen). Flicker between steps is B8, not B1.
 
 The iOS bug, reproduced in a Safari tab on the simulator: `App.beginEdit` springs to zoom 1 and reveals the card at once, measured at 25 %, where it fits; the zoom then ends about the card's top centre with the caret off screen. A reveal while the keyboard rises instead springs to the half-way zoom. The reveal now aims from where the camera is going.
 
