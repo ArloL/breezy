@@ -81,11 +81,14 @@ export function homeIcon(udid: string, label = HOME_ICON): { x: number; y: numbe
 /** Clears what the app on the Home Screen keeps, its storage, caches and service worker, while it does not run: cleared
  * from its page instead, it would have to load again, and a page loaded again there sees no touch. */
 export function clearHomeApp(udid: string) {
+  for (const clip of homeClips(udid)) rmSync(join(clip, "Storage"), { recursive: true, force: true });
+}
+
+/** The folders of the Home Screen's web apps named `HOME_ICON`, whatever is in front. */
+export function homeClips(udid: string) {
   const clips = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/WebClips");
-  for (const clip of existsSync(clips) ? readdirSync(clips) : []) {
-    const title = execFileSync("plutil", ["-extract", "Title", "raw", join(clips, clip, "Info.plist")], { encoding: "utf8", timeout: 10_000 }).trim();
-    if (title === HOME_ICON) rmSync(join(clips, clip, "Storage"), { recursive: true, force: true });
-  }
+  return (existsSync(clips) ? readdirSync(clips) : []).map((c) => join(clips, c)).filter((clip) =>
+    execFileSync("plutil", ["-extract", "Title", "raw", join(clip, "Info.plist")], { encoding: "utf8", timeout: 10_000 }).trim() === HOME_ICON);
 }
 
 /** Where the page saw a touch come down, and the screen's top left then, in the board's frame. */
