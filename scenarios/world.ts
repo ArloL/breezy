@@ -5,26 +5,39 @@ import { LANE_H, LANE_W } from "../web/rules.ts";
 import * as V from "../scripts/fuzz/virtual.ts";
 import type { Board, Point } from "../web/types.ts";
 import type { Invite } from "../web/sync/crypto.ts";
-import { Device, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
+import { PHONE } from "../web/test/fakes.ts";
+import { Device, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 
 export * from "./device.ts";
 
-export type Kind = "web" | "swift";
+/** A phone is a web device with a phone's screen and keyboard. */
+export type Kind = "web" | "swift" | "phone";
 
 export class SimDevice extends Device {
   readonly sim: World;
   readonly hub: Hub;
   readonly d: HubDevice;
+  readonly kind: Kind;
 
-  constructor(world: World, d: HubDevice) {
+  constructor(world: World, d: HubDevice, kind: Kind) {
     super();
     this.sim = world;
     this.hub = world.hub;
     this.d = d;
+    this.kind = kind;
   }
 
-  get kind(): Kind {
-    return this.d.kind;
+  override async size() {
+    return this.kind === "phone" ? { w: PHONE.w, h: PHONE.h } : super.size();
+  }
+
+  /** Until the camera has stopped and no keyboard is on its way. */
+  override async still(what: string) {
+    if (this.d.kind === "web") await this.until(what, async () => (await this.hub.command(this.d, { cmd: "still" })) === true);
+  }
+
+  override async sight(): Promise<Sight | null> {
+    return this.d.kind === "web" ? (await this.hub.command(this.d, { cmd: "sight" })) as Sight | null : null;
   }
 
   async wait(ms: number) {
@@ -56,11 +69,13 @@ export class SimDevice extends Device {
   }
 
   override get edits() {
-    return this.kind === "web";
+    return this.d.kind === "web";
   }
 
   override async type(text: string) {
     await this.op({ op: "text", text });
+    // the board keeps the editor in sight of the keyboard, which opened with it; a tap while it moves only stops it
+    if (this.kind === "phone") await this.still("the keyboard to open and the board to stand still");
   }
 
   /** As a person edits one with a mouse: a double-click, the keys, and Esc. */
@@ -95,17 +110,19 @@ export class World {
   }
 
   /** Devices of `kinds`, in that order, in one space with one board that all of them show. */
-  static async start(kinds: Kind[], seed = 1): Promise<World> {
-    const web = kinds.filter((k) => k === "web").length;
-    const hub = new Hub({ seed, web, swift: kinds.length - web, profile: "lan", faults: false, steps: 0 });
+  static async start(kinds: Kind[], seed = 1, plant: string | null = null): Promise<World> {
+    const swift = kinds.filter((k) => k === "swift").length;
+    const hub = new Hub({ seed, web: kinds.length - swift, swift, profile: "lan", faults: false, steps: 0, plant });
     const w = new World(hub);
     try {
       await hub.start();
       // the hub orders its devices by kind; give them back in the order asked for
       const pool = [...hub.devices];
       for (const k of kinds) {
-        const at = pool.findIndex((d) => d.kind === k);
-        w.devices.push(new SimDevice(w, pool.splice(at, 1)[0]!));
+        const at = pool.findIndex((d) => d.kind === (k === "swift" ? "swift" : "web"));
+        const d = new SimDevice(w, pool.splice(at, 1)[0]!, k);
+        if (k === "phone") await hub.command(d.d, { cmd: "screen", screen: PHONE });
+        w.devices.push(d);
       }
       const [first, ...others] = w.devices;
       const { invite } = await first!.op<{ invite: Invite }>({ op: "newSpace", server: hub.server.url, name: "Scenario" });

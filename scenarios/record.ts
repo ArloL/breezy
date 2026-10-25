@@ -31,7 +31,7 @@ export interface Step {
 export type Line = [at: number, source: string, what: string];
 
 /** Methods that only look, and so are no step. */
-const LOOKS = new Set(["scene", "size", "screen", "world", "editor", "weights", "syncStatus", "unpushed", "state", "constructor"]);
+export const LOOKS = new Set(["scene", "size", "screen", "world", "editor", "weights", "sight", "syncStatus", "unpushed", "state", "constructor"]);
 
 const brief = (v: unknown): string => {
   if (typeof v === "function") return "ƒ";
