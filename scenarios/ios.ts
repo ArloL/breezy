@@ -293,6 +293,9 @@ export class IosDevice extends Device {
   /** As a person makes one on an iPhone: a double tap, a title, and Done. */
   async addCard(x: number, y: number): Promise<string> {
     const had = new Set((await this.scene()).cards.map((c) => c.id));
+    // as a person taps a board once it stops moving: a tap stops a board just opened from springing into place, and a
+    // double tap 16 ms after the Home Screen app opened its board made no card
+    await this.still("the board to stand still");
     await this.doubleTap({ x, y });
     await this.type("card");
     const id = (await this.scene()).cards.find((c) => !had.has(c.id))?.id;
