@@ -18,7 +18,12 @@ const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { 
 const { devices } = JSON.parse(run("list", "devices", "available", "--json")) as { devices: Record<string, { udid: string; name: string; state: string }[]> };
 const booted = Object.entries(devices).flatMap(([r, ds]) => ds.filter((d) => d.name.startsWith("iPhone") && d.state === "Booted").map((d) => [r, d] as const))[0];
 const runtime = booted?.[0] ?? Object.keys(devices).filter((r) => r.includes("iOS") && devices[r]!.some((d) => d.name.startsWith("iPhone"))).sort().at(-1);
-const phone = booted?.[1] ?? devices[runtime!]?.filter((d) => d.name.startsWith("iPhone")).at(-1);
+let phone = booted?.[1] ?? devices[runtime!]?.filter((d) => d.name.startsWith("iPhone")).at(-1);
+// a runtime installed by hand, as CI's iOS 27, comes with no devices
+if (!phone && runtime) {
+  const udid = run("create", "iPhone 17", "com.apple.CoreSimulator.SimDeviceType.iPhone-17", runtime).trim();
+  phone = { udid, name: "iPhone 17", state: "Shutdown" };
+}
 if (!phone) throw new Error("no iPhone simulator: install an iOS runtime in Xcode");
 // the keyboard types what the cases type, as Android's spell checker is off for them: autocorrect wrote "neighbours" as
 // "neighbors" and dropped words, capitals and predictions came unasked. Read only as the iPhone boots.

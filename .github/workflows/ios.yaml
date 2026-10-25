@@ -36,6 +36,11 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
+    # the owner's iOS, not the runner's: a caret drawn on the wrong line in iOS 26.5 alone was no bug of the owner's
+    - name: Install iOS 27
+      run: |
+        brew install xcodesorg/made/xcodes
+        xcodes runtimes install "iOS 27.0"
     # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile
     - name: Start booting an iPhone
       run: node scripts/ios.ts --start
