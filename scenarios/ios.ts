@@ -87,7 +87,8 @@ export function clearHomeApp(udid: string) {
 /** The folders of the Home Screen's web apps named `HOME_ICON`, whatever is in front. */
 export function homeClips(udid: string) {
   const clips = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/WebClips");
-  return (existsSync(clips) ? readdirSync(clips) : []).map((c) => join(clips, c)).filter((clip) =>
+  // a share sheet's Add to Home Screen stages a clip with no Info.plist until it is added
+  return (existsSync(clips) ? readdirSync(clips) : []).map((c) => join(clips, c)).filter((clip) => existsSync(join(clip, "Info.plist")) &&
     execFileSync("plutil", ["-extract", "Title", "raw", join(clip, "Info.plist")], { encoding: "utf8", timeout: 10_000 }).trim() === HOME_ICON);
 }
 
