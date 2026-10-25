@@ -28,7 +28,7 @@ try {
   // once, not four times: here nothing is on its way
   execFileSync("python3", ["-c", `import json, sys; sys.path.insert(0, "scripts"); import deploy; deploy.ATTEMPTS = 1
 v = json.load(open(sys.argv[1])); deploy.verify(v, list(v["files"]))`, join(site, "version.json")],
-    { cwd: root, env: { ...process.env, BREEZY_SITE_URL: `http://127.0.0.1:${PORT}` }, stdio: "inherit" });
+    { cwd: root, env: { ...process.env, BREEZY_SITE_URL: `http://127.0.0.1:${PORT}`, PYTHONDONTWRITEBYTECODE: "1" }, stdio: "inherit" });
   console.log(`the checks after a deploy pass on the site as built: ${Object.keys(version.files).length} files`);
 } catch (e) {
   console.error((e as Error).message.split("\n")[0]);
