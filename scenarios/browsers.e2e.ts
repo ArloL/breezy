@@ -13,7 +13,7 @@ import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 
 const noMac = macUnfit();
-const noIos = process.env.SCENARIO_PAIRS?.includes("ios-safari") ? await iosUnfit() : "Safari on iOS runs where SCENARIO_PAIRS names it";
+const noIos = process.env.SCENARIO_PAIRS?.includes("ios-") ? await iosUnfit() : "Safari on iOS runs where SCENARIO_PAIRS names it";
 const noAndroid = (() => {
   try {
     return !/\tdevice$/m.test(execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 })) && "no Android device: run node scripts/android.ts";
@@ -26,7 +26,8 @@ const noAndroid = (() => {
  * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others. */
 const pairs = (process.env.SCENARIO_PAIRS?.split(" ").map((p) => p.split(":") as [RealKind, RealKind])
   ?? [["chromium", "firefox-android"], ["firefox-android", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]]);
-const phone = (k: RealKind) => k === "android" || k === "firefox-android" || k === "ios-safari";
+const ios = (k: RealKind) => k === "ios-safari" || k === "ios-home";
+const phone = (k: RealKind) => k === "android" || k === "firefox-android" || ios(k);
 const android = (k: RealKind) => k === "android" || k === "firefox-android";
 
 /** Runs a case gets before it fails, each in a fresh world: Main gives 2, so that a rare flake warns where it would block
@@ -78,8 +79,8 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
 for (const c of cases) {
   for (const [a, b] of pairs) {
     // Safari on the iOS Simulator has one finger, and cannot go offline or be kept busy yet
-    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || a === "ios-safari" && ((c.fingers ?? 1) > 1 || c.offline || c.busy)) continue;
-    const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].includes("ios-safari") && noIos;
+    if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || ios(a) && ((c.fingers ?? 1) > 1 || c.offline || c.busy)) continue;
+    const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].some(ios) && noIos;
     test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {

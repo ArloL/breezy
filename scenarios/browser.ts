@@ -12,7 +12,7 @@ import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem } from "./device.ts";
-import { bootedIphone, IosDevice, SimHid } from "./ios.ts";
+import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
@@ -22,11 +22,14 @@ import type { Point } from "../web/types.ts";
 export * from "./device.ts";
 
 export type BrowserKind = "chromium" | "webkit" | "firefox" | "android" | "firefox-android";
-export type RealKind = BrowserKind | "mac" | "ios-safari";
+export type RealKind = BrowserKind | "mac" | "ios-safari" | "ios-home";
 
 const root = new URL("..", import.meta.url).pathname;
 // inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
 export const WEB = 58565, SERVER = 58566, RELAY = 58568;
+/** A bug planted in every browser's and iPhone's page once its board is open, to show the cases fail on it
+ * (TESTING.md): SCENARIO_PLANT=reveal-current. */
+const PLANT = process.env.SCENARIO_PLANT;
 /** The emulator's adbd over TCP, through its port redirect: its own adb pipe drops every connection on it under load, a
  * few times an hour on some runners, and the page with them. scripts/android.ts connects it. */
 export const EMULATOR_TCP = "127.0.0.1:5600";
@@ -1150,7 +1153,7 @@ export class RealWorld {
               if (attempt === 4) throw e;
             }
           }
-          return new IosDevice(page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
+          return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
         });
         this.devices.push(ios);
         // what it needs of a Playwright page it has
@@ -1161,6 +1164,49 @@ export class RealWorld {
         });
         if (i === 0) await step("createBoard", () => createBoard(like));
         await step("openBoard", () => openBoard(like));
+        if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
+        continue;
+      }
+      if (kind === "ios-home") {
+        const page = this.agent.page;
+        const ios = await step("launch", async () => {
+          const udid = bootedIphone();
+          if (!udid) throw new Error("no booted iPhone: run node scripts/ios.ts");
+          const hid = await SimHid.start(udid);
+          /** The app from its icon, once: a page it loaded again would see no touch again, as in a Safari tab. */
+          const launch = async () => {
+            const was = this.agent.current;
+            await hid.button("HOME");
+            await sleep(1500);
+            // Home shows the first page; the icon is on a later one
+            let icon = homeIcon(udid);
+            for (let page = 1; !icon && page < 6; page++) {
+              await hid.touches([[0, "down", 360, 450], [16, "move", 280, 450], [16, "move", 160, 450], [16, "move", 60, 450], [16, "up", 40, 450]]);
+              await sleep(1000);
+              icon = homeIcon(udid);
+            }
+            if (!icon) throw new Error(`no "${HOME_ICON}" on the iPhone's Home Screen: run node scripts/ios.ts --home`);
+            await hid.touches([[0, "down", icon.x, icon.y], [50, "up", icon.x, icon.y]]);
+            await until("the Home Screen app's page to ask the agent", () => this.agent.current !== was, 30_000);
+          };
+          try {
+            execFileSync("xcrun", ["simctl", "terminate", udid, "com.apple.webapp"], { timeout: 30_000, stdio: "ignore" });
+          } catch {}
+          clearHomeApp(udid);
+          await launch();
+          // a connection that touched SpringBoard reaches no page after it
+          hid.stop();
+          return new IosDevice("ios-home", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights });
+        });
+        this.devices.push(ios);
+        const like = page as unknown as Page;
+        await step("join", async () => {
+          await ios.calibrate();
+          await homeJoin(ios, link, `d${i}`);
+        });
+        if (i === 0) await step("createBoard", () => createBoard(like));
+        await step("openBoard", () => openBoard(like));
+        if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
         continue;
       }
       const [page, touchscreen] = await step("launch", async () => kind === "android" ? this.android() : kind === "firefox-android" ? this.firefoxAndroid() : [await this.browser(kind)]);
@@ -1169,6 +1215,7 @@ export class RealWorld {
       await step("join", () => joinSpace(page, link.slice(link.indexOf("#join=")), `d${i}`));
       if (i === 0) await step("createBoard", () => createBoard(page));
       await step("openBoard", () => openBoard(page));
+      if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
     }
   }
 
@@ -1576,6 +1623,47 @@ async function iosJoin(page: AgentPage, hash: string, name: string) {
     for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
   });
   await page.goto(`http://localhost:${WEB}/scenarios-cleared`);
+  await iosClear(page, name, true);
+  await page.goto(`http://localhost:${WEB}/${hash}`);
+  await confirmJoin(page);
+}
+
+/** As joinSpace, for the app on the iPhone's Home Screen, as a person there does: ⋯, Join Space, and each sheet answered
+ * as it comes: the name, then the link pasted. */
+async function homeJoin(ios: IosDevice, link: string, name: string) {
+  await ios.tapOn('[data-act="more"]');
+  await sleep(500);
+  await ios.tapOn('[data-act="join"]');
+  await until("the link to be pasted", () => ios.page.evaluate(([link, name]: readonly [string, string]) => {
+    const sheet = document.querySelector("#sheet:not([hidden])"), title = sheet?.querySelector(".sheet-title")?.textContent ?? "";
+    const answer = (value?: string) => {
+      const input = sheet!.querySelector("input")!;
+      if (value !== undefined) {
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      sheet!.querySelector<HTMLElement>('[data-sheet="ok"]')!.click();
+    };
+    if (title === "Your Name") answer(name);
+    // a link pasted there is joined without asking again
+    else if (title === "Join Space") return answer(link), true;
+    return false;
+  }, [link, name] as const), 30_000);
+}
+
+/** Says Join to the sheet that asks whether to join. */
+async function confirmJoin(page: AgentPage) {
+  await until("the join prompt", () => page.evaluate(() => {
+    const sheet = document.querySelector("#sheet:not([hidden])");
+    if (!sheet?.querySelector(".sheet-title")?.textContent?.startsWith("Join")) return false;
+    sheet.querySelector<HTMLElement>('[data-sheet="ok"]')!.click();
+    return true;
+  }), 30_000);
+}
+
+/** The site's caches, databases and storage cleared from an iPhone's page, the device named `name`; with `strict`, none
+ * of its service workers or caches may be left. */
+async function iosClear(page: AgentPage, name: string, strict: boolean) {
   const left = await page.evaluate(async ([device, name, idb]: readonly [string, string, string]) => {
     for (const key of await caches.keys()) await caches.delete(key);
     for (const { name } of await indexedDB.databases()) {
@@ -1586,14 +1674,7 @@ async function iosJoin(page: AgentPage, hash: string, name: string) {
     await m.saveState("me", { device, name });
     return (await navigator.serviceWorker.getRegistrations()).length + (await caches.keys()).length;
   }, [randomBytes(16).toString("base64url"), name, "/sync/idb.js"] as const);
-  if (left) throw new Error(`Safari on iOS kept ${left} of the site's service workers and caches`);
-  await page.goto(`http://localhost:${WEB}/${hash}`);
-  await until("the join prompt", () => page.evaluate(() => {
-    const sheet = document.querySelector("#sheet:not([hidden])");
-    if (!sheet?.querySelector(".sheet-title")?.textContent?.startsWith("Join")) return false;
-    sheet.querySelector<HTMLElement>('[data-sheet="ok"]')!.click();
-    return true;
-  }), 30_000);
+  if (strict && left) throw new Error(`Safari on iOS kept ${left} of the site's service workers and caches`);
 }
 
 async function joinSpace(page: Page, hash: string, name: string) {

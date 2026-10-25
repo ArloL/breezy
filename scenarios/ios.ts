@@ -3,6 +3,9 @@
 // gesture (scripts/sim-hid.py), so a double tap's waits hold; the page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only: idb's touch has one point. scripts/ios.ts boots the simulator.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Device, item, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
@@ -28,6 +31,29 @@ export async function iosUnfit(): Promise<string | false> {
     return "no idb_companion: brew install facebook/fb/idb-companion";
   }
   return bootedIphone() ? false : "no booted iPhone: run node scripts/ios.ts";
+}
+
+/** The name the scenarios' app has on the iPhone's Home Screen. */
+export const HOME_ICON = "Breezy Scenarios";
+
+/** Where the Home Screen shows icon `label`, in screen points, or null; SpringBoard's own icons are what its
+ * accessibility lists while it is in front. */
+export function homeIcon(udid: string, label = HOME_ICON): { x: number; y: number } | null {
+  const out = execFileSync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
+    { encoding: "utf8", timeout: 120_000, stdio: ["ignore", "pipe", "ignore"] });
+  const e = (JSON.parse(out) as { AXLabel?: string; type?: string; frame: { x: number; y: number; width: number; height: number } }[])
+    .find((x) => x.type === "Button" && x.AXLabel === label);
+  return e ? { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 } : null;
+}
+
+/** Clears what the app on the Home Screen keeps, its storage, caches and service worker, while it does not run: cleared
+ * from its page instead, it would have to load again, and a page loaded again there sees no touch. */
+export function clearHomeApp(udid: string) {
+  const clips = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/WebClips");
+  for (const clip of existsSync(clips) ? readdirSync(clips) : []) {
+    const title = execFileSync("plutil", ["-extract", "Title", "raw", join(clips, clip, "Info.plist")], { encoding: "utf8", timeout: 10_000 }).trim();
+    if (title === HOME_ICON) rmSync(join(clips, clip, "Storage"), { recursive: true, force: true });
+  }
 }
 
 /** scripts/sim-hid.py on the booted iPhone: a line of JSON per command, answered in turn. */
@@ -91,21 +117,27 @@ export class SimHid {
     return this.send({ key: usage });
   }
 
+  button(name: "HOME") {
+    return this.send({ button: name });
+  }
+
   stop() {
     this.child.kill();
   }
 }
 
 export class IosDevice extends Device {
-  readonly kind = "ios-safari";
+  /** In a Safari tab, or the app added to the Home Screen. */
+  readonly kind: "ios-safari" | "ios-home";
   readonly page: AgentPage;
-  private readonly hid: SimHid;
+  readonly hid: SimHid;
   private readonly fns: { scene: () => Scene; editor: () => Editor | null; weights: (id: string) => number[] | null };
   /** Where the page's top left is on the screen, in points. */
   private offset: Point = { x: 0, y: 0 };
 
-  constructor(page: AgentPage, hid: SimHid, fns: IosDevice["fns"]) {
+  constructor(kind: IosDevice["kind"], page: AgentPage, hid: SimHid, fns: IosDevice["fns"]) {
     super();
+    this.kind = kind;
     this.page = page;
     this.hid = hid;
     this.fns = fns;
@@ -124,9 +156,13 @@ export class IosDevice extends Device {
     });
     const s = await this.page.evaluate(() => ({ w: screen.width, h: screen.height }));
     const at = { x: Math.round(s.w / 2), y: Math.round(s.h / 2) };
-    await this.hid.touches([[0, "down", at.x, at.y], [50, "up", at.x, at.y]]);
+    // again, while it goes unseen: an app just launched from the Home Screen takes no touch for a moment
     let tapped: Point | null = null;
-    for (const end = Date.now() + 5000; !(tapped = await this.page.evaluate(() => (window as { tapped?: Point }).tapped ?? null)); await sleep(100)) {
+    for (let tries = 0, end = Date.now() + 8000; !(tapped = await this.page.evaluate(() => (window as { tapped?: Point }).tapped ?? null)); await sleep(100)) {
+      if (Date.now() > end - 8000 + tries * 2000 && tries < 3) {
+        tries++;
+        await this.hid.touches([[0, "down", at.x, at.y], [50, "up", at.x, at.y]]);
+      }
       if (Date.now() > end) {
         const page = await this.page.evaluate(() => `${location.href}, ${document.visibilityState}, saw ${(window as { calibrated?: string[] }).calibrated?.join(" ") || "nothing"}`);
         throw new Error(`the iPhone's page never saw the calibrating tap at ${at.x},${at.y}: ${page}`);
@@ -250,12 +286,7 @@ export class IosDevice extends Device {
     const id = (await this.scene()).cards.find((c) => !had.has(c.id))?.id;
     if (!id) throw new Error("the double tap made no card");
     // Done on the keys bar, as a person ends it on an iPhone
-    const done = await this.page.evaluate(() => {
-      const b = document.querySelector('[data-act="key-done"]')?.getBoundingClientRect();
-      return b && b.width ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
-    });
-    if (!done) throw new Error("no Done shows on the keys bar");
-    await this.tapAt(done);
+    await this.tapOn('[data-act="key-done"]');
     await this.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable, undefined, { timeout: 5000 });
     await this.still("the keyboard to go and the board to stand still");
     return id;
@@ -266,12 +297,7 @@ export class IosDevice extends Device {
   async addLane(x: number, y: number): Promise<string> {
     const had = new Set((await this.scene()).lanes.map((l) => l.id));
     for (const sel of [".add > button", '[data-act="new-lane"]']) {
-      const r = await this.page.evaluate((s: string) => {
-        const b = document.querySelector(s)?.getBoundingClientRect();
-        return b && b.width ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
-      }, sel);
-      if (!r) throw new Error(`nothing shows ${sel}`);
-      await this.tapAt(r);
+      await this.tapOn(sel);
       await sleep(400);
     }
     let id: string | undefined;
@@ -293,6 +319,16 @@ export class IosDevice extends Device {
     await this.gesture([[0, "down", [[0, from]]], ...moves, [300, "up", [[0, { x: from.x + d.x, y: from.y + d.y }]]]]);
     await this.still("the pan to settle");
     return id;
+  }
+
+  /** A tap on the middle of the first of what `selector` finds that shows. */
+  async tapOn(selector: string) {
+    const r = await this.page.evaluate((s: string) => {
+      const b = [...document.querySelectorAll(s)].map((e) => e.getBoundingClientRect()).find((b) => b.width && b.height);
+      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
+    }, selector);
+    if (!r) throw new Error(`nothing shows ${selector}`);
+    await this.tapAt(r);
   }
 
   /** A tap at page point `p`. */
