@@ -52,8 +52,5 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-22 | web | B7 | hand | L8 | — | 025afc5 |
 | 2026-10-24 | ios | B5 | iOS chaos | L7 | — | f942f51 |
 | 2026-10-25 | ios | B1 | hand | L3 | `scenarios/sight.test.ts` | b72be2f |
-| 2026-10-25 | ios | B2 | the iPhone in L6 | L6 | pending | — |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
-
-2026-10-25, found by the iPhone acting in Safari on the simulator, open: typing " summer" after a title that wraps, "…away for the", leaves "…away for summer". After "the" iOS sends insertReplacementText over "for the", and WebKit's own replacement drops the word; a textarea or a plain editable element given the same keys gets no replacement. The guess, not yet shown: the app redrawing the front while it is typed into leaves iOS's keyboard with a stale copy of the text.

@@ -23,6 +23,8 @@ export interface Case {
   busy?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
+  /** Why the iPhone in the iOS Simulator cannot act in it, if it cannot. */
+  notOnIphone?: string;
   /** How many fingers the first device must put down at once, if more than one: the iOS Simulator takes one. */
   fingers?: number;
   /** How long a run may take on real devices, if longer than most. */
@@ -217,6 +219,8 @@ const wrapping = (input: "mouse" | "touch"): Case => ({
   input,
   edits: true,
   draws: true,
+  // docs/platform-expectations.md
+  notOnIphone: "after the backspaces, iOS's keyboard replaces \"for the\" typed after them with \"for\", in any editable element",
   async run(s) {
     const [a, b] = s.devices as [Device, Device];
     const id = await newCard(a, input);
