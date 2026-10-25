@@ -175,6 +175,39 @@ export class IosDevice extends Device {
       for (const type of ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click"]) removeEventListener(type, w.calibrating!, { capture: true });
     });
     this.offset = { x: at.x - tapped.x, y: at.y - tapped.y };
+    // its requests to sync.php, its relay socket and the edits waiting to be pushed, on the wall clock, for a failing
+    // case's timeline, as Playwright keeps a browser's: nothing else sees an iPhone's network
+    await this.page.evaluate(() => {
+      const log: [number, string][] = (window as { syncLog?: [number, string][] }).syncLog = [];
+      const note = (what: string) => log.push([Date.now(), what]);
+      const fetched = window.fetch;
+      window.fetch = async (input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (!url.includes("sync.php")) return fetched(input, init);
+        const t0 = Date.now();
+        note(`${init?.method ?? "GET"} sync.php`);
+        try {
+          const r = await fetched(input, init);
+          note(`sync.php answers ${r.status} in ${Date.now() - t0} ms`);
+          return r;
+        } catch (e) {
+          note(`sync.php fails after ${Date.now() - t0} ms: ${e}`);
+          throw e;
+        }
+      };
+      const Socket = window.WebSocket;
+      window.WebSocket = class extends Socket {
+        constructor(...args: ConstructorParameters<typeof WebSocket>) {
+          super(...args);
+          note("relay socket opens");
+          this.addEventListener("close", (e) => note(`relay socket closes, ${e.code}`));
+        }
+      };
+      let waiting = document.body.dataset.waiting;
+      new MutationObserver(() => {
+        if (document.body.dataset.waiting !== waiting) note(`${(waiting = document.body.dataset.waiting) ?? 0} waiting to be pushed`);
+      }).observe(document.body, { attributes: true, attributeFilter: ["data-waiting"] });
+    });
     // what the keyboard asks of the page, for a typing failure to quote
     await this.page.evaluate(() => {
       const log: string[] = (window as { inputs?: string[] }).inputs = [];
@@ -355,6 +388,11 @@ export class IosDevice extends Device {
   /** A tap at page point `p`. */
   private tapAt(p: Point) {
     return this.gesture([[0, "down", [[0, p]]], [50, "up", [[0, p]]]]);
+  }
+
+  /** What the page noted of its sync, for the timeline. */
+  async syncLog(): Promise<[number, string][]> {
+    return this.page.evaluate(() => (window as { syncLog?: [number, string][] }).syncLog ?? []);
   }
 
   stop() {
