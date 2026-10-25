@@ -13,6 +13,7 @@ Reads a JSON line per command on stdin and answers each with a JSON line:
                                                             sent as one HID stream so the waits hold
   {"text": "..."}                                          typed through the simulator's keyboard
   {"key": 40}                                              one key by its HID usage: 40 Return, 42 Delete, 41 Escape
+  {"button": "HOME"}                                       a hardware button, as idb's HIDButtonType names it
 
   -> {"ok": true, "ms": how long it took} or {"error": "..."}
 
@@ -25,7 +26,7 @@ import shutil
 import sys
 import time
 
-from idb.common.types import HIDDelay, HIDDirection, HIDPress, HIDTouch, Point
+from idb.common.types import HIDButtonType, HIDDelay, HIDDirection, HIDPress, HIDTouch, Point
 from idb.grpc.management import ClientManager
 
 
@@ -53,6 +54,8 @@ async def main():
                     await client.text(c["text"])
                 elif "key" in c:
                     await client.key(c["key"])
+                elif "button" in c:
+                    await client.button(HIDButtonType[c["button"]])
                 else:
                     raise ValueError(f"unknown command {line.strip()}")
                 print(json.dumps({"ok": True, "ms": round((time.monotonic() - t0) * 1000)}), flush=True)
