@@ -142,13 +142,13 @@ import Network
   private static func editor(_ wc: BoardWindowController, _ tv: EditorTextView) -> JSONValue {
     let clip = wc.scrollView.contentView
     let zoom = wc.scrollView.magnification
-    func box(_ r: NSRect) -> JSONValue {
-      let d = wc.canvas.convert(r, from: tv)
-      return .object([
+    func canvasBox(_ d: NSRect) -> JSONValue {
+      .object([
         "x": .number((d.minX - clip.bounds.minX) * zoom), "y": .number((d.minY - clip.bounds.minY) * zoom),
         "w": .number(d.width * zoom), "h": .number(d.height * zoom),
       ])
     }
+    func box(_ r: NSRect) -> JSONValue { canvasBox(wc.canvas.convert(r, from: tv)) }
     func onScreen(_ range: NSRange) -> JSONValue {
       let r = tv.firstRect(forCharacterRange: range, actualRange: nil)
       guard let w = tv.window, r != .zero else { return .null }
@@ -164,13 +164,15 @@ import Network
     }
     let origin = box(NSRect(origin: tv.textContainerOrigin, size: .zero))
     let size = clip.bounds.size
+    let view: JSONValue = .object(["x": .number(0), "y": .number(0), "w": .number(size.width * zoom), "h": .number(size.height * zoom)])
+    let card = wc.canvas.editing.flatMap { wc.canvas.board.card($0.id) }.map { canvasBox(wc.canvas.doc(wc.canvas.drawnRect($0))) }
     return .object([
       "text": .string(tv.string), "at": .number(Double(tv.selectedRange().location)),
       "selected": .array([.number(Double(tv.selectedRange().location)), .number(Double(NSMaxRange(tv.selectedRange())))]),
       "caret": onScreen(NSRange(location: tv.selectedRange().location, length: 0)),
       "chars": .array(chars), "weights": .array(weights),
       "origin": origin, "line": .number(Typo.line * zoom),
-      "view": .object(["x": .number(0), "y": .number(0), "w": .number(size.width * zoom), "h": .number(size.height * zoom)]),
+      "view": view, "card": card ?? .null, "board": view,
     ])
   }
 
