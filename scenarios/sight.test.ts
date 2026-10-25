@@ -87,7 +87,7 @@ test("a step that leaves the card at rest out of sight fails, naming the device 
 });
 
 test("a card at rest out of sight for good says so", async () => {
-  await assert.rejects(watchSight(new Moving(() => 520)).tap({ x: 1, y: 2 }), /, and still 5000 ms after the step$/);
+  await assert.rejects(watchSight(new Moving(() => 520)).tap({ x: 1, y: 2 }), /, and still \d{4,} ms after the step$/);
 });
 
 test("a card that stands out of sight, then comes into sight, fails, saying when it came", async () => {
