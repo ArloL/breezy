@@ -5,7 +5,7 @@ import { LANE_H, LANE_W } from "../web/rules.ts";
 import * as V from "../scripts/fuzz/virtual.ts";
 import type { Board, Point } from "../web/types.ts";
 import type { Invite } from "../web/sync/crypto.ts";
-import { PHONE } from "../web/test/fakes.ts";
+import { ANDROID, PHONE, type Screen } from "../web/test/fakes.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 
 export * from "./device.ts";
@@ -13,8 +13,10 @@ export * from "./device.ts";
 /** The plant a run was started with: read once, as a hub started with a plant sets BREEZY_PLANT for its Swift devices. */
 const PLANT = process.env.BREEZY_PLANT ?? null;
 
-/** A phone is a web device with a phone's screen and keyboard. */
-export type Kind = "web" | "swift" | "phone";
+/** A phone is a web device with an iPhone's screen and keyboard, an android one with the partner's Android's. */
+export type Kind = "web" | "swift" | "phone" | "android";
+/** The screen of each kind of phone. */
+export const PHONES: Partial<Record<Kind, Screen>> = { phone: PHONE, android: ANDROID };
 
 export class SimDevice extends Device {
   readonly sim: World;
@@ -31,7 +33,8 @@ export class SimDevice extends Device {
   }
 
   override async size() {
-    return this.kind === "phone" ? { w: PHONE.w, h: PHONE.h } : super.size();
+    const screen = PHONES[this.kind];
+    return screen ? { w: screen.w, h: screen.h } : super.size();
   }
 
   /** Until the camera has stopped and no keyboard is on its way. */
@@ -78,7 +81,7 @@ export class SimDevice extends Device {
   override async type(text: string) {
     await this.op({ op: "text", text });
     // the board keeps the editor in sight of the keyboard, which opened with it; a tap while it moves only stops it
-    if (this.kind === "phone") await this.still("the keyboard to open and the board to stand still");
+    if (PHONES[this.kind]) await this.still("the keyboard to open and the board to stand still");
   }
 
   /** As a person edits one with a mouse: a double-click, the keys, and Esc. */
@@ -124,7 +127,8 @@ export class World {
       for (const k of kinds) {
         const at = pool.findIndex((d) => d.kind === (k === "swift" ? "swift" : "web"));
         const d = new SimDevice(w, pool.splice(at, 1)[0]!, k);
-        if (k === "phone") await hub.command(d.d, { cmd: "screen", screen: PHONE });
+        const screen = PHONES[k];
+        if (screen) await hub.command(d.d, { cmd: "screen", screen });
         w.devices.push(d);
       }
       const [first, ...others] = w.devices;

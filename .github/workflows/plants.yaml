@@ -33,8 +33,11 @@ jobs:
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
     - name: Install PHP
       run: command -v php || brew install php
-    - name: Install the relay
-      run: npm ci --prefix relay
+    # the deploy check builds the site, with tsc
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
     - name: Build breezy-sim
       run: swift build --package-path BreezyKit --product breezy-sim
     - name: Plants
