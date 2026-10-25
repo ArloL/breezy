@@ -45,8 +45,6 @@ if (process.argv.includes("--start")) {
   process.exit(0);
 }
 run("bootstatus", phone.udid, "-b");
-const unfit = await iosUnfit();
-if (unfit) throw new Error(unfit);
 run("launch", phone.udid, "com.apple.mobilesafari");
 console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, touched through idb and read through the scenarios' agent`);
 // a fresh iPhone keeps the runner busy for minutes after its boot, at a load of 500 to 600 on 3 CPUs, and the first
@@ -54,6 +52,9 @@ console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, touched through idb
 const settling = Date.now(), most = 60 * cpus().length;
 while (loadavg()[0] > most && Date.now() - settling < 8 * 60_000) await sleep(5000);
 console.log(`the load ${loadavg()[0].toFixed(0)} of ${cpus().length} CPUs after ${Math.round((Date.now() - settling) / 1000)} s settling`);
+// after the settling: CI's fresh iPhone kept simctl from answering for minutes after its boot
+const unfit = await iosUnfit();
+if (unfit) throw new Error(unfit);
 
 if (process.argv.includes("--home") && !homeIcon(phone.udid)) {
   // here, not at the top: CI starts the boot before it installs Playwright, which the scenarios' server brings
