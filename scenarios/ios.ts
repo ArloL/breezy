@@ -267,14 +267,22 @@ export class IosDevice extends Device {
     else throw new Error(`no key ${key} on the iPhone`);
   }
 
-  /** Until the page's size and the board's camera have not changed for 500 ms, as a person waits to aim. */
+  /** Until the page's size and the board's camera have not changed for 500 ms, as a person waits to aim, and the board
+   * stays put over three frames drawn: on a busy runner Safari drew no frame for longer than that in the middle of a
+   * zoom, which looked still. */
   override async still(what: string) {
     let last = "", since = Date.now();
-    for (const end = Date.now() + 5000; ; await sleep(100)) {
+    const drawn = () => Promise.race([this.page.evaluate(async () => {
+      const at = () => document.querySelector<HTMLElement>(".world")?.style.transform;
+      const was = at();
+      for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
+      return was === at();
+    }), sleep(2000).then(() => false)]);
+    for (const end = Date.now() + 10_000; ; await sleep(100)) {
       const now = JSON.stringify([await this.page.evaluate(() => [innerHeight, visualViewport!.height, visualViewport!.offsetTop]), (await this.scene()).camera]);
       if (now !== last) [last, since] = [now, Date.now()];
-      if (Date.now() - since >= 500) return;
-      if (Date.now() > end) throw new Error(`timed out after 5000 ms: ${what}`);
+      if (Date.now() - since >= 500 && await drawn()) return;
+      if (Date.now() > end) throw new Error(`timed out after 10000 ms: ${what}`);
     }
   }
 
