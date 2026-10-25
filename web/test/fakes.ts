@@ -1,5 +1,5 @@
 // The app's ports without a DOM, for running the app's core in Node: what the board shows is its scene.
-import { Camera, clampZoom } from "../camera.ts";
+import { Camera, clampZoom, revealing } from "../camera.ts";
 import * as R from "../rules.ts";
 import { sceneOf } from "../scene.ts";
 import type { App } from "../app.ts";
@@ -11,7 +11,31 @@ import type { Board, Cam, Card, Point, Rect } from "../types.ts";
  * short to wrap. */
 export const fakeHeight = (text: string | undefined) => 24 + 24 * Math.max(1, String(text ?? "").split("\n").length);
 
-export const AREA: Area = { top: 0, bottom: 800, left: 0, right: 1200 };
+/** A device's screen in points: the board shows between `top` and `bottom` at rest, and a phone's keyboard, `keyboard`
+ * tall, comes `keyboardMs` after an editor takes focus and goes as long after it lets go. */
+export interface Screen {
+  w: number;
+  h: number;
+  top: number;
+  bottom: number;
+  keyboard: number;
+  keyboardMs: number;
+}
+
+export const DESKTOP: Screen = { w: 1200, h: 800, top: 0, bottom: 800, keyboard: 0, keyboardMs: 0 };
+/** The iPhone 17's, from its simulator: the board between the top bar and the bottom bar, and the keyboard with its
+ * suggestions. To be measured against the real one by a contract suite. */
+export const PHONE: Screen = { w: 402, h: 874, top: 120, bottom: 774, keyboard: 336, keyboardMs: 300 };
+/** The keys bar a phone shows on its keyboard while editing, as ui.ts's. */
+const KEYS_H = 44;
+
+/** What the board shows of the screen, the edited card and its caret, in screen points: for a scenario to check the card
+ * is in sight. */
+export interface Sight {
+  focus: Rect | null;
+  caret: Rect | null;
+  visible: Rect;
+}
 
 /** A field as a string with the caret at its end; typing goes to the one the view says has the keyboard. */
 export class FakeField implements Field {
@@ -46,7 +70,7 @@ export class FakeField implements Field {
 
   close() {
     this.detach();
-    if (this.view.focused === this) this.view.focused = null;
+    if (this.view.focused === this) this.view.focus(null);
   }
 
   /** Keys typed at the caret, over the text when it is all selected; Return ends a field that Return ends. */
@@ -78,7 +102,11 @@ export class FakeView implements ViewPort {
   camera: Camera;
   els = new Map<string, Shown>();
   ready = false;
-  area = () => AREA;
+  screen: Screen = DESKTOP;
+  /** Whether a phone's keyboard is up. */
+  keyboard = false;
+  private keyboardTimer: ReturnType<typeof setTimeout> | undefined;
+  area = () => this.screenArea();
   onCamera = () => {};
   onRender = () => {};
   shown: () => Board;
@@ -118,7 +146,19 @@ export class FakeView implements ViewPort {
   }
 
   setCamera(cam: Cam, animate = false) {
-    this.camera.set(animate ? { ...cam, zoom: clampZoom(cam.zoom) } : cam);
+    if (animate) this.camera.springTo({ ...cam, zoom: clampZoom(cam.zoom) });
+    else this.camera.set(cam);
+  }
+
+  /** What the board shows through: between the bars, and above a phone's keyboard and its keys bar while it is up. */
+  screenArea(): Area {
+    const s = this.screen;
+    return { top: s.top, bottom: this.keyboard ? s.h - s.keyboard - KEYS_H : s.bottom, left: 0, right: s.w };
+  }
+
+  /** Whether the camera has stopped and no keyboard is on its way. */
+  still() {
+    return !this.camera.moving && this.keyboardTimer === undefined;
   }
 
   zoomAround(c: Point, zoom: number, animate = false) {
@@ -128,7 +168,8 @@ export class FakeView implements ViewPort {
   }
 
   centre(): Point {
-    return { x: (AREA.left + AREA.right) / 2, y: (AREA.top + AREA.bottom) / 2 };
+    const a = this.area();
+    return { x: (a.left + a.right) / 2, y: (a.top + a.bottom) / 2 };
   }
 
   centreOn(r: Rect) {
@@ -137,10 +178,18 @@ export class FakeView implements ViewPort {
     this.setCamera({ zoom, x: c.x - (r.x + r.w / 2) * zoom, y: c.y - (r.y + r.h / 2) * zoom });
   }
 
-  reveal() {}
+  reveal(r: Rect, prefer: "top" | "bottom" = "top") {
+    const to = revealing(this.camera.goal(), r, this.area(), prefer);
+    if (to) this.setCamera(to, true);
+  }
 
-  caretRect() {
-    return null;
+  /** Where offset `at` of card `id`'s side falls on screen: its line, 24 pt each below a 12 pt margin. */
+  caretRect(id: string, back: boolean, at: number) {
+    const c = R.card(this.shown(), id);
+    if (!c) return null;
+    const lines = String((back ? c.notes : c.text) ?? "").slice(0, at).split("\n").length;
+    const { zoom } = this.cam, s = this.toScreen({ x: c.x, y: c.y });
+    return { x: s.x + 12 * zoom, y: s.y + (12 + 24 * (lines - 1)) * zoom, h: 24 * zoom };
   }
 
   invalidate() {}
@@ -158,11 +207,33 @@ export class FakeView implements ViewPort {
   /** The field with the keyboard. */
   focused: FakeField | null = null;
 
-  /** Gives `f` the keyboard; the one that had it loses it, as a blur in a browser. */
-  focus(f: FakeField) {
+  /** Gives `f` the keyboard, or takes it away; the one that had it loses it, as a blur in a browser. On a phone touched,
+   * the keyboard comes or goes a moment later, and the app keeps what it edits in sight of it, as on a resize of the
+   * visual viewport. */
+  focus(f: FakeField | null) {
     const was = this.focused;
     this.focused = f;
     if (was && was !== f) was.on?.done();
+    const up = f !== null && this.app.touching && this.screen.keyboard > 0;
+    clearTimeout(this.keyboardTimer);
+    this.keyboardTimer = undefined;
+    if (up === this.keyboard) return;
+    this.keyboardTimer = setTimeout(() => {
+      this.keyboardTimer = undefined;
+      this.keyboard = up;
+      this.app.revealEditing();
+    }, this.screen.keyboardMs);
+  }
+
+  /** The card being edited and its caret's line, and what of the screen the board shows. */
+  sight(): Sight {
+    const e = this.app.state.editing;
+    const c = e && R.card(this.shown(), e.id);
+    const visible = this.area(), v = { x: visible.left, y: visible.top, w: visible.right - visible.left, h: visible.bottom - visible.top };
+    if (!e || !c) return { focus: null, caret: null, visible: v };
+    const r = this.rectOf(c), { zoom } = this.cam, s = this.toScreen(r);
+    const caret = this.caretRect(e.id, e.back, this.editorOf(e.id, e.back)?.caret() ?? 0);
+    return { focus: { x: s.x, y: s.y, w: r.w * zoom, h: r.h * zoom }, caret: caret && { x: caret.x, y: caret.y, w: 0, h: caret.h }, visible: v };
   }
 
   private field(key: string) {
@@ -185,6 +256,7 @@ export class FakeView implements ViewPort {
 }
 
 export class FakeUI implements UIPort {
+  app: App;
   menus = { attach() {} };
   haptics = 0;
   haptic() {
@@ -193,8 +265,12 @@ export class FakeUI implements UIPort {
   update() {}
   updateSync() {}
   updateZoom() {}
+  constructor(app: App) {
+    this.app = app;
+  }
+
   area() {
-    return AREA;
+    return (this.app.view as FakeView).screenArea();
   }
   closeMenu() {}
   openFind() {}
@@ -212,5 +288,5 @@ export class FakePresence implements PresencePort {
 export const fakePorts: Ports = {
   view: (app) => new FakeView(app),
   presence: () => new FakePresence(),
-  ui: () => new FakeUI(),
+  ui: (app) => new FakeUI(app),
 };
