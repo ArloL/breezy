@@ -36,6 +36,8 @@ Releases update themselves with [Sparkle](https://sparkle-project.org): they dow
 
 ## Develop
 
+`TESTING.md` says how the tests are organised: which kinds of bug each level owns, and how each level is shown to catch them.
+
 ```bash
 swift test --package-path BreezyKit
 xcodebuild -project Breezy.xcodeproj -scheme Breezy -derivedDataPath build test

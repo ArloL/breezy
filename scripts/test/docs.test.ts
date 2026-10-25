@@ -35,7 +35,7 @@ function files(dir: string, ext: string): string[] {
 test("every path TESTING.md names exists", () => {
   for (const [, token] of read("TESTING.md").matchAll(/`([^`\s]+)`/g)) {
     const path = token.replace(/:\d+$/, "");
-    if (!/^[\w.-]+(\/[\w.*-]+)+$/.test(path) && !/\.(md|ts|swift|sh|py|yaml|mjs)$/.test(path)) continue;
+    if (!/^[\w.-]+(\/[\w.*-]+)+\/?$/.test(path) && !/\.(md|ts|swift|sh|py|yaml|mjs)$/.test(path)) continue;
     const at = path.includes("*") ? dirname(path) : path;
     assert.ok(existsSync(join(root, at)), `TESTING.md names ${token}, which does not exist`);
   }
