@@ -39,7 +39,8 @@ export function watchSight<T extends Device>(d: T): T {
         // else three 50 ms apart, as a phone's keyboard may still be on its way
         const [n, gap] = KEYS.has(prop) ? [2, 20] : [3, 50];
         // and first, after a gesture, until the device says it stands still: on CI's Android emulator three readings
-        // alike came 460 ms after a double tap, the keyboard just up and the app yet to move the card above it
+        // alike came 460 ms after a double tap, the keyboard just up and the app yet to move the card above it, and Safari
+        // on iOS held still for a moment after a double tap before its zoom began
         if (!KEYS.has(prop)) await target.still(`the board to stand still after ${prop}`).catch(() => {});
         let s = await target.sight(), seen = [still(s)];
         for (let t = 0; t < MS && (seen.length < n || new Set(seen.slice(-n)).size > 1); t += gap) {

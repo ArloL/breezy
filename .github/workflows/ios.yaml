@@ -11,7 +11,9 @@ on:
     paths:
     - .github/workflows/ios.yaml
     - scenarios/ios.ts
+    - scenarios/agent.ts
     - scripts/ios.ts
+    - scripts/sim-hid.py
 permissions: {}
 
 jobs:
@@ -49,15 +51,17 @@ jobs:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     - name: Install Chromium
       run: npx playwright-core install chromium
+    # what touches the iPhone: idb's companion, and uv for scripts/sim-hid.py's fb-idb
+    - name: Install idb
+      run: brew install facebook/fb/idb-companion
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
     - name: Boot an iPhone
       timeout-minutes: 10
-      run: |
-        sudo safaridriver --enable
-        node scripts/ios.ts
+      run: node scripts/ios.ts
     - name: Scenarios with Safari on iOS
       timeout-minutes: 60
       env:
-        SCENARIO_PAIRS: chromium:ios-safari
+        SCENARIO_PAIRS: ios-safari:chromium chromium:ios-safari
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Count the cases
       if: ${{ always() }}
