@@ -296,10 +296,14 @@ export class IosDevice extends Device {
    * point. */
   async addLane(x: number, y: number): Promise<string> {
     const had = new Set((await this.scene()).lanes.map((l) => l.id));
-    for (const sel of [".add > button", '[data-act="new-lane"]']) {
-      await this.tapOn(sel);
+    // + until its menu shows: a board just opened takes no touch for a moment
+    for (let tries = 0; !(await this.page.evaluate(() => document.querySelector<HTMLElement>(".add .menu")?.hidden === false)); tries++) {
+      if (tries === 3) throw new Error("+ opened no menu in three taps");
+      await this.tapOn(".add > button");
       await sleep(400);
     }
+    await this.tapOn('[data-act="new-lane"]');
+    await sleep(400);
     let id: string | undefined;
     for (const end = Date.now() + 5000; !(id = (await this.scene()).lanes.find((l) => !had.has(l.id))?.id); await sleep(100)) {
       if (Date.now() > end) throw new Error("+ and Lane made no lane");
