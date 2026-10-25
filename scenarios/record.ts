@@ -33,7 +33,7 @@ export type Line = [at: number, source: string, what: string];
 /** Methods that only look, and so are no step. */
 export const LOOKS = new Set(["scene", "size", "screen", "world", "editor", "weights", "sight", "syncStatus", "unpushed", "state", "constructor"]);
 
-const brief = (v: unknown): string => {
+export const brief = (v: unknown): string => {
   if (typeof v === "function") return "ƒ";
   const s = JSON.stringify(v, (_, x) => typeof x === "number" ? Math.round(x * 10) / 10 : typeof x === "function" ? "ƒ" : x) ?? String(v);
   return s.length > 160 ? `${s.slice(0, 159)}…` : s;

@@ -1123,7 +1123,8 @@ export class RealWorld {
   /** The devices as a case acts on them: each call it makes a step, with what its device shows after it. */
   stage() {
     return {
-      devices: this.devices.map((d, i) => watchSight(this.steps.wrap(d, `d${i} ${d.kind}`, () => d.state()))),
+      // the check inside the step, so that a card out of sight fails the step that left it there
+      devices: this.devices.map((d, i) => this.steps.wrap(watchSight(d), `d${i} ${d.kind}`, () => d.state())),
       settle: () => this.steps.run("world", "settle", [], () => this.settle()),
     };
   }
