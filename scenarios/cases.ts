@@ -23,6 +23,8 @@ export interface Case {
   busy?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
+  /** How many fingers the first device must put down at once, if more than one: the iOS Simulator takes one. */
+  fingers?: number;
   /** How long a run may take on real devices, if longer than most. */
   ms?: number;
   /** The kinds of real device that may act, if not all. */
@@ -761,17 +763,11 @@ export const cases: Case[] = [
     async run(s) {
       const [a] = s.devices as [Device, Device];
       await laneAndCard(s);
-      // two fingers pinched together, as far as the zoom goes
-      const size = await a.size(), m = { x: size.w / 2, y: size.h / 2 };
-      const pinch: Frame[] = [];
-      for (let i = 1; i <= 10; i++) pinch.push([16, "move", [[1, { x: m.x - 150 + 13 * i, y: m.y }], [2, { x: m.x + 150 - 13 * i, y: m.y }]]]);
-      await a.gesture([
-        [0, "down", [[1, { x: m.x - 150, y: m.y }]]],
-        [0, "down", [[2, { x: m.x + 150, y: m.y }]]],
-        ...pinch,
-        [0, "up", [[1, { x: m.x - 20, y: m.y }]]],
-        [0, "up", [[2, { x: m.x + 20, y: m.y }]]],
-      ]);
+      // zoomed out as far as it goes with one finger, as in Maps: a tap, then a touch dragged up
+      const size = await a.size(), from = { x: size.w / 2, y: size.h * 0.75 };
+      const up: Frame[] = [];
+      for (let i = 1; i <= 20; i++) up.push([16, "move", [[0, { x: from.x, y: from.y - 20 * i }]]]);
+      await a.gesture([[0, "down", [[0, from]]], [40, "up", [[0, from]]], [100, "down", [[0, from]]], ...up, [100, "up", [[0, { x: from.x, y: from.y - 400 }]]]]);
       await a.still("the zoom to settle");
       assert.ok((await a.scene()).camera.zoom < 0.3, `zoom ${(await a.scene()).camera.zoom}`);
       // low and to the right, where the card fits at 25 % but at 100 % reaches past the edge, and the keyboard comes
@@ -824,6 +820,7 @@ export const cases: Case[] = [
   {
     name: "two fingers spreading apart zoom in about their middle",
     input: "touch",
+    fingers: 2,
     async run(s) {
       const [a] = s.devices as [Device, Device];
       await laneAndCard(s);

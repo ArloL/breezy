@@ -14,7 +14,12 @@ function pageAgent() {
   const loop = async () => {
     for (;;) {
       try {
-        const r = await fetch(`/agent/next?page=${page}`, { cache: "no-store" });
+        // a tab in the background is not the page the scenario looks at
+        if (document.hidden) {
+          await new Promise((r) => setTimeout(r, 250));
+          continue;
+        }
+        const r = await fetch(`/agent/next?page=${page}&visible=${document.visibilityState === "visible"}`, { cache: "no-store" });
         if (r.status !== 200) continue;
         const { seq, src, arg } = await r.json();
         let out;
@@ -64,9 +69,12 @@ export class Agent {
   handle(req: IncomingMessage, res: ServerResponse): boolean {
     const u = new URL(req.url!, "http://x");
     if (u.pathname === "/agent/next") {
-      this.current = u.searchParams.get("page") ?? "";
+      const page = u.searchParams.get("page") ?? "";
+      // a tab in the background is not the one the scenario looks at
+      if (u.searchParams.get("visible") !== "true") return res.writeHead(204).end(), true;
+      this.current = page;
       const timer = setTimeout(() => this.drop(res), POLL_MS);
-      this.polls.push({ page: this.current, res, timer });
+      this.polls.push({ page, res, timer });
       this.flush();
       return true;
     }
