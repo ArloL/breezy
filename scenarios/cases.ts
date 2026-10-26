@@ -768,13 +768,15 @@ export const cases: Case[] = [
       const { lane } = await laneAndCard(s);
       const l = item(await a.scene(), lane);
       const had = new Set((await a.scene()).cards.map((c) => c.id));
-      await a.doubleTap({ x: l.x + l.w + 150, y: l.y + 450 });
+      // right of the lane, on the screen: where the camera has the lane, the point beyond it can be off the screen's edge
+      const at = await a.screen({ x: l.x + l.w + 150, y: l.y + 450 }), { w } = await a.size();
+      await a.doubleTap(await a.world({ x: Math.min(at.x, w - 24), y: at.y }));
       await a.wait(300);
       await a.type("from the phone");
       // a tap on the board ends the edit, as there is no Esc on a phone: just above the card, which the board keeps in
       // sight of the keyboard, and on the screen, as a card by its edge has its middle off it
       const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;
-      const above = await a.screen({ x: card.x + card.w / 2, y: card.y - 40 }), { w } = await a.size();
+      const above = await a.screen({ x: card.x + card.w / 2, y: card.y - 40 });
       await a.tap(await a.world({ x: Math.min(Math.max(above.x, 24), w - 24), y: above.y }));
       await s.settle();
       const made = (await b.scene()).cards.filter((c) => !had.has(c.id));
