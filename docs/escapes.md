@@ -52,11 +52,12 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-22 | web | B7 | hand | L8 | — | 025afc5 |
 | 2026-10-24 | ios | B5 | iOS chaos | L7 | — | f942f51 |
 | 2026-10-25 | ios | B1 | hand | L3 | `scenarios/sight.test.ts` | 76e010e |
+| 2026-10-25 | android | B1 | soak | L6 | `scenarios/cases.ts` | #124 |
 | 2026-10-26 | ios | B8 | the iPhone here | L6 | `scenarios/cases.ts` | #116 |
-| 2026-10-25 | android | B1 | soak | L6 | `scenarios/cases.ts` | 3bd98d1 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
-2026-10-26: in Safari on iOS 27, a card made low on the screen sent the top bar off it: as the keyboard came, iOS scrolled the page to show the card, and the fixed top bar with it. The bars at the top of the screen now go where iOS moves the visual viewport, and the board measures what shows in its own frame.
-
 2026-10-25: on Android, the sheet asking her name, centred in the layout, kept its OK under Chrome's keyboard whenever Chrome did not scroll, as the field already showed: the partner's first step from an invite. The sheet now fits what shows above the keyboard.
+
+
+2026-10-26: in Safari on iOS 27, a card made low on the screen sent the top bar off it: as the keyboard came, iOS scrolled the page to show the card, and the fixed top bar with it. The bars at the top of the screen now go where iOS moves the visual viewport, and the board measures what shows in its own frame.
