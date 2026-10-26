@@ -41,7 +41,7 @@ The checks on every push guard: they block merging and must be red only for a bu
 
 | Level | Proven by | Runs |
 |---|---|---|
-| L1 | plants (`scripts/plants.ts`), and a mutation score per module held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`; survivors in `build/mutation/`) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
+| L1 | plants (`scripts/plants.ts`), and a mutation score per module held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`, which keeps the survivors under build/mutation) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
 | L2 | a fake made wrong on purpose fails its contract (`scenarios/field-contract.test.ts`) | push |
 | L3, L4, L6 | plants | weekly; L6 with the iPhone nightly |
 | L5 | not yet: `ime-keys` survives it | |
