@@ -30,10 +30,11 @@ jobs:
       run: |
         since=$(date -u -d '30 days ago' +%Y-%m-%d)
         # each workflow that runs the cases on real devices, and the artifacts that keep their records
-        while read -r w names; do
+        while read -r -a line; do
+          w=${line[0]} names=("${line[@]:1}")
           # main's alone: stability branches soak code that is unstable on purpose
           for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$w" --branch main --created ">=$since" --status completed --limit 100 --json databaseId --jq '.[].databaseId'); do
-            gh run download "$id" --repo "$GITHUB_REPOSITORY" --dir "build/soaks/$id" $names || echo "run $id kept nothing"
+            gh run download "$id" --repo "$GITHUB_REPOSITORY" --dir "build/soaks/$id" "${names[@]}" || echo "run $id kept nothing"
           done
         done <<'LIST'
         desktop-soak.yaml
