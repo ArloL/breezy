@@ -309,12 +309,18 @@ jobs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/apt-archives
-        key: apt-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-        restore-keys: apt-playwright-${{ runner.os }}-
+        # by the runner's image too: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were never
+        # saved, and each run took 35 to 48 minutes downloading them from a slow mirror
+        key: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
+      # well within the job's time, as a mirror that stalls takes it all
+      timeout-minutes: 15
       run: |
         echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded
+        # a stalled download again after 30 s rather than waiting out the mirror: it stalled 1 to 5 minutes at a time
+        printf 'Acquire::http::Timeout "30";\nAcquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/99retries
         if compgen -G ~/apt-archives/'*.deb' > /dev/null; then sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/; fi
         npx playwright-core install --with-deps chromium webkit
         mkdir -p ~/apt-archives
