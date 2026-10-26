@@ -77,12 +77,15 @@ jobs:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     # the packages WebKit needs, 119 MB, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
+    # the runner's image, which only its shell has, not the workflow's env
+    - id: image
+      run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/apt-archives
         # the newest Main saved on this runner's image: Main saves one per run that downloaded something new
-        key: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ github.run_id }}
-        restore-keys: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-
+        key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}
+        restore-keys: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
       # well within the job's time, as a mirror that stalls takes it all
