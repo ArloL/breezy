@@ -10,7 +10,8 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import { promisify } from "node:util";
 
 const root = new URL("..", import.meta.url).pathname;
-export const RECORDS = join(root, "build", "scenarios");
+/** Where runs keep their records; plant runs keep theirs apart (scripts/plants.ts), as their cases fail on purpose. */
+export const RECORDS = process.env.SCENARIO_RECORDS ?? join(root, "build", "scenarios");
 
 /** Something a device or the world was asked to do, on Date.now(). */
 export interface Step {

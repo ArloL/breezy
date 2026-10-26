@@ -25,13 +25,17 @@ function pageAgent() {
         const r = await fetch(`/agent/next?page=${page}&visible=${document.visibilityState === "visible"}`, { cache: "no-store" });
         if (r.status !== 200) continue;
         const { seq, src, arg } = await r.json();
-        let out;
-        try {
-          out = { seq, value: (await (0, eval)(`(${src})`)(arg)) ?? null };
-        } catch (e) {
-          out = { seq, error: String(e instanceof Error ? e.stack ?? e.message : e) };
-        }
-        await fetch("/agent/result", { method: "POST", body: JSON.stringify(out) });
+        // not awaited: one that never settles keeps no other from running
+        (async () => {
+          let out;
+          try {
+            out = JSON.stringify({ seq, value: (await (0, eval)(`(${src})`)(arg)) ?? null });
+          } catch (e) {
+            const what = e instanceof Error ? e.stack ?? e.message : e instanceof Event ? `${e.type} on ${e.target?.constructor.name}` : e;
+            out = JSON.stringify({ seq, error: String(what) });
+          }
+          await fetch("/agent/result", { method: "POST", body: out });
+        })();
       } catch {
         await new Promise((r) => setTimeout(r, 250));
       }
@@ -43,8 +47,10 @@ function pageAgent() {
 /** What the server adds to each page it serves an iPhone. */
 export const AGENT_SCRIPT = `<script>(${pageAgent.toString()})()</script>`;
 
-/** Whether a request comes from an iPhone, whose pages get the agent. */
-export const fromIphone = (req: IncomingMessage) => /iPhone/.test(req.headers["user-agent"] ?? "");
+/** Whether a request is an iPhone's for a page, which gets the agent: not its service worker's for a snapshot, whose hash
+ * the agent would change. */
+export const fromIphone = (req: IncomingMessage) => /iPhone/.test(req.headers["user-agent"] ?? "")
+  && (req.headers["sec-fetch-dest"] === "document" || !req.headers["sec-fetch-dest"] && /text\/html/.test(req.headers.accept ?? ""));
 
 interface Job {
   seq: number;
@@ -58,6 +64,8 @@ interface Job {
 export class Agent {
   /** The page last heard from; a function goes to it alone. */
   current = "";
+  /** When it last asked, on Date.now(). */
+  private heard = 0;
   readonly page: AgentPage;
   private seq = 0;
   private readonly queue: Job[] = [];
@@ -76,8 +84,11 @@ export class Agent {
       // a tab in the background is not the one the scenario looks at
       if (u.searchParams.get("visible") !== "true") return res.writeHead(204).end(), true;
       this.current = page;
+      this.heard = Date.now();
       const timer = setTimeout(() => this.drop(res), POLL_MS);
       this.polls.push({ page, res, timer });
+      // a page that went away, as on a reload, takes no more
+      res.on("close", () => this.take(res));
       this.flush();
       return true;
     }
@@ -86,7 +97,13 @@ export class Agent {
       req.on("data", (d: Buffer) => (body += d.toString()));
       req.on("end", () => {
         res.writeHead(204).end();
-        const { seq, value, error } = JSON.parse(body) as { seq: number; value?: unknown; error?: string };
+        let result: { seq: number; value?: unknown; error?: string };
+        try {
+          result = JSON.parse(body);
+        } catch {
+          return;
+        }
+        const { seq, value, error } = result;
         const job = this.sent.get(seq);
         this.sent.delete(seq);
         if (error !== undefined) job?.reject(new Error(`in the iPhone's page: ${error}`));
@@ -102,9 +119,11 @@ export class Agent {
     return new Promise((resolve, reject) => {
       const job: Job = { seq: ++this.seq, src, arg, resolve, reject };
       const timer = setTimeout(() => {
-        this.queue.splice(this.queue.indexOf(job), 1);
-        this.sent.delete(job.seq);
-        reject(new Error(`the iPhone's page did not answer in ${ms / 1000} s${this.current ? "" : ": no page has asked yet"}`));
+        const queued = this.queue.indexOf(job);
+        if (queued >= 0) this.queue.splice(queued, 1);
+        const sent = this.sent.delete(job.seq);
+        const asked = this.current ? `, which last asked ${Date.now() - this.heard} ms ago` : "";
+        reject(new Error(`the iPhone's page did not answer in ${ms / 1000} s: ${sent ? `sent to page ${this.current}` : "never sent"}${asked}${this.current ? "" : ", no page having asked yet"}`));
       }, ms);
       job.resolve = (v) => (clearTimeout(timer), resolve(v));
       job.reject = (e) => (clearTimeout(timer), reject(e));
