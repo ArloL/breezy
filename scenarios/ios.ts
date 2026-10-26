@@ -367,10 +367,16 @@ export class IosDevice extends Device {
     // as a person taps a board once it stops moving: a tap stops a board just opened from springing into place, and a
     // double tap 16 ms after the Home Screen app opened its board made no card
     await this.still("the board to stand still");
-    await this.doubleTap({ x, y });
+    // again, as a person does, when no card came: on a busy runner the two taps reached the page 440 ms apart
+    let id: string | undefined;
+    for (let tries = 1; ; tries++) {
+      await this.doubleTap({ x, y });
+      for (const end = Date.now() + 2000; !(id = (await this.scene()).cards.find((c) => !had.has(c.id))?.id) && Date.now() < end; await sleep(100));
+      if (id) break;
+      if (tries === 3) throw new Error("the double tap made no card in three tries");
+      await this.note("the double tap made no card: again");
+    }
     await this.type("card");
-    const id = (await this.scene()).cards.find((c) => !had.has(c.id))?.id;
-    if (!id) throw new Error("the double tap made no card");
     // Done on the keys bar, as a person ends it on an iPhone
     await this.tapOn('[data-act="key-done"]');
     await this.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable, undefined, { timeout: 5000 });
@@ -395,8 +401,25 @@ export class IosDevice extends Device {
       if (Date.now() > end) throw new Error("+ and Lane made no lane");
     }
     await this.still("the lane to settle");
-    const l = item(await this.scene(), id), at = await this.screen({ x: l.x + l.w / 2, y: l.y + l.h / 2 }), to = await this.screen({ x, y });
-    const d = { x: to.x - at.x, y: to.y - at.y }, size = await this.size(), lane = await this.screen({ x: l.x, y: l.y });
+    // the drag again, from where the lane is, until it shows where the point did: on a busy runner a drag sent to take
+    // half a second reached the page over 1.9 s, and moved nothing
+    const to = await this.screen({ x, y });
+    for (let drags = 0; ; drags++) {
+      const off = await this.dragLane(id, to, drags < 3);
+      if (off < 4) break;
+      if (drags === 3) throw new Error(`the lane is ${Math.round(off)} pt from where it was dragged after three drags`);
+      if (drags > 0) await this.note(`the drag left the lane ${Math.round(off)} pt from where it was meant: again`);
+    }
+    return id;
+  }
+
+  /** How far lane `id`'s middle is from screen point `to`; with `drag`, the board dragged to bring it there when it is
+   * 4 pt or more off. */
+  private async dragLane(id: string, to: Point, drag: boolean): Promise<number> {
+    const l = item(await this.scene(), id), at = await this.screen({ x: l.x + l.w / 2, y: l.y + l.h / 2 });
+    const d = { x: to.x - at.x, y: to.y - at.y }, off = Math.hypot(d.x, d.y);
+    if (off < 4 || !drag) return off;
+    const size = await this.size(), lane = await this.screen({ x: l.x, y: l.y });
     const z = (await this.scene()).camera.zoom, box = { x: lane.x, y: lane.y, w: l.w * z, h: l.h * z };
     const on = (p: Point) => p.x >= 10 && p.x <= size.w - 10 && p.y >= 120 && p.y <= size.h - 120;
     const clear = (p: Point) => p.x < box.x || p.x > box.x + box.w || p.y < box.y || p.y > box.y + box.h;
@@ -408,7 +431,12 @@ export class IosDevice extends Device {
     // held still at the end, so that the pan does not coast on
     await this.gesture([[0, "down", [[0, from]]], ...moves, [300, "up", [[0, { x: from.x + d.x, y: from.y + d.y }]]]]);
     await this.still("the pan to settle");
-    return id;
+    return off;
+  }
+
+  /** `what` in the iPhone's timeline. */
+  private note(what: string) {
+    return this.page.evaluate((w: string) => void (window as { syncLog?: [number, string][] }).syncLog?.push([Date.now(), w]), what);
   }
 
   /** A tap on the middle of the first of what `selector` finds that shows. */
