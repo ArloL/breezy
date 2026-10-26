@@ -20,6 +20,7 @@ permissions: {}
 jobs:
   shards:
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     outputs:
       shards: ${{ steps.shards.outputs.shards }}
     steps:
@@ -100,6 +101,7 @@ jobs:
     needs: desktop
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

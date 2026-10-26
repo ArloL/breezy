@@ -13,6 +13,7 @@ concurrency: chores
 jobs:
   debug:
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     steps:
     - name: Dump GitHub context
       env:
@@ -43,6 +44,7 @@ jobs:
   chores:
     name: Chores
     runs-on: ubuntu-slim
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: write
