@@ -22,6 +22,7 @@ Needs `brew install facebook/fb/idb-companion`.
 import asyncio
 import json
 import logging
+import os
 import shutil
 import sys
 import time
@@ -39,7 +40,29 @@ def stream(touches):
         yield HIDPress(action=HIDTouch(point=Point(x=x, y=y)), direction=direction)
 
 
+def drop_ended_companions(state="/tmp/idb/state"):
+    """Forgets the companions idb recorded that have since ended: it connects to the one its record names, and every
+    case failed on a record a companion killed with its iPhone left behind."""
+    try:
+        with open(state) as f:
+            companions = json.load(f)
+    except (OSError, ValueError):
+        return
+
+    def alive(c):
+        try:
+            os.kill(c["pid"], 0)
+        except (KeyError, TypeError, OSError):
+            return False
+        return os.path.exists(c.get("path") or "")
+
+    if not all(alive(c) for c in companions):
+        with open(state, "w") as f:
+            json.dump([c for c in companions if alive(c)], f)
+
+
 async def main():
+    drop_ended_companions()
     manager = ClientManager(companion_path=shutil.which("idb_companion"), logger=logging.getLogger("sim-hid"))
     async with manager.from_udid(udid=sys.argv[1]) as client:
         print(json.dumps({"ok": True, "ms": 0}), flush=True)
