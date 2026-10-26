@@ -10,6 +10,7 @@ const cases = readFileSync(new URL("../../scenarios/cases.ts", import.meta.url),
 /** Each fixed wait in scenarios/cases.ts, as its line reads, how many times, and why. */
 const WAITS: [line: string, times: number, why: string][] = [
   ["await d.wait(250);", 1, "eventually()'s poll"],
+  ["await a.wait(250);", 1, "the invite case's poll for the next question the app asks, each answered as it comes"],
   ["await d.wait(100);", 3, "polls in shows() and weights() until what is drawn settles"],
   ["if (input === \"touch\") await a.wait(600);", 2, "a person's pause after a double tap, so that the next tap is no triple tap"],
   ["await a.wait(400);", 3, "a person's pause after a tap, so that the next one is no double tap"],
@@ -17,7 +18,7 @@ const WAITS: [line: string, times: number, why: string][] = [
   ["await a.wait(100);", 1, "the hold that lifts a card under a still finger"],
   ["await b.wait(100);", 1, "the other device's drag, given time to be refused"],
   ["await a.wait(50);", 1, "a move after the other device's refusal"],
-  ["await a.wait(300);", 1, "a phone's double tap opening its editor before keys, as a person waits for the keyboard"],
+  ["await a.wait(300);", 2, "a phone's double tap opening its editor before keys, as a person waits for the keyboard, in the two double-tap cases"],
   ["await a.wait(1500);", 1, "a pinch's coast, which a desktop browser's still() does not wait for"],
 ];
 
