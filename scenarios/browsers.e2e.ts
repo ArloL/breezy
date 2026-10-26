@@ -7,10 +7,11 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { cases, type Case } from "./cases.ts";
-import { RealWorld, rebootedAndroid, rebootFullEmulator, type RealKind } from "./browser.ts";
+import { dropFenix, RealWorld, rebootedAndroid, rebootFullEmulator, type RealKind } from "./browser.ts";
 import { iosUnfit } from "./ios.ts";
 import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
+import { exitsAfter } from "./exit.ts";
 
 const noMac = macUnfit();
 const noIos = process.env.SCENARIO_PAIRS?.includes("ios-") ? await iosUnfit() : "Safari on iOS runs where SCENARIO_PAIRS names it";
@@ -103,3 +104,6 @@ for (const c of cases) {
     });
   }
 }
+
+// last, so that the file's own cleanup runs before its 10 s begin
+exitsAfter(dropFenix);

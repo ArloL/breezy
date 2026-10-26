@@ -12,6 +12,7 @@ import { buildSite, serveStatic } from "../browser.ts";
 import { buildOskeys, oskeys, restoreSourceOnExit, sleep, trusted } from "./oskeys.ts";
 import { runRow } from "./harness.ts";
 import { rows, type MacNative } from "./rows.ts";
+import { exitsAfter } from "../exit.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 const PORT = 58564;
@@ -70,3 +71,6 @@ for (const row of rows) {
     assert.equal(row.expect(trace.before, trace.after), null);
   });
 }
+
+// last, so that the file's own cleanup runs before its 10 s begin
+exitsAfter();

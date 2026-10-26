@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { buildOskeys, Echo, oskeys, restoreSourceOnExit, sleep, trusted } from "./oskeys.ts";
+import { exitsAfter } from "../exit.ts";
 
 if (process.platform === "darwin") buildOskeys();
 const skip = process.platform !== "darwin" ? "macOS only" : !trusted() && "the terminal lacks Accessibility permission";
@@ -73,3 +74,6 @@ test("an emoji pick stops typing once another app comes to the front", { skip },
     other.stop();
   }
 }));
+
+// last, so that the file's own cleanup runs before its 10 s begin
+exitsAfter();

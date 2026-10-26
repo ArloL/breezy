@@ -12,6 +12,7 @@ import { buildSite, EMULATOR_TCP, EmulatorConsole, launchAndroidChrome, serveSta
 import { broadcastArgs, runRow } from "./harness.ts";
 import { sleep } from "./oskeys.ts";
 import { rows, type AndroidNative } from "./rows.ts";
+import { exitsAfter } from "../exit.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 const IME = "de.k5d.breezy.ime/.Ime";
@@ -118,3 +119,6 @@ for (const row of rows) {
     assert.equal(row.expect(trace.before, trace.after), null);
   });
 }
+
+// last, so that the file's own cleanup runs before its 10 s begin
+exitsAfter();

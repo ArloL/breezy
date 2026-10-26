@@ -938,12 +938,13 @@ interface Fenix {
  */
 let fenix: Fenix | null = null;
 
-/** Closes the Firefox for Android a world kept, if one did. */
-function dropFenix() {
-  if (!fenix) return;
-  fenix.context.close().catch(() => {});
+/** Closes the Firefox for Android a world kept, if one did, as after the last case: its connection keeps node running. */
+export function dropFenix(): Promise<void> {
+  if (!fenix) return Promise.resolve();
+  const closed = fenix.context.close().catch(() => {});
   rmSync(fenix.dir, { recursive: true, force: true });
   fenix = null;
+  return closed;
 }
 
 /** The boot of Android the world before saw, by its kernel's boot_id; null before the first, or after a new emulator. */

@@ -16,6 +16,7 @@ env:
 jobs:
   debug:
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     steps:
     - name: Dump GitHub context
       env:
@@ -45,6 +46,7 @@ jobs:
       run: set
   version:
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     permissions:
       contents: write
     outputs:
@@ -62,6 +64,7 @@ jobs:
   macos:
     needs: version
     runs-on: macos-latest
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -127,6 +130,7 @@ jobs:
   sync:
     needs: version
     runs-on: macos-latest
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -165,6 +169,7 @@ jobs:
   web:
     needs: version
     runs-on: ubuntu-slim
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -365,6 +370,7 @@ jobs:
     - macos
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: macos-latest
+    timeout-minutes: 5
     environment: update-signing
     steps:
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -399,6 +405,7 @@ jobs:
     - appcast
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       attestations: write
       contents: write
@@ -436,6 +443,7 @@ jobs:
     - release
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-slim
+    timeout-minutes: 15
     permissions:
       contents: read
     environment:
@@ -469,6 +477,7 @@ jobs:
     - web
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-slim
+    timeout-minutes: 10
     permissions:
       contents: read
     environment: production
@@ -507,6 +516,7 @@ jobs:
     # ourselves if necessary
     if: always()
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     steps:
     - run: echo "Use this job as the required status check of this workflow"
     - name: Check that all jobs were successful
