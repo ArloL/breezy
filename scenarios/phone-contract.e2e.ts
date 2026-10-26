@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { PHONE } from "../web/test/fakes.ts";
 import { RealWorld } from "./browser.ts";
 import { iosUnfit, type IosDevice } from "./ios.ts";
+import { exitsAfter } from "./exit.ts";
 
 // the Home Screen app, as the owner uses it and the hub's phone stands for; a tab only reports what it measured
 const kind = process.env.PHONE_KIND === "ios-safari" ? "ios-safari" : "ios-home";
@@ -50,3 +51,6 @@ test(`the hub's phone shows the board, and brings the keyboard, as the iPhone do
     await w.stop();
   }
 });
+
+// last, so that the file's own cleanup runs before its 10 s begin
+exitsAfter();
