@@ -47,7 +47,17 @@ async function laneAndCard({ devices: [a], settle }: Stage) {
   const at = await a!.world(narrow ? { x: 24, y: 96 } : { x: 450, y: 440 });
   const lane = await a!.addLane(narrow ? at.x + LANE_W / 2 : at.x, narrow ? at.y + LANE_H / 2 : at.y);
   const l = item(await a!.scene(), lane);
-  const card = narrow ? await a!.addCard(l.x + l.w / 2, l.y + l.h + 72) : await a!.addCard(l.x + l.w + 200, l.y + 200);
+  // below the lane, where a short screen shows none: the page of Safari on an iPhone 13 mini ends 60 pt above it, so the
+  // board is dragged up first, by empty board beside the lane, held still at the end so that it does not coast on
+  const below = { x: l.x + l.w / 2, y: l.y + l.h + 72 }, size = await a!.size(), s = await a!.screen(below);
+  if (narrow && s.y > size.h - 160) {
+    const x = (await a!.screen({ x: l.x + l.w, y: l.y })).x + 30, d = s.y - (size.h - 160);
+    const from = { x: Math.min(x, size.w - 16), y: size.h * 0.6 }, moves: Frame[] = [];
+    for (let i = 1; i <= 12; i++) moves.push([16, "move", [[0, { x: from.x, y: from.y - (d * i) / 12 }]]]);
+    await a!.gesture([[0, "down", [[0, from]]], ...moves, [300, "up", [[0, { x: from.x, y: from.y - d }]]]]);
+    await a!.still("the board to settle");
+  }
+  const card = narrow ? await a!.addCard(below.x, below.y) : await a!.addCard(l.x + l.w + 200, l.y + 200);
   await settle();
   return { lane, card };
 }
@@ -126,7 +136,10 @@ async function onScreen(d: Device, id: string): Promise<Box> {
 async function shows(d: Device, card: string, want: Want, after: string) {
   for (let t = 0; ; t += 100) {
     try {
-      return drawn(await d.editor(), want, await onScreen(d, card));
+      // the card as the editor measured it, with its caret: the camera's card is in the board's frame, which iOS
+      // scrolls apart from the page's when the keyboard comes, and the caret read 24 pt above it on an iPhone 13 mini
+      const e = await d.editor();
+      return drawn(e, want, e?.card ?? await onScreen(d, card));
     } catch (e) {
       if (t >= 3000) throw new Error(`after ${after}: ${(e as Error).message}`, { cause: e });
     }
