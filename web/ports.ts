@@ -32,7 +32,7 @@ export interface Field {
 export type ViewPort = Pick<View,
   | "cam" | "camera" | "heightOf" | "frontHeight" | "ready" | "area" | "onCamera" | "onRender" | "shown" | "els"
   | "invalidate" | "render" | "setCamera" | "toWorld" | "toScreen" | "rectOf" | "centre" | "zoomAround" | "centreOn"
-  | "reveal" | "caretRect" | "editorOf" | "titleOf" | "animateTurn">;
+  | "reveal" | "caretRect" | "topOf" | "editorOf" | "titleOf" | "animateTurn">;
 
 /** What the app uses of the bars, menus and find around the board. */
 export type UIPort = Pick<UI, "haptic" | "update" | "updateSync" | "updateZoom" | "area" | "closeMenu" | "openFind" | "findStep" | "closeFind" | "find" | "act">

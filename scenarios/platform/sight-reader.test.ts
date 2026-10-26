@@ -35,3 +35,9 @@ test("a caret on an empty line reads on that line", async () => {
   const empty = await caretAt("Groceries\n\nmilk", 10);
   assert.ok(first !== null && third !== null && empty !== null && empty > first && empty < third, `the empty line's caret at ${empty}, the lines around it at ${first} and ${third}`);
 });
+
+test("a caret in an empty editor, as on the back of a card just turned, reads where its text would start", async () => {
+  // on the first line, of 30 px: the box of a line starts above the caret drawn in it
+  const first = await caretAt("x", 0), empty = await caretAt("", 0, true);
+  assert.ok(first !== null && empty !== null && empty <= first && first < empty + 30, `the empty editor's caret at ${empty}, the first letter's at ${first}`);
+});

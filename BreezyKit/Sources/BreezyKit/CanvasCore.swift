@@ -99,7 +99,13 @@ public struct Drag {
     self.model = model
     drawnRect = { _ in Rect(x: 0, y: 0, w: 0, h: 0) }
     turn = { _ in }
-    drawnRect = { [unowned self] c in c.rect(height: heightOf(c.id)) }
+    // a turned card at its back's size, as the app draws it: as wide as a back is, and a title and its notes tall, 12
+    // lines at least, as the web's fake view has it
+    drawnRect = { [unowned self] c in
+      guard c.id == turned else { return c.rect(height: heightOf(c.id)) }
+      let lines = 1 + (c.notes ?? "").split(separator: "\n", omittingEmptySubsequences: false).count
+      return Rect(x: c.x, y: c.y, w: Metrics.backWidth, h: max(Metrics.backMinHeight, Double(lines + 2) * Metrics.grid))
+    }
     turn = { [unowned self] in turned = $0 }
   }
 

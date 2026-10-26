@@ -54,6 +54,7 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-25 | ios | B1 | hand | L3 | `scenarios/sight.test.ts` | 76e010e |
 | 2026-10-25 | android | B1 | soak | L6 | `scenarios/cases.ts` | #124 |
 | 2026-10-26 | ios | B8 | the iPhone here | L6 | `scenarios/cases.ts` | #116 |
+| 2026-10-26 | ios | B1 | hand | L1 | `web/test/turn.test.ts` | #129 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -61,3 +62,5 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 
 
 2026-10-26: in Safari on iOS 27, a card made low on the screen sent the top bar off it: as the keyboard came, iOS scrolled the page to show the card, and the fixed top bar with it. The bars at the top of the screen now go where iOS moves the visual viewport, and the board measures what shows in its own frame.
+
+2026-10-26: on an iPhone 13 mini, a card made with a double tap, given a title and turned showed its back with its top and its caret under the top bar: the back, too tall for the board above the keyboard, is kept in sight by its caret, but an empty back had no text for the caret to be measured from, and the board kept the card's bottom in sight. The hub never saw it, as its fake drew a turned card at its front's size and could not say where a card's top was drawn.

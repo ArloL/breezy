@@ -139,8 +139,13 @@ export class FakeView implements ViewPort {
     return fakeHeight(text);
   }
 
+  /** A card's front, or its back once turned, as view.ts sizes it: as wide as the screen lets it, up to BACK_W, and
+   * a title and its notes tall, 12 lines at least, which an iPhone 13 mini's board above its keyboard cannot show. */
   rectOf(c: Card): Rect {
-    return R.cardRect(c, this.heightOf(c.id));
+    if (c.id !== this.app.state.turned) return R.cardRect(c, this.heightOf(c.id));
+    const w = Math.max(R.CARD_W, Math.min(R.BACK_W, (this.screen.w - 32) / this.cam.zoom));
+    const lines = 1 + String(c.notes ?? "").split("\n").length;
+    return { x: c.x, y: c.y, w, h: Math.max(R.BACK_MIN_H, (lines + 2) * R.GRID) };
   }
 
   toWorld(p: Point): Point {
@@ -197,9 +202,16 @@ export class FakeView implements ViewPort {
   caretRect(id: string, back: boolean, at: number) {
     const c = R.card(this.shown(), id);
     if (!c) return null;
-    const lines = String((back ? c.notes : c.text) ?? "").slice(0, at).split("\n").length;
+    // a back's notes start below its title
+    const lines = String((back ? c.notes : c.text) ?? "").slice(0, at).split("\n").length + (back ? 1 : 0);
     const { zoom } = this.cam, s = this.toScreen({ x: c.x, y: c.y });
     return { x: s.x + 12 * zoom, y: s.y + (12 + 24 * (lines - 1)) * zoom, h: 24 * zoom };
+  }
+
+  /** Where card `id`'s top is drawn, as caretRect counts. */
+  topOf(id: string): number | null {
+    const c = R.card(this.shown(), id);
+    return c ? this.toScreen({ x: c.x, y: c.y }).y : null;
   }
 
   invalidate() {}
