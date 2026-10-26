@@ -198,14 +198,37 @@ function readEditor(): Editor | null {
  * the board, as readEditor reads them, without a box for each character, which made each key's check cost 120 ms on a
  * runner. Null when nothing is edited. Runs in the page.
  */
-function readSight(): Sight | null {
+export function readSight(): Sight | null {
   const el = document.activeElement as HTMLElement | null;
   if (!el?.isContentEditable) return null;
   const box = (r: DOMRect) => ({ x: r.x, y: r.y, w: r.width, h: r.height });
   const card = el.closest(".cards > [data-id]")?.getBoundingClientRect();
   const sel = getSelection();
   const range = sel?.rangeCount && el.contains(sel.focusNode) ? sel.getRangeAt(0) : null;
-  const at = range?.getClientRects()[0] ?? range?.getBoundingClientRect();
+  let at = range?.getClientRects()[0] ?? range?.getBoundingClientRect();
+  // a caret between an element's children, as Chrome on Android leaves it after a card's last text, has no box of its
+  // own: the same place in the text beside it has
+  if (!at?.height && range?.collapsed) {
+    let [node, offset] = [range.startContainer, range.startOffset];
+    if (node instanceof Element) {
+      const before = node.childNodes[offset - 1], after = node.childNodes[offset];
+      [node, offset] = before instanceof Text ? [before, before.length] : after instanceof Text ? [after, 0] : [node, offset];
+    }
+    // nor has one on an empty line, between two newlines: the newline after it is on that line, the one before it
+    // ends the line above
+    if (node instanceof Text) {
+      const box = (from: number, to: number) => {
+        if (from < 0 || to > node.length) return undefined;
+        const r = document.createRange();
+        r.setStart(node, from);
+        r.setEnd(node, to);
+        const b = r.getClientRects()[0];
+        return b?.height ? b : undefined;
+      };
+      const next = box(offset, offset + 1), prev = box(offset - 1, offset);
+      at = next ? new DOMRect(next.x, next.y, 0, next.height) : prev && node.data[offset - 1] === "\n" ? new DOMRect(prev.x, prev.bottom, 0, prev.height) : prev ? new DOMRect(prev.right, prev.y, 0, prev.height) : at;
+    }
+  }
   const v = visualViewport!;
   const bar = (q: string) => {
     const b = document.querySelector<HTMLElement>(q);
