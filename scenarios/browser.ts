@@ -1290,18 +1290,30 @@ export class RealWorld {
           /** The app from its icon, once: a page it loaded again would see no touch again, as in a Safari tab. */
           const launch = async () => {
             const was = this.agent.current;
-            await hid.button("HOME");
-            await sleep(1500);
-            // Home shows the first page; the icon is on a later one
-            let icon = homeIcon(udid);
-            for (let page = 1; !icon && page < 6; page++) {
-              await hid.touches([[0, "down", 360, 450], [16, "move", 280, 450], [16, "move", 160, 450], [16, "move", 60, 450], [16, "up", 40, 450]]);
-              await sleep(1000);
-              icon = homeIcon(udid);
+            // again, ended first, when its page never asks: an app's first launch after the iPhone booted showed a blank
+            // page, and the next ones the board
+            for (let tries = 1; ; tries++) {
+              await hid.button("HOME");
+              await sleep(1500);
+              // Home shows the first page; the icon is on a later one
+              let icon = homeIcon(udid);
+              for (let page = 1; !icon && page < 6; page++) {
+                await hid.touches([[0, "down", 360, 450], [16, "move", 280, 450], [16, "move", 160, 450], [16, "move", 60, 450], [16, "up", 40, 450]]);
+                await sleep(1000);
+                icon = homeIcon(udid);
+              }
+              if (!icon) throw new Error(`no "${HOME_ICON}" on the iPhone's Home Screen: run node scripts/ios.ts --home`);
+              await hid.touches([[0, "down", icon.x, icon.y], [50, "up", icon.x, icon.y]]);
+              try {
+                await until("the Home Screen app's page to ask the agent", () => this.agent.current !== was, 30_000);
+                return;
+              } catch (e) {
+                if (tries === 3) throw e;
+                try {
+                  execFileSync("xcrun", ["simctl", "terminate", udid, "com.apple.webapp"], { timeout: 30_000, stdio: "ignore" });
+                } catch {}
+              }
             }
-            if (!icon) throw new Error(`no "${HOME_ICON}" on the iPhone's Home Screen: run node scripts/ios.ts --home`);
-            await hid.touches([[0, "down", icon.x, icon.y], [50, "up", icon.x, icon.y]]);
-            await until("the Home Screen app's page to ask the agent", () => this.agent.current !== was, 30_000);
           };
           try {
             execFileSync("xcrun", ["simctl", "terminate", udid, "com.apple.webapp"], { timeout: 30_000, stdio: "ignore" });
