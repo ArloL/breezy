@@ -84,7 +84,7 @@ jobs:
       with:
         path: ~/apt-archives
         # the newest Main saved on this runner's image: Main saves one per run that downloaded something new
-        key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}
+        key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
