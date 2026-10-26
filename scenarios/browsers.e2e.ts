@@ -61,7 +61,7 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
     reject(new Error(what));
   }, ms)))]).finally(() => clearTimeout(timer));
   try {
-    await within(w.start(kinds), START_MS, `the world did not start in ${START_MS} ms`);
+    await within(w.start(kinds, { fresh: c.fresh }), START_MS, `the world did not start in ${START_MS} ms`);
     await within(c.run(w.stage()), c.ms ?? MS, `timed out after ${c.ms ?? MS} ms`);
   } catch (e) {
     error = e as Error;
