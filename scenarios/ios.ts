@@ -56,6 +56,9 @@ export function clearHomeApp(udid: string) {
   }
 }
 
+/** Where the page saw a touch come down, and the screen's top left then, in the board's frame. */
+type Down = Point & { vx: number; vy: number };
+
 /** scripts/sim-hid.py on the booted iPhone: a line of JSON per command, answered in turn. */
 export class SimHid {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -134,7 +137,7 @@ export class IosDevice extends Device {
   readonly page: AgentPage;
   readonly hid: SimHid;
   private readonly fns: { scene: () => Scene; editor: () => Editor | null; weights: (id: string) => number[] | null; sight: () => Sight | null };
-  /** Where the page's top left is on the screen, in points. */
+  /** Where the visual viewport's top left is on the screen, in points. */
   private offset: Point = { x: 0, y: 0 };
 
   constructor(kind: IosDevice["kind"], page: AgentPage, hid: SimHid, fns: IosDevice["fns"]) {
@@ -152,7 +155,8 @@ export class IosDevice extends Device {
       w.calibrating = (e: Event) => {
         e.stopImmediatePropagation();
         ((window as { calibrated?: string[] }).calibrated ??= []).push(e.type);
-        if (e instanceof PointerEvent && e.type === "pointerdown") w.tapped = { x: e.clientX, y: e.clientY };
+        // where the screen shows it, in the visual viewport, as a gesture aims
+        if (e instanceof PointerEvent && e.type === "pointerdown") w.tapped = { x: e.clientX - (visualViewport!.pageLeft - scrollX), y: e.clientY - (visualViewport!.pageTop - scrollY) };
       };
       for (const type of ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click"]) addEventListener(type, w.calibrating, { capture: true });
     });
@@ -175,8 +179,8 @@ export class IosDevice extends Device {
       for (const type of ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click"]) removeEventListener(type, w.calibrating!, { capture: true });
     });
     this.offset = { x: at.x - tapped.x, y: at.y - tapped.y };
-    // its requests to sync.php, its relay socket and the edits waiting to be pushed, on the wall clock, for a failing
-    // case's timeline, as Playwright keeps a browser's: nothing else sees an iPhone's network
+    // its requests to sync.php, its relay socket, the edits waiting to be pushed and its touches, on the wall clock, for
+    // a failing case's timeline, as Playwright keeps a browser's: nothing else sees an iPhone's network
     await this.page.evaluate(() => {
       const log: [number, string][] = (window as { syncLog?: [number, string][] }).syncLog = [];
       const note = (what: string) => log.push([Date.now(), what]);
@@ -203,6 +207,23 @@ export class IosDevice extends Device {
           this.addEventListener("close", (e) => note(`relay socket closes, ${e.code}`));
         }
       };
+      // and what a touch reached, and where the keyboard's focus went: a tap meant for the board once left the edit open
+      const what = (t: EventTarget | null) => t instanceof Element ? `${t.tagName.toLowerCase()}${t.id ? `#${t.id}` : ""}${t.classList.length ? `.${[...t.classList].join(".")}` : ""}` : String(t);
+      for (const type of ["pointerdown", "pointerup", "click"]) {
+        addEventListener(type, (e) => {
+          const p = e as PointerEvent;
+          // in the board's frame, as a gesture aims, with where the screen's top left was in it as it came
+          const b = document.querySelector("#board")?.getBoundingClientRect() ?? { left: 0, top: 0 };
+          if (type === "pointerdown") (window as { down?: Down }).down = { x: p.clientX - b.left, y: p.clientY - b.top, vx: visualViewport!.pageLeft - scrollX - b.left, vy: visualViewport!.pageTop - scrollY - b.top };
+          note(`${type} at ${Math.round(p.clientX)},${Math.round(p.clientY)} on ${what(e.target)}`);
+        }, { capture: true });
+      }
+      // and how iOS moves the visual viewport and scrolls the page under the keyboard
+      const vv = () => `the visual viewport at ${Math.round(visualViewport!.pageTop)}+${Math.round(visualViewport!.height)}, the page scrolled ${Math.round(scrollY)} of ${innerHeight}`;
+      visualViewport!.addEventListener("resize", () => note(`resize: ${vv()}`));
+      visualViewport!.addEventListener("scroll", () => note(`scroll: ${vv()}`));
+      addEventListener("focusin", (e) => note(`focus to ${what(e.target)}`), { capture: true });
+      addEventListener("focusout", (e) => note(`focus leaves ${what(e.target)}`), { capture: true });
       let waiting = document.body.dataset.waiting;
       new MutationObserver(() => {
         if (document.body.dataset.waiting !== waiting) note(`${(waiting = document.body.dataset.waiting) ?? 0} waiting to be pushed`);
@@ -257,14 +278,29 @@ export class IosDevice extends Device {
 
   /** A gesture's frames as one stream, so its waits hold; with one finger. */
   override async gesture(frames: Frame[]) {
+    // points in the board's frame, as the camera and tapOn give them, where the screen shows them now: iOS moves the
+    // visual viewport, and scrolls the page and the fixed board with it, to show a field the keyboard would cover, and
+    // a tap aimed by the page alone landed 60 pt lower, in the card's editor, not on the board
+    const vv = await this.page.evaluate(() => {
+      const b = document.querySelector("#board")?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      return { x: visualViewport!.pageLeft - scrollX - b.left, y: visualViewport!.pageTop - scrollY - b.top };
+    });
     const t: [number, PointerPhase, number, number][] = [];
     for (const [ms, phase, moves] of frames) {
       if (moves.length > 1 || moves.some(([f]) => f !== moves[0]![0])) throw new Error("Safari on the iOS Simulator has one finger only");
-      for (const [, p] of moves) t.push([ms, phase, p.x + this.offset.x, p.y + this.offset.y]);
+      for (const [, p] of moves) t.push([ms, phase, p.x - vv.x + this.offset.x, p.y - vv.y + this.offset.y]);
     }
     const fingers = new Set(frames.flatMap(([, , moves]) => moves.map(([f]) => f)));
     if (fingers.size > 1) throw new Error("Safari on the iOS Simulator has one finger only");
+    await this.page.evaluate(() => void delete (window as { down?: Down }).down);
     await this.hid.touches(t);
+    // and the first touch where it was aimed, as a person sees where their finger lands, but for how far the visual
+    // viewport moved meanwhile, as it does a moment after typing
+    const aimed = frames[0]?.[1] === "down" ? frames[0][2][0]![1] : null;
+    const down = aimed && await this.page.evaluate(() => (window as { down?: Down }).down ?? null);
+    if (aimed && down && Math.hypot(down.x - (aimed.x + down.vx - vv.x), down.y - (aimed.y + down.vy - vv.y)) > 2) {
+      throw new Error(`a touch aimed at ${Math.round(aimed.x)},${Math.round(aimed.y)} on the page landed at ${Math.round(down.x)},${Math.round(down.y)}, the visual viewport at ${Math.round(vv.x)},${Math.round(vv.y)} then ${Math.round(down.vx)},${Math.round(down.vy)}`);
+    }
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {
@@ -379,7 +415,9 @@ export class IosDevice extends Device {
   async tapOn(selector: string) {
     const r = await this.page.evaluate((s: string) => {
       const b = [...document.querySelectorAll(s)].map((e) => e.getBoundingClientRect()).find((b) => b.width && b.height);
-      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
+      // in the board's frame, as a gesture aims
+      const o = document.querySelector("#board")?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      return b ? { x: b.x + b.width / 2 - o.left, y: b.y + b.height / 2 - o.top } : null;
     }, selector);
     if (!r) throw new Error(`nothing shows ${selector}`);
     await this.tapAt(r);

@@ -1454,7 +1454,7 @@ export class RealWorld {
       if (d instanceof IosDevice) {
         const sync = await answer(d.syncLog());
         if (typeof sync === "string") summary.push(`${who}: no sync log: ${sync}`);
-        else lines.push(...sync.map(([at, what]): Line => [at, `${who} sync`, what]));
+        else lines.push(...sync.map(([at, what]): Line => [at, `${who} page`, what]));
       }
       if (d instanceof IosDevice && error) {
         const shot = await answer(d.page.screenshot().then((png) => writeFileSync(join(dir, `${who} screen.png`), png)));

@@ -751,9 +751,10 @@ export const cases: Case[] = [
       await a.wait(300);
       await a.type("from the phone");
       // a tap on the board ends the edit, as there is no Esc on a phone: just above the card, which the board keeps in
-      // sight of the keyboard
+      // sight of the keyboard, and on the screen, as a card by its edge has its middle off it
       const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;
-      await a.tap({ x: card.x + card.w / 2, y: card.y - 40 });
+      const above = await a.screen({ x: card.x + card.w / 2, y: card.y - 40 }), { w } = await a.size();
+      await a.tap(await a.world({ x: Math.min(Math.max(above.x, 24), w - 24), y: above.y }));
       await s.settle();
       const made = (await b.scene()).cards.filter((c) => !had.has(c.id));
       assert.deepEqual(made.map((c) => c.text), ["from the phone"]);
