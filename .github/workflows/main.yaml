@@ -306,12 +306,13 @@ jobs:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     # the packages WebKit needs, 119 MB, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    # by the runner's image, newest first: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were
+    # never saved, and each run took 35 to 48 minutes downloading them from a slow mirror
+    - id: apt-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/apt-archives
-        # by the runner's image too: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were never
-        # saved, and each run took 35 to 48 minutes downloading them from a slow mirror
-        key: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ hashFiles('package-lock.json') }}
+        key: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ github.run_id }}
         restore-keys: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
@@ -323,8 +324,22 @@ jobs:
         printf 'Acquire::http::Timeout "30";\nAcquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/99retries
         if compgen -G ~/apt-archives/'*.deb' > /dev/null; then sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/; fi
         npx playwright-core install --with-deps chromium webkit
+    # what came down kept, even when the mirror ran out the step's time, so that the next run goes on from it; only when
+    # something came that the cache lacked, as a key is never written twice
+    - name: Keep the downloaded packages
+      id: apt-new
+      if: ${{ !cancelled() }}
+      run: |
         mkdir -p ~/apt-archives
-        if compgen -G '/var/cache/apt/archives/*.deb' > /dev/null; then cp /var/cache/apt/archives/*.deb ~/apt-archives/; fi
+        count() { find ~/apt-archives -name '*.deb' | wc -l; }
+        before=$(count)
+        for f in /var/cache/apt/archives/*.deb; do [ -e "$f" ] && [ ! -e ~/apt-archives/"${f##*/}" ] && cp "$f" ~/apt-archives/; done
+        echo "new=$(( $(count) - before ))" >> "$GITHUB_OUTPUT"
+    - if: ${{ !cancelled() && steps.apt-new.outputs.new != '0' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/apt-archives
+        key: ${{ steps.apt-cache.outputs.cache-primary-key }}
     # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:

@@ -80,9 +80,8 @@ jobs:
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/apt-archives
-        # by the runner's image too: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were never
-        # saved, and each run took 35 to 48 minutes downloading them from a slow mirror
-        key: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ hashFiles('package-lock.json') }}
+        # the newest Main saved on this runner's image: Main saves one per run that downloaded something new
+        key: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ github.run_id }}
         restore-keys: apt-playwright-${{ runner.os }}-${{ env.ImageOS }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
