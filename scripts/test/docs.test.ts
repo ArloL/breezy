@@ -83,6 +83,7 @@ test("every escape row is well formed", () => {
     if (t === "—") assert.ok(date < SEEDED, `${row}: an escape logged since ${SEEDED} names its test`);
     else assert.ok(t === "pending" || isFile(t.replace(/^`|`$/g, "")), `${row}: test ${t} is no file`);
     if (commit === "—") assert.equal(t, "pending", `${row}: only an open escape has no commit`);
-    else execFileSync("git", ["cat-file", "-e", `${commit}^{commit}`], { cwd: root, stdio: "ignore" });
+    // or its pull request, whose commits a rebase merge gives new hashes
+    else if (!/^#\d+$/.test(commit)) execFileSync("git", ["cat-file", "-e", `${commit}^{commit}`], { cwd: root, stdio: "ignore" });
   }
 });

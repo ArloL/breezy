@@ -223,6 +223,8 @@ function readSight(): Sight | null {
     focus: card ? box(card) : null,
     caret: at?.height ? { x: at.x, y: at.y, w: 0, h: at.height } : null,
     visible: { x: vx, y: top, w: v.width, h: bottom - top },
+    bar: above && box(above),
+    screen: { x: vx, y: vy, w: v.width, h: v.height },
     how: `visual viewport ${Math.round(vy)}+${Math.round(v.height)} in ${innerHeight}, layout from ${Math.round(layout.top)}, above ${above ? Math.round(above.bottom) : "none"}, below ${below.map((b) => Math.round(b.top)).join(" ") || "none"}`,
   };
 }

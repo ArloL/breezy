@@ -739,6 +739,27 @@ export const cases: Case[] = [
     },
   },
   {
+    // under where the keyboard comes, so that iOS scrolls the page to show it, and the sight check after each key sees
+    // whether the top bar went with it
+    name: "a card made with a double tap low on a phone's screen and typed into keeps the top bar in sight",
+    input: "touch",
+    edits: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { w, h } = await a.size();
+      const had = new Set((await a.scene()).cards.map((c) => c.id));
+      await a.doubleTap(await a.world({ x: w / 2, y: h - 220 }));
+      await a.wait(300);
+      await a.type("low");
+      // a tap on the board just above the card ends the edit, as in the case below
+      const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;
+      const above = await a.screen({ x: card.x + card.w / 2, y: card.y - 40 });
+      await a.tap(await a.world({ x: Math.min(Math.max(above.x, 24), w - 24), y: above.y }));
+      await s.settle();
+      assert.deepEqual((await b.scene()).cards.filter((c) => !had.has(c.id)).map((c) => c.text), ["low"]);
+    },
+  },
+  {
     name: "a card made with a double tap and typed into on a phone shows its text on the other device",
     input: "touch",
     edits: true,

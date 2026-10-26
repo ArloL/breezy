@@ -35,6 +35,10 @@ export interface Sight {
   focus: Rect | null;
   caret: Rect | null;
   visible: Rect;
+  /** On a real device, the bar at the top of the screen, the find bar's or the top bar's, and the screen: iOS scrolled
+   * the page under the keyboard, and the top bar with it. */
+  bar?: Rect | null;
+  screen?: Rect;
   /** How a real device read `visible`, for a failure to explain itself. */
   how?: string;
 }
