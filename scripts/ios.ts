@@ -14,13 +14,24 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { HOME_ICON, homeIcon, iosUnfit, SimHid } from "../scenarios/ios.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
-// an iPhone already booted, as the devices take the first one booted, else an iPhone 17, the owner's size, on the newest
-// runtime that has one: CI's iOS 27.1 offers only the iPhone Duo
-const { devices } = JSON.parse(run("list", "devices", "available", "--json")) as { devices: Record<string, { udid: string; name: string; state: string }[]> };
+// an iPhone already booted, as the devices take the first one booted, else the model IPHONE names: an iPhone 17 by
+// default, or the owner's iPhone 13 mini, whose board shows less above its keyboard. On the newest runtime that has one
+// (CI's iOS 27.1 offers only the iPhone Duo), else made on the newest iOS runtime that can run it.
+const model = process.env.IPHONE ?? "iPhone 17";
+type Sim = { udid: string; name: string; state: string };
+const { devices } = JSON.parse(run("list", "devices", "available", "--json")) as { devices: Record<string, Sim[]> };
 const booted = Object.entries(devices).flatMap(([r, ds]) => ds.filter((d) => d.name.startsWith("iPhone") && d.state === "Booted").map((d) => [r, d] as const))[0];
-const runtime = booted?.[0] ?? Object.keys(devices).filter((r) => r.includes("iOS") && devices[r]!.some((d) => d.name === "iPhone 17")).sort().at(-1);
-const phone = booted?.[1] ?? devices[runtime!]?.find((d) => d.name === "iPhone 17");
-if (!phone) throw new Error("no iPhone 17 simulator: add one in Xcode");
+const ios = Object.keys(devices).filter((r) => r.includes("iOS")).sort().reverse();
+let runtime = booted?.[0] ?? ios.find((r) => devices[r]!.some((d) => d.name === model));
+let phone: Sim | undefined = booted?.[1] ?? (runtime ? devices[runtime]!.find((d) => d.name === model) : undefined);
+for (const r of phone ? [] : ios) {
+  try {
+    phone = { udid: run("create", model, `com.apple.CoreSimulator.SimDeviceType.${model.replace(/ /g, "-")}`, r).trim(), name: model, state: "Shutdown" };
+    runtime = r;
+    break;
+  } catch {}
+}
+if (!phone) throw new Error(`no ${model} simulator, and none could be made: add one in Xcode`);
 // the keyboard types what the cases type, as Android's spell checker is off for them: autocorrect wrote "neighbours" as
 // "neighbors" and dropped words, capitals and predictions came unasked. Read only as the iPhone boots.
 // The file itself, with plutil: the Mac's own preferences daemon kept what defaults wrote and the iPhone booted without it.

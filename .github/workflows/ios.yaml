@@ -22,6 +22,13 @@ jobs:
     # macOS 27 with Xcode 27 and iOS 27.0, the owner's iOS; macos-latest has iOS 26 alone
     runs-on: xcode-27
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # the size the cases are written for, and the owner's, whose board shows less above its keyboard
+        iphone: [iPhone 17, iPhone 13 mini]
+    env:
+      IPHONE: ${{ matrix.iphone }}
     permissions:
       contents: read
     steps:
@@ -76,6 +83,7 @@ jobs:
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
-        name: ios-scenarios
+        # ios-scenarios, the iPhone 17's, as it has long been named
+        name: ${{ matrix.iphone == 'iPhone 17' && 'ios-scenarios' || 'ios-scenarios-13-mini' }}
         path: build/scenarios
         if-no-files-found: ignore
