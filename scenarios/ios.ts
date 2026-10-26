@@ -10,6 +10,7 @@ import { createInterface } from "node:readline";
 import { Device, item, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
 import type { Point } from "../web/types.ts";
+import { DOUBLE_MS } from "../web/gestures.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -214,6 +215,8 @@ export class IosDevice extends Device {
           const p = e as PointerEvent;
           // in the board's frame, as a gesture aims, with where the screen's top left was in it as it came
           const b = document.querySelector("#board")?.getBoundingClientRect() ?? { left: 0, top: 0 };
+          // and when, for a double tap to tell whether its taps came close enough together
+          ((window as { touchTimes?: [string, number][] }).touchTimes ??= []).push([type, performance.now()]);
           if (type === "pointerdown") (window as { down?: Down }).down = { x: p.clientX - b.left, y: p.clientY - b.top, vx: visualViewport!.pageLeft - scrollX - b.left, vy: visualViewport!.pageTop - scrollY - b.top };
           note(`${type} at ${Math.round(p.clientX)},${Math.round(p.clientY)} on ${what(e.target)}`);
         }, { capture: true });
@@ -432,6 +435,24 @@ export class IosDevice extends Device {
     await this.gesture([[0, "down", [[0, from]]], ...moves, [300, "up", [[0, { x: from.x + d.x, y: from.y + d.y }]]]]);
     await this.still("the pan to settle");
     return off;
+  }
+
+  /** Again, as a person does, when its taps reached the page too far apart to be one: on a busy runner they came 600
+   * ms apart, and a double tap at 25 % zoom made no card and left the board at 25 %. */
+  override async doubleTap(p: Point) {
+    for (let tries = 1; ; tries++) {
+      await this.page.evaluate(() => void ((window as { touchTimes?: [string, number][] }).touchTimes = []));
+      await super.doubleTap(p);
+      const gap = await this.page.evaluate(() => {
+        const t = (window as { touchTimes?: [string, number][] }).touchTimes ?? [];
+        const up = t.find(([e]) => e === "pointerup")?.[1], down = t.filter(([e]) => e === "pointerdown")[1]?.[1];
+        return up !== undefined && down !== undefined ? down - up : null;
+      });
+      if (gap === null || gap <= DOUBLE_MS) return;
+      if (tries === 3) throw new Error(`the double tap's taps reached the page ${Math.round(gap)} ms apart, three times`);
+      await this.note(`the double tap's taps reached the page ${Math.round(gap)} ms apart, two taps: again`);
+      await sleep(2 * DOUBLE_MS);
+    }
   }
 
   /** `what` in the iPhone's timeline. */
