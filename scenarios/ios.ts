@@ -3,7 +3,7 @@
 // gesture (scripts/sim-hid.py), so a double tap's waits hold; the page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only: idb's touch has one point. scripts/ios.ts boots the simulator.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -39,9 +39,40 @@ export const HOME_ICON = "Breezy Scenarios";
 
 /** Where the Home Screen shows icon `label`, in screen points, or null; SpringBoard's own icons are what its
  * accessibility lists while it is in front. */
+/** Forgets the idb companions its record names that have ended, as scripts/sim-hid.py does: idb connects to the one the
+ * record names, and its command failed on a record a companion that ended left behind. */
+function dropEndedCompanions(state = "/tmp/idb/state") {
+  let companions: { pid?: number; path?: string }[];
+  try {
+    companions = JSON.parse(readFileSync(state, "utf8"));
+  } catch {
+    return;
+  }
+  const alive = (c: { pid?: number; path?: string }) => {
+    try {
+      process.kill(c.pid!, 0);
+    } catch {
+      return false;
+    }
+    return !!c.path && existsSync(c.path);
+  };
+  if (!companions.every(alive)) writeFileSync(state, JSON.stringify(companions.filter(alive)));
+}
+
 export function homeIcon(udid: string, label = HOME_ICON): { x: number; y: number } | null {
-  const out = execFileSync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
-    { encoding: "utf8", timeout: 120_000, stdio: ["ignore", "pipe", "ignore"] });
+  // again, a moment later, when idb answers nothing: on CI's runner its command failed once in a run of 38 cases
+  let out = "";
+  for (let tries = 1; ; tries++) {
+    dropEndedCompanions();
+    try {
+      out = execFileSync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
+        { encoding: "utf8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+      break;
+    } catch (e) {
+      if (tries === 3) throw new Error(`idb found no Home Screen: ${(e as { stderr?: string }).stderr?.trim().split("\n").at(-1) ?? (e as Error).message}`);
+      execFileSync("sleep", ["2"]);
+    }
+  }
   const e = (JSON.parse(out) as { AXLabel?: string; type?: string; frame: { x: number; y: number; width: number; height: number } }[])
     .find((x) => x.type === "Button" && x.AXLabel === label);
   return e ? { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 } : null;
