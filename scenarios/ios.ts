@@ -68,6 +68,8 @@ export class SimHid {
     createInterface({ input: child.stdout }).on("line", (l) => this.replies.shift()?.(l));
     let err = "";
     child.stderr.on("data", (d: Buffer) => (err = (err + d.toString()).slice(-2000)));
+    // a write after it ended fails in answer() instead, naming why it ended
+    child.stdin.on("error", () => {});
     child.on("exit", (code) => {
       this.ended = `scripts/sim-hid.py exited with ${code}: ${err.trim().split("\n").at(-1) ?? ""}`;
       for (const r of this.replies.splice(0)) r(JSON.stringify({ error: this.ended }));
@@ -97,7 +99,7 @@ export class SimHid {
   private send(c: unknown): Promise<{ ms: number }> {
     const done = this.tail.then(() => {
       const a = this.answer();
-      this.child.stdin.write(`${JSON.stringify(c)}\n`);
+      if (!this.ended) this.child.stdin.write(`${JSON.stringify(c)}\n`);
       return a;
     });
     this.tail = done.catch(() => {});

@@ -1181,6 +1181,10 @@ export class RealWorld {
           // and no tabs: a tab restored in the background kept the site's database open, and clearing it waited on that
           const state = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/Safari");
           for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(state, f + x), { force: true });
+          // nor any site's data: a world's service worker served the next world's first page from its snapshot, which
+          // has no agent in it
+          const safari = execFileSync("xcrun", ["simctl", "get_app_container", udid, "com.apple.mobilesafari", "data"], { encoding: "utf8", timeout: 90_000 }).trim();
+          rmSync(join(safari, "Library/WebKit/com.apple.mobilesafari/WebsiteData"), { recursive: true, force: true });
           execFileSync("xcrun", ["simctl", "launch", udid, "com.apple.mobilesafari"], { timeout: 90_000, stdio: "ignore" });
           for (let attempt = 1; ; attempt++) {
             await page.open(`http://localhost:${WEB}/scenarios-clear`);
@@ -1455,6 +1459,7 @@ export class RealWorld {
       const ends = [`${who} says ${JSON.stringify(status)}`,
         `${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`];
       const version = d instanceof BrowserDevice ? d.page.context().browser()?.version() ?? (d.kind === "firefox-android" ? FENIX_VERSION : undefined)
+        : d instanceof IosDevice ? await answer(d.page.evaluate(() => navigator.userAgent.match(/OS ([\d_]+)/)?.[1]?.replace(/_/g, ".") ?? navigator.userAgent)).then((v) => `iOS ${v}`)
         : undefined;
       return { summary, ends, device: { who, kind: d.kind, version } };
     }));

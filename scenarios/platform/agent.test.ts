@@ -60,3 +60,18 @@ test("a page served to a desktop browser gets no agent", async () => {
   assert.doesNotMatch(await res!.text(), /agent/);
   await page.close();
 });
+
+test("a job that times out after it was sent leaves the job after it alone", async () => {
+  const page = await browser.newPage({ userAgent: IPHONE });
+  await page.goto(url);
+  const hung = agent.run("() => new Promise(() => {})", null, 300).catch((e: Error) => e);
+  const next = agent.page.evaluate(() => document.title);
+  assert.match(String(await hung), /did not answer in 0.3 s: sent to page/);
+  assert.equal(await next, "one");
+  await page.close();
+});
+
+test("the service worker's own fetch of a page gets no agent, so its hash holds", async () => {
+  const res = await fetch(url, { headers: { "user-agent": IPHONE, "sec-fetch-dest": "empty" } });
+  assert.doesNotMatch(await res.text(), /agent/);
+});
