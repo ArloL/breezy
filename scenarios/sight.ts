@@ -17,10 +17,12 @@ const fits = (a: Box, b: Box) => a.w + 32 <= b.w + 1 && a.h + 32 <= b.h + 1;
 const still = (s: Sight | null) => JSON.stringify(s, (_, v) => typeof v === "number" ? Math.round(v) : v);
 const say = (b: Box | null) => b ? `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}×${Math.round(b.h)}` : "none";
 
-/** What is wrong with `s`, or null: the edited card shows whole, or of one too big to, its caret does. */
+/** What is wrong with `s`, or null: the edited card shows whole, or of one too big to, its caret does, and the bar at
+ * the top of the screen shows. */
 export function outOfSight(s: Sight): string | null {
-  const { focus, caret, visible } = s;
+  const { focus, caret, visible, bar, screen } = s;
   if (!focus) return null;
+  if (bar && screen && bar.y < screen.y - 1) return `the top bar at ${say(bar)}, above the screen at ${say(screen)}${s.how ? ` (${s.how})` : ""}`;
   if (fits(focus, visible) ? inside(focus, visible) : caret && inside(caret, visible)) return null;
   return `the edited card at ${say(focus)}, its caret at ${say(caret)}, the board showing ${say(visible)}${s.how ? ` (${s.how})` : ""}`;
 }

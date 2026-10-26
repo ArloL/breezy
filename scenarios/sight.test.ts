@@ -20,6 +20,12 @@ test("a card under the keyboard is out of sight", () => {
   assert.match(outOfSight({ focus: { x: 20, y: 520, w: 240, h: 48 }, caret: { x: 32, y: 532, w: 0, h: 24 }, visible: board }) ?? "", /edited card/);
 });
 
+test("a top bar scrolled off the screen is out of sight, the card in sight or not", () => {
+  const card = { focus: { x: 20, y: 200, w: 240, h: 48 }, caret: { x: 32, y: 212, w: 0, h: 24 }, visible: board, screen: { x: 0, y: 0, w: 402, h: 494 } };
+  assert.equal(outOfSight({ ...card, bar: { x: 0, y: 0, w: 402, h: 120 } }), null);
+  assert.match(outOfSight({ ...card, bar: { x: 0, y: -60, w: 402, h: 120 } }) ?? "", /top bar/);
+});
+
 test("a card off the side is out of sight", () => {
   assert.notEqual(outOfSight({ focus: { x: 252, y: 200, w: 240, h: 48 }, caret: { x: 264, y: 212, w: 0, h: 24 }, visible: board }), null);
 });

@@ -76,7 +76,11 @@ export class UI {
       // the keyboard coming or going moves the middle of what is visible
       if (!this.$("#find").hidden && this.matches[this.index]) this.app.reveal(this.matches[this.index]);
     });
-    visualViewport!.addEventListener("scroll", () => this.place());
+    // iOS moves the visual viewport as the keyboard comes, at times with no resize after: what shows changed
+    visualViewport!.addEventListener("scroll", () => {
+      this.place();
+      this.app.revealEditing();
+    });
     // the caret moved by keys or a click, which the board keeps in sight as it does typing
     document.addEventListener("selectionchange", () => this.app.revealEditing());
     this.update();
@@ -173,10 +177,12 @@ export class UI {
     this.zoomTimer = setTimeout(() => swap(level, false, { opacity: 0, scale: 0.9 }), 1000);
   }
 
-  /** Puts the keyboard bar on the keyboard, wherever iOS has moved the visual viewport. */
+  /** Puts the keyboard bar on the keyboard and the bars at the top of the screen at its top, wherever iOS has moved the
+   * visual viewport: as the keyboard came, iOS scrolled the page, and the top bar went off the screen with it. */
   place() {
     const vv = visualViewport!;
     this.$("#keys").style.top = `${vv.offsetTop + vv.height - KEYS_H}px`;
+    document.body.style.setProperty("--screen-top", `${vv.offsetTop}px`);
   }
 
   /** The part of the screen the board shows through: below the bars, above the keyboard, the keys bar and the bottom bar. */
@@ -184,9 +190,13 @@ export class UI {
     const vv = visualViewport!;
     const above = this.$("#find").hidden ? this.$("#top") : this.$("#find");
     const bar = this.$("#bottom");
-    const visible = vv.offsetTop + vv.height - (this.app.state.editing ? KEYS_H : 0);
-    const bottom = bar.hidden ? visible : Math.min(visible, bar.getBoundingClientRect().top);
-    return { top: Math.max(above.getBoundingClientRect().bottom, vv.offsetTop), bottom, left: 0, right: innerWidth };
+    // in the board's own frame, which the camera works in: with the keyboard up iOS scrolled the page, and the board,
+    // fixed, went up with it in the page's coordinates, where the bars' rects and the screen are
+    const origin = this.$("#board").getBoundingClientRect().top;
+    const top = vv.pageTop - scrollY - origin;
+    const visible = top + vv.height - (this.app.state.editing ? KEYS_H : 0);
+    const bottom = bar.hidden ? visible : Math.min(visible, bar.getBoundingClientRect().top - origin);
+    return { top: Math.max(above.getBoundingClientRect().bottom - origin, top), bottom, left: 0, right: innerWidth };
   }
 
   /** A light tap where the device has a Taptic Engine. */
