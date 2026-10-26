@@ -37,7 +37,8 @@ test(`the hub's phone shows the board, and brings the keyboard, as the iPhone do
     });
     await d.still("the keyboard to come and the board to stand still");
     const s = (await d.sight())!, times = await d.page.evaluate(() => (window as { keyboard?: number[] }).keyboard ?? []);
-    const top = s.visible.y + d.offset.y, bottom = s.visible.y + s.visible.h + d.offset.y;
+    // on the screen: from where the screen starts in the page, which iOS moves as it scrolls the page under a keyboard
+    const dy = d.offset.y - (s.screen?.y ?? 0), top = s.visible.y + dy, bottom = s.visible.y + s.visible.h + dy;
     const fake = { top: PHONE.keyboardTop ?? PHONE.top, bottom: PHONE.h - PHONE.keyboard - 44, ms: PHONE.keyboardMs };
     const real = { top: Math.round(top), bottom: Math.round(bottom), ms: times.length > 1 ? Math.round(times.at(-1)! - times[0]!) : null };
     const say = `the iPhone ${JSON.stringify(real)}, the hub's phone ${JSON.stringify(fake)} (${s.how})`;
