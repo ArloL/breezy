@@ -25,6 +25,8 @@ export interface Case {
   busy?: boolean;
   /** Whether the first device starts outside the space, as a person given the invite does, which only browsers can. */
   fresh?: boolean;
+  /** Whether the case taps the app's buttons, which the hub's devices have none of. */
+  buttons?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
   offline?: boolean;
   /** Why the iPhone in the iOS Simulator cannot act in it, if it cannot. */
@@ -840,6 +842,31 @@ export const cases: Case[] = [
       await a.still("the zoom and the keyboard to settle");
       assert.ok(Math.abs((await a.scene()).camera.zoom - 1) < 0.01, "fingers edit at 100 %");
       await a.type("x");
+    },
+  },
+  {
+    // the iOS escape of 2026-10-26: on an iPhone 13 mini, a card made with a double tap and turned, its back too tall to
+    // fit and empty, had its caret under the top bar, as the board kept the card's bottom in sight for want of a caret
+    // to measure
+    name: "a card made with a double tap on a phone and turned has its caret in sight on its back",
+    input: "touch",
+    edits: true,
+    buttons: true,
+    acts: ["android", "firefox-android", "ios-safari", "ios-home"],
+    async run(s) {
+      const [a] = s.devices as [Device, Device];
+      const size = await a.size();
+      await a.doubleTap(await a.world({ x: size.w / 2, y: size.h * 0.4 }));
+      await a.still("the zoom and the keyboard to settle");
+      await a.type("front");
+      // Turn on the keys bar, as a person turns a card being edited on a phone
+      await a.tapOn('[data-act="key-turn"]');
+      await a.still("the card to turn");
+      // and its top edge, above the caret, where a person starts to read it
+      const s1 = await a.sight();
+      if (s1?.focus) assert.ok(s1.focus.y >= s1.visible.y - 1, `the back's top at ${Math.round(s1.focus.y)}, the board showing from ${Math.round(s1.visible.y)}`);
+      await a.type("back");
+      assert.equal((await a.editor())?.text, "back");
     },
   },
   {

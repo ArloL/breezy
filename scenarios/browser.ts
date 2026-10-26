@@ -229,6 +229,11 @@ export function readSight(): Sight | null {
       at = next ? new DOMRect(next.x, next.y, 0, next.height) : prev && node.data[offset - 1] === "\n" ? new DOMRect(prev.x, prev.bottom, 0, prev.height) : prev ? new DOMRect(prev.right, prev.y, 0, prev.height) : at;
     }
   }
+  // nor has a caret in an empty editor, as the back of a card just turned: it is where the text would start, a line high
+  if (!at?.height && range?.collapsed && !el.textContent) {
+    const b = el.getBoundingClientRect(), cs = getComputedStyle(el), z = el.offsetHeight ? b.height / el.offsetHeight : 1;
+    at = new DOMRect(b.left + Number.parseFloat(cs.paddingLeft) * z, b.top + Number.parseFloat(cs.paddingTop) * z, 0, (Number.parseFloat(cs.lineHeight) || Number.parseFloat(cs.fontSize) * 1.2) * z);
+  }
   const v = visualViewport!;
   const bar = (q: string) => {
     const b = document.querySelector<HTMLElement>(q);

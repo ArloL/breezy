@@ -293,7 +293,7 @@ export class App {
     const r = this.view.rectOf(c), a = this.view.area(), { zoom } = this.view.cam;
     const at = r.h * this.view.camera.goal().zoom + 32 > a.bottom - a.top ? this.view.editorOf(e.id, e.back)?.caret() : null;
     const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
-    const top = caret && this.view.els.get(e.id)?.el.getBoundingClientRect().top;
+    const top = caret && this.view.topOf(e.id);
     if (!caret || top == null) return this.view.reveal(r, "bottom");
     this.view.reveal({ x: r.x, y: r.y + (caret.y - top) / zoom, w: r.w, h: caret.h / zoom });
   }

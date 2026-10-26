@@ -53,6 +53,13 @@ function charRect(side: HTMLElement, at: number) {
   return null;
 }
 
+/** Where the caret of an empty `side` is drawn: at the start of its content, a line high, at the board's zoom. */
+function startRect(side: HTMLElement) {
+  const b = side.getBoundingClientRect(), cs = getComputedStyle(side), z = side.offsetHeight ? b.height / side.offsetHeight : 1;
+  const line = Number.parseFloat(cs.lineHeight) || Number.parseFloat(cs.fontSize) * 1.2;
+  return { left: b.left + Number.parseFloat(cs.paddingLeft) * z, top: b.top + Number.parseFloat(cs.paddingTop) * z, height: line * z };
+}
+
 export class View {
   root: HTMLElement;
   model: Model;
@@ -204,6 +211,12 @@ export class View {
     const e = this.els.get(id);
     if (!e || back !== (this.state.turned === id)) return null;
     const side = e.el.querySelector<HTMLElement>(back ? ".notes" : ".front")!;
+    // an empty side has no text to measure, as the back of a card just turned: its caret is where its text would start,
+    // and the board kept the card's bottom in sight instead, the caret under the top bar
+    if (!side.textContent) {
+      const r = startRect(side);
+      return { x: r.left, y: r.top, h: r.height };
+    }
     const [node, offset] = back ? [side.firstChild, at] : frontPoint(side, at);
     if (!node || back && !(node instanceof Text)) return null;
     const r = document.createRange();
@@ -213,6 +226,11 @@ export class View {
     if (!rect.height) rect = charRect(side, at);
     if (!rect?.height) return null;
     return { x: rect.left, y: rect.top, h: rect.height };
+  }
+
+  /** Where card `id`'s top is drawn, as caretRect counts, or null when it is not. */
+  topOf(id: string): number | null {
+    return this.els.get(id)?.el.getBoundingClientRect().top ?? null;
   }
 
   invalidate() {
