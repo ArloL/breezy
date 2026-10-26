@@ -34,6 +34,9 @@ const android = (k: RealKind) => k === "android" || k === "firefox-android";
  * a merge, and lists it in build/scenarios/flaky.txt; soaks give 1, to count every failure. */
 const RUNS = Number(process.env.SCENARIO_RUNS ?? 1);
 const MS = 90_000;
+/** How long a world may take to start, outside its case's time: on CI's runner an iPhone once took 48 s to launch Safari
+ * and 16 s to join, and its case had 4 s of its 90 left. */
+const START_MS = 180_000;
 
 // before a phone's case and outside its time: a boot takes minutes
 beforeEach(async (t) => {
@@ -46,21 +49,19 @@ beforeEach(async (t) => {
  * and the cases left fail at once rather than each wait for the servers until the job times out. */
 let unserved = 0, unservedBy = "";
 
-/** One run of `c` on `kinds` in a fresh world, recorded; its error when it fails or takes over `MS`. */
+/** One run of `c` on `kinds` in a fresh world, recorded; its error when it fails, or its world takes over `START_MS` to
+ * start, or its case runs over `MS` after. */
 async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: number): Promise<Error | null> {
   const w = new RealWorld();
   let error: Error | null = null, timedOut = false, timer: ReturnType<typeof setTimeout> | undefined;
+  /** `p`, or an error saying `what` once `ms` pass. */
+  const within = (p: Promise<unknown>, ms: number, what: string) => Promise.race([p, new Promise((_, reject) => (timer = setTimeout(() => {
+    timedOut = true;
+    reject(new Error(what));
+  }, ms)))]).finally(() => clearTimeout(timer));
   try {
-    await Promise.race([
-      (async () => {
-        await w.start(kinds);
-        await c.run(w.stage());
-      })(),
-      new Promise((_, reject) => (timer = setTimeout(() => {
-        timedOut = true;
-        reject(new Error(`timed out after ${c.ms ?? MS} ms`));
-      }, c.ms ?? MS))),
-    ]);
+    await within(w.start(kinds), START_MS, `the world did not start in ${START_MS} ms`);
+    await within(c.run(w.stage()), c.ms ?? MS, `timed out after ${c.ms ?? MS} ms`);
   } catch (e) {
     error = e as Error;
   } finally {
@@ -81,7 +82,7 @@ for (const c of cases) {
     // Safari on the iOS Simulator has one finger, and cannot go offline or be kept busy yet
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || ios(a) && ((c.fingers ?? 1) > 1 || c.offline || c.busy || c.notOnIphone)) continue;
     const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].some(ios) && noIos;
-    test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * ((c.ms ?? MS) + 60_000) }, async (t) => {
+    test(`${c.name} (${a} → ${b})`, { skip, timeout: RUNS * (START_MS + (c.ms ?? MS) + 60_000) }, async (t) => {
       let first: Error | null = null;
       for (let run = 1; ; run++) {
         if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
