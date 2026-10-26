@@ -2,16 +2,15 @@
 // Boots an iPhone in the iOS Simulator whose Safari the scenarios' ios-safari device drives: node scripts/ios.ts. The
 // device touches it through idb (brew install facebook/fb/idb-companion, and uv for scripts/sim-hid.py) and reads its
 // page through the agent the scenarios' server puts in it. Stop the iPhone with xcrun simctl shutdown all. With --start
-// it only starts the boot, which CI does first, for the iPhone to settle while the rest installs. With --home it also adds
-// the scenarios' app to the Home Screen as "Breezy Scenarios", for the ios-home device: Safari's page menu and Share are
-// found by their accessibility, but the share sheet shows its buttons to nothing but the eye, so they are where an
-// iPhone 17 on iOS 27 has them; elsewhere, it says how to add it by hand.
+// it only starts the boot, which CI does first, for the iPhone to settle while the rest installs. With --home it also puts
+// the scenarios' app on the Home Screen as "Breezy Scenarios", for the ios-home device, on any iPhone.
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { cpus, homedir, loadavg } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { HOME_ICON, homeIcon, iosUnfit, SimHid } from "../scenarios/ios.ts";
+import { HOME_ICON, iosUnfit } from "../scenarios/ios.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
 // an iPhone already booted, as the devices take the first one booted, else the model IPHONE names: an iPhone 17 by
@@ -50,6 +49,42 @@ if (!off.every(isOff)) {
   try { plutil("-lint", prefs); } catch { plutil("-create", "binary1", prefs); }
   for (const k of off) plutil("-replace", k, "-bool", "NO", prefs);
 }
+// the scenarios' app on the Home Screen, for the ios-home device: a web clip written while the iPhone is down, as the
+// Home Screen finds the clips as it boots. Added through Safari's share sheet it took taps where an iPhone 17 shows the
+// sheet's buttons, timed by the clock, and on CI's busy runner it often never came.
+const clips = join(homedir(), "Library/Developer/CoreSimulator/Devices", phone.udid, "data/Library/WebClips");
+const titled = (c: string) => {
+  try {
+    return plutil("-extract", "Title", "raw", join(clips, c, "Info.plist")) === HOME_ICON;
+  } catch {
+    return false;
+  }
+};
+if (process.argv.includes("--home") && !(existsSync(clips) && readdirSync(clips).some(titled))) {
+  const { WEB } = await import("../scenarios/browser.ts");
+  if (phone.state === "Booted") {
+    run("shutdown", phone.udid);
+    phone.state = "Shutdown";
+    try { execFileSync("pkill", ["-f", "idb_companion"]); } catch {}
+    rmSync("/tmp/idb/state", { force: true });
+  }
+  const id = randomUUID().replace(/-/g, "").toUpperCase(), clip = join(clips, `${id}.webclip`), info = join(clip, "Info.plist");
+  mkdirSync(clip, { recursive: true });
+  copyFileSync(new URL("../web/icon-180.png", import.meta.url), join(clip, "icon.png"));
+  plutil("-create", "binary1", info);
+  // as Add to Home Screen writes them on iOS 27, less the manifest, which the app fetches itself
+  const keys: [string, string, string][] = [
+    ["Title", "-string", HOME_ICON], ["URL", "-string", `http://localhost:${WEB}/`], ["FullScreen", "-bool", "YES"],
+    ["ContentMode", "-string", "UIWebClipContentModeRecommended"], ["ClassicMode", "-bool", "NO"], ["IsAppClip", "-bool", "NO"],
+    ["IconIsPrecomposed", "-bool", "NO"], ["IconIsScreenShotBased", "-bool", "NO"], ["IgnoreManifestScope", "-bool", "NO"],
+    ["ConfigurationIsManaged", "-bool", "NO"], ["ScenelessBackgroundLaunch", "-bool", "NO"], ["ApplicationBundleVersion", "-integer", "1"],
+    ["Eligibility", "-integer", "0"], ["Orientations", "-integer", "0"], ["WebClipStatusBarStyle", "-string", "UIWebClipStatusBarStyleLegacyBlack"],
+    ["PlaceholderBundleIdentifier", "-string", `com.apple.WebKit.PushBundle.${id}`], ["TrustedClientBundleIdentifiers", "-array", ""],
+  ];
+  for (const [k, type, v] of keys) plutil("-insert", k, type, ...(v ? [v] : []), info);
+  plutil("-insert", "TrustedClientBundleIdentifiers.0", "-string", "com.apple.mobilesafari", info);
+  console.log(`"${HOME_ICON}" written to the Home Screen`);
+}
 if (phone.state !== "Booted") run("boot", phone.udid);
 if (process.argv.includes("--start")) {
   console.log(`booting ${phone.name} on ${runtime!.split(".").at(-1)}`);
@@ -67,46 +102,3 @@ console.log(`the load ${loadavg()[0].toFixed(0)} of ${cpus().length} CPUs after 
 const unfit = await iosUnfit();
 if (unfit) throw new Error(unfit);
 
-if (process.argv.includes("--home") && !homeIcon(phone.udid)) {
-  // here, not at the top: CI starts the boot before it installs Playwright, which the scenarios' server brings
-  const { buildSite, serveStatic, WEB } = await import("../scenarios/browser.ts");
-  const site = new URL("../build/web-scenarios", import.meta.url).pathname;
-  buildSite(site);
-  const web = serveStatic(site, WEB);
-  const hid = await SimHid.start(phone.udid);
-  const tap = (p: { x: number; y: number }) => hid.touches([[0, "down", p.x, p.y], [50, "up", p.x, p.y]]);
-  /** Where Safari's element `id` is, by its accessibility. */
-  const find = (id: string) => {
-    const out = execFileSync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", phone.udid, "--json"], { encoding: "utf8", timeout: 120_000 });
-    const e = (JSON.parse(out) as { AXUniqueId?: string; frame: { x: number; y: number; width: number; height: number } }[]).find((x) => x.AXUniqueId === id);
-    if (!e) throw new Error(`Safari shows no ${id}`);
-    return { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 };
-  };
-  try {
-    run("openurl", phone.udid, `http://localhost:${WEB}/`);
-    await sleep(4000);
-    await tap(find("MoreMenuButton"));
-    await sleep(1500);
-    await tap(find("ShareButton"));
-    await sleep(2500);
-    // View More, then Add to Home Screen, on an iPhone 17 on iOS 27
-    await tap({ x: 332, y: 781 });
-    await sleep(2000);
-    await tap({ x: 150, y: 636 });
-    await sleep(4000);
-    await hid.text(HOME_ICON.slice("Breezy".length));
-    await tap({ x: 353, y: 100 });
-    await sleep(3000);
-  } catch (e) {
-    console.log(`adding to the Home Screen stopped: ${(e as Error).message}`);
-  } finally {
-    hid.stop();
-    web.close();
-    web.closeAllConnections();
-  }
-  if (!homeIcon(phone.udid)) {
-    console.log(`no "${HOME_ICON}" on the Home Screen: while the scenarios serve the app, open http://localhost:${WEB}/ in the simulator's Safari, Share, Add to Home Screen, name it "${HOME_ICON}", and Add`);
-    process.exit(1);
-  }
-  console.log(`"${HOME_ICON}" is on the Home Screen`);
-}
