@@ -832,13 +832,18 @@ export class BrowserDevice extends Device {
 
   /** Once the board shows the cards and lanes it showed before, which it reads from storage after it opens. */
   override async relaunch() {
-    const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id).sort().join(" ");
+    const ids = (s: Scene) => [...s.cards, ...s.lanes].map((i) => i.id);
     const had = ids(await this.scene());
     this.seenBefore.push(...await this.page.evaluate(() => (window as { pageEvents?: PageEvents }).pageEvents ?? []));
     this.note("launches again");
     await this.page.goto(`http://localhost:${WEB}/`);
     await openBoard(this.page);
-    await until(`${this.kind} to show its board again`, async () => ids(await this.scene()) === had);
+    // what it had, and what came while it was away: the card the other device made then arrived before the first look,
+    // and a board that had to show exactly what it had never did
+    await until(`${this.kind} to show its board again`, async () => {
+      const now = new Set(ids(await this.scene()));
+      return had.every((id) => now.has(id));
+    });
   }
 
   async wait(ms: number) {
