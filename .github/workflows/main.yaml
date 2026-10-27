@@ -286,11 +286,12 @@ jobs:
         node-version: 24
         package-manager-cache: false
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
-    - name: Install PHP's SQLite and KVM access
+    # zsh runs server/dev.sh
+    - name: Install zsh, PHP's SQLite and KVM access
       run: |
         # a mirror mid-sync fails a download now and then
         sudo apt-get --option Acquire::Retries=5 update
-        sudo apt-get --option Acquire::Retries=5 install --yes php-cli php-sqlite3
+        sudo apt-get --option Acquire::Retries=5 install --yes zsh php-cli php-sqlite3
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
