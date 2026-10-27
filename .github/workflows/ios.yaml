@@ -40,15 +40,20 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile
-    - name: Start booting an iPhone
-      run: node scripts/ios.ts --start
-    - name: Install PHP
-      run: command -v php || brew install php
     - name: Install the web toolchain and the relay
       run: |
         npm ci
         npm ci --prefix relay
+    # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile; the Home Screen app's clip is written
+    # before this one boot, as the Home Screen reads it while booting and a second boot cost the ios-home jobs 4 minutes
+    - name: Start booting an iPhone
+      run: node scripts/ios.ts --start ${{ matrix.kind == 'ios-home' && '--home' || '' }}
+    # brew's php drags 17 bottles behind it after minutes updating its taps on the preview image: 9 of the job's minutes
+    - uses: shivammathur/setup-php@4424c9aab975b57bd706ee5a39c6b4334d6e4f60 # 2.40.0
+      with:
+        php-version: "8.4"
+        extensions: pdo_sqlite
+        tools: none
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/Library/Caches/ms-playwright
@@ -57,6 +62,8 @@ jobs:
       run: npx playwright-core install chromium
     # what touches the iPhone: idb's companion, and uv for scripts/sim-hid.py's fb-idb
     - name: Install idb
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
       run: brew install facebook/fb/idb-companion
     - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
     - name: Boot an iPhone
