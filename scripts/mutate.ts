@@ -200,8 +200,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         return dir;
       });
       // each copy's first build, and the suite unchanged
-      if (s === "swift" && !(await Promise.all(workers[s].map((dir) => verdict(dir, modules.find((m) => side(m) === s)!)))).every((v) => v === "survived")) {
-        throw new Error("BreezyKit's tests fail unchanged");
+      if (s !== "swift") continue;
+      const first = await Promise.all(workers[s].map((dir) => verdict(dir, modules.find((m) => side(m) === s)!)));
+      const failed = first.findIndex((v) => v !== "survived");
+      if (failed >= 0) {
+        // once more where all can see why
+        const dir = workers[s][failed]!;
+        spawnSync("swift", first[failed] === "refused" ? ["build", "--build-tests"] : ["test", "--skip-build"], { cwd: join(dir, "BreezyKit"), env: { ...process.env, TMPDIR: join(dir, "tmp") }, stdio: "inherit" });
+        throw new Error(`BreezyKit's tests fail unchanged: ${first.join(", ")}`);
       }
     }
     for (const module of modules) {
