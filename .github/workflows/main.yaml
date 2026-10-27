@@ -250,7 +250,7 @@ jobs:
       # a case that fails gets a second run: one that then passes warns, its logs kept, rather than block a merge
       env:
         SCENARIO_RUNS: "2"
-        # cases over their flake budget leave the checks on push (scenarios/quarantine.ts)
+        # quarantined cases leave the checks on push (scenarios/quarantine.ts)
         SCENARIO_QUARANTINE: skip
       # a handle left open once kept node from exiting after the last case, until the job timed out
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
@@ -360,7 +360,7 @@ jobs:
       timeout-minutes: 40
       env:
         SCENARIO_RUNS: "2"
-        # cases over their flake budget leave the checks on push (scenarios/quarantine.ts)
+        # quarantined cases leave the checks on push (scenarios/quarantine.ts)
         SCENARIO_QUARANTINE: skip
       run: |
         mise exec -- scripts/android-load.sh build/android-load.txt &
@@ -466,9 +466,9 @@ jobs:
   # the web app and the sync server on breezy.k5d.de, over FTPS; the production environment
   # holds the hosting and database credentials
   deploy:
+    # the site alone: the Mac app releases on its own, and a push whose Mac side fails leaves it on the last release
     needs:
     - web
-    - release
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-slim
     timeout-minutes: 15

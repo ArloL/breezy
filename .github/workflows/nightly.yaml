@@ -4,24 +4,12 @@ name: Nightly
 # journal against a reference build measured on the same runner: a run fails when a measure's 95 % CI lies wholly above
 # every baseline's. One runner can measure 40 % slower than the next, so the feel's baselines are several runs'
 # artifacts; one that fails on such a runner joins them. A deliberate change in the Mac's performance moves
-# scripts/baselines/bench-ref to the commit that made it. And the sync fuzzed on seeds no run tried before. Pull requests
-# that change what is measured or the baselines run it too.
+# scripts/baselines/bench-ref to the commit that made it. And the sync fuzzed on seeds no run tried before. Never on a
+# pull request, whose checks are Main's alone: dispatch it on a branch to try a change to what is measured.
 on:
   schedule:
   - cron: "23 2 * * *"
   workflow_dispatch:
-  pull_request:
-    branches:
-    - main
-    paths:
-    - .github/workflows/nightly.yaml
-    - scripts/baselines/**
-    - scripts/gate.ts
-    - scripts/feel.ts
-    - scripts/bench.sh
-    - scripts/launch.ts
-    - Breezy/Support/Bench.swift
-    - scripts/fuzz.ts
 permissions: {}
 
 jobs:
