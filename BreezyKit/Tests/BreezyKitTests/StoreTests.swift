@@ -245,3 +245,53 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(s.name == nil)
   #expect(s.state.records.isEmpty)
 }
+
+@Test func boardsGoByTitleAndThoseTitledAlikeByID() {
+  let s = Store()
+  let board = { (title: String) in Change.fields(["kind": .string("board"), "title": .string(title)]) }
+  s.apply(["a": board("Beta"), "z": board("Alpha"), "m": board("Alpha")])
+  #expect(s.boards.map(\.id) == ["m", "z", "a"])
+}
+
+@Test func ordersAreOfTheBoardsCardsStillThere() {
+  let s = Store()
+  let on = { (kind: String, board: String, order: String) in
+    Change.fields(["kind": .string(kind), "board": .string(board), "order": .string(order)])
+  }
+  s.apply(["B": .fields(["kind": .string("board")]), "C": .fields(["kind": .string("board")])])
+  s.apply(["c1": on("card", "B", "a"), "c2": on("card", "B", "b"), "c3": on("card", "C", "c"), "l": on("lane", "B", "d")])
+  s.apply(["c2": .deleted("card")])
+  #expect(s.orders(of: "B") == ["c1": "a"])
+}
+
+@Test func localEditsAreReportedAsLocalAndJoiningAsRemote() {
+  let s = Store()
+  var remote: [Bool] = []
+  s.onChange = { remote.append($1) }
+  _ = s.createBoard(title: "Mine")
+  s.join(Invite(server: "https://example.com/sync.php", space: Base64URL.encode(randomBytes(16)), secret: Base64URL.encode(randomBytes(32))))
+  #expect(remote == [false, true])
+}
+
+@Test func startingToSyncEndsAResync() {
+  var resyncing = SpaceState()
+  resyncing.resync = true
+  let s = Store(state: resyncing)
+  s.startSyncing(server: "https://example.com/sync.php")
+  #expect(!s.state.resync)
+}
+
+@MainActor @Test func scheduledSavesWaitHalfASecondAndComeOnceThenAgain() async throws {
+  let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let file = StoreFile(url: dir.appendingPathComponent("space.json"))
+  var saves = 0
+  let state = { saves += 1; return SpaceState() }
+  for _ in 0..<3 { file.scheduleSave(state) }
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(saves == 0)
+  try await Task.sleep(for: .milliseconds(600))
+  #expect(saves == 1)
+  file.scheduleSave(state)
+  try await Task.sleep(for: .milliseconds(700))
+  #expect(saves == 2)
+}
