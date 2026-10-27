@@ -13,6 +13,7 @@ import { macUnfit } from "./mac.ts";
 import { RECORDS } from "./record.ts";
 import { exitsAfter } from "./exit.ts";
 import { quarantined } from "./quarantine.ts";
+import { smoke } from "./smoke.ts";
 
 const noMac = macUnfit();
 const noIos = process.env.SCENARIO_PAIRS?.includes("ios-") ? await iosUnfit() : "Safari on iOS runs where SCENARIO_PAIRS names it";
@@ -25,7 +26,7 @@ const noAndroid = (() => {
 })();
 /** Each kind acts once and watches once, which a run of minutes can afford; a phone acts only with a finger, and the
  * emulator's two browsers never share a world, as only one is on its screen.
- * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others. */
+ * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others; SCENARIO_SMOKE=1 runs the cases marked smoke alone. */
 const pairs = (process.env.SCENARIO_PAIRS?.split(" ").map((p) => p.split(":") as [RealKind, RealKind])
   ?? [["chromium", "firefox-android"], ["firefox-android", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]]);
 const ios = (k: RealKind) => k === "ios-safari" || k === "ios-home";
@@ -79,7 +80,7 @@ async function once(name: string, c: Case, kinds: [RealKind, RealKind], run: num
   return error;
 }
 
-for (const c of cases) {
+for (const c of smoke(cases)) {
   for (const [a, b] of pairs) {
     // Safari on the iOS Simulator has one finger, and cannot go offline, be kept busy or start outside the space yet
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || ios(a) && ((c.fingers ?? 1) > 1 || c.offline || c.busy || c.fresh || c.notOnIphone)) continue;
