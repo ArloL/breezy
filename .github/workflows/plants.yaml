@@ -6,12 +6,6 @@ on:
   schedule:
   - cron: "11 5 * * 1"
   workflow_dispatch:
-  pull_request:
-    paths:
-    - .github/workflows/plants.yaml
-    - scripts/plants.ts
-    - scripts/launch.ts
-    - scripts/deploy-check.ts
 permissions: {}
 
 jobs:

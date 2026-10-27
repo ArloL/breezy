@@ -6,11 +6,6 @@ on:
   schedule:
   - cron: "29 5 * * 2"
   workflow_dispatch:
-  pull_request:
-    paths:
-    - .github/workflows/mutation.yaml
-    - scripts/mutate.ts
-    - scripts/mutation-floors.json
 permissions: {}
 
 jobs:
