@@ -88,6 +88,6 @@ jobs:
       if: ${{ always() }}
       with:
         # ios-scenarios, the iPhone 17's Safari tab's, as the flake budget has long read it
-        name: ${{ format('{0}-scenarios{1}', matrix.kind == 'ios-safari' && 'ios' || 'ios-home', matrix.iphone == 'iPhone 17' && '' || '-13-mini') }}
+        name: ${{ format('{0}-scenarios{1}', matrix.kind == 'ios-safari' && 'ios' || 'ios-home', matrix.iphone != 'iPhone 17' && '-13-mini' || '') }}
         path: build/scenarios
         if-no-files-found: ignore
