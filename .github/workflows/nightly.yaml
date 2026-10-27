@@ -1,11 +1,15 @@
 name: Nightly
 
+# What the checks on a pull request leave to the night (TESTING.md, "The nightly"): every case on every real device,
+# the measures against their baselines, the sync fuzzed on seeds no run tried before, and the real devices' plants. One
+# summary of all of it, and an issue labelled nightly for as long as a night is red; a red is a bug, fixed before new
+# features. Never on a pull request, whose checks are Main's alone: dispatch it on a branch to try one on real devices.
+#
 # The measured network feel against baselines in scripts/baselines/feel that runners recorded, and the Mac's performance
 # journal against a reference build measured on the same runner: a run fails when a measure's 95 % CI lies wholly above
 # every baseline's. One runner can measure 40 % slower than the next, so the feel's baselines are several runs'
 # artifacts; one that fails on such a runner joins them. A deliberate change in the Mac's performance moves
-# scripts/baselines/bench-ref to the commit that made it. And the sync fuzzed on seeds no run tried before. Never on a
-# pull request, whose checks are Main's alone: dispatch it on a branch to try a change to what is measured.
+# scripts/baselines/bench-ref to the commit that made it.
 on:
   schedule:
   - cron: "23 2 * * *"
@@ -13,6 +17,273 @@ on:
 permissions: {}
 
 jobs:
+  # every case on the desktop browsers and the Mac app, each kind acting once and watching once; the Mac acts here alone
+  desktop:
+    runs-on: macos-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    # a connection whose own port is a server's keeps that server from starting
+    - name: Keep the servers' ports free
+      run: scripts/reserve-ports.sh
+    # Spotlight indexes the fresh runner and every build for its first half hour, which kept the load at 18 on 3 CPUs
+    # while Firefox ran every timer 100 ms late
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - name: Install PHP
+      run: command -v php || brew install php
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    # Playwright's CDN drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium, WebKit and Firefox
+      run: npx playwright-core install chromium webkit firefox
+    - name: Build the Mac app
+      run: |
+        xcodegen generate
+        xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
+    - name: Scenarios on real devices
+      timeout-minutes: 45
+      env:
+        SCENARIO_PAIRS: chromium:webkit webkit:firefox firefox:mac mac:chromium
+      # a handle left open once kept node from exiting after the last case, until the job timed out
+      run: node --test --test-force-exit scenarios/browsers.e2e.ts
+    - name: Count the cases
+      if: ${{ always() }}
+      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+    # passing too, as a failure is read against a pass
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: scenarios-desktop
+        path: build/scenarios
+        if-no-files-found: ignore
+    # the real devices' plants, whatever the cases before did: a board that cannot open offline, in Chromium; their
+    # records under build/plants, apart from the cases'
+    - name: Plants
+      if: ${{ !cancelled() }}
+      timeout-minutes: 10
+      run: node scripts/plants.ts --level L6
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: plants-L6
+        path: build/plants
+        if-no-files-found: ignore
+  # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
+  # cannot run one
+  android:
+    runs-on: ubuntu-latest
+    # apt and the scenarios each take half again as long on some runners
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: android
+      # no Linux build
+      MISE_DISABLE_TOOLS: xcodegen
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    # a connection whose own port is a server's keeps that server from starting
+    - name: Keep the servers' ports free
+      run: scripts/reserve-ports.sh
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - name: Install zsh, PHP's SQLite and KVM access
+      run: |
+        # a mirror mid-sync fails a download now and then
+        sudo apt-get --option Acquire::Retries=5 update
+        sudo apt-get --option Acquire::Retries=5 install --yes zsh php-cli php-sqlite3
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    # Playwright's CDN drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    # the packages WebKit needs, 119 MB, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
+    # the runner's image, which only its shell has, not the workflow's env
+    - id: image
+      run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+    # by the runner's image, newest first: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were
+    # never saved, and each run took 35 to 48 minutes downloading them from a slow mirror
+    - id: apt-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/apt-archives
+        key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-
+    # the browsers the Android devices pair with
+    - name: Install Chromium and WebKit
+      # well within the job's time, as a mirror that stalls takes it all
+      timeout-minutes: 15
+      run: |
+        echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded
+        # a stalled download again after 30 s rather than waiting out the mirror: it stalled 1 to 5 minutes at a time
+        printf 'Acquire::http::Timeout "30";\nAcquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/99retries
+        if compgen -G ~/apt-archives/'*.deb' > /dev/null; then sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/; fi
+        npx playwright-core install --with-deps chromium webkit
+    # what came down kept, even when the mirror ran out the step's time, so that the next run goes on from it; only when
+    # something came that the cache lacked, as a key is never written twice
+    - name: Keep the downloaded packages
+      id: apt-new
+      if: ${{ !cancelled() }}
+      run: |
+        mkdir -p ~/apt-archives
+        count() { find ~/apt-archives -name '*.deb' | wc -l; }
+        before=$(count)
+        for f in /var/cache/apt/archives/*.deb; do [ -e "$f" ] && [ ! -e ~/apt-archives/"${f##*/}" ] && cp "$f" ~/apt-archives/; done
+        echo "new=$(( $(count) - before ))" >> "$GITHUB_OUTPUT"
+    - if: ${{ !cancelled() && steps.apt-new.outputs.new != '0' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/apt-archives
+        key: ${{ steps.apt-cache.outputs.cache-primary-key }}
+    # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/share/mise/installs/android-sdk
+        key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
+        # a changed script starts from the SDK before it and downloads only what is new
+        restore-keys: android-sdk-${{ runner.os }}-
+    - name: Boot the emulator
+      # twice, if need be
+      timeout-minutes: 16
+      run: mise exec -- scripts/android-boot.sh
+    # each of the emulator's browsers acting once and watching once, as the two never share its screen
+    - name: Scenarios on Android
+      timeout-minutes: 50
+      env:
+        SCENARIO_PAIRS: chromium:firefox-android firefox-android:webkit android:chromium webkit:android
+      run: |
+        mise exec -- scripts/android-load.sh build/android-load.txt &
+        mise exec -- node --test --test-force-exit scenarios/browsers.e2e.ts
+    - name: Platform rows on Android
+      timeout-minutes: 8
+      run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
+    - name: Count the cases
+      if: ${{ always() }}
+      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+    - name: Capture the emulator's screen, and the runner's state
+      if: ${{ failure() }}
+      # bounded, as the upload after it runs only once this step ends
+      timeout-minutes: 5
+      run: mise exec -- scripts/android-capture.sh build
+    # passing too, as a failure is read against a pass
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: scenarios-android
+        path: |
+          build/android-emulator*.log
+          build/android-screen.png
+          build/android-touches.png
+          build/android-*.txt
+          build/adb.*.log
+          build/scenarios
+  # The scenarios with Safari on the iOS Simulator: whether the app loads, keeps its data and shows each change in an
+  # iPhone's Safari, and in the app on its Home Screen
+  ios:
+    # macOS 27 with Xcode 27 and iOS 27.0, the owner's iOS; macos-latest has iOS 26 alone
+    runs-on: xcode-27
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # the size the cases are written for, and the owner's, whose board shows less above its keyboard
+        iphone: [iPhone 17, iPhone 13 mini]
+        # in a Safari tab, and as the owner runs it, from the Home Screen
+        kind: [ios-safari, ios-home]
+        include:
+        - iphone: iPhone 17
+          slug: "17"
+        - iphone: iPhone 13 mini
+          slug: 13-mini
+    env:
+      IPHONE: ${{ matrix.iphone }}
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    # a connection whose own port is a server's keeps that server from starting
+    - name: Keep the servers' ports free
+      run: scripts/reserve-ports.sh
+    # Spotlight indexes the fresh runner for its first half hour
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Install the web toolchain and the relay
+      run: |
+        npm ci
+        npm ci --prefix relay
+    # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile; the Home Screen app's clip is written
+    # before this one boot, as the Home Screen reads it while booting and a second boot cost the ios-home jobs 4 minutes
+    - name: Start booting an iPhone
+      run: node scripts/ios.ts --start ${{ matrix.kind == 'ios-home' && '--home' || '' }}
+    # brew's php drags 17 bottles behind it after minutes updating its taps on the preview image: 9 of the job's minutes
+    - uses: shivammathur/setup-php@4424c9aab975b57bd706ee5a39c6b4334d6e4f60 # 2.40.0
+      with:
+        php-version: "8.4"
+        extensions: pdo_sqlite
+        tools: none
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium
+      run: npx playwright-core install chromium
+    # what touches the iPhone: idb's companion, and uv for scripts/sim-hid.py's fb-idb
+    - name: Install idb
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: brew install facebook/fb/idb-companion
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+    - name: Boot an iPhone
+      timeout-minutes: 15
+      run: node scripts/ios.ts ${{ matrix.kind == 'ios-home' && '--home' || '' }}
+    - name: Scenarios on iOS
+      timeout-minutes: 60
+      env:
+        SCENARIO_PAIRS: ${{ matrix.kind }}:chromium chromium:${{ matrix.kind }}
+      run: node --test --test-force-exit scenarios/browsers.e2e.ts
+    - name: Count the cases
+      if: ${{ always() }}
+      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: scenarios-${{ matrix.kind }}-${{ matrix.slug }}
+        path: build/scenarios
+        if-no-files-found: ignore
   feel:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -122,10 +393,10 @@ jobs:
     - name: Compare with the reference
       run: node scripts/gate.ts build/bench.jsonl build/bench-ref.jsonl
   # quality goal 2c: this commit's launch on a phone's CPU against bench-ref's, the Mac's reference too, in turns on the same runner, and at
-  # most 1.5 s from a launch to a drawn board
+  # most 1.5 s from a launch to a drawn board; then the measure's plant, a launch that must come out worse
   launch:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -158,6 +429,16 @@ jobs:
         scripts/build-site.sh "$RUNNER_TEMP/ref-site" ref
     - name: Measure and compare with the reference
       run: node scripts/launch.ts --ref "$RUNNER_TEMP/ref-site"
+    - name: Plants
+      if: ${{ !cancelled() }}
+      timeout-minutes: 15
+      run: node scripts/plants.ts --level L7
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: plants-L7
+        path: build/plants
+        if-no-files-found: ignore
   # New seeds every night, with the network profile and the mix of web and Swift devices in turn: Main fuzzes seeds 1–10
   # of one mix only. A failing seed's trace and the smallest one that still fails are in the fuzz artifact; replay one
   # with node scripts/fuzz.ts --replay FILE.
@@ -197,3 +478,58 @@ jobs:
       with:
         name: fuzz
         path: build/fuzz
+  # one place to read the night: the cases' failure rates across every device, each job's result, and an issue labelled
+  # nightly opened on the first red night and told of each night after, until someone closes it with the fix
+  summary:
+    needs:
+    - desktop
+    - android
+    - ios
+    - feel
+    - bench
+    - launch
+    - fuzz
+    if: ${{ always() }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: scenarios-*
+        path: build/nightly
+    - name: Sum up the night
+      env:
+        RESULTS: ${{ toJSON(needs) }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if [ -d build/nightly ]; then node scripts/scenario-stats.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
+        {
+          echo
+          echo "| Job | Result |"
+          echo "|---|---|"
+          jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$RESULTS"
+        } >> "$GITHUB_STEP_SUMMARY"
+        red=$(jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")' <<< "$RESULTS")
+        open=$(gh issue list --label nightly --state open --limit 1 --json number --jq '.[0].number // empty')
+        if [ -n "$red" ]; then
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "Red again on $(date -u +%F): $red — $RUN_URL"
+          else
+            gh issue create --label nightly --title "Nightly red since $(date -u +%F)" --body "Red: $red — $RUN_URL"
+          fi
+          echo "red: $red"
+          exit 1
+        elif [ -n "$open" ]; then
+          gh issue comment "$open" --body "Green on $(date -u +%F): $RUN_URL"
+        fi

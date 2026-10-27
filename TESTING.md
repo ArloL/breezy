@@ -48,7 +48,7 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 | L3 Hub cases on fakes | `scenarios/cases.test.ts`: `scenarios/cases.ts` on the fuzzer's virtual time | push | B1, B3, B4 across devices |
 | L4 Convergence fuzzer | `scripts/fuzz.ts`: seeds 1–10 on push, 120 new nightly | push, nightly | B4, B5's sync side |
 | L5 Platform replays | `scenarios/platform/`: recorded traces replayed into each browser | push | B2 |
-| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/ios.yaml`; and as the app added to the Home Screen (`ios-home`, added by `node scripts/ios.ts --home`), nightly too, on an iPhone 17 on iOS 27, whose share sheet's buttons it taps by where they are. The iPhone skips cases with two fingers, going offline or a busy phone, and those a case marks `notOnIphone` | push, nightly | B1, B2, B3, B5 as each platform really does them |
+| L6 Real devices | `scenarios/browsers.e2e.ts`: Chromium, WebKit, Firefox, the Mac app, Chrome and Firefox on the Android emulator on push; Safari on the iOS Simulator, as an iPhone 17 and as the owner's iPhone 13 mini, acting with one finger and iOS's own keyboard through idb (`scripts/sim-hid.py`) and read through an agent in its page (`scenarios/agent.ts`), nightly in `.github/workflows/nightly.yaml`; and as the app added to the Home Screen (`ios-home`, added by `node scripts/ios.ts --home`), nightly too, on an iPhone 17 on iOS 27, whose share sheet's buttons it taps by where they are. The iPhone skips cases with two fingers, going offline or a busy phone, and those a case marks `notOnIphone` | push, nightly | B1, B2, B3, B5 as each platform really does them |
 | L7 Long runs and measures | `scripts/feel.ts`, `scripts/launch.ts`, `scripts/bench.sh` and `scripts/gate.ts` nightly; `scripts/ios-chaos.ts` and `scripts/selftest.sh` by hand | nightly, by hand | B3 under load, B5 through the page's lifecycle, B6, B8 |
 | L8 Production | `scripts/deploy.py`'s check of the site and `scripts/relay-check.ts`, after each deploy in `.github/workflows/main.yaml` | each deploy | B7 |
 | Hand | the owner | always | whatever escapes, logged in `docs/escapes.md` |
@@ -67,10 +67,11 @@ A case failing often on a pair can be put in `scenarios/quarantine.ts` by hand, 
 |---|---|---|
 | L1 | plants (`scripts/plants.ts`), and a mutation score per module of the web core and of BreezyKit held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`, which keeps the survivors under build/mutation) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
 | L2 | the hub's field drifted on purpose, its keys telling the app nothing, fails its contract (`scenarios/field-contract.test.ts`) | push |
-| L3, L4, L6 | plants | weekly; L6 nightly, in the iOS workflow |
+| L3, L4 | plants | weekly, `.github/workflows/plants.yaml` |
+| L6 | plants, in Chromium | nightly, `.github/workflows/nightly.yaml` |
 | L5 | not yet: `ime-keys` survives it | |
 | L8 | `scripts/deploy-check.ts` runs the checks after a deploy against the site as built, served here with PHP; plants | weekly |
-| L7 | the launch measure in turns with the same build unplanted (`uncached-heights`); feel and bench not yet | weekly, `.github/workflows/plants.yaml` |
+| L7 | the launch measure in turns with the same build unplanted (`uncached-heights`); feel and bench not yet | nightly, `.github/workflows/nightly.yaml` |
 
 ## Matrix
 

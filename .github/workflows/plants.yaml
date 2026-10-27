@@ -1,7 +1,8 @@
 name: Plants
 
 # Each plant in TESTING.md's matrix put back, and each level that claims its class required to fail with it and pass
-# without it (scripts/plants.ts). The real devices' plant runs in iOS scenarios.
+# without it (scripts/plants.ts): the levels that run in Node here; the real devices' (L6) and the launch measure's (L7)
+# in Nightly.
 on:
   schedule:
   - cron: "11 5 * * 1"
@@ -33,17 +34,10 @@ jobs:
       run: |
         npm ci
         npm ci --prefix relay
-    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/Library/Caches/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-    # the launch measure's
-    - name: Install Chromium
-      run: npx playwright-core install chromium
     - name: Build breezy-sim
       run: swift build --package-path BreezyKit --product breezy-sim
     - name: Plants
-      run: node scripts/plants.ts --level L1,L3,L4,L7,L8
+      run: node scripts/plants.ts --level L1,L3,L4,L8
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
