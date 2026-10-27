@@ -705,3 +705,38 @@ private final class RecordingProtocol: URLProtocol, @unchecked Sendable {
   await engine.sync()
   #expect(a.store.pending.isEmpty)
 }
+
+@MainActor @Test func aChangePushesNowOnlyInASpaceNotStoppedBackedOffOrHeldBack() async {
+  let (_, a, b, _) = await pair()
+  #expect(a.engine.pushesNow)
+  a.engine.holdBack = { true }
+  #expect(!a.engine.pushesNow)
+  a.engine.holdBack = nil
+  a.transport.online = false
+  await a.engine.sync()
+  #expect(!a.engine.pushesNow)
+  b.transport.failure = .unauthorized
+  await b.engine.sync()
+  #expect(!b.engine.pushesNow)
+  #expect(!SyncEngine(store: Store(), transport: { _, _ in FakeTransport(FakeServer()) }).pushesNow)
+}
+
+@MainActor @Test func twoRecordsPushedInARowAreAppliedWithoutAPull() async {
+  let (_, a, b, id) = await pair()
+  let p = await pushedBy(a, id)
+  let second = await pushedBy(a, id, color: 4)
+  var both = p
+  both.records = p.records + second.records
+  let calls = b.transport.calls
+  #expect(await b.engine.receivePushed(both))
+  #expect(b.transport.calls == calls)
+  #expect(b.store.board(id).cards[0].color == 4)
+}
+
+@MainActor @Test func aRelayIsAWebSocketOverTLSOrPlainToThisComputer() {
+  #expect(SyncEngine.validRelay("wss://relay.example/"))
+  #expect(SyncEngine.validRelay("ws://localhost:8787/"))
+  #expect(!SyncEngine.validRelay("ws://relay.example/"))
+  #expect(!SyncEngine.validRelay("wss:///relay"))
+  #expect(!SyncEngine.validRelay(""))
+}

@@ -1585,3 +1585,60 @@ private func firstItem(_ v: [Pack], _ key: Int64) -> Pack? { v[5].map?.first?.1.
   relay.run()
   #expect(ts[0].sent.map(\.id).sorted() == everyone)
 }
+
+@MainActor @Test func aNewNameIsShownToOthersAndTheSameOneSendsNothing() {
+  let (relay, _, a, b) = two()
+  a.me = Person(device: a.me.device, name: "Ana Maria")
+  relay.run()
+  #expect(b.people(on: B1).map(\.name) == ["Ana Maria"])
+  let frames = relay.frames.count
+  a.me = Person(device: a.me.device, name: "Ana Maria")
+  a.setPresence(board: B1, selection: [])
+  relay.run()
+  #expect(relay.frames.count == frames)
+}
+
+@MainActor @Test func peopleAreInTheOrderOfTheirNames() {
+  let (relay, clock, a, b) = two()
+  let c = live(relay, clock, name: "Cy")
+  c.connect()
+  relay.run()
+  c.setPresence(board: B1, selection: [])
+  relay.run()
+  #expect(c.people(on: B1).map(\.name) == ["Ana Lima", "Bo"])
+  #expect(a.people(on: B1).map(\.name) == ["Bo", "Cy"])
+  #expect(b.people(on: B1).map(\.name) == ["Ana Lima", "Cy"])
+}
+
+@MainActor @Test func anOverlayTakesOnlyTheLiveFieldsAKindAndAGoneThatIsTrue() throws {
+  let (relay, clock, a, b) = two()
+  a.hold([C1, C2])
+  relay.run()
+  try inject(relay, from: a, [
+    "t": .string("live"), "board": .string(B1), "caret": .null,
+    "items": .object([
+      C1: .object(["pos": pos(1, 2), "kind": .string("card"), "secret": .bool(true), "gone": .bool(false)]),
+      C2: .object(["gone": .bool(true)]),
+    ]),
+  ])
+  clock.advance(0.2)
+  #expect(b.overlay(on: B1) == [C1: ["pos": pos(1, 2), "kind": .string("card")], C2: ["gone": .bool(true)]])
+}
+
+@MainActor @Test func aBodyWithASeqNoNewerThanTheLastOfItsKindIsDropped() throws {
+  let (relay, clock, a, b) = two()
+  for (x, seq) in [(5.0, 5.0), (9, 5), (1, 4)] {
+    try inject(relay, from: a, ["t": .string("cursor"), "board": .string(B1), "x": .number(x), "y": .number(0), "seq": .number(seq)])
+    clock.advance(0.2)
+  }
+  #expect(b.cursors(on: B1).map { $0.cursor.x } == [5])
+}
+
+@MainActor @Test func aTickTellsOfAPeerGone() {
+  let (_, clock, _, b) = two()
+  var changes = 0
+  b.onChange = { changes += 1 }
+  clock.advance(Live.gone + 1)
+  b.tick()
+  #expect(b.people(on: B1).isEmpty && changes == 1)
+}
