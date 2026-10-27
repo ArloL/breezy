@@ -87,6 +87,12 @@ private struct LiveVector: Decodable { var secret, space, relayToken, nonce, pla
   #expect(keys.relayToken != keys.token)
 }
 
+@Test func base64URLTakesOnlyItsOwnAlphabetAndPadsWhatItDecodes() {
+  #expect(Base64URL.decode("a+b/") == nil)
+  #expect(Base64URL.decode("AAE") == Data([0, 1]))
+  #expect(Base64URL.decode("AA") == Data([0]))
+}
+
 @Test func liveMessagesAndRecordsNeverPassForEachOther() throws {
   let keys = SpaceKeys(space: randomBytes(16), secret: randomBytes(32))
   let body = try keys.sealLive(Data("x".utf8))

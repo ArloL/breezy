@@ -91,6 +91,23 @@ import Testing
   #expect(olds.count == 2)
 }
 
+@Test func aCancelAndAReplaceNotifyOnlyWhenTheyChangeTheBoard() {
+  let m = BoardModel(board: board([card("a", 0, 0)]))
+  var olds: [Board] = []
+  m.onChange = { olds.append($0) }
+  m.begin()
+  m.cancel()
+  m.replace(m.board)
+  #expect(olds.isEmpty)
+  m.begin()
+  m.update { $0.setText("a", "typed") }
+  m.cancel()
+  #expect(olds.count == 2)
+  m.replace(board([card("z", 0, 0)]))
+  #expect(olds.last == board([card("a", 0, 0)]))
+  #expect(olds.count == 3)
+}
+
 @Test func undoDuringGestureCancelsIt() {
   let m = BoardModel(board: board([card("a", 0, 0)]))
   m.perform("Colour") { $0.setColor(["a"], 2) }

@@ -10,6 +10,7 @@ import Testing
   #expect(index.string == "Doing\u{2029}Two\u{2029}One\u{2029}Back")
   #expect(index.entries.map(\.id) == ["l", "c2", "c1", "c1"])
   #expect(index.entries.map(\.side) == [.title, .front, .front, .back])
+  #expect(index.entries.map(\.range) == [NSRange(location: 0, length: 5), NSRange(location: 6, length: 3), NSRange(location: 10, length: 3), NSRange(location: 14, length: 4)])
 }
 
 @Test func locateMapsAMatchToItsItemAndSide() {

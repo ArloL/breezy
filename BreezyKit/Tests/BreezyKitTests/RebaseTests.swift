@@ -37,6 +37,17 @@ import Testing
   #expect(Board.rebase(base: base, mine: mine, theirs: theirs).cards.map(\.id) == ["b", "a", "c"])
 }
 
+@Test func rebaseTakesMyLanesPlaceAndSizeEachWhereTheyLeftItAlone() {
+  let base = board([], [lane("l", 0, 0, 480, 720)])
+  func rebased(_ mine: Lane, _ theirs: Lane) -> [Double] {
+    let l = Board.rebase(base: base, mine: board([], [mine]), theirs: board([], [theirs])).lane("l")!
+    return [l.x, l.y, l.w, l.h]
+  }
+  #expect(rebased(lane("l", 96, 24, 480, 720), lane("l", 0, 0, 528, 768)) == [96, 24, 528, 768])
+  #expect(rebased(lane("l", 0, 0, 528, 768), lane("l", 48, 24, 480, 720)) == [48, 24, 528, 768])
+  #expect(rebased(lane("l", 96, 24, 576, 768), lane("l", 48, 0, 528, 720)) == [48, 0, 528, 720])
+}
+
 @Test func rebaseBringsBackWhatIAdded() {
   let base = board([card("a", 0, 0)])
   let mine = board([card("a", 0, 0), card("n", 0, 96)])

@@ -65,7 +65,7 @@ A case that `scripts/flake-budget.ts` names as failing most, on a pair, can be p
 
 | Level | Proven by | Runs |
 |---|---|---|
-| L1 | plants (`scripts/plants.ts`), and a mutation score per module held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`, which keeps the survivors under build/mutation) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
+| L1 | plants (`scripts/plants.ts`), and a mutation score per module of the web core and of BreezyKit held to its floor in `scripts/mutation-floors.json` (`scripts/mutate.ts`, which keeps the survivors under build/mutation) | weekly, `.github/workflows/plants.yaml` and `.github/workflows/mutation.yaml` |
 | L2 | the hub's field drifted on purpose, its keys telling the app nothing, fails its contract (`scenarios/field-contract.test.ts`) | push |
 | L3, L4, L6 | plants | weekly; L6 nightly, in the iOS workflow |
 | L5 | not yet: `ime-keys` survives it | |

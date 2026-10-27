@@ -25,6 +25,46 @@ import Testing
   #expect(model.undoManager.undoActionName == "Edit Card")
 }
 
+@MainActor @Test func editsFlushOnceAfterAPauseAndAgainAfterTheNextPause() {
+  let store = Store()
+  let id = store.createBoard(title: "B", contents: board([card("a", 0, 0)]))
+  settle(store)
+  let model = BoardModel(board: store.board(id))
+  var due: [(TimeInterval, @MainActor () -> Void)] = []
+  let binding = BoardBinding(id: id, model: model, store: store, schedule: { due.append(($0, $1)) })
+  model.perform("Move") { $0.cards[0].x = 48 }
+  model.perform("Move") { $0.cards[0].x = 96 }
+  #expect(due.map(\.0) == [0.3])
+  due.removeFirst().1()
+  #expect(store.board(id).card("a")?.x == 96)
+  model.perform("Move") { $0.cards[0].x = 144 }
+  #expect(due.map(\.0) == [0.3])
+  due.removeFirst().1()
+  #expect(store.board(id).card("a")?.x == 144)
+  withExtendedLifetime(binding) {}
+}
+
+@MainActor @Test func aFlushTellsWhetherItWroteAnything() {
+  let (_, _, model, binding) = opened(board([card("a", 0, 0), card("b", 0, 96)]))
+  #expect(!binding.flush())
+  binding.taken = { ["b"] }
+  model.perform("Move") { $0.cards[1].x = 48 }
+  #expect(!binding.flush())
+  model.perform("Move") { $0.cards[0].x = 48 }
+  #expect(binding.flush())
+}
+
+@MainActor @Test func aGestureEndPullsOnlyWhenAPullWaitedForIt() async throws {
+  let (store, id, model, binding) = opened(board([card("a", 0, 0)]))
+  binding.pull()
+  store.merge([Incoming(id: "n", version: 2, record: Records.card(card("n", 0, 96, "new"), board: id, order: "z"))])
+  model.begin()
+  model.update { $0.setText("a", "typed") }
+  model.end("Edit Card")
+  try await Task.sleep(for: .milliseconds(50))
+  #expect(model.board.card("n") == nil)
+}
+
 @MainActor @Test func restackingAMergeIsShownButNotWritten() {
   let (store, id, model, binding) = opened(board([card("a", 0, 0)]))
   binding.restack = { b in for i in b.cards.indices { b.cards[i].y += 24 } }
