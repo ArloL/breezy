@@ -3,7 +3,8 @@
 // device touches it through idb (brew install facebook/fb/idb-companion, and uv for scripts/sim-hid.py) and reads its
 // page through the agent the scenarios' server puts in it. Stop the iPhone with xcrun simctl shutdown all. With --start
 // it only starts the boot, which CI does first, for the iPhone to settle while the rest installs. With --home it also puts
-// the scenarios' app on the Home Screen as "Breezy Scenarios", for the ios-home device, on any iPhone.
+// the scenarios' app on the Home Screen as "Breezy Scenarios", for the ios-home device, on any iPhone: given with --start,
+// before the one boot, as a clip written to a booted iPhone costs it a second.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
