@@ -65,3 +65,10 @@ import Testing
   #expect(resized["l"] == ["size": pos(487, 729)])
   #expect(Records.floated(items, board: b, held: ["a"], by: nil) == items)
 }
+
+@Test func anOverlayTakesAGoneLaneOffTheBoardAndAddsNoKnownItemAgain() {
+  let b = board([card("a", 0, 0)], [lane("l", 0, 0), lane("k", 600, 0)])
+  let shown = b.overlaid(["l": ["gone": .bool(true)], "a": ["kind": .string("card"), "text": .string("typed")]])
+  #expect(shown.lanes.map(\.id) == ["k"])
+  #expect(shown.cards.map(\.id) == ["a"])
+}

@@ -356,3 +356,40 @@ final class Servers {
   #expect(gb.store.title(of: id3) == "Later")
   #expect(!server.pulls.isEmpty)
 }
+
+@MainActor @Test func syncingAllWithoutPollingSyncsAConnectedSpaceAtOnceAndRetryingKeepsItsSocket() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let spaces = try liveSpaces(servers, relay)
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  servers.server(g.space!).relay = "wss://relay.example/"
+  await g.engine.sync()
+  g.live!.connect()
+  relay.run()
+  await g.engine.sync()
+  let before = g.engine.lastSynced!, socket = relay.sockets.first
+  spaces.syncAll(now: before.addingTimeInterval(10))
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(g.engine.lastSynced! > before)
+  spaces.retryAll()
+  relay.run()
+  #expect(relay.sockets.count == 1 && relay.sockets.first === socket)
+}
+
+@MainActor @Test func anAnnouncedVersionThisDeviceHasIsNotPulledAndANewerOneIs() async throws {
+  let servers = Servers(), relay = FakeRelay()
+  let spaces = try liveSpaces(servers, relay)
+  let g = spaces.newSpace(server: testServer, name: "Work")
+  let server = servers.server(g.space!)
+  server.relay = "wss://relay.example/"
+  await g.engine.sync()
+  g.live!.connect()
+  relay.run()
+  await g.engine.sync()
+  server.pulls = []
+  g.live!.onPushed?(g.store.state.cursor, nil)
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(server.pulls.isEmpty)
+  g.live!.onPushed?(g.store.state.cursor + 1, nil)
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(!server.pulls.isEmpty)
+}

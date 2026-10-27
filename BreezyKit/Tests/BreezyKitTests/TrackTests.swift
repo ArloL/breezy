@@ -19,3 +19,22 @@ import Testing
     }
   }
 }
+
+@Test func anEmptyTrackIsNotPlaying() {
+  #expect(!Track().playing(0))
+}
+
+@Test func aSampleAtTheSameTimeAsTheLastIsDropped() {
+  var t = Track()
+  t.push(at: 0, arrival: 0, value: [0])
+  t.push(at: 0, arrival: 10, value: [5])
+  #expect(t.sample(1000) == [0])
+}
+
+@Test func aSampleLateWithoutAPauseIsMovedTowardsRatherThanHeldFor() {
+  var t = Track()
+  for at in [0.0, 16, 32] { t.push(at: at, arrival: 1000 + at, value: [0]) }
+  t.push(at: 100, arrival: 1100, value: [68])
+  #expect(t.delay == 16)
+  #expect(t.sample(1082) == [34])
+}

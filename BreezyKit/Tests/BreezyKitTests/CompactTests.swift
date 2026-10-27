@@ -109,6 +109,30 @@ private func valid(_ x: Double) -> LiveBody {
     #expect(got?["items"] == .object([:]))
   }
 
+  @Test func aSpliceReplacesWhatItDeletesAndOneReachingPastTheTextIsNotApplied() throws {
+    let id = Base64URL.decode(a)!, board = Base64URL.decode(b1)!
+    func splice(at: Int, del: Int) throws -> [String: JSONValue]? {
+      let s = Pack.array([.int(Int64(Compact.fnv1a("abcdef"))), .int(Int64(at)), .int(Int64(del)), .string("X")])
+      let wire = try Pack.array([.int(2), .int(1), .int(1), .bin(board), .null, .map([(.bin(id), .map([(.int(3), s)]))]), .null, .null]).packed()
+      return LiveDecoder().decode(wire, overlay: [a: ["text": .string("abcdef")]])
+    }
+    #expect(try splice(at: 2, del: 2)?["items"] == .object([a: .object(["text": .string("abXef")])]))
+    #expect(try splice(at: 4, del: 3)?["items"] == .object([:]))
+  }
+
+  @Test func aCursorAfterResetIsAKeyframeAndOneSeenAlreadyIsDropped() throws {
+    let t0 = Date(timeIntervalSince1970: 0), enc = CursorEncoder(), decoder = LiveDecoder()
+    let first = try enc.encode(seq: 1, at: 0, x: 1, y: 1, board: b1, now: t0)
+    let second = try enc.encode(seq: 2, at: 0.1, x: 1, y: 1, board: b1, now: t0.addingTimeInterval(0.1))
+    enc.reset()
+    let third = try enc.encode(seq: 3, at: 0.2, x: 1, y: 1, board: b1, now: t0.addingTimeInterval(0.2))
+    // a keyframe names its board, which a decoder that missed the first needs
+    #expect(LiveDecoder().decode(second) == nil)
+    #expect(LiveDecoder().decode(third) != nil)
+    #expect(decoder.decode(first) != nil)
+    #expect(decoder.decode(first) == nil)
+  }
+
   @Test func isCompactTellsArraysFromOtherBytes() {
     #expect(Compact.isCompact(bytes("9101")))
     #expect(Compact.isCompact(bytes("dc0000")))

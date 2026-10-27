@@ -62,7 +62,7 @@ async function setup() {
     await engine.running;
     await relay.run();
   };
-  return { clock, relay, store, transport, engine, live: mine, other, collab, b1, b2, open, pushes, settle };
+  return { clock, relay, store, transport, engine, group, live: mine, other, collab, b1, b2, open, pushes, settle };
 }
 
 const colorOf = (store: Store, b: string, cid: string) => store.board(b).cards.find((c: Card) => c.id === cid)!.color;
@@ -176,4 +176,40 @@ test("an edit ending a gesture that held nothing counts as an edit outside a ges
   assert.equal(colorOf(d.store, d.b1, C1), 5);
   assert.equal(d.pushes(), before + 1);
   assert.deepEqual(Object.fromEntries(d.other.overlay(d.b1)), { [C1]: { color: 5 } });
+});
+
+test("holdBack is false without a live layer", async () => {
+  const d = await setup();
+  const { model } = d.open(d.b1);
+  d.group.live = null;
+  model.begin();
+  assert.equal(d.engine.holdBack(), false);
+});
+
+test("a gesture that held nothing after one that held counts as an edit outside a gesture", async () => {
+  const d = await setup();
+  const { model, session } = d.open(d.b1);
+  model.begin();
+  session.hold(new Set([C1]));
+  model.update(move(C1, 72));
+  model.end("Move");
+  await d.settle();
+  const before = d.pushes();
+  model.begin();
+  model.update((b) => R.setColor(b, new Set([C2]), 5));
+  model.end("Color");
+  d.clock.advance(200);
+  await d.settle();
+  assert.equal(d.pushes(), before + 1);
+  assert.deepEqual(d.other.overlay(d.b1).get(C2), { color: 5 });
+});
+
+test("a closed board no longer counts as busy, and the others still do", async () => {
+  const d = await setup();
+  const one = d.open(d.b1), two = d.open(d.b2);
+  one.model.begin();
+  one.session.close();
+  assert.equal(d.collab.busy, false);
+  two.model.begin();
+  assert.equal(d.collab.busy, true);
 });

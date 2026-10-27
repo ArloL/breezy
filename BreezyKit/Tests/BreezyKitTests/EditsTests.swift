@@ -127,3 +127,21 @@ import Testing
   let free = b.openSpot(w: 288, h: 720, near: 130, 1000, heightOf: h48)
   #expect([free.x, free.y] == [120, 1008])
 }
+
+@Test func openSpotKeepsAGridClearOfAnItemRightOfOrBelowIt() {
+  let right = board([card("a", 252, 0)], []).openSpot(w: 240, h: 48, near: 0, 0, heightOf: h48)
+  #expect([right.x, right.y] == [-24, 0])
+  let below = board([card("a", 0, 60)], []).openSpot(w: 240, h: 48, near: 0, 0, heightOf: h48)
+  #expect([below.x, below.y] == [0, -24])
+}
+
+@Test func recentringLeavesABoardReachingEachLimitAndMovesOneReachingPastAnyOne() {
+  let reaching = [lane("l", -240, 0, 96, 96), lane("l", 144, 0, 96, 96), lane("l", 0, -240, 96, 96), lane("l", 0, 144, 96, 96)]
+  for l in reaching {
+    #expect(board([], [l]).recentred(within: 240) == board([], [l]))
+    var past = l
+    past.x += l.x < 0 ? -24 : l.x > 0 ? 24 : 0
+    past.y += l.y < 0 ? -24 : l.y > 0 ? 24 : 0
+    #expect(board([], [past]).recentred(within: 240) != board([], [past]), "\(past)")
+  }
+}
