@@ -1,7 +1,7 @@
 name: Mutation
 
-# The web core's unit tests held to their mutation scores (scripts/mutate.ts): a module scoring below its floor in
-# scripts/mutation-floors.json fails, and each module's surviving changes are kept.
+# The web core's and BreezyKit's unit tests held to their mutation scores (scripts/mutate.ts): a module scoring below its
+# floor in scripts/mutation-floors.json fails, and each module's surviving changes are kept.
 on:
   schedule:
   - cron: "29 5 * * 2"
@@ -14,7 +14,7 @@ on:
 permissions: {}
 
 jobs:
-  mutation:
+  web:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -28,10 +28,33 @@ jobs:
         node-version: 24
         package-manager-cache: false
     - name: Mutation
-      run: node scripts/mutate.ts
+      run: node scripts/mutate.ts --module web/
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
-        name: mutation
+        name: mutation-web
+        path: build/mutation
+        if-no-files-found: ignore
+  breezykit:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    # the Xcode the other jobs build with
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - name: Mutation
+      run: node scripts/mutate.ts --module BreezyKit/
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: mutation-breezykit
         path: build/mutation
         if-no-files-found: ignore

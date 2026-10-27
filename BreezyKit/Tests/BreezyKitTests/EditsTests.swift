@@ -75,6 +75,40 @@ import Testing
   #expect([b.card("a")!.x, b.card("a")!.y] == [96, 48])
 }
 
+@Test func openSpotFindsTheNearestPlaceLeftOfOrAboveAnItem() {
+  let s = board([], [lane("l", 600, 0, 480, 720)]).openSpot(w: 288, h: 200, near: 500, 100, heightOf: h48)
+  #expect([s.x, s.y] == [288, 96])
+  let t = board([], [lane("l", 0, 600, 720, 480)]).openSpot(w: 200, h: 288, near: 100, 500, heightOf: h48)
+  #expect([t.x, t.y] == [96, 288])
+}
+
+@Test func aLaneOffTheOriginCarriesItsCardsByTheDistanceItMoved() {
+  var b = board([card("a", 72, 96)], [lane("l", 48, 24)])
+  b.moveLane(Origin(id: "l", x: 48, y: 24), cards: [Origin(id: "a", x: 72, y: 96)], dx: 61, dy: 50)
+  #expect([b.lane("l")!.x, b.lane("l")!.y] == [120, 72])
+  #expect([b.card("a")!.x, b.card("a")!.y] == [144, 144])
+}
+
+@Test func rectsTouchingAtAnEdgeDoNotOverlapAndAnEdgeIsInside() {
+  let r = Rect(x: 0, y: 0, w: 10, h: 10)
+  for o in [Rect(x: 10, y: 0, w: 5, h: 5), Rect(x: -5, y: 0, w: 5, h: 5), Rect(x: 0, y: 10, w: 5, h: 5), Rect(x: 0, y: -5, w: 5, h: 5)] {
+    #expect(!r.intersects(o))
+  }
+  #expect(!r.sharesColumn(with: Rect(x: 10, y: 50, w: 5, h: 5)))
+  #expect(!r.sharesColumn(with: Rect(x: -5, y: 50, w: 5, h: 5)))
+  #expect(r.contains(0, 0) && r.contains(10, 10))
+  #expect(Metrics.laneWidth == 288)
+}
+
+@Test func recentringCentresTheBoardOnTheOriginOnceItReachesPastTheLimit() {
+  let b = board([card("a", 0, 0)], [lane("l", 40_000, 0, 480, 720)])
+  let r = b.recentred(within: 20_000)
+  #expect([r.card("a")!.x, r.card("a")!.y] == [-20_232, -360])
+  #expect([r.lane("l")!.x, r.lane("l")!.y] == [19_768, -360])
+  let edge = board([card("a", -240, -240)], [lane("l", 0, 0, 240, 240)])
+  #expect(edge.recentred(within: 240) == edge)
+}
+
 @Test func resizeLaneSnapsAndKeepsAMinimumSize() {
   var b = board([], [lane("l", 0, 0)])
   b.resizeLane("l", w: 520, h: 10)

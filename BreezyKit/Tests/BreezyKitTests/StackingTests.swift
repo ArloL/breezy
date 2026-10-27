@@ -86,3 +86,22 @@ private func stackBoard(_ h: Double = 480) -> Board {
   b.land(["d"], room: d.room)
   #expect(b.card("d")!.x == 312)
 }
+
+@Test func aLaneOffTheOriginCentresACardInTheColumnUnderItsCentreOrInTheLaneWhenWider() {
+  let l = lane("l", 48, 0, 768)
+  #expect(l.column(for: Rect(x: 278, y: 0, w: 240, h: 48)) == 120)
+  #expect(l.column(for: Rect(x: 548, y: 0, w: 240, h: 48)) == 504)
+  #expect(l.column(for: Rect(x: 548, y: 0, w: 384, h: 48)) == 432)
+  #expect(l.column(for: Rect(x: 548, y: 0, w: 500, h: 48)) == 182)
+}
+
+@Test func aLaneOffTheOriginGrowsToFitItsStackFromItsOwnTop() {
+  var b = board([card("a", 24, 168)], [lane("l", 0, 96, 288, 96)])
+  b.gravity(h48)
+  #expect(b.lane("l")!.h == 144)
+}
+
+@Test func aPileHasNoCardLevelWithItsTop() {
+  let b = board([card("a", 24, 72), card("b", 48, 72), card("c", 24, 144)], [lane("l", 0, 0, 288)])
+  #expect(b.pile("a", heightOf: h48) == ["a", "c"])
+}
