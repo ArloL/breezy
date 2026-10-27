@@ -202,12 +202,12 @@ jobs:
         include-hidden-files: true
     - name: Make sure build did not change anything
       run: git diff --exit-code
-  # The scenarios on real devices against sync.php and the relay: the web app in Chromium, WebKit and Firefox and the Debug
-  # Mac app, which they drive through -BreezyControl. Android's pairs run in the android job; the Mac → Android pair stays
-  # local, as GitHub's macOS runners cannot run the emulator and Linux's have no Mac app.
-  scenarios:
+  # The platform replays in Chromium, WebKit and Firefox, and the smoke cases (scenarios/smoke.ts) on real devices against
+  # sync.php and the relay: the web app in Chromium with the Debug Mac app watching, driven through -BreezyControl, each
+  # case run once. The gate's share of the real devices; every case on every pair runs nightly
+  desktop:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -245,20 +245,16 @@ jobs:
       run: |
         xcodegen generate
         xcodebuild -project Breezy.xcodeproj -scheme Breezy -configuration Debug -derivedDataPath build build
-    - name: Scenarios on real devices
-      timeout-minutes: 30
-      # a case that fails gets a second run: one that then passes warns, its logs kept, rather than block a merge
+    - name: Smoke cases on real devices
+      timeout-minutes: 8
       env:
-        SCENARIO_RUNS: "2"
-        # quarantined cases leave the checks on push (scenarios/quarantine.ts)
-        SCENARIO_QUARANTINE: skip
+        SCENARIO_SMOKE: "1"
+        SCENARIO_PAIRS: chromium:mac
       # a handle left open once kept node from exiting after the last case, until the job timed out
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
-    - name: Warn of the cases that failed once
+    - name: Count the cases
       if: ${{ always() }}
-      run: |
-        if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
-        node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
     # passing too, as a failure is read against a pass
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
@@ -266,12 +262,12 @@ jobs:
         name: scenarios
         path: build/scenarios
         if-no-files-found: ignore
-  # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
-  # cannot run one
+  # The smoke cases with Chrome on an Android emulator acting and Chromium watching: GitHub's Linux runners have KVM, its
+  # macOS runners cannot run one. Every Android pair, and Firefox on the emulator, run nightly
   android:
     runs-on: ubuntu-latest
-    # apt and the scenarios each take half again as long on some runners
-    timeout-minutes: 60
+    # apt takes half again as long on some runners
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
@@ -290,11 +286,11 @@ jobs:
         node-version: 24
         package-manager-cache: false
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
-    - name: Install zsh, PHP's SQLite and KVM access
+    - name: Install PHP's SQLite and KVM access
       run: |
         # a mirror mid-sync fails a download now and then
         sudo apt-get --option Acquire::Retries=5 update
-        sudo apt-get --option Acquire::Retries=5 install --yes zsh php-cli php-sqlite3
+        sudo apt-get --option Acquire::Retries=5 install --yes php-cli php-sqlite3
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
@@ -307,7 +303,7 @@ jobs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-    # the packages WebKit needs, 119 MB, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
+    # the packages Chromium needs, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
     # the runner's image, which only its shell has, not the workflow's env
     - id: image
       run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
@@ -319,16 +315,16 @@ jobs:
         path: ~/apt-archives
         key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-
-    # the browsers the Android devices pair with
-    - name: Install Chromium and WebKit
+    # the browser the Android device pairs with
+    - name: Install Chromium
       # well within the job's time, as a mirror that stalls takes it all
-      timeout-minutes: 15
+      timeout-minutes: 8
       run: |
         echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded
         # a stalled download again after 30 s rather than waiting out the mirror: it stalled 1 to 5 minutes at a time
         printf 'Acquire::http::Timeout "30";\nAcquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/99retries
         if compgen -G ~/apt-archives/'*.deb' > /dev/null; then sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/; fi
-        npx playwright-core install --with-deps chromium webkit
+        npx playwright-core install --with-deps chromium
     # what came down kept, even when the mirror ran out the step's time, so that the next run goes on from it; only when
     # something came that the cache lacked, as a key is never written twice
     - name: Keep the downloaded packages
@@ -356,23 +352,17 @@ jobs:
       # twice, if need be
       timeout-minutes: 16
       run: mise exec -- scripts/android-boot.sh
-    - name: Scenarios on Android
-      timeout-minutes: 40
+    - name: Smoke cases on Android
+      timeout-minutes: 8
       env:
-        SCENARIO_RUNS: "2"
-        # quarantined cases leave the checks on push (scenarios/quarantine.ts)
-        SCENARIO_QUARANTINE: skip
+        SCENARIO_SMOKE: "1"
+        SCENARIO_PAIRS: android:chromium
       run: |
         mise exec -- scripts/android-load.sh build/android-load.txt &
-        mise exec -- node --test --test-force-exit --test-name-pattern android scenarios/browsers.e2e.ts
-    - name: Platform rows on Android
-      timeout-minutes: 8
-      run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
-    - name: Warn of the cases that failed once
+        mise exec -- node --test --test-force-exit scenarios/browsers.e2e.ts
+    - name: Count the cases
       if: ${{ always() }}
-      run: |
-        if [ -f build/scenarios/flaky.txt ]; then sed 's/^/::warning title=Flaky scenario::/' build/scenarios/flaky.txt; fi
-        node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
     - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
       # bounded, as the upload after it runs only once this step ends
@@ -537,7 +527,8 @@ jobs:
     needs:
     - macos
     - web
-    - scenarios
+    - sync
+    - desktop
     - android
     # GitHub Actions skips this job when any of the dependents fail. And skips
     # are considered success in their weird logic. So we always run it and fail
