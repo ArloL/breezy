@@ -55,11 +55,13 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 `docs/superpowers/specs/2026-10-11-breezy-testability-design.md` says how scenarios drive every kind of device, `docs/platform-expectations.md` which platform input is tested where, and `docs/quality-goals.md` what all of it protects.
 
-## Two jobs
+## The gate and the nightly
 
-The checks on every push guard: they block merging and must be red only for a bug. The nightly runs discover: they find what the fakes do not know yet. A flaky run is a bug of its level, fixed before new features. Main still gives a failing real-device case a second run and only warns when it then passes.
+The checks on a pull request are the gate: every job of `.github/workflows/main.yaml` is required, it is done within ten minutes, and it is red only for a bug. It holds the type check, the unit tests, the hub's cases and the conformance test, fuzz seeds 1–10, the platform replays, the Mac app's tests, and the smoke cases: the few marked `smoke` in `scenarios/cases.ts` (`scenarios/smoke.ts`, held to five to eight by `scenarios/smoke.test.ts`), in Chromium with the Mac app watching and with Chrome on the Android emulator acting, each run once. A smoke case that fails is fixed, or loses its mark; nothing is run again into green, and nothing is quarantined. The iPhone is never in the gate.
 
-A case failing often on a pair can be put in `scenarios/quarantine.ts` by hand, with why and since when, until it is fixed: Main skips it there. `scripts/test/discipline.test.ts` keeps the cases to conditions rather than fixed waits, each wait they keep listed with why, and to driving devices only through `scenarios/device.ts`.
+The nightly (`.github/workflows/nightly.yaml`) discovers: every case on every pair of real devices, the iPhone among them, the measures, 120 fresh fuzz seeds and the real devices' plants, summed up in one place with an issue labelled `nightly` for as long as a night is red. A red night is a bug of its level, fixed before new features through "When a bug escapes" below. `gh workflow run nightly.yaml --ref <branch>` tries a branch on real devices.
+
+`scripts/test/discipline.test.ts` keeps the cases to conditions rather than fixed waits, each wait they keep listed with why, and to driving devices only through `scenarios/device.ts`.
 
 ## How each level is proven
 

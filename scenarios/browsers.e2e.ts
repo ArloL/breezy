@@ -4,15 +4,11 @@
 // under MISE_ENV=android mise exec -- after node scripts/android.ts for Android.
 import { beforeEach, test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { cases, type Case } from "./cases.ts";
 import { dropFenix, RealWorld, rebootedAndroid, rebootFullEmulator, type RealKind } from "./browser.ts";
 import { iosUnfit } from "./ios.ts";
 import { macUnfit } from "./mac.ts";
-import { RECORDS } from "./record.ts";
 import { exitsAfter } from "./exit.ts";
-import { quarantined } from "./quarantine.ts";
 import { smoke } from "./smoke.ts";
 
 const noMac = macUnfit();
@@ -33,9 +29,7 @@ const ios = (k: RealKind) => k === "ios-safari" || k === "ios-home";
 const phone = (k: RealKind) => k === "android" || k === "firefox-android" || ios(k);
 const android = (k: RealKind) => k === "android" || k === "firefox-android";
 
-/** Runs a case gets before it fails, each in a fresh world: Main gives 2, so that a rare flake warns where it would block
- * a merge, and lists it in build/scenarios/flaky.txt; soaks give 1, to count every failure. */
-const RUNS = Number(process.env.SCENARIO_RUNS ?? 1);
+/** One run of each case, in a fresh world: a case that fails is a bug of its level, never run again into green. */
 const MS = 90_000;
 /** How long a world may take to start, outside its case's time: on CI's runner an iPhone once took 48 s to launch Safari
  * and 16 s to join, and its case had 4 s of its 90 left. */
@@ -85,25 +79,15 @@ for (const c of smoke(cases)) {
     // Safari on the iOS Simulator has one finger, and cannot go offline, be kept busy or start outside the space yet
     if (c.input === "touch" && a === "mac" || c.input === "mouse" && phone(a) || c.acts && !c.acts.includes(a) || c.watches && !c.watches.includes(b) || ios(a) && ((c.fingers ?? 1) > 1 || c.offline || c.busy || c.fresh || c.notOnIphone)) continue;
     const skip = [a, b].includes("mac") && noMac || [a, b].some(android) && noAndroid || [a, b].some(ios) && noIos;
-    const out = process.env.SCENARIO_QUARANTINE === "skip" && quarantined(c.name, `${a}:${b}`) || false;
-    test(`${c.name} (${a} → ${b})`, { skip: skip || out, timeout: RUNS * (START_MS + (c.ms ?? MS) + 60_000) }, async (t) => {
-      let first: Error | null = null;
-      for (let run = 1; ; run++) {
-        if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
-        // outside the run's time, and before a second run too, which a panic in the first leaves on a phone booting
-        if ([a, b].some(android)) {
-          const said = await rebootedAndroid();
-          if (said) console.log(said);
-        }
-        const e = await once(t.name, c, [a, b], run);
-        if (!e) break;
-        if (run === RUNS) throw first ?? e;
-        first ??= e;
+    test(`${c.name} (${a} → ${b})`, { skip, timeout: START_MS + (c.ms ?? MS) + 60_000 }, async (t) => {
+      if (unserved >= 2) throw new Error(`not run: the servers did not start for the last ${unserved} cases: ${unservedBy}`);
+      // outside the run's time, as a panic in the case before leaves a phone booting
+      if ([a, b].some(android)) {
+        const said = await rebootedAndroid();
+        if (said) console.log(said);
       }
-      if (!first) return;
-      t.diagnostic(`flaky: failed once, then passed: ${first.message}`);
-      mkdirSync(RECORDS, { recursive: true });
-      appendFileSync(join(RECORDS, "flaky.txt"), `${t.name}: ${first.message.split("\n")[0]}\n`);
+      const e = await once(t.name, c, [a, b], 1);
+      if (e) throw e;
     });
   }
 }
