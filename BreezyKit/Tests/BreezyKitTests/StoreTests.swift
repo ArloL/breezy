@@ -281,17 +281,21 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(!s.state.resync)
 }
 
-@MainActor @Test func scheduledSavesWaitHalfASecondAndComeOnceThenAgain() async throws {
+// the wait is the caller's clock, handed in: a test that slept 100 ms and expected no save yet lost that race on a
+// loaded runner
+@MainActor @Test func scheduledSavesComeOnceHoweverOftenAskedAndAgainAfter() {
   let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-  let file = StoreFile(url: dir.appendingPathComponent("space.json"))
+  var waiting: [() -> Void] = []
+  let file = StoreFile(url: dir.appendingPathComponent("space.json"), later: { waiting.append($0) })
   var saves = 0
   let state = { saves += 1; return SpaceState() }
   for _ in 0..<3 { file.scheduleSave(state) }
-  try await Task.sleep(for: .milliseconds(100))
+  #expect(waiting.count == 1)
   #expect(saves == 0)
-  try await eventually { saves >= 1 }
+  waiting.removeFirst()()
   #expect(saves == 1)
   file.scheduleSave(state)
-  try await eventually { saves >= 2 }
+  #expect(waiting.count == 1)
+  waiting.removeFirst()()
   #expect(saves == 2)
 }

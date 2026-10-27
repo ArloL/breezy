@@ -327,10 +327,15 @@ public final class StoreFile {
   public let url: URL
   public var onError: ((Error) -> Void)?
   private let queue = DispatchQueue(label: "breezy.store-file")
+  private let later: (@escaping () -> Void) -> Void
   private var scheduled = false
   private var removed = false
 
-  public init(url: URL) { self.url = url }
+  /// `later` runs a scheduled save's block half a second on, on the main queue; a test hands in its own clock.
+  public init(url: URL, later: @escaping (@escaping () -> Void) -> Void = { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: $0) }) {
+    self.url = url
+    self.later = later
+  }
 
   public func load() throws -> SpaceState? {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
@@ -341,7 +346,7 @@ public final class StoreFile {
   public func scheduleSave(_ state: @escaping () -> SpaceState) {
     guard !scheduled, !removed else { return }
     scheduled = true
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+    later { [weak self] in
       guard let self else { return }
       scheduled = false
       save(state())
