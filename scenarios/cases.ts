@@ -43,6 +43,8 @@ export interface Case {
   acts?: string[];
   /** The kinds of real device that may watch, if not all. */
   watches?: string[];
+  /** Whether Main runs it on real devices (scenarios/smoke.ts): a few, one per class the devices own, none over a minute. */
+  smoke?: true;
   run(s: Stage): Promise<void>;
 }
 
@@ -216,6 +218,7 @@ async function endEdit(d: Device, id: string, input: "mouse" | "touch", at?: Poi
 const lines = (input: "mouse" | "touch"): Case => ({
   name: `a card's title and lines typed, deleted and typed again ${input === "touch" ? "on a phone " : ""}show the caret after the last key, the title semibold`,
   input,
+  smoke: true,
   edits: true,
   draws: true,
   async run(s) {
@@ -543,6 +546,7 @@ export const cases: Case[] = [
   {
     name: "a card dragged into a lane shows at the top of the lane's column on the other device",
     input: "mouse",
+    smoke: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
@@ -556,6 +560,7 @@ export const cases: Case[] = [
   {
     name: "a card held and dragged into a lane with a finger shows at the top of its column on the other device",
     input: "touch",
+    smoke: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
@@ -569,6 +574,7 @@ export const cases: Case[] = [
     name: "a card dragged into a lane with a finger in the app launched without network shows there on the other device once online",
     input: "touch",
     offline: true,
+    smoke: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
@@ -862,6 +868,7 @@ export const cases: Case[] = [
     name: "a card made with a double tap and typed into on a phone shows its text on the other device",
     input: "touch",
     edits: true,
+    smoke: true,
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane } = await laneAndCard(s);
@@ -914,6 +921,7 @@ export const cases: Case[] = [
     edits: true,
     buttons: true,
     acts: ["android", "firefox-android", "ios-safari", "ios-home"],
+    smoke: true,
     async run(s) {
       const [a] = s.devices as [Device, Device];
       const size = await a.size();
@@ -958,6 +966,7 @@ export const cases: Case[] = [
   {
     name: "Space turns the card under the pointer over, and again turns it back",
     input: "mouse",
+    smoke: true,
     async run(s) {
       const [a] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
