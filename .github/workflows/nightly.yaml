@@ -3,7 +3,9 @@ name: Nightly
 # What the checks on a pull request leave to the night (TESTING.md, "The nightly"): every case on every real device,
 # the measures against their baselines, the sync fuzzed on seeds no run tried before, and the real devices' plants. One
 # summary of all of it, and an issue labelled nightly for as long as a night is red; a red is a bug, fixed before new
-# features. Never on a pull request, whose checks are Main's alone: dispatch it on a branch to try one on real devices.
+# features. Never on a pull request, whose checks are Main's alone: dispatch it on a branch to try one on real devices,
+# naming the one part wanted, as a whole night's five macOS jobs keep the gate's waiting for runners; a branch's run
+# tells the issue nothing.
 #
 # The measured network feel against baselines in scripts/baselines/feel that runners recorded, and the Mac's performance
 # journal against a reference build measured on the same runner: a run fails when a measure's 95 % CI lies wholly above
@@ -14,11 +16,18 @@ on:
   schedule:
   - cron: "23 2 * * *"
   workflow_dispatch:
+    inputs:
+      only:
+        description: "The part to run: all, desktop, android, ios, or the measures (feel, bench, launch, fuzz)"
+        type: choice
+        options: [all, desktop, android, ios, measures]
+        default: all
 permissions: {}
 
 jobs:
   # every case on the desktop browsers and the Mac app, each kind acting once and watching once; the Mac acts here alone
   desktop:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'desktop' }}
     runs-on: macos-latest
     timeout-minutes: 75
     permissions:
@@ -88,6 +97,7 @@ jobs:
   # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
   # cannot run one
   android:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'android' }}
     runs-on: ubuntu-latest
     # apt and the scenarios each take half again as long on some runners
     timeout-minutes: 90
@@ -172,6 +182,7 @@ jobs:
         # a changed script starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
     - name: Boot the emulator
+      id: boot
       # twice, if need be
       timeout-minutes: 16
       run: mise exec -- scripts/android-boot.sh
@@ -183,7 +194,9 @@ jobs:
       run: |
         mise exec -- scripts/android-load.sh build/android-load.txt &
         mise exec -- node --test --test-force-exit scenarios/browsers.e2e.ts
+    # whatever the cases did: a red case must not hide the rows
     - name: Platform rows on Android
+      if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
       timeout-minutes: 8
       run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
     - name: Count the cases
@@ -209,6 +222,7 @@ jobs:
   # The scenarios with Safari on the iOS Simulator: whether the app loads, keeps its data and shows each change in an
   # iPhone's Safari, and in the app on its Home Screen
   ios:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'ios' }}
     # macOS 27 with Xcode 27 and iOS 27.0, the owner's iOS; macos-latest has iOS 26 alone
     runs-on: xcode-27
     timeout-minutes: 90
@@ -287,6 +301,7 @@ jobs:
         path: build/scenarios
         if-no-files-found: ignore
   feel:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: macos-latest
     timeout-minutes: 60
     permissions:
@@ -347,6 +362,7 @@ jobs:
   # this commit's Release build against the reference's in scripts/baselines/bench-ref, on the same runner and in turns:
   # one runner measured zoom 4 times slower than the next, which no baseline from other runners could allow for
   bench:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: macos-latest
     timeout-minutes: 90
     permissions:
@@ -399,6 +415,7 @@ jobs:
   # quality goal 2c: this commit's launch on a phone's CPU against bench-ref's, the Mac's reference too, in turns on the same runner, and at
   # most 1.5 s from a launch to a drawn board; then the measure's plant, a launch that must come out worse
   launch:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: macos-latest
     timeout-minutes: 45
     permissions:
@@ -448,6 +465,7 @@ jobs:
   # of one mix only. A failing seed's trace and the smallest one that still fails are in the fuzz artifact; replay one
   # with node scripts/fuzz.ts --replay FILE.
   fuzz:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: macos-latest
     timeout-minutes: 90
     permissions:
@@ -483,8 +501,9 @@ jobs:
       with:
         name: fuzz
         path: build/fuzz
-  # one place to read the night: the cases' failure rates across every device, each job's result, and an issue labelled
-  # nightly opened on the first red night and told of each night after, until someone closes it with the fix
+  # one place to read the night: the cases' failure rates across every device, each job's result, and, for main's nights
+  # alone, an issue labelled nightly opened on the first red night and told of each night after, until someone closes it
+  # with the fix. A part left out by `only` is skipped, not red
   summary:
     needs:
     - desktop
@@ -525,16 +544,20 @@ jobs:
           echo "|---|---|"
           jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$RESULTS"
         } >> "$GITHUB_STEP_SUMMARY"
-        red=$(jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")' <<< "$RESULTS")
-        open=$(gh issue list --label nightly --state open --limit 1 --json number --jq '.[0].number // empty')
-        if [ -n "$red" ]; then
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --body "Red again on $(date -u +%F): $red — $RUN_URL"
-          else
-            gh issue create --label nightly --title "Nightly red since $(date -u +%F)" --body "Red: $red — $RUN_URL"
+        red=$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$RESULTS")
+        if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+          open=$(gh issue list --label nightly --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$red" ]; then
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "Red again on $(date -u +%F): $red — $RUN_URL"
+            else
+              gh issue create --label nightly --title "Nightly red since $(date -u +%F)" --body "Red: $red — $RUN_URL"
+            fi
+          elif [ -n "$open" ]; then
+            gh issue comment "$open" --body "Green on $(date -u +%F): $RUN_URL"
           fi
+        fi
+        if [ -n "$red" ]; then
           echo "red: $red"
           exit 1
-        elif [ -n "$open" ]; then
-          gh issue comment "$open" --body "Green on $(date -u +%F): $RUN_URL"
         fi
