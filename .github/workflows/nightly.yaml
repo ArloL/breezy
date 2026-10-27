@@ -250,7 +250,7 @@ jobs:
     - name: Start booting an iPhone
       run: node scripts/ios.ts --start ${{ matrix.kind == 'ios-home' && '--home' || '' }}
     # brew's php drags 17 bottles behind it after minutes updating its taps on the preview image: 9 of the job's minutes
-    - uses: shivammathur/setup-php@4424c9aab975b57bd706ee5a39c6b4334d6e4f60 # 2.40.0
+    - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
       with:
         php-version: "8.4"
         extensions: pdo_sqlite
