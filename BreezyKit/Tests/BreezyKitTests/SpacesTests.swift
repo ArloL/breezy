@@ -144,8 +144,7 @@ final class Servers {
   let g = spaces.newSpace(server: testServer, name: "Work")
   _ = g.store.createBoard(title: "Plans")
   spaces.leave(g)
-  try await Task.sleep(for: .seconds(0.8))
-  #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("Spaces/\(g.space!).json").path))
+  try await eventually { !FileManager.default.fileExists(atPath: dir.appendingPathComponent("Spaces/\(g.space!).json").path) }
   #expect(spaces.spaces.isEmpty)
   #expect(try Spaces(directory: dir).spaces.isEmpty)
 }
@@ -264,8 +263,7 @@ final class Servers {
   #expect(g.live == nil)
   let before = g.engine.lastSynced!
   spaces.syncAll(polling: true, now: before.addingTimeInterval(5))
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(g.engine.lastSynced! > before)
+  try await eventually { g.engine.lastSynced! > before }
 }
 
 @MainActor @Test func whileLiveIsConnectedPollingWaitsThirtySeconds() async throws {
@@ -284,8 +282,7 @@ final class Servers {
   try await Task.sleep(for: .milliseconds(100))
   #expect(g.engine.lastSynced == before)
   spaces.syncAll(polling: true, now: before.addingTimeInterval(31))
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(g.engine.lastSynced! > before)
+  try await eventually { g.engine.lastSynced! > before }
 }
 
 @MainActor @Test func aPushIsAnnouncedAndAnnouncedPushesArePulledAtOnce() async throws {
@@ -302,8 +299,7 @@ final class Servers {
   let id = ga.store.createBoard(title: "Plans")
   await ga.engine.sync()
   relay.run()
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(gb.store.title(of: id) == "Plans")
+  try await eventually { gb.store.title(of: id) == "Plans" }
 }
 
 @MainActor @Test func leavingASpaceClosesItsLiveLayer() async throws {
@@ -338,8 +334,7 @@ final class Servers {
   server.pulls = []
   await ga.engine.sync()
   relay.run()
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(gb.store.title(of: id) == "Plans")
+  try await eventually { gb.store.title(of: id) == "Plans" }
   #expect(server.pulls.isEmpty)
   gb.live!.close()
   relay.run()
@@ -351,8 +346,7 @@ final class Servers {
   relay.run()
   await ga.engine.sync()
   relay.run()
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(gb.store.title(of: id2) == "More")
+  try await eventually { gb.store.title(of: id2) == "More" }
   #expect(gb.store.title(of: id3) == "Later")
   #expect(!server.pulls.isEmpty)
 }
@@ -368,8 +362,7 @@ final class Servers {
   await g.engine.sync()
   let before = g.engine.lastSynced!, socket = relay.sockets.first
   spaces.syncAll(now: before.addingTimeInterval(10))
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(g.engine.lastSynced! > before)
+  try await eventually { g.engine.lastSynced! > before }
   spaces.retryAll()
   relay.run()
   #expect(relay.sockets.count == 1 && relay.sockets.first === socket)
@@ -390,6 +383,5 @@ final class Servers {
   try await Task.sleep(for: .milliseconds(100))
   #expect(server.pulls.isEmpty)
   g.live!.onPushed?(g.store.state.cursor + 1, nil)
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(!server.pulls.isEmpty)
+  try await eventually { !server.pulls.isEmpty }
 }

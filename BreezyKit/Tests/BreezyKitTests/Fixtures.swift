@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 @testable import BreezyKit
 
 func board(_ cards: [Card] = [], _ lanes: [Lane] = []) -> Board { Board(cards: cards, lanes: lanes) }
@@ -20,3 +21,10 @@ func bytes(_ hex: String) -> Data {
 }
 
 func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
+
+/// Waits until `done`, for what comes on a later turn of the main queue, which a loaded machine reaches late.
+@MainActor func eventually(_ done: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+  let end = ContinuousClock.now + .seconds(5)
+  while !done(), ContinuousClock.now < end { try await Task.sleep(for: .milliseconds(10)) }
+  #expect(done(), sourceLocation: sourceLocation)
+}
