@@ -33,7 +33,8 @@ jobs:
     # Spotlight indexes the fresh runner and every build for its first half hour, which kept the load at 18 on 3 CPUs
     # while Firefox ran every timer 100 ms late
     - name: Turn Spotlight off
-      run: sudo mdutil -a -i off
+      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
@@ -236,7 +237,8 @@ jobs:
       run: scripts/reserve-ports.sh
     # Spotlight indexes the fresh runner for its first half hour
     - name: Turn Spotlight off
-      run: sudo mdutil -a -i off
+      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
@@ -296,7 +298,8 @@ jobs:
     # a connection whose own port is a server's keeps that server from starting
     # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
     - name: Turn Spotlight off
-      run: sudo mdutil -a -i off
+      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -356,7 +359,8 @@ jobs:
         fetch-depth: 0
     # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
     - name: Turn Spotlight off
-      run: sudo mdutil -a -i off
+      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
     - name: Build this commit and the reference
       run: |
@@ -406,7 +410,8 @@ jobs:
         # the reference too
         fetch-depth: 0
     - name: Turn Spotlight off
-      run: sudo mdutil -a -i off
+      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
