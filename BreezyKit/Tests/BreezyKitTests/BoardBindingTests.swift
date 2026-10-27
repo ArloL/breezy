@@ -18,8 +18,7 @@ import Testing
   binding.pull()
   #expect(model.board.card("n") == nil)
   model.end("Edit Card")
-  try await Task.sleep(for: .milliseconds(50))
-  #expect(model.board.card("n")?.text == "new")
+  try await eventually { model.board.card("n")?.text == "new" }
   #expect(model.board.card("a")?.text == "typed")
   #expect(store.board(id).card("a")?.text == "typed")
   #expect(model.undoManager.undoActionName == "Edit Card")
@@ -110,7 +109,7 @@ import Testing
   model.begin()
   model.update { $0.setText("a", "y") }
   model.end("Edit Card")
-  try await Task.sleep(for: .milliseconds(50))
+  try await eventually { ends >= 1 }
   #expect(edits == 1)
   #expect(ends == 1)
 }
@@ -123,7 +122,7 @@ import Testing
   model.update { $0.setText("a", "y") }
   model.end("Edit Card")
   binding = nil
-  try await Task.sleep(for: .milliseconds(50))
+  try await eventually { ends >= 1 }
   #expect(ends == 1)
 }
 
