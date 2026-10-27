@@ -102,3 +102,12 @@ private struct LiveVector: Decodable { var secret, space, relayToken, nonce, pla
   let other = SpaceKeys(space: randomBytes(16), secret: randomBytes(32))
   #expect(throws: (any Error).self) { try other.openLive(body) }
 }
+
+@Test func anInvitesTokenKeepsEveryCharacterOfBase64URLWhenPasted() throws {
+  let v = try vector()
+  // a "?" or ">" third in a group of three bytes is a "_" or "-"
+  let invites = ["?", " ?", "  ?", ">", " >", "  >"].map { Invite(server: v.server, space: v.space, secret: v.secret, name: $0) }
+  let token = invites.map(\.link).joined()
+  #expect(token.contains("-") && token.contains("_"))
+  for i in invites { #expect(Invite(link: "Join me: \(i.link).") == i) }
+}

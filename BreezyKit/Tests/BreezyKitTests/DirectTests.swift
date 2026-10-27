@@ -288,3 +288,15 @@ private let ice: [String: JSONValue] = ["t": .string("ice"), "candidate": .strin
   r.direct.leave("p1")
   #expect(r.lost == 2)
 }
+
+@MainActor @Test func theAnswerersCandidatesWaitForItsAnswerAndLaterOnesGoAtOnce() {
+  let r = Rig()
+  r.transport.deferred = true
+  r.direct.heard("p1", ["t": .string("offer"), "sdp": .string("o")])
+  r.transport.onCandidate?("p1", c1)
+  #expect(r.relayed.isEmpty)
+  r.transport.release()
+  #expect(r.relayed.map(r.tag) == ["answer p1", "ice p1"])
+  r.transport.onCandidate?("p1", IceCandidate(candidate: "c2", mid: "0", index: 0))
+  #expect(r.relayed.map(r.tag) == ["answer p1", "ice p1", "ice p1"])
+}

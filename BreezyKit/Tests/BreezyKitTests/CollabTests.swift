@@ -187,3 +187,39 @@ private func move(_ c: String, _ x: Double) -> (inout Board) -> Void {
   #expect(d.pushes == before + 1)
   #expect(d.other.overlay(on: d.b1) == [C1: ["color": .number(5)]])
 }
+
+@MainActor @Test func holdBackIsFalseWithoutALiveLayer() async {
+  let d = await Setup()
+  let (model, _) = d.open(d.b1)
+  d.group.live = nil
+  model.begin()
+  #expect(d.engine.holdBack?() == false)
+}
+
+@MainActor @Test func aGestureThatHeldNothingAfterOneThatHeldCountsAsAnEditOutsideAGesture() async {
+  let d = await Setup()
+  let (model, session) = d.open(d.b1)
+  model.begin()
+  session.hold([C1])
+  model.update(move(C1, 72))
+  model.end("Move")
+  await d.settle()
+  let before = d.pushes
+  model.begin()
+  model.update { $0.setColor([C2], 5) }
+  model.end("Color")
+  d.clock.advance(0.2)
+  await d.settle()
+  #expect(d.pushes == before + 1)
+  #expect(d.other.overlay(on: d.b1)[C2] == ["color": .number(5)])
+}
+
+@MainActor @Test func aClosedBoardNoLongerCountsAsBusyAndTheOthersStillDo() async {
+  let d = await Setup()
+  let (one, first) = d.open(d.b1), (two, _) = d.open(d.b2)
+  one.begin()
+  first.close()
+  #expect(!d.collab.busy)
+  two.begin()
+  #expect(d.collab.busy)
+}

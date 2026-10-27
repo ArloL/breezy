@@ -149,8 +149,10 @@ import Testing
   #expect(floats == 1)
   c.dragged(to: Point(x: 331, y: 715))
   #expect(floats == 2)
+  c.dragged(to: Point(x: 330, y: 763))
+  #expect(c.board.lane("l")!.h == 768)
   c.release()
-  #expect(c.board.lane("l").map { ($0.w, $0.h) }! == (336, 720))
+  #expect(c.board.lane("l").map { ($0.w, $0.h) }! == (336, 768))
   #expect(c.model.undoManager.undoActionName == "Resize Lane")
 }
 
