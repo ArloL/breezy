@@ -63,6 +63,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-28 | android | B3 | nightly | L6 | `scenarios/prompts.test.ts` | Take Survey and No Thanks among the screen texts in the error (device) | 0 | yes | #160 |
 | 2026-10-28 | ios | B5 | nightly | L1 | `scenarios/open.test.ts` | simctl's own "Operation timed out" in the launch step, at a runner load of 149 on 3 CPUs in `timeline.txt` (device, runner) | 0 | yes | #162 |
 | 2026-10-28 | android | B5 | nightly | L1 | `scripts/test/android-snapshot.test.ts` | `adb: device unauthorized` through a cold boot that completed, and a different `qemu.adb.pubkey` on each run, in `android-emulator.log` (host) | 0 | yes | #173 |
+| 2026-10-28 | web | B3 | review | L2 | `web/test/live.test.ts` | the relay's `refusal` (over 500 ids, or ids not 22 characters) missing from both FakeRelays, beside `relay/test/relay.test.mjs` refusing it under `wrangler dev` (relay) | 0 | yes | #177 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -84,3 +85,5 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 2026-10-28: in Safari on the nightly's iPhone 13 mini, the first case failed as Safari launched: the simulator, still busy after its boot at a load of 149 on 3 CPUs, gave up on opening the first URL, and the launch ended there. It opens a URL that went nowhere again, up to four times, but took an open that failed as the end. A failed open now counts as one more try. The boot's settling leaves the phone at a load of 170 to 180, where the job runs at 40 to 60.
 
 2026-10-28: after #170 cached the emulator's AVD with its snapshot, every Android job but the one that packed it failed to boot, the merge gate's too: each runner's adb makes its own key, and the AVD trusted only the packing runner's, from its snapshot and from cold alike. The key now goes into the cache with the AVD. Restoring on a fresh runner had been left to check after the merge.
+
+2026-10-28: dragging a selection of more than 500 cards, as ⌘A then a drag on a big board, was cancelled as it began, on the web and the Mac: the relay refuses a hold past 500 ids whole, and the app took the refusal as someone else's hold. The relay's fakes granted it, and their tests held ids the relay refuses as malformed. The fakes now refuse as the relay does, and a gesture past 500 asks the relay to hold nothing: it goes unguarded, and live all the same.
