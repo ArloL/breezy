@@ -202,7 +202,8 @@ jobs:
         path: ~/apt-archives
         key: ${{ steps.apt-cache.outputs.cache-primary-key }}
     # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - id: sdk-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.local/share/mise/installs/android-sdk
         key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
@@ -213,6 +214,13 @@ jobs:
       # twice, if need be
       timeout-minutes: 16
       run: mise exec -- scripts/android-boot.sh
+    # saved by main alone: a pull request's copy is its own, 3 GB each, and two of them and a stale one filled the
+    # repository's 10 GB of caches
+    - if: ${{ github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/share/mise/installs/android-sdk
+        key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
     # each of the emulator's browsers acting once and watching once, as the two never share its screen
     - name: Scenarios on Android
       timeout-minutes: 50
