@@ -1,10 +1,14 @@
 // Every case on the hub's fakes, for each pair of kinds whose first takes the case's input: the Mac has no touch.
 import { test } from "node:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { cases } from "./cases.ts";
 import { watchSight } from "./sight.ts";
 import { PHONES, World, type Kind } from "./world.ts";
 
 const kinds: Kind[] = ["swift", "web", "phone", "android"];
+/** Where a failing case keeps its devices' recordings. */
+const RECORDS = join(new URL("..", import.meta.url).pathname, "build", "hub");
 
 for (const c of cases) {
   for (const a of kinds) {
@@ -15,10 +19,20 @@ for (const c of cases) {
     if (c.edits && a === "swift") continue;
     if (c.offline || c.draws || c.busy || c.fresh || c.buttons || c.outage) continue;
     for (const b of kinds.filter((k) => !PHONES[k])) {
-      test(`${c.name} (${a} → ${b})`, async () => {
+      const name = `${c.name} (${a} → ${b})`;
+      test(name, async () => {
         const w = await World.start([a, b]);
         try {
           await c.run({ devices: w.devices.map(watchSight), settle: () => w.settle() });
+        } catch (e) {
+          const dir = join(RECORDS, name.replace(/[^\w -]+/g, "").slice(0, 120));
+          mkdirSync(dir, { recursive: true });
+          await Promise.all(w.devices.map(async (d, i) => {
+            const r = await d.flight();
+            if (r) writeFileSync(join(dir, `d${i} ${d.kind} flight.json`), `${JSON.stringify(r)}\n`);
+          }));
+          (e as Error).message += `\nrecordings in ${dir}`;
+          throw e;
         } finally {
           w.stop();
         }

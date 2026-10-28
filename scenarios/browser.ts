@@ -13,10 +13,10 @@ import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, 
 import { inviteLink } from "../web/sync/crypto.ts";
 import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
-import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
+import { Device, readFlight, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
 import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
-import { adb, adbBytes, environment, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
+import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
 import { Agent, AGENT_SCRIPT, fromIphone, type AgentPage } from "./agent.ts";
 import type { Point } from "../web/types.ts";
@@ -809,6 +809,10 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(readSight);
   }
 
+  override async flight() {
+    return this.page.evaluate(readFlight);
+  }
+
   override async weights(id: string) {
     return this.page.evaluate(readWeights, id);
   }
@@ -1530,11 +1534,14 @@ export class RealWorld {
     const lines: Line[] = [...this.host, ...this.steps.lines()];
     const parts = await Promise.all(this.devices.map(async (d, i) => {
       const who = `d${i} ${d.kind}`, summary: string[] = [];
+      // how far the page's clock is ahead of this one's, which its recording's times are on
+      let ahead = 0;
       if (d instanceof BrowserDevice) {
         lines.push(...d.log.map(([ms, what]): Line => [this.started + ms, who, what]));
         const events = await answer(d.events(who));
         // the emulator's log for a passing case too, for when its keyboard came and went, on its own clock: the page's
         const skew = typeof events === "string" ? 0 : events.skew;
+        ahead = skew;
         const [failure, logcat] = await Promise.all([error ? d.failure() : undefined, d.phone ? answer(d.logcat(this.started + skew)!) : undefined]);
         if (typeof events === "string") summary.push(`${who}: no page events: ${events}`);
         else {
@@ -1556,6 +1563,11 @@ export class RealWorld {
         const shot = await answer(d.page.screenshot().then((png) => writeFileSync(join(dir, `${who} screen.png`), png)));
         if (typeof shot === "string") summary.push(`${who}: no screenshot: ${shot}`);
       }
+      const flight = await answer(d.flight());
+      if (flight && typeof flight !== "string") {
+        writeFileSync(join(dir, `${who} flight.json`), `${JSON.stringify(flight)}\n`);
+        lines.push(...flightLines(flight, who).map(([at, source, what]): Line => [at - ahead, source, what]));
+      } else summary.push(`${who}: no flight recording${flight ? `: ${flight}` : ""}`);
       const [status, s] = await Promise.all([answer(d.syncStatus()), answer(d.scene())]);
       const ends = [`${who} says ${JSON.stringify(status)}`,
         `${who} shows ${typeof s === "string" ? s : JSON.stringify({ cards: s.cards.map(({ id, x, y }) => ({ id, x, y })), lanes: s.lanes.map(({ id, x, y }) => ({ id, x, y })) })}`];

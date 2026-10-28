@@ -8,6 +8,7 @@ import { arch, cpus, freemem, loadavg, platform, release, totalmem } from "node:
 import { join } from "node:path";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { promisify } from "node:util";
+import type { Recording } from "../web/flight.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 /** Where runs keep their records; plant runs keep theirs apart (scripts/plants.ts), as their cases fail on purpose. */
@@ -115,6 +116,12 @@ export function sampleRunner(lines: Line[], ms = 2000) {
     clearInterval(timer);
     delay.disable();
   };
+}
+
+/** A device's recording as timeline lines of `who`'s app, on the wall clock, whole: its geometry is what a failure is
+ * read from, and flight.json keeps it besides. */
+export function flightLines(r: Recording | null, who: string): Line[] {
+  return (r?.entries ?? []).map(([t, kind, what, data]): Line => [r!.origin + t, `${who} app`, `${kind} ${what}${data ? ` ${JSON.stringify(data)}` : ""}`]);
 }
 
 /** One text of `lines` in time, each with its wall clock and ms from `start`. */

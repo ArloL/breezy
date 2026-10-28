@@ -2,6 +2,7 @@
 import type { Point } from "../web/types.ts";
 import type { Scene, SceneItem } from "../web/scene.ts";
 import type { Sight } from "../web/test/fakes.ts";
+import type { Recording } from "../web/flight.ts";
 
 export type { Scene, SceneItem, Sight };
 
@@ -163,6 +164,11 @@ export abstract class Device {
     return e && { focus: e.card, caret: e.caret, visible: e.board, how: e.how };
   }
 
+  /** What its app recorded, or null where no app records: the Mac's, until BreezyKit does. */
+  async flight(): Promise<Recording | null> {
+    return null;
+  }
+
   /** What it shows now, in a line, for a step log. */
   async state(): Promise<string> {
     const s = await this.scene(), c = s.camera;
@@ -294,4 +300,9 @@ export function item(s: Scene, id: string): SceneItem {
   const found = s.cards.find((c) => c.id === id) ?? s.lanes.find((l) => l.id === id);
   if (!found) throw new Error(`nothing shows ${id}`);
   return found;
+}
+
+/** The page's recording, or null where its build has no recorder. Runs in the page. */
+export function readFlight(): Recording | null {
+  return (globalThis as { breezyFlight?: { recording(): Recording } }).breezyFlight?.recording() ?? null;
 }

@@ -7,6 +7,7 @@ import type { Board, Point } from "../web/types.ts";
 import type { Invite } from "../web/sync/crypto.ts";
 import { ANDROID, PHONE, type Screen } from "../web/test/fakes.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
+import type { Recording } from "../web/flight.ts";
 
 export * from "./device.ts";
 
@@ -40,6 +41,10 @@ export class SimDevice extends Device {
   /** Until the camera has stopped and no keyboard is on its way. */
   override async still(what: string) {
     if (this.d.kind === "web") await this.until(what, async () => (await this.hub.command(this.d, { cmd: "still" })) === true);
+  }
+
+  override async flight(): Promise<Recording | null> {
+    return this.d.kind === "web" ? (await this.hub.command(this.d, { cmd: "flight" })) as Recording | null : null;
   }
 
   override async sight(): Promise<Sight | null> {

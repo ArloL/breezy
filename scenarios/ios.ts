@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "no
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { Device, item, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
+import { Device, item, readFlight, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
 import type { Point } from "../web/types.ts";
 import { DOUBLE_MS } from "../web/gestures.ts";
@@ -299,6 +299,10 @@ export class IosDevice extends Device {
 
   override editor() {
     return this.page.evaluate(this.fns.editor);
+  }
+
+  override flight() {
+    return this.page.evaluate(readFlight);
   }
 
   override sight() {
