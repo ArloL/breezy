@@ -97,6 +97,8 @@ export const PONG_TIMEOUT_MS = 3_000;
  * must answer within HELD_PONG_MS. A holder standing still sends nothing, so quiet alone does not drop the socket. */
 export const HELD_PING_MS = 1_000;
 export const HELD_PONG_MS = 1_500;
+/** The most one connection may hold: the relay refuses a hold past it whole (relay/src/holds.js). */
+export const MAX_HELD = 500;
 /** Sending after hearing nothing from the relay this long asks it to answer, so that a socket a network change left
  * dead is found while someone is busy. */
 export const QUIET_MS = 2_000;
@@ -654,7 +656,7 @@ export class Live {
         this.roster = new Map((Array.isArray(m.peers) ? m.peers.filter((p) => typeof p === "string") : []).map((p) => [p, this.now()]));
         this.direct?.welcome([...this.roster.keys()]);
         this.sendPresence();
-        if (this.mine.size) this.frame({ t: "hold", ids: [...this.mine].sort() });
+        if (this.mine.size && this.mine.size <= MAX_HELD) this.frame({ t: "hold", ids: [...this.mine].sort() });
         // what this device pushed while its last socket was dead, as after a network change, was announced to nobody
         if (this.storeCursor > 0) this.send({ t: "pushed", version: this.storeCursor });
         this.onWelcome();
@@ -915,13 +917,14 @@ export class Live {
   }
 
   /** Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. Starts a
-   * gesture, whose first live body is a keyframe. */
+   * gesture, whose first live body is a keyframe. Past MAX_HELD it asks for none, as the relay would refuse them all and
+   * end the gesture: one that big goes unguarded, live all the same. */
   hold(ids: Iterable<string>): void {
     for (const p of this.pipes) p.restart();
     const fresh = [...ids].filter((id) => !this.mine.has(id));
     if (!fresh.length) return;
     for (const id of fresh) this.mine.add(id);
-    if (this.connected) this.frame({ t: "hold", ids: fresh.sort() });
+    if (this.connected && this.mine.size <= MAX_HELD) this.frame({ t: "hold", ids: fresh.sort() });
   }
 
   release(): void {

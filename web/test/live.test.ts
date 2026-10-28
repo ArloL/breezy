@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Live, initials, colourOf, PALETTE } from "../sync/live.ts";
+import { Live, initials, colourOf, PALETTE, MAX_HELD } from "../sync/live.ts";
 import { SpaceKeys, randomBytes } from "../sync/crypto.ts";
 import { encode, decode } from "../sync/base64.ts";
 import { LiveDecoder, LiveEncoder, isCompact } from "../sync/compact.ts";
@@ -9,6 +9,7 @@ import type { Unpacked } from "../sync/msgpack.ts";
 import type { Starts } from "../sync/overlay.ts";
 import type { Signal } from "../sync/direct.ts";
 import { parseFrame } from "../../relay/src/frames.js";
+import { MAX_HELD as RELAY_MAX_HELD } from "../../relay/src/holds.js";
 import { FakeRelay, Clock } from "./helpers/fake-relay.ts";
 import { FakeTransport } from "./helpers/fake-transport.ts";
 import { OldDevice } from "./helpers/old-device.ts";
@@ -117,14 +118,14 @@ test("holds are all or none and show who holds", async () => {
   const { relay, a, b } = await two();
   let refused: Set<string> | null = null;
   b.onRefused = (ids) => (refused = ids);
-  a.hold(["x", "y"]);
+  a.hold([C1, C2]);
   await relay.run();
-  assert.deepEqual([...b.taken()].sort(), ["x", "y"]);
-  assert.equal(b.holderOf("x")!.name, "Ana Lima");
+  assert.deepEqual([...b.taken()].sort(), [C1, C2].sort());
+  assert.equal(b.holderOf(C1)!.name, "Ana Lima");
   assert.equal(a.taken().size, 0);
-  b.hold(["y", "z"]);
+  b.hold([C2, C3]);
   await relay.run();
-  assert.deepEqual([...refused!], ["y"]);
+  assert.deepEqual([...refused!], [C2]);
   b.release();
   a.release();
   await relay.run();
@@ -140,6 +141,26 @@ test("live edits show as an overlay", async () => {
   assert.deepEqual(Object.fromEntries(b.overlay(B1)), moved);
   assert.equal(b.overlay(B2).size, 0);
   assert.deepEqual(b.carets(B1).map(({ id, back, at }) => ({ id, back, at })), [{ id: C1, back: false, at: 3 }]);
+});
+
+test("a gesture over more items than the relay holds for one connection asks it to hold none, and still shows live", async () => {
+  const { relay, a, b } = await two();
+  let refused: Set<string> | null = null;
+  a.onRefused = (ids) => (refused = ids);
+  // a drag of every card on a board of 501: the relay refuses a hold past 500 whole, which cancelled the drag
+  const many = Array.from({ length: 501 }, (_, i) => encode(Uint8Array.from({ length: 16 }, (_, k) => (k < 2 ? (i >> (8 * k)) & 0xff : 7))));
+  a.hold([C1, ...many]);
+  a.sendLive(B1, moved, null);
+  await relay.run();
+  assert.equal(refused, null);
+  assert.equal(b.taken().size, 0);
+  assert.deepEqual(Object.fromEntries(b.overlay(B1)), moved);
+  // nor after a reconnect, which asks for what it holds again
+  a.close();
+  a.connect();
+  await relay.run();
+  assert.equal(refused, null);
+  assert.equal(MAX_HELD, RELAY_MAX_HELD);
 });
 
 test("the overlay stays until the pull reaches the pushed version", async () => {
