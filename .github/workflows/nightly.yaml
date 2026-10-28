@@ -22,7 +22,15 @@ on:
         type: choice
         options: [all, desktop, android, ios, measures]
         default: all
+      video:
+        description: "Film the devices' screens, keeping a failing case's films, or every case's"
+        type: choice
+        options: [off, failures, all]
+        default: off
 permissions: {}
+# scenarios/browser.ts's SCENARIO_VIDEO: 1 keeps a failing case's films, all every case's
+env:
+  SCENARIO_VIDEO: ${{ inputs.video == 'failures' && '1' || inputs.video == 'all' && 'all' || '' }}
 
 jobs:
   # every case on the desktop browsers and the Mac app, each kind acting once and watching once; the Mac acts here alone
