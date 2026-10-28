@@ -167,11 +167,14 @@ export class Space extends DurableObject {
     // one that left is closed already, and its alarm would come back every TICK_MS until its far end answers
     const conns = this.conns().filter((c) => !c.left);
     // not 4001, which tells a device its token was refused: one that was only slow tries again
-    for (const c of unauthenticated(conns, now)) {
+    const late = new Set(unauthenticated(conns, now));
+    for (const c of late) {
       try {
         c.ws.close(4002, "auth timeout");
       } catch {}
     }
+    // how late this alarm came for each socket yet to authenticate, and what it did: a test once saw one kept past 7 s
+    for (const c of conns.filter((c) => !c.authed)) console.log(`auth: socket ${c.id} ${now - c.opened} ms after it opened, ${late.has(c) ? "closed" : "kept"}`);
     const gone = lapsed(conns.filter((c) => c.authed), now);
     for (const c of gone) c.ws.serializeAttachment({ ...c.ws.deserializeAttachment(), holds: [] });
     if (gone.length) this.announce();

@@ -81,11 +81,13 @@ test("anything before auth closes the socket", async () => {
   assert.equal(await c.closedWith(), 4001);
 });
 
-// Local workerd does not complete a server close to a client that never sent a frame, so this checks for no welcome instead.
+// Local workerd does not complete a server close to a client that never sent a frame, so this checks for no welcome instead,
+// after two of the relay's alarms: one alarm 5 s after the open let a socket answer at 7 s, once on a busy runner, and
+// wrangler's log, which a failure prints, says how late each alarm came and what it did.
 test("a socket that never authenticates is closed", { timeout: 30_000 }, async () => {
   const token = rand(32);
   const c = await connect(rand(16), token, { auth: false });
-  await new Promise((r) => setTimeout(r, 7000));
+  await new Promise((r) => setTimeout(r, 11_000));
   try {
     c.send({ t: "auth", token });
   } catch {}
