@@ -83,3 +83,16 @@ test("geometry survives the edited card's removal", () => {
   app.model.replace({ cards: [], lanes: [] });
   assert.equal(app.geometry().editing, null);
 });
+
+test("notes gestures, not their frames", () => {
+  const app = phone();
+  app.input.tap({ x: 300, y: 300 });
+  app.input.doubleTap({ x: 300, y: 300 });
+  app.input.dragStart({ x: 200, y: 700 }, { x: 200, y: 690 }, false);
+  for (let i = 0; i < 20; i++) app.input.dragMove({ x: 200, y: 690 - i * 5 });
+  app.input.dragEnd({ x: 200, y: 590 }, { x: 0, y: 0 });
+  const entries = app.flight.recording().entries;
+  assert.deepEqual(entries.filter((e) => e[1] === "input").map((e) => e[2]), ["tap", "double tap", "drag start", "drag end"]);
+  const start = entries.findIndex((e) => e[2] === "drag start");
+  assert.deepEqual(entries.slice(start + 1).filter((e) => e[2] === "drag").map((e) => e[1]), ["transition"]);
+});

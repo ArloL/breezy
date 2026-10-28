@@ -76,6 +76,7 @@ export class Input {
   }
 
   tap(p: Point) {
+    this.app.flight.note("input", "tap", { x: Math.round(p.x), y: Math.round(p.y) });
     if (this.stoppedCoast) return;
     const app = this.app;
     const s = app.state;
@@ -91,6 +92,7 @@ export class Input {
   }
 
   doubleTap(p: Point) {
+    this.app.flight.note("input", "double tap", { x: Math.round(p.x), y: Math.round(p.y) });
     const app = this.app;
     const h = this.hit(p);
     if (isCard(h)) return app.beginEdit(h.id);
@@ -107,6 +109,7 @@ export class Input {
   }
 
   hold(p: Point) {
+    this.app.flight.note("input", "hold", { x: Math.round(p.x), y: Math.round(p.y) });
     this.holdHit = this.pressHit ?? this.hit(p);
     if (!isCard(this.holdHit)) return;
     const s = this.app.state;
@@ -119,6 +122,7 @@ export class Input {
 
   /** Lifting a held card without moving it adds it to the selection or takes it out. */
   holdEnd() {
+    this.app.flight.note("input", "hold end");
     const h = this.holdHit;
     this.holdHit = null;
     this.app.state.lifted = new Set();
@@ -127,12 +131,14 @@ export class Input {
   }
 
   holdCancel() {
+    this.app.flight.note("input", "hold cancel");
     this.holdHit = null;
     this.app.state.lifted = new Set();
     this.app.view.invalidate();
   }
 
   dragStart(p0: Point, p: Point, held: boolean) {
+    this.app.flight.note("input", "drag start", { x: Math.round(p0.x), y: Math.round(p0.y), held });
     const h = held && this.holdHit ? this.holdHit : this.pressHit ?? this.hit(p0);
     this.holdHit = null;
     this.pressHit = null;
@@ -160,6 +166,7 @@ export class Input {
     const d: Drag = { action, id: h.id, p0, w0: app.view.toWorld(p0), cam0: { ...app.view.cam }, sel0: [...s.selection], last: p };
     this.edgeSince = 0;
     this.drag = d;
+    app.flight.note("transition", "drag", { action, ids: s.selection.size });
     if (action === "move") {
       if (!s.selection.has(h.id!)) app.select([h.id!]);
       const ids = new Set(app.selectedCards().map((c) => c.id));
@@ -237,6 +244,7 @@ export class Input {
   }
 
   dragEnd(p: Point, v: Point) {
+    this.app.flight.note("input", "drag end", { x: Math.round(p.x), y: Math.round(p.y) });
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -260,6 +268,7 @@ export class Input {
 
   /** Puts the camera, the board and the selection back as they were when the drag began. */
   dragCancel() {
+    this.app.flight.note("input", "drag cancel");
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -278,6 +287,7 @@ export class Input {
   }
 
   pinchStart(c: Point) {
+    this.app.flight.note("input", "pinch start", { x: Math.round(c.x), y: Math.round(c.y) });
     this.stopCoast();
     this.pinchBase = { cam: { ...this.app.view.cam }, c, last: c };
   }
@@ -298,17 +308,20 @@ export class Input {
 
   /** A zoom past a limit springs back around the fingers; otherwise the pan coasts on. */
   pinchEnd(v: Point) {
+    this.app.flight.note("input", "pinch end");
     const c = this.pinchBase?.last;
     this.pinchBase = null;
     if (c) this.app.view.camera.settle(c, v);
   }
 
   pinchCancel() {
+    this.app.flight.note("input", "pinch cancel");
     this.app.view.setCamera(this.pinchBase!.cam);
     this.pinchBase = null;
   }
 
   zoomDragStart(p: Point) {
+    this.app.flight.note("input", "zoom drag start", { x: Math.round(p.x), y: Math.round(p.y) });
     this.stopCoast();
     this.pinchBase = { cam: { ...this.app.view.cam }, c: p };
   }
@@ -319,12 +332,14 @@ export class Input {
   }
 
   zoomDragEnd() {
+    this.app.flight.note("input", "zoom drag end");
     const c = this.pinchBase?.c;
     this.pinchBase = null;
     if (c) this.app.view.camera.settle(c);
   }
 
   zoomDragCancel() {
+    this.app.flight.note("input", "zoom drag cancel");
     this.pinchCancel();
   }
 
