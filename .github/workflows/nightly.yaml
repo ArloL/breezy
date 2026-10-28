@@ -467,6 +467,10 @@ jobs:
         scripts/build-site.sh "$RUNNER_TEMP/ref-site" ref
     - name: Measure and compare with the reference
       run: node scripts/launch.ts --ref "$RUNNER_TEMP/ref-site"
+    # what the recorder costs: this build against itself recording nothing, in turns
+    - name: Measure against this build without its recorder
+      if: ${{ !cancelled() }}
+      run: node scripts/launch.ts --ref-without-recorder
     - name: Plants
       if: ${{ !cancelled() }}
       timeout-minutes: 15
