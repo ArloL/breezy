@@ -121,7 +121,12 @@ export function sampleRunner(lines: Line[], ms = 2000) {
 /** A device's recording as timeline lines of `who`'s app, on the wall clock, whole: its geometry is what a failure is
  * read from, and flight.json keeps it besides. */
 export function flightLines(r: Recording | null, who: string): Line[] {
-  return (r?.entries ?? []).map(([t, kind, what, data]): Line => [r!.origin + t, `${who} app`, `${kind} ${what}${data ? ` ${JSON.stringify(data)}` : ""}`]);
+  // a page's clock stands still while its device sleeps: the wall time it notes on waking places what follows
+  let origin = r?.origin ?? 0;
+  return (r?.entries ?? []).map(([t, kind, what, data]): Line => {
+    if (typeof data?.wall === "number") origin = data.wall - t;
+    return [origin + t, `${who} app`, `${kind} ${what}${data ? ` ${JSON.stringify(data)}` : ""}`];
+  });
 }
 
 /** One text of `lines` in time, each with its wall clock and ms from `start`. */

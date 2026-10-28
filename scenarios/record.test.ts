@@ -11,6 +11,11 @@ test("a recording's entries become timeline lines on the wall clock", () => {
   ]);
 });
 
+test("entries after a device slept are placed by the wall clock it noted on waking, as its own clock stood still", () => {
+  const r = { schema: 1 as const, origin: 1000, dropped: 0, context: null, entries: [[5, "life", "hidden"], [6, "life", "visible", { wall: 60_000 }], [9, "input", "tap"]] as never };
+  assert.deepEqual(flightLines(r, "d0").map(([at]) => at), [1005, 60_000, 60_003]);
+});
+
 test("no recording gives no lines", () => {
   assert.deepEqual(flightLines(null, "d0 webkit"), []);
 });
