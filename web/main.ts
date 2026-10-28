@@ -38,9 +38,10 @@ function record(app: App) {
   const about = { ua: navigator.userAgent, screen: [screen.width, screen.height], dpr: devicePixelRatio, standalone, version };
   f.context(about);
   f.note("context", "page", about);
-  document.addEventListener("visibilitychange", () => f.note("life", document.hidden ? "hidden" : "visible"));
+  // the wall clock on waking, as the page's own stood still while its device slept
+  document.addEventListener("visibilitychange", () => document.hidden ? f.note("life", "hidden") : f.note("life", "visible", { wall: Date.now() }));
   addEventListener("pagehide", () => f.note("life", "pagehide"));
-  addEventListener("pageshow", (e) => f.note("life", "pageshow", { persisted: e.persisted }));
+  addEventListener("pageshow", (e) => f.note("life", "pageshow", { persisted: e.persisted, wall: Date.now() }));
   let due = false;
   const viewport = () => {
     if (due) return;
