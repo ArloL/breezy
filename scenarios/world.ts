@@ -5,7 +5,7 @@ import { LANE_H, LANE_W } from "../web/rules.ts";
 import * as V from "../scripts/fuzz/virtual.ts";
 import type { Board, Point } from "../web/types.ts";
 import type { Invite } from "../web/sync/crypto.ts";
-import { ANDROID, PHONE, type Screen } from "../web/test/fakes.ts";
+import { ANDROID, MINI, PHONE, type Screen } from "../web/test/fakes.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { Recording } from "../web/flight.ts";
 
@@ -14,10 +14,11 @@ export * from "./device.ts";
 /** The plant a run was started with: read once, as a hub started with a plant sets BREEZY_PLANT for its Swift devices. */
 const PLANT = process.env.BREEZY_PLANT ?? null;
 
-/** A phone is a web device with an iPhone's screen and keyboard, an android one with the partner's Android's. */
-export type Kind = "web" | "swift" | "phone" | "android";
+/** A phone is a web device with an iPhone 17's screen and keyboard, a mini with the owner's iPhone 13 mini's, an android
+ * one with the partner's Android's. */
+export type Kind = "web" | "swift" | "phone" | "mini" | "android";
 /** The screen of each kind of phone. */
-export const PHONES: Partial<Record<Kind, Screen>> = { phone: PHONE, android: ANDROID };
+export const PHONES: Partial<Record<Kind, Screen>> = { phone: PHONE, mini: MINI, android: ANDROID };
 
 export class SimDevice extends Device {
   readonly sim: World;

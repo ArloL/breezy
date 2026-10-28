@@ -27,7 +27,10 @@ export interface Screen {
 export const DESKTOP: Screen = { w: 1200, h: 800, top: 0, bottom: 800, keyboard: 0, keyboardMs: 0 };
 /** The iPhone 17's in the app added to its Home Screen, on iOS 27 in the simulator: at rest, the board between the top
  * bar and the bottom bar, read off a screenshot; editing, where scenarios/phone-contract.e2e.ts measured it. */
-export const PHONE: Screen = { w: 402, h: 874, top: 120, bottom: 774, keyboard: 396, keyboardMs: 165, keyboardTop: 92 };
+export const PHONE: Screen = { w: 402, h: 874, top: 120, bottom: 774, keyboard: 396, keyboardMs: 165, keyboardTop: 120 };
+/** The owner's iPhone 13 mini, the app on its Home Screen, measured by scenarios/phone-contract.e2e.ts: shorter, its
+ * board shows 282 pt above the keyboard where the iPhone 17's shows 314. */
+export const MINI: Screen = { w: 375, h: 812, top: 108, bottom: 702, keyboard: 378, keyboardMs: 165, keyboardTop: 108 };
 /** Chrome's page on the Pixel 8a emulator, as the partner's Android phone, measured by scenarios/phone-contract.e2e.ts:
  * its keyboard came in 670 to 1010 ms. */
 export const ANDROID: Screen = { w: 411, h: 812, top: 58, bottom: 712, keyboard: 336, keyboardMs: 800, keyboardTop: 58 };
