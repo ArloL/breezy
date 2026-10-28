@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Entry, Recording } from "../web/flight.ts";
 
-interface Run {
+export interface Run {
   dir: string;
   case: string;
   pair: string[];
@@ -16,7 +16,7 @@ interface Run {
 }
 
 /** An entry as what it says happened, not when or where: a kind, what, and the branch a decision took. */
-const sign = ([, kind, what, data]: Entry) =>
+export const sign = ([, kind, what, data]: Entry) =>
   `${kind} ${what}${data?.path ? ` ${data.path}/${data.why}` : ""}${data?.action ? ` ${data.action}` : ""}`;
 
 export function compare(failed: Recording, control: Recording) {
@@ -28,7 +28,7 @@ export function compare(failed: Recording, control: Recording) {
   return { parts, only: [...new Set(f.filter((s) => !seen.has(s)))] };
 }
 
-function* runs(dir: string): Generator<Run> {
+export function* runs(dir: string): Generator<Run> {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) yield* runs(path);
@@ -36,7 +36,7 @@ function* runs(dir: string): Generator<Run> {
   }
 }
 
-const recording = (r: Run, i: number): Recording | null => {
+export const recording = (r: Run, i: number): Recording | null => {
   const path = join(r.dir, `d${i} ${r.pair[i]} flight.json`);
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) as Recording : null;
 };

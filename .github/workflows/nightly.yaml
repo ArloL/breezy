@@ -82,6 +82,21 @@ jobs:
         name: scenarios-desktop
         path: build/scenarios
         if-no-files-found: ignore
+    # every case on the hub's fakes, each run's recordings kept, for the summary to hold the fakes to the real devices
+    - name: The hub's cases, recorded
+      if: ${{ !cancelled() }}
+      timeout-minutes: 15
+      env:
+        HUB_RECORDS: all
+      run: |
+        swift build --package-path BreezyKit --product breezy-sim
+        node --test --test-force-exit scenarios/cases.test.ts
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: hub-fakes
+        path: build/hub
+        if-no-files-found: ignore
     # the real devices' plants, whatever the cases before did: a board that cannot open offline, in Chromium; their
     # records under build/plants, apart from the cases'
     - name: Plants
@@ -531,6 +546,11 @@ jobs:
       with:
         pattern: scenarios-*
         path: build/nightly
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: hub-fakes
+        path: build/hub-nightly
+      continue-on-error: true
     - name: Sum up the night
       env:
         RESULTS: ${{ toJSON(needs) }}
@@ -540,6 +560,8 @@ jobs:
         if [ -d build/nightly ]; then node scripts/scenario-stats.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
         # each failure beside a run of its case that passed: where their recordings part
         if [ -d build/nightly ]; then node scripts/controls.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
+        # the hub's fakes against the real devices they stand for, a report while it proves itself
+        if [ -d build/hub-nightly ]; then node scripts/parity.ts build/nightly build/hub-nightly >> "$GITHUB_STEP_SUMMARY"; fi
         {
           echo
           echo "| Job | Result |"
