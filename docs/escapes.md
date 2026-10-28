@@ -62,6 +62,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-28 | ios | B3 | nightly | L3 | `scenarios/touch.test.ts` | no pointer line in `timeline.txt` after the double tap, and the camera in its `◀` line (runtime, application) | 0 | yes | #148 |
 | 2026-10-28 | android | B3 | nightly | L6 | `scenarios/prompts.test.ts` | Take Survey and No Thanks among the screen texts in the error (device) | 0 | yes | #160 |
 | 2026-10-28 | ios | B5 | nightly | L1 | `scenarios/open.test.ts` | simctl's own "Operation timed out" in the launch step, at a runner load of 149 on 3 CPUs in `timeline.txt` (device, runner) | 0 | yes | #162 |
+| 2026-10-28 | android | B5 | nightly | L1 | `scripts/test/android-snapshot.test.ts` | `adb: device unauthorized` through a cold boot that completed, and a different `qemu.adb.pubkey` on each run, in `android-emulator.log` (host) | 0 | yes | #173 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -81,3 +82,5 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 2026-10-28: on the emulator, Firefox for Android showed a survey over the page as a case began, and the touches the scenarios send to find where the page starts reached the survey, not the page. The touch probe now sends away what a browser shows over the page by its No Thanks or Not now, as a person would, and tries again.
 
 2026-10-28: in Safari on the nightly's iPhone 13 mini, the first case failed as Safari launched: the simulator, still busy after its boot at a load of 149 on 3 CPUs, gave up on opening the first URL, and the launch ended there. It opens a URL that went nowhere again, up to four times, but took an open that failed as the end. A failed open now counts as one more try. The boot's settling leaves the phone at a load of 170 to 180, where the job runs at 40 to 60.
+
+2026-10-28: after #170 cached the emulator's AVD with its snapshot, every Android job but the one that packed it failed to boot, the merge gate's too: each runner's adb makes its own key, and the AVD trusted only the packing runner's, from its snapshot and from cold alike. The key now goes into the cache with the AVD. Restoring on a fresh runner had been left to check after the merge.
