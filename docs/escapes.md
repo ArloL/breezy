@@ -55,7 +55,7 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-25 | android | B1 | soak | L6 | `scenarios/cases.ts` | #124 |
 | 2026-10-26 | ios | B8 | the iPhone here | L6 | `scenarios/cases.ts` | #116 |
 | 2026-10-26 | ios | B1 | hand | L1 | `web/test/turn.test.ts` | #129 |
-| 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | PR |
+| 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | #145 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
