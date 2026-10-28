@@ -208,6 +208,7 @@ jobs:
         SCENARIO_PAIRS: chromium:firefox-android firefox-android:webkit android:chromium webkit:android
       run: |
         mise exec -- scripts/android-load.sh build/android-load.txt &
+        mise exec -- scripts/android-trace.sh build/android-logcat-stream.txt &
         mise exec -- node --test --test-force-exit scenarios/browsers.e2e.ts
     # whatever the cases did: a red case must not hide the rows
     - name: Platform rows on Android

@@ -361,6 +361,7 @@ jobs:
         SCENARIO_PAIRS: android:chromium
       run: |
         mise exec -- scripts/android-load.sh build/android-load.txt &
+        mise exec -- scripts/android-trace.sh build/android-logcat-stream.txt &
         mise exec -- node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Count the cases
       if: ${{ always() }}

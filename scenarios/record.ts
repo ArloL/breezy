@@ -140,8 +140,9 @@ export function timeline(lines: Line[], start: number): string {
     .join("\n");
 }
 
-/** The lines of a `logcat -v threadtime -v epoch` log to see among the case's own: errors, and what the browsers, the
- * keyboard, the window manager and the frame scheduler say; a line repeated at once counted, not repeated. */
+/** The lines of a `logcat -v threadtime -v epoch` log to see among the case's own: errors, what the browsers, the
+ * keyboard, the window manager and the frame scheduler say, and when a process starts, dies or is killed; a line repeated
+ * at once counted, not repeated. */
 export function logcatLines(log: string, source: string): Line[] {
   const lines: Line[] = [];
   let last = "", times = 1;
@@ -149,7 +150,7 @@ export function logcatLines(log: string, source: string): Line[] {
     const m = /^\s*(\d+\.\d+)\s+\d+\s+\d+\s+([VDIWEF])\s+(.*?)\s*: (.*)$/.exec(l);
     if (!m) continue;
     const [, at, level, tag, text] = m as unknown as [string, string, string, string, string];
-    const ours = /^(chromium|cr_\w+|Gecko\w*|GeckoConsole|ImeTracker|InputMethodManagerService|WindowManager|ActivityManager|ActivityTaskManager|Choreographer|ANRManager|DEBUG|libc)$/.test(tag);
+    const ours = /^(chromium|cr_\w+|Gecko\w*|GeckoConsole|ImeTracker|InputMethodManagerService|WindowManager|ActivityManager|ActivityTaskManager|Choreographer|ANRManager|DEBUG|libc|am_proc_start|am_proc_died|am_kill|am_crash|am_low_memory)$/.test(tag);
     if (!(level === "E" || level === "F" || ours && level !== "V" && level !== "D")) continue;
     const what = `${level} ${tag}: ${text}`;
     if (what === last) {

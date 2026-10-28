@@ -61,7 +61,8 @@ succeeds(() => adb("disconnect", EMULATOR_TCP))();
 if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   mkdirSync(join(root, "build"), { recursive: true });
   const log = openSync(join(root, "build", "android-emulator.log"), "w");
-  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save"], { detached: true, stdio: ["ignore", log, log] });
+  // and the kernel's console into the log: a panic's own record keeps only its last lines, not what led up to it
+  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save", "-show-kernel"], { detached: true, stdio: ["ignore", log, log] });
   emulator.unref();
 }
 await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop", "sys.boot_completed").trim() === "1"));

@@ -1281,7 +1281,7 @@ export class RealWorld {
         if (PLANT) await step("plant", () => page.evaluate((p: string) => void (globalThis.__breezyPlant = p), PLANT));
         continue;
       }
-      const [page, touchscreen] = await step("launch", async () => kind === "android" ? this.android() : kind === "firefox-android" ? this.firefoxAndroid() : [await this.browser(kind)]);
+      const [page, touchscreen] = await step("launch", async () => kind === "android" ? this.android() : kind === "firefox-android" ? this.firefoxAndroid(`d${i} ${kind}`) : [await this.browser(kind)]);
       const d = new BrowserDevice(kind, page, touchscreen, this.t0);
       this.devices.push(d);
       if (fresh && i === 0) continue;
@@ -1349,7 +1349,9 @@ export class RealWorld {
    * Firefox on the emulator, through fenix.ts: in the one profile it keeps, the site's data of the runs before cleared;
    * its touchscreen through the emulator's console.
    */
-  private async firefoxAndroid() {
+  /** Firefox for Android, each part of its launch a step of `who`'s: the emulator's kernel panicked during one. */
+  private async firefoxAndroid(who: string) {
+    const step = <T>(action: string, f: () => Promise<T>) => this.steps.run(who, action, [], f);
     const serial = execFileSync("adb", ["devices"], { encoding: "utf8", timeout: 30_000 }).match(/^(emulator-\d+)\tdevice$/m)?.[1];
     if (!serial) throw new Error("no Android emulator: run node scripts/android.ts");
     for (const port of [WEB, SERVER, RELAY]) execFileSync("adb", ["-s", EMULATOR_TCP, "reverse", `tcp:${port}`, `tcp:${port}`], { timeout: 30_000 });
@@ -1357,7 +1359,7 @@ export class RealWorld {
     let held = fenix;
     fenix = null;
     const answers = (p?: Page) => p ? Promise.race([p.evaluate(() => true).catch(() => false), sleep(5000).then(() => false)]) : false;
-    if (held && !held.closed) {
+    if (held && !held.closed) await step("front", async () => {
       try {
         // to the front as a tap on its icon brings it, over Chrome, which a case in it may have left there
         execFileSync("adb", ["-s", EMULATOR_TCP, "shell", "am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
@@ -1368,8 +1370,8 @@ export class RealWorld {
       } catch {}
       // once in front: Android may have ended it behind Chrome, and bringing it back started another, which the kept
       // session does not reach
-      if (held.closed || !await answers(held.context.pages()[0])) held.closed = true;
-    }
+      if (held!.closed || !await answers(held!.context.pages()[0])) held!.closed = true;
+    });
     if (held?.closed) {
       held.context.close().catch(() => {});
       rmSync(held.dir, { recursive: true, force: true });
@@ -1377,7 +1379,7 @@ export class RealWorld {
     }
     if (!held) {
       const dir = mkdtempSync(join(tmpdir(), "breezy-scenario-fenix-"));
-      const context = await firefox.launchPersistentContext(dir, { channel: "moz-firefox", executablePath: join(root, "scenarios", "fenix.ts"), viewport: null, timeout: 60_000 });
+      const context = await step("start", () => firefox.launchPersistentContext(dir, { channel: "moz-firefox", executablePath: join(root, "scenarios", "fenix.ts"), viewport: null, timeout: 60_000 }));
       held = { context, dir, closed: false };
       const h = held;
       context.on("close", () => (h.closed = true));
@@ -1389,7 +1391,7 @@ export class RealWorld {
     const page = context.pages()[0] ?? await context.newPage();
     page.removeAllListeners();
     await context.setOffline(false);
-    await clearSite(page, "Firefox");
+    await step("clear", () => clearSite(page, "Firefox"));
     const console = await EmulatorConsole.open(serial);
     this.consoles.push(console);
     return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
@@ -1469,6 +1471,7 @@ export class RealWorld {
     const failing = error ? this.steps.failed() : undefined;
     await this.steps.read();
     const lines: Line[] = [...this.host, ...this.steps.lines()];
+    let phoneLog = false;
     const parts = await Promise.all(this.devices.map(async (d, i) => {
       const who = `d${i} ${d.kind}`, summary: string[] = [];
       // how far the page's clock is ahead of this one's, which its recording's times are on
@@ -1487,6 +1490,7 @@ export class RealWorld {
         }
         for (const [name, data] of failure ?? []) writeFileSync(join(dir, `${who} ${name}`), data);
         if (logcat !== undefined) {
+          phoneLog = true;
           lines.push(...logcatLines(logcat, `${who} logcat`).map(([at, source, what]): Line => [at - skew, source, what]));
           if (error) writeFileSync(join(dir, `${who} logcat.txt`), logcat);
         }
@@ -1513,6 +1517,12 @@ export class RealWorld {
         : undefined;
       return { summary, ends, device: { who, kind: d.kind, version } };
     }));
+    // the emulator's log as scripts/android-trace.sh read it while it came, where no phone's was read: a launch that
+    // failed, or a reboot that lost the emulator's own
+    const stream = join(root, "build", "android-logcat-stream.txt");
+    if (error && !phoneLog && c.pair.some((k) => k === "android" || k === "firefox-android") && existsSync(stream)) {
+      lines.push(...logcatLines(readFileSync(stream, "utf8"), "emulator logcat").filter(([t]) => t >= this.started && t <= ended));
+    }
     const environ = await environment();
     const at = (s: Step) => `${s.who} ${s.action}(${s.args})${s.error ? `: ${s.error}` : s.ms === undefined ? ", never ended" : ""}`;
     writeFileSync(join(dir, "timeline.txt"), [
