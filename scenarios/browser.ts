@@ -11,6 +11,8 @@ import { randomBytes } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
+import { onMac } from "../web/keys.ts";
+import { chord } from "./chord.ts";
 import { Device, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
 import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
@@ -874,15 +876,13 @@ export class BrowserDevice extends Device {
     return until(`a new item in ${kind}`, async () => (await this.scene())[kind].find((x) => !had.has(x.id))?.id);
   }
 
-  /** ⌘ as a desktop browser off the Mac has it, as on CI's Android runner: Ctrl, with Ctrl+Home and Ctrl+End for ⌘↑ and
-   * ⌘↓, and Home and End for ⌘← and ⌘→. */
+  /** ⌘ as a desktop browser has it (`chord`), as off the Mac on CI's Android runner. */
   async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
-    const shift = mods.shift ? "Shift+" : "";
-    if (mods.meta && process.platform !== "darwin" && ["chromium", "webkit", "firefox"].includes(this.kind)) {
-      const ends: Record<string, string> = { ArrowUp: "Control+Home", ArrowDown: "Control+End", ArrowLeft: "Home", ArrowRight: "End" };
-      return this.page.keyboard.press(`${shift}${ends[key] ?? `Control+${key}`}`);
+    if (mods.meta && ["chromium", "webkit", "firefox"].includes(this.kind)) {
+      const pageMac = onMac(await this.page.evaluate(() => navigator.userAgent));
+      return this.page.keyboard.press(chord(key, mods, { macOS: process.platform === "darwin", pageMac }));
     }
-    await this.page.keyboard.press(`${mods.meta ? "Meta+" : ""}${shift}${key}`);
+    await this.page.keyboard.press(`${mods.meta ? "Meta+" : ""}${mods.shift ? "Shift+" : ""}${key}`);
   }
 
   override get edits() {
