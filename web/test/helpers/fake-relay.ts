@@ -1,5 +1,5 @@
 // The relay's rules in memory, with the real hold rules and frames, and a clock for the timers of Live.
-import { conflicts, holdsOf, lapsed } from "../../../relay/src/holds.js";
+import { conflicts, holdsOf, lapsed, refusal } from "../../../relay/src/holds.js";
 import { outFrame, parseFrame } from "../../../relay/src/frames.js";
 import { encode, decode } from "../../sync/base64.ts";
 
@@ -8,6 +8,7 @@ type Conn = { id: string; holds: string[]; last: number };
 const relayConflicts = conflicts as (conns: Conn[], id: string, ids: string[]) => string[];
 const relayHoldsOf = holdsOf as (conns: Conn[]) => Holds;
 const relayLapsed = lapsed as <C extends Conn>(conns: C[], now: number) => C[];
+const relayRefusal = refusal as (held: string[], ids: unknown) => string[] | null;
 const relayParseFrame = parseFrame as (bytes: Uint8Array) => { to: number | null; body: Uint8Array } | null;
 const relayOutFrame = outFrame as (from: number, body: Uint8Array) => Uint8Array<ArrayBuffer>;
 
@@ -197,8 +198,10 @@ export class FakeRelay {
       return;
     }
     if (m.t === "hold") {
-      const refused = relayConflicts(this.conns(), s.id, m.ids);
-      if (refused.length) return this.deliver(s, { t: "refused", ids: refused });
+      // ids the relay takes for none, or past the most one connection may hold, and then those another holds
+      const bad = relayRefusal(s.holds, m.ids);
+      const refused = bad ?? relayConflicts(this.conns(), s.id, m.ids);
+      if (bad || refused.length) return this.deliver(s, { t: "refused", ids: refused });
       s.holds = [...new Set([...s.holds, ...m.ids])].sort();
       return this.announce();
     }

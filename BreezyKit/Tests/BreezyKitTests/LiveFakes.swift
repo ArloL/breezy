@@ -168,7 +168,10 @@ import Foundation
     }
     switch m["t"] as? String {
     case "hold":
+      // as relay/src/holds.js's refusal: ids it takes for none, or past the most one connection may hold, refused whole
       let ids = m["ids"] as? [String] ?? []
+      let valid = m["ids"] is [String] && ids.count <= 1000 && ids.allSatisfy { $0.wholeMatch(of: #/[A-Za-z0-9_-]{22}/#) != nil }
+      if !valid || Set(s.holds + ids).count > 500 { return deliver(s, ["t": "refused", "ids": ids]) }
       let taken = Set(others(s).flatMap(\.holds))
       let refused = ids.filter(taken.contains)
       guard refused.isEmpty else { return deliver(s, ["t": "refused", "ids": refused]) }

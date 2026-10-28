@@ -125,18 +125,38 @@ private func colour(_ device: String) -> UInt32 { Person(device: device, name: "
   let (relay, _, a, b) = two()
   var refused: Set<String> = []
   b.onRefused = { refused = $0 }
-  a.hold(["x", "y"])
+  a.hold([C1, C2])
   relay.run()
-  #expect(b.taken == ["x", "y"])
-  #expect(b.holder(of: "x")?.name == "Ana Lima")
+  #expect(b.taken == [C1, C2])
+  #expect(b.holder(of: C1)?.name == "Ana Lima")
   #expect(a.taken.isEmpty)
-  b.hold(["y", "z"])
+  b.hold([C2, C3])
   relay.run()
-  #expect(refused == ["y"])
+  #expect(refused == [C2])
   b.release()
   a.release()
   relay.run()
   #expect(b.taken.isEmpty && a.mine.isEmpty)
+}
+
+@MainActor @Test func aGestureOverMoreItemsThanTheRelayHoldsForOneConnectionAsksItToHoldNoneAndStillShowsLive() {
+  let (relay, _, a, b) = two()
+  var refused: Set<String>?
+  a.onRefused = { refused = $0 }
+  // a drag of every card on a board of 501: the relay refuses a hold past 500 whole, which cancelled the drag
+  let many = (0..<501).map { i in Base64URL.encode(Data((0..<16).map { k in k < 2 ? UInt8((i >> (8 * k)) & 0xff) : 7 })) }
+  a.hold(Set([C1] + many))
+  a.sendLive(board: B1, items: moved, caret: nil)
+  relay.run()
+  #expect(refused == nil)
+  #expect(b.taken.isEmpty)
+  #expect(b.overlay(on: B1) == moved)
+  // nor after a reconnect, which asks for what it holds again
+  a.close()
+  a.connect()
+  relay.run()
+  #expect(refused == nil)
+  #expect(Live.maxHeld == 500)
 }
 
 @MainActor @Test func liveEditsShowAsAnOverlay() {

@@ -802,7 +802,7 @@ public struct Peer: Equatable, Sendable {
       roster = Dictionary((m["peers"]?.array ?? []).compactMap(\.string).map { ($0, now()) }) { a, _ in a }
       direct?.welcome(roster.keys.sorted())
       sendPresence()
-      if !mine.isEmpty { frame(["t": .string("hold"), "ids": .array(mine.sorted().map(JSONValue.string))]) }
+      if !mine.isEmpty && mine.count <= Self.maxHeld { frame(["t": .string("hold"), "ids": .array(mine.sorted().map(JSONValue.string))]) }
       // what this device pushed while its last socket was dead, as after a network change, was announced to nobody
       if storeCursor > 0 { send(["t": .string("pushed"), "version": .number(Double(storeCursor))]) }
       onWelcome?()
@@ -1061,14 +1061,18 @@ public struct Peer: Equatable, Sendable {
     }
   }
 
+  /// The most one connection may hold: the relay refuses a hold past it whole (relay/src/holds.js).
+  public nonisolated static let maxHeld = 500
+
   /// Asks the relay for `ids`; `onRefused` tells if someone else has any. Asked again after a reconnect. Starts a
-  /// gesture, whose first live body is a keyframe.
+  /// gesture, whose first live body is a keyframe. Past maxHeld it asks for none, as the relay would refuse them all and
+  /// end the gesture: one that big goes unguarded, live all the same.
   public func hold(_ ids: Set<String>) {
     for p in pipes { p.restart() }
     let fresh = ids.subtracting(mine)
     guard !fresh.isEmpty else { return }
     mine.formUnion(fresh)
-    if connected { frame(["t": .string("hold"), "ids": .array(fresh.sorted().map(JSONValue.string))]) }
+    if connected && mine.count <= Self.maxHeld { frame(["t": .string("hold"), "ids": .array(fresh.sorted().map(JSONValue.string))]) }
   }
 
   public func release() {
