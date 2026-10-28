@@ -49,7 +49,7 @@ Check that the control is not broken the same way.
 
 - A repro is a hypothesis until it reproduces the reported signal: the same decision, transition or geometry in its recording.
 - Its test asserts that signal, at the lowest level that shows it (`TESTING.md`).
-- If a fake was wrong, teach it, and diff its recording against the real device's.
+- If a fake was wrong, teach it, and diff its recording against the real device's; the night's summary lists decisions a fake and its real device did not both take ("Fakes against real devices").
 
 ## 5. Reviews eliminate
 

@@ -7,8 +7,20 @@ import { watchSight } from "./sight.ts";
 import { PHONES, World, type Kind } from "./world.ts";
 
 const kinds: Kind[] = ["swift", "web", "phone", "android"];
-/** Where a failing case keeps its devices' recordings. */
+/** Where a failing case keeps its devices' recordings, and with HUB_RECORDS=all a passing one too, for the fakes to be
+ * held to the real devices nightly (scripts/parity.ts). */
 const RECORDS = join(new URL("..", import.meta.url).pathname, "build", "hub");
+const ALL = process.env.HUB_RECORDS === "all";
+
+/** The devices' recordings and what the case was, as a real device's run keeps them; whatever they do, nothing thrown. */
+async function keep(dir: string, w: World, run: { case: string; pair: Kind[]; verdict: string }) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "case.json"), `${JSON.stringify(run)}\n`);
+  await Promise.all(w.devices.map(async (d, i) => {
+    const r = await d.flight().catch(() => null);
+    if (r) writeFileSync(join(dir, `d${i} ${d.kind} flight.json`), `${JSON.stringify(r)}\n`);
+  })).catch(() => {});
+}
 
 for (const c of cases) {
   for (const a of kinds) {
@@ -22,16 +34,12 @@ for (const c of cases) {
       const name = `${c.name} (${a} → ${b})`;
       test(name, async () => {
         const w = await World.start([a, b]);
+        const dir = join(RECORDS, name.replace(/[^\w -]+/g, "").slice(0, 120));
         try {
           await c.run({ devices: w.devices.map(watchSight), settle: () => w.settle() });
+          if (ALL) await keep(dir, w, { case: c.name, pair: [a, b], verdict: "passed" });
         } catch (e) {
-          const dir = join(RECORDS, name.replace(/[^\w -]+/g, "").slice(0, 120));
-          mkdirSync(dir, { recursive: true });
-          // whatever the recordings do, the case's own error is what it throws
-          await Promise.all(w.devices.map(async (d, i) => {
-            const r = await d.flight().catch(() => null);
-            if (r) writeFileSync(join(dir, `d${i} ${d.kind} flight.json`), `${JSON.stringify(r)}\n`);
-          })).catch(() => {});
+          await keep(dir, w, { case: c.name, pair: [a, b], verdict: "failed" }).catch(() => {});
           if (e instanceof Error) e.message += `\nrecordings in ${dir}`;
           throw e;
         } finally {
