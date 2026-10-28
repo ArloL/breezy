@@ -38,6 +38,9 @@ test("a cycle that changed nothing is noted once, not on every poll", async () =
 test("a failure is noted with its kind and how long it backs off, and a cycle it then skips with why", async () => {
   const { a, id } = await pair(newID);
   const notes = noting(a.engine);
+  // a clock that moves on each read, as a busy runner's did between two reads: the note said 4998
+  let t = 0;
+  a.engine.clock = () => (t += 1);
   a.transport.online = false;
   a.edit(id, (x) => R.addCard(x, 0, 0));
   await a.engine.sync();

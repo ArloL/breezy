@@ -450,9 +450,10 @@ export class SyncEngine {
       }
       if (!(error instanceof TransportError)) console.warn("sync failed", error);
       this.failures++;
-      this.retryAt = this.clock() + Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
+      const backoff = Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
+      this.retryAt = this.clock() + backoff;
       this.update(error?.kind === "offline" ? "offline" : "unreachable");
-      this.say("failed", { kind: typeof error?.kind === "string" ? error.kind : "error", failures: this.failures, backoff: Math.round(this.retryAt - this.clock()), waiting: this.status.waiting });
+      this.say("failed", { kind: typeof error?.kind === "string" ? error.kind : "error", failures: this.failures, backoff, waiting: this.status.waiting });
     }
   }
 
