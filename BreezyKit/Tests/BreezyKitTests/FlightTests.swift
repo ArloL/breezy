@@ -16,6 +16,17 @@ import Testing
   #expect(c.flight.recording().entries[3].data == ["from": .null, "to": .string("b")])
 }
 
+@MainActor @Test func theCoreNotesABoxOnceWithTheSelectionItAddsTo() {
+  let c = CanvasCore(model: BoardModel(board: board([card("a", 0, 0), card("b", 300, 0), card("c", 600, 0)])))
+  c.heightOf = h48
+  c.selection = ["c"]
+  c.press(at: Point(x: 0, y: 200), shift: true)
+  for y in stride(from: 180.0, through: 40, by: -20) { c.dragged(to: Point(x: 310, y: y)) }
+  c.release()
+  let drags = c.flight.recording().entries.filter { $0.what == "drag" }
+  #expect(drags.map(\.data) == [["action": .string("marquee"), "ids": .number(1)]])
+}
+
 @Test func keepsTheNewestEntriesInOrderAndCountsWhatItDropped() {
   let f = Flight(size: 4000)
   for i in 0..<10_000 { f.note(.input, "tap", ["n": .number(Double(i))]) }
