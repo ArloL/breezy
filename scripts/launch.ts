@@ -3,8 +3,9 @@
 // its CPU slowed 4×, the site in its service worker's cache as on a Home Screen, and scripts/make-stress-board.py's 500
 // cards in the device's storage. The tap that opens the board is the person's, not the app's, and is not counted.
 // In turns with a reference, so that what slows the runner for a while slows both alike: the site built in --ref, or
-// this one without BREEZY_PLANT. Fails above 1.5 s, or as gate.ts finds this one worse than the reference.
-//   node scripts/launch.ts [--runs 10] [--slowdown 4] [--ref DIR]
+// this one without BREEZY_PLANT, or with --ref-without-recorder this one recording nothing (web/flight.ts), for what
+// recording costs. Fails above 1.5 s, or as gate.ts finds this one worse than the reference.
+//   node scripts/launch.ts [--runs 10] [--slowdown 4] [--ref DIR | --ref-without-recorder]
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +14,7 @@ import { parseArgs } from "node:util";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { buildSite, serveStatic } from "../scenarios/browser.ts";
 
-const { values: opt } = parseArgs({ options: { runs: { type: "string", default: "10" }, slowdown: { type: "string", default: "4" }, ref: { type: "string" } } });
+const { values: opt } = parseArgs({ options: { runs: { type: "string", default: "10" }, slowdown: { type: "string", default: "4" }, ref: { type: "string" }, "ref-without-recorder": { type: "boolean" } } });
 const RUNS = Number(opt.runs), GOAL = 1500;
 const root = new URL("..", import.meta.url).pathname;
 const tmp = mkdtempSync(join(tmpdir(), "breezy-launch-"));
@@ -24,11 +25,12 @@ type At = { list?: number; board?: number };
 const at = (page: Page) => page.evaluate(() => (window as unknown as { launchAt: At }).launchAt);
 
 /** The site in `dir` on `port`, its board stored and its cache filled, ready to launch again and again. */
-async function launcher(browser: Browser, dir: string, port: number, plant?: string) {
+async function launcher(browser: Browser, dir: string, port: number, plant?: string, recording = true) {
   const server = serveStatic(dir, port);
   const context = await browser.newContext({ viewport: { width: 411, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2.6 });
   // a past fault put back, as in scripts/plants.ts
   if (plant) await context.addInitScript((name) => (globalThis as { __breezyPlant?: string }).__breezyPlant = name, plant);
+  if (!recording) await context.addInitScript(() => (globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight = true);
   // when the board list and then the board were first drawn, on the page's own clock
   await context.addInitScript(() => {
     const at: At = {}, seen = new Set<keyof At>();
@@ -87,7 +89,7 @@ const here = join(root, "build", "web-launch");
 buildSite(here);
 const browser = await chromium.launch();
 const run = await launcher(browser, here, 58571, process.env.BREEZY_PLANT);
-const ref = await launcher(browser, opt.ref ?? here, 58572);
+const ref = await launcher(browser, opt.ref ?? here, 58572, undefined, !opt["ref-without-recorder"]);
 for (let r = 0; r < RUNS; r++) console.log(`run ${r + 1}: ${await run.launch()}; the reference's ${await ref.launch()}`);
 await browser.close();
 run.close();

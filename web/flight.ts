@@ -53,6 +53,8 @@ export class Flight {
 
   /** Keeps `data` as it is now; whatever cannot be read is noted as such, as a note must never break the app. */
   note(kind: Kind, what: string, data?: { [k: string]: Value }) {
+    // a page measured against itself without recording, for what recording costs (scripts/launch.ts)
+    if ((globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) return;
     let kept: { [k: string]: Value } | undefined;
     try {
       kept = data && JSON.parse(JSON.stringify(data));

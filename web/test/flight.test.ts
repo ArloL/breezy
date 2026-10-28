@@ -53,6 +53,18 @@ test("an error is kept as a hash of its message and where it was thrown, never i
   assert.ok(!JSON.stringify(thrown(e)).includes("hello"));
 });
 
+test("keeps nothing on a page that turned recording off, for its cost to be measured against", () => {
+  const g = globalThis as { __breezyNoFlight?: boolean };
+  g.__breezyNoFlight = true;
+  try {
+    const f = new Flight();
+    f.note("input", "tap");
+    assert.deepEqual(f.recording().entries, []);
+  } finally {
+    delete g.__breezyNoFlight;
+  }
+});
+
 test("rounds boxes", () => {
   assert.deepEqual(box({ x: 1.234, y: 2, w: 3.06, h: 4 }), [1.2, 2, 3.1, 4]);
   assert.equal(box(null), null);

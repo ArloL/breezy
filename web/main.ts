@@ -103,7 +103,7 @@ const app = new App(scratch ?? { cards: [], lanes: [] }, {
 app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
-record(app);
+if (!(globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) record(app);
 
 const board = document.getElementById("board")!;
 const gestures = new Gestures(app.input);
