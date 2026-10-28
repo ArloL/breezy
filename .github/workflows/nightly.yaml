@@ -40,6 +40,10 @@ jobs:
     timeout-minutes: 75
     permissions:
       contents: read
+    # every night films the browsers and keeps a failing case's films, unless dispatched with none: a desktop night with
+    # films ran no slower than one without (2026-10-28, its runner the less loaded)
+    env:
+      SCENARIO_VIDEO: ${{ inputs.video == 'all' && 'all' || inputs.video != 'none' && '1' || '' }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
