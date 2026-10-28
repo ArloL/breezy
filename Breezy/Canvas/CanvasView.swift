@@ -93,10 +93,20 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   /// How far what the pointer holds floats off the grid, as this Mac draws it.
   var floating: Records.Floating? { core.floating }
+  /// The last reveal noted, to note the next only when it decides otherwise, not on every key.
+  var revealed = ""
 
   init(model: BoardModel) {
     self.model = model
     core = CanvasCore(model: model)
+    // which Mac and build, as a web page's recording says which browser
+    let info = ProcessInfo.processInfo, screen = NSScreen.main?.frame.size ?? .zero
+    core.flight.context([
+      "ua": .string("Breezy for Mac on macOS \(info.operatingSystemVersionString)"),
+      "screen": .array([.number(screen.width), .number(screen.height)]),
+      "dpr": .number(Double(NSScreen.main?.backingScaleFactor ?? 1)),
+      "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"),
+    ])
     super.init(frame: NSRect(x: 0, y: 0, width: Self.size, height: Self.size))
     host.frame = bounds
     addSubview(host)

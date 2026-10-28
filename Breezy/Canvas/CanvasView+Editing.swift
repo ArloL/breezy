@@ -67,6 +67,7 @@ extension CanvasView {
     // after the options above: while resizable, a text view shrinks to fit its empty text
     tv.place(editorFrame(c, back: back))
     editing = CardEditing(id: id, back: back, view: tv, name: name)
+    core.flight.note(.transition, "edit", ["id": .string(id), "back": .bool(back)])
     layoutCards()
     window?.makeFirstResponder(tv)
     tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
@@ -79,7 +80,14 @@ extension CanvasView {
     guard let e = editing, let c = board.card(e.id) else { return }
     let v = visibleRect
     var r = doc(drawnRect(c)).insetBy(dx: -16, dy: -16)
-    if r.height > v.height { (r.origin.y, r.size.height) = (v.minY, v.height) }
+    let tall = r.height > v.height
+    let box = { (r: NSRect) in Rect(x: r.minX, y: r.minY, w: r.width, h: r.height).box }
+    let decided = "\(tall) \(e.id) \(e.back) \(v.size)"
+    if decided != revealed {
+      revealed = decided
+      core.flight.note(.decision, "reveal", ["path": .string(tall ? "caret" : "card"), "why": .string(tall ? "too tall" : "fits"), "visible": box(v), "card": box(r)])
+    }
+    if tall { (r.origin.y, r.size.height) = (v.minY, v.height) }
     r.size.width = min(r.width, v.width)
     scrollToVisible(r)
     e.view.scrollRangeToVisible(e.view.selectedRange())
@@ -128,6 +136,7 @@ extension CanvasView {
     }
     guard let e = editing else { return }
     editing = nil
+    core.flight.note(.transition, "edit end", ["id": .string(e.id), "back": .bool(e.back)])
     e.view.removeFromSuperview()
     model.update { $0.finishEdit(e.id) }
     model.update { $0.gravity(height) }
@@ -153,6 +162,7 @@ extension CanvasView {
     }
     if let e = editing {
       editing = nil
+      core.flight.note(.transition, "edit cancel", ["id": .string(e.id)])
       e.view.removeFromSuperview()
     }
     model.cancel()
