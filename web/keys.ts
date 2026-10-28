@@ -35,7 +35,10 @@ export interface KeyMouse {
   hoveredCard(): string | null;
 }
 
-const ANYWHERE = new Set<Command>(["find", "find-next", "find-previous", "zoom-in", "zoom-out", "zoom-reset"]);
+/** Whether a browser of user agent `ua` takes ⌘ rather than Ctrl for the board's commands. */
+export const onMac = (ua: string) => /Mac|iPhone|iPad/.test(ua);
+
+const ANYWHERE =new Set<Command>(["find", "find-next", "find-previous", "zoom-in", "zoom-out", "zoom-reset"]);
 
 /**
  * The command for key event `e`, as the Mac app's keys and menus have them, or null to leave the key alone. `typing` is

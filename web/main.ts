@@ -4,7 +4,7 @@ import { sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
 import { wheelAction } from "./wheel.ts";
-import { command, perform } from "./keys.ts";
+import { command, onMac, perform } from "./keys.ts";
 import { Library } from "./library.ts";
 import { ownBoards } from "./owner.ts";
 import { ask } from "./sheet.ts";
@@ -100,7 +100,7 @@ addEventListener("wheel", (e) => {
   if (app.input.drag) app.input.dragMove(app.input.drag.last);
 }, { passive: false });
 
-const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+const mac = onMac(navigator.userAgent);
 addEventListener("keydown", (e) => {
   if (document.body.dataset.screen === "boards") return;
   const s = app.state;
