@@ -31,8 +31,10 @@ export type RealKind = BrowserKind | "mac" | "ios-safari" | "ios-home";
 const root = new URL("..", import.meta.url).pathname;
 // inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
 export const WEB = 58565, SERVER = 58566, RELAY = 58568;
-/** SCENARIO_VIDEO=1 films each device's screen and keeps a failing case's films beside its record, =all a passing one's
- * too: for what geometry cannot show, a flicker or a paint. */
+/** SCENARIO_VIDEO=1 films the browsers' and the iPhones' screens and keeps a failing case's films beside its record, =all
+ * a passing one's too: for what geometry cannot show, a flicker or a paint. Not the emulator's: filmed by its console,
+ * a night of Android cases ran 1.37 times as long, its Chrome 42 frames a second short of 60 against 24, and two cases
+ * failed out of sight. */
 const VIDEO = process.env.SCENARIO_VIDEO ?? "";
 
 /** A device's screen being filmed into `file`, and how to end it so that the file is whole. */
@@ -1369,7 +1371,6 @@ export class RealWorld {
     // an emulator's touchscreen; a phone's touches go through DevTools
     const console = emulator ? await EmulatorConsole.open(emulator) : undefined;
     if (console) this.consoles.push(console);
-    if (console) await this.filmEmulator(console, page);
     const touchscreen = console ? await Touchscreen.of(device.serial(), console, page) : undefined;
     return [page, touchscreen] as const;
   }
@@ -1423,20 +1424,7 @@ export class RealWorld {
     await step("clear", () => clearSite(page, "Firefox"));
     const console = await EmulatorConsole.open(serial);
     this.consoles.push(console);
-    await this.filmEmulator(console, page);
     return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
-  }
-
-  /** The emulator's screen filmed by its console, for `page`'s device; a console that cannot film, unfilmed. */
-  private async filmEmulator(console: EmulatorConsole, page: object) {
-    if (!this.filmDir) return;
-    const file = join(this.filmDir, `${this.films.size}.webm`);
-    try {
-      await console.command(`screenrecord start --time-limit 180 ${file}`);
-    } catch {
-      return;
-    }
-    this.films.set(page, { file, end: () => console.command("screenrecord stop").catch(() => {}) });
   }
 
   /** The iPhone simulator `udid`'s screen filmed by simctl, for `page`'s device, ended by an interrupt that closes it. */
