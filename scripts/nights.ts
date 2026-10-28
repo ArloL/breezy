@@ -12,15 +12,19 @@ const COUNTED = new Set(["decision", "transition", "input"]);
 
 function counts(r: Run, i: number): Map<string, number> {
   const m = new Map<string, number>();
-  for (const e of recording(r, i)?.entries ?? []) if (COUNTED.has(e[1])) m.set(sign(e), (m.get(sign(e)) ?? 0) + 1);
+  // a reveal is noted again as the board's area changes, which the keyboard's timing decides, not the case
+  for (const e of recording(r, i)?.entries ?? []) if (COUNTED.has(e[1]) && e[2] !== "reveal") m.set(sign(e), (m.get(sign(e)) ?? 0) + 1);
   return m;
 }
+
+/** A case whose input is drawn anew each night, by a seed of its own. */
+const random = (r: Run) => /at random/.test(r.case);
 
 export function report(lastDir: string, thisDir: string): string {
   const passed = (dir: string) => existsSync(dir) ? [...runs(dir)].filter((r) => r.verdict === "passed") : [];
   const last = passed(lastDir);
   const out: string[] = [];
-  for (const now of passed(thisDir)) {
+  for (const now of passed(thisDir).filter((r) => !random(r))) {
     const then = last.find((r) => r.case === now.case && r.pair.join() === now.pair.join());
     if (!then) continue;
     const lines = now.pair.flatMap((kind, i) => {
