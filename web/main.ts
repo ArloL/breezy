@@ -1,5 +1,6 @@
 import { App } from "./app.ts";
-import { thrown } from "./flight.ts";
+import { box, thrown } from "./flight.ts";
+import { readSight, SightWatch } from "./sight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
 import { sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
@@ -64,6 +65,30 @@ function record(app: App) {
     f.note("error", "rejected", thrown(e.reason));
     void app.library?.reporter.report("error");
   });
+  // the scenarios' own check of B1, once the board stands still: what the owner would otherwise see and have to tell
+  const sight = new SightWatch({
+    read: readSight,
+    moving: () => app.view.camera.moving,
+    broken: (problem, s) => {
+      f.note("decision", "sight broken", { focus: box(s.focus), caret: box(s.caret), visible: box(s.visible), bar: box(s.bar), screen: box(s.screen) });
+      void app.library?.reporter.report("sight");
+    },
+  });
+  const poke = () => sight.poke(), edited = () => sight.edited();
+  for (const type of ["pointerup", "resize"]) addEventListener(type, poke, { capture: true });
+  for (const type of ["keyup", "input", "focusin"]) addEventListener(type, edited, { capture: true });
+  document.addEventListener("selectionchange", edited);
+  // a press on the board outside an editor pans, pinches or ends the edit, and a wheel scrolls: the board where its
+  // user took it
+  document.getElementById("board")!.addEventListener("pointerdown", (e) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]') || sight.moved(), { capture: true });
+  addEventListener("wheel", () => sight.moved(), { capture: true, passive: true });
+  visualViewport?.addEventListener("resize", poke);
+  visualViewport?.addEventListener("scroll", poke);
+  const onCamera = app.view.onCamera;
+  app.view.onCamera = () => {
+    onCamera();
+    poke();
+  };
 }
 
 const params = new URLSearchParams(location.search);

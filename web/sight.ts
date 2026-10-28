@@ -96,3 +96,52 @@ export function readSight(): Sight | null {
   };
 }
 
+
+/** Checks that the card being edited is in sight once nothing has moved what shows for `quietMs`, as a person sees it
+ * once the board stops: each change `poke`s it, and a camera still moving puts the check off. What it finds wrong is
+ * `broken`, once until the card was in sight again. */
+export class SightWatch {
+  private readonly read: () => Sight | null;
+  private readonly moving: () => boolean;
+  private readonly broken: (problem: string, s: Sight) => void;
+  private readonly quietMs: number;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private last: string | null = null;
+
+  constructor({ read, moving, broken, quietMs = 700 }: { read: () => Sight | null; moving: () => boolean; broken: (problem: string, s: Sight) => void; quietMs?: number }) {
+    this.read = read;
+    this.moving = moving;
+    this.broken = broken;
+    this.quietMs = quietMs;
+  }
+
+  poke() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.check(), this.quietMs);
+  }
+
+  /** Its user moved the board, by a pan, a pinch or a wheel: a card they moved out of sight is theirs to bring back. */
+  moved() {
+    this.away = true;
+  }
+
+  /** Its user edited, which the board keeps in sight again. */
+  edited() {
+    this.away = false;
+    this.poke();
+  }
+
+  private away = false;
+
+  private check() {
+    if (this.away) return;
+    if (this.moving()) return this.poke();
+    let s: Sight | null = null;
+    try {
+      s = this.read();
+    } catch {}
+    const problem = s && outOfSight(s);
+    if (problem && !this.last) this.broken(problem, s!);
+    this.last = problem;
+  }
+}
