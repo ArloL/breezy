@@ -3,7 +3,7 @@
 // own input and the DOM.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir, totalmem } from "node:os";
 import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
@@ -30,6 +30,16 @@ export type RealKind = BrowserKind | "mac" | "ios-safari" | "ios-home";
 const root = new URL("..", import.meta.url).pathname;
 // inside Android's ephemeral port range: scripts/android.ts reserves them on the emulator as it boots
 export const WEB = 58565, SERVER = 58566, RELAY = 58568;
+/** SCENARIO_VIDEO=1 films each device's screen and keeps a failing case's films beside its record, =all a passing one's
+ * too: for what geometry cannot show, a flicker or a paint. */
+const VIDEO = process.env.SCENARIO_VIDEO ?? "";
+
+/** A device's screen being filmed into `file`, and how to end it so that the file is whole. */
+interface Film {
+  file: string;
+  end(): Promise<void>;
+}
+
 /** A bug planted in every browser's and iPhone's page once its board is open, to show the cases fail on it
  * (TESTING.md): SCENARIO_PLANT=reveal-current. */
 const PLANT = process.env.SCENARIO_PLANT;
@@ -1119,6 +1129,10 @@ export class RealWorld {
   /** What reads the iPhone's page, which the web server puts in it. */
   private readonly agent = new Agent();
   private readonly browsers: Browser[] = [];
+  /** With SCENARIO_VIDEO, where the devices are filmed, each device's film, and the films a record keeps. */
+  private readonly filmDir = VIDEO ? mkdtempSync(join(tmpdir(), "breezy-films-")) : null;
+  private readonly films = new Map<object, Film>();
+  private kept: [from: string, to: string][] = [];
   private readonly androids: [AndroidDevice, BrowserContext?][] = [];
   /** Firefox for Android, which a world that passed keeps for the next. */
   private fenix: Fenix | null = null;
@@ -1213,6 +1227,7 @@ export class RealWorld {
               if (attempt === 4) throw e;
             }
           }
+          this.filmIphone(udid, page);
           return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });
         });
         this.devices.push(ios);
@@ -1268,6 +1283,7 @@ export class RealWorld {
           await launch();
           // a connection that touched SpringBoard reaches no page after it
           hid.stop();
+          this.filmIphone(udid, page);
           return new IosDevice("ios-home", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });
         });
         this.devices.push(ios);
@@ -1309,7 +1325,8 @@ export class RealWorld {
   private async browser(kind: Exclude<BrowserKind, "android" | "firefox-android">) {
     const browser = await { chromium, webkit, firefox }[kind].launch();
     this.browsers.push(browser);
-    const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce" });
+    const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, hasTouch: true, reducedMotion: "reduce",
+      ...this.filmDir ? { recordVideo: { dir: this.filmDir, size: { width: 600, height: 400 } } } : {} });
     await context.addInitScript(logPage);
     return context.newPage();
   }
@@ -1341,6 +1358,7 @@ export class RealWorld {
     // an emulator's touchscreen; a phone's touches go through DevTools
     const console = emulator ? await EmulatorConsole.open(emulator) : undefined;
     if (console) this.consoles.push(console);
+    if (console) await this.filmEmulator(console, page);
     const touchscreen = console ? await Touchscreen.of(device.serial(), console, page) : undefined;
     return [page, touchscreen] as const;
   }
@@ -1394,7 +1412,33 @@ export class RealWorld {
     await step("clear", () => clearSite(page, "Firefox"));
     const console = await EmulatorConsole.open(serial);
     this.consoles.push(console);
+    await this.filmEmulator(console, page);
     return [page, await Touchscreen.of(EMULATOR_TCP, console, page)] as const;
+  }
+
+  /** The emulator's screen filmed by its console, for `page`'s device; a console that cannot film, unfilmed. */
+  private async filmEmulator(console: EmulatorConsole, page: object) {
+    if (!this.filmDir) return;
+    const file = join(this.filmDir, `${this.films.size}.webm`);
+    try {
+      await console.command(`screenrecord start --time-limit 180 ${file}`);
+    } catch {
+      return;
+    }
+    this.films.set(page, { file, end: () => console.command("screenrecord stop").catch(() => {}) });
+  }
+
+  /** The iPhone simulator `udid`'s screen filmed by simctl, for `page`'s device, ended by an interrupt that closes it. */
+  private filmIphone(udid: string, page: object) {
+    if (!this.filmDir) return;
+    const file = join(this.filmDir, `${this.films.size}.mp4`);
+    const c = spawn("xcrun", ["simctl", "io", udid, "recordVideo", "--codec=h264", "--force", file], { stdio: "ignore" });
+    c.on("error", () => {});
+    const ended = new Promise<void>((resolve) => c.on("exit", () => resolve()));
+    this.films.set(page, { file, end: async () => {
+      c.kill("SIGINT");
+      await Promise.race([ended, sleep(10_000)]);
+    } });
   }
 
   private async serve() {
@@ -1523,6 +1567,16 @@ export class RealWorld {
     if (error && !phoneLog && c.pair.some((k) => k === "android" || k === "firefox-android") && existsSync(stream)) {
       lines.push(...logcatLines(readFileSync(stream, "utf8"), "emulator logcat").filter(([t]) => t >= this.started && t <= ended));
     }
+    // a failing case's films, or with SCENARIO_VIDEO=all every case's, moved beside its record once each is whole
+    if (VIDEO === "all" || (VIDEO && error)) {
+      for (const [i, d] of this.devices.entries()) {
+        const page = (d as { page?: object }).page;
+        const video = d instanceof BrowserDevice ? d.page.video() : null;
+        const film = page && this.films.get(page);
+        const from = film?.file ?? (video ? await answer(video.path()) : null);
+        if (typeof from === "string" && from.startsWith("/")) this.kept.push([from, join(dir, `d${i} ${d.kind} video${extname(from)}`)]);
+      }
+    }
     const environ = await environment();
     const at = (s: Step) => `${s.who} ${s.action}(${s.args})${s.error ? `: ${s.error}` : s.ms === undefined ? ", never ended" : ""}`;
     writeFileSync(join(dir, "timeline.txt"), [
@@ -1605,6 +1659,8 @@ export class RealWorld {
         globalThis.console.log(`stopping the world: ${what} did not end in 10 s`);
       }
     };
+    // a context's film is written as it closes, which closing its browser does not wait for
+    if (this.filmDir) for (const b of this.browsers) for (const c of b.contexts()) await bounded("a filmed context's close", c.close());
     for (const b of this.browsers) await bounded(`${b.browserType().name()}'s close`, b.close());
     if (this.fenix && keep && !this.fenix.closed) {
       // off the app, whose connections and timers would run on into the next world
@@ -1630,6 +1686,10 @@ export class RealWorld {
     for (const d of this.devices) if (d instanceof IosDevice) d.stop();
     this.agent.stop();
     for (const d of this.devices) if (d instanceof MacDevice) await bounded("the Mac app's stop", d.stop());
+    for (const f of this.films.values()) await bounded("a film's end", f.end());
+    // whole once its browser closed, or its film ended
+    for (const [from, to] of this.kept) try { copyFileSync(from, to); } catch {}
+    if (this.filmDir) rmSync(this.filmDir, { recursive: true, force: true });
     for (const c of this.children) try { process.kill(-c.pid!, "SIGKILL"); } catch {}
     for (const d of this.dirs) rmSync(d, { recursive: true, force: true });
     this.web?.close();
