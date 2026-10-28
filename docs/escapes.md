@@ -57,7 +57,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-25 | android | B1 | soak | L6 | `scenarios/cases.ts` | unstated | unstated | unstated | #124 |
 | 2026-10-26 | ios | B8 | the iPhone here | L6 | `scenarios/cases.ts` | unstated | unstated | unstated | #116 |
 | 2026-10-26 | ios | B1 | hand | L1 | `web/test/turn.test.ts` | the back's top at 4 and its caret at 52 under the bar ending at 58, the board 250 pt tall, on an iPhone 13 mini (L6, by hand) | 3 | no | #129 |
-| 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | the ⌘Z step's keydown Control in `timeline.txt`, and Playwright's WebKit user agent (application, engine) | 0 | partly: the user agent was not | #145 |
+| 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | the ⌘Z step's keydown Control in `timeline.txt`, and Playwright's WebKit user agent (application, engine) | 0 | no | #145 |
 | 2026-10-27 | ios | B3 | nightly | L6 | `scenarios/taps.test.ts` | the page's pointer lines and "taps reached the page 314 ms apart" in `timeline.txt` (runtime) | 0 | yes | #146 |
 | 2026-10-28 | ios | B3 | nightly | L3 | `scenarios/touch.test.ts` | no pointer line in `timeline.txt` after the double tap, and the camera in its `◀` line (runtime, application) | 0 | yes | #148 |
 
