@@ -14,7 +14,8 @@ the hypothesis every fact allows. Design: `docs/superpowers/specs/2026-10-28-bre
 - **The recordings:**
   - a run's `build/scenarios/<when> <case>/`: `timeline.txt`, `case.json`, and `<who> flight.json` per device;
   - a failing hub case's `build/hub/<test>/`;
-  - a nightly's artifacts: `gh run download`.
+  - a nightly's artifacts: `gh run download`;
+  - what the owner's or partner's phone sent, on "Report a Problem", an error, or a card out of sight: `BREEZY_INVITE='<invite link>' node scripts/diag.ts` lists them, and with an id saves and draws one under build/diag. Ask the owner for an invite link once a session, and never keep it in a file or a memory.
 - **Versions and devices.** Read code only to explain a fact you hold.
 
 ## 2. Find the high-fidelity signals with a control
