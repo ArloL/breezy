@@ -25,8 +25,8 @@ on:
       video:
         description: "Film the devices' screens, keeping a failing case's films, or every case's"
         type: choice
-        options: [off, failures, all]
-        default: off
+        options: [none, failures, all]
+        default: none
 permissions: {}
 # scenarios/browser.ts's SCENARIO_VIDEO: 1 keeps a failing case's films, all every case's
 env:
