@@ -34,19 +34,8 @@ export const ANDROID: Screen = { w: 411, h: 812, top: 58, bottom: 712, keyboard:
 /** The keys bar a phone shows on its keyboard while editing, as ui.ts's. */
 const KEYS_H = 44;
 
-/** What the board shows of the screen, the edited card and its caret, in screen points: for a scenario to check the card
- * is in sight. */
-export interface Sight {
-  focus: Rect | null;
-  caret: Rect | null;
-  visible: Rect;
-  /** On a real device, the bar at the top of the screen, the find bar's or the top bar's, and the screen: iOS scrolled
-   * the page under the keyboard, and the top bar with it. */
-  bar?: Rect | null;
-  screen?: Rect;
-  /** How a real device read `visible`, for a failure to explain itself. */
-  how?: string;
-}
+import type { Sight } from "../sight.ts";
+export type { Sight };
 
 /** A field as a string with the caret at its end; typing goes to the one the view says has the keyboard. */
 export class FakeField implements Field {
