@@ -5,6 +5,7 @@ import type { Ports, PresencePort, SpacePort, UIPort, ViewPort } from "./ports.t
 import type { Person } from "./presence.ts";
 import type { Library } from "./library.ts";
 import type { Board, Lane, Point, Rect } from "./types.ts";
+import { box, Flight, type Value } from "./flight.ts";
 
 /** The card being edited, which side of it, and the undo step the edit records. */
 export interface Editing {
@@ -50,6 +51,8 @@ export class App {
   input: Input;
   library: Library | undefined;
   space: SpacePort | undefined;
+  /** What it saw and decided, for whoever debugs it. */
+  readonly flight = new Flight();
 
   constructor(board: Board, ports: Ports) {
     this.touching = true;
@@ -117,6 +120,7 @@ export class App {
     const s = this.state;
     const next = id && R.card(this.model.board, id) ? id : null;
     if (next === s.turned) return;
+    this.flight.note("transition", "turn", { from: s.turned, to: next });
     this.view.animateTurn([s.turned, next].filter((x): x is string => Boolean(x)), () => (s.turned = next));
     if (next) this.view.reveal(this.view.rectOf(R.card(this.model.board, next)!));
     this.ui.update();
@@ -169,6 +173,7 @@ export class App {
   /** Someone else got there first with `ids`: the drag, edit or rename under way on any of them goes back as it began. */
   refused(ids: ReadonlySet<string>) {
     const s = this.state;
+    this.flight.note("transition", "refused", { ids: ids.size });
     if (["move", "lane", "resize"].includes(this.input.drag?.action ?? "")) {
       if ([...s.held].some((id) => ids.has(id))) this.input.dragCancel();
       return;
@@ -182,6 +187,7 @@ export class App {
     const s = this.state;
     const id = s.editing?.id ?? s.renaming;
     if (!id) return;
+    this.flight.note("transition", s.editing ? "edit cancel" : "rename cancel", { id });
     const f = s.editing ? this.view.editorOf(s.editing.id, s.editing.back) : this.view.titleOf(s.renaming!);
     s.editing = s.renaming = null;
     f?.close();
@@ -209,6 +215,7 @@ export class App {
     this.hold([id]);
     const back = this.state.turned === id;
     this.state.editing = { id, back, name };
+    this.flight.note("transition", "edit", { id, back });
     this.view.render();
     this.view.editorOf(id, back)!.open(back ? (c.notes ?? "") : c.text, { input: () => this.edited(), done: () => this.endEditing() });
     // fingers need the text larger to edit it; a pointer edits at any zoom, as on the Mac
@@ -235,6 +242,7 @@ export class App {
     if (s.renaming) {
       const id = s.renaming;
       s.renaming = null;
+      this.flight.note("transition", "rename end", { id });
       const f = this.view.titleOf(id);
       const title = f?.text().trim() || "Lane";
       f?.close();
@@ -244,6 +252,7 @@ export class App {
     const e = s.editing;
     if (e) {
       s.editing = null;
+      this.flight.note("transition", "edit end", { id: e.id, back: e.back });
       this.view.editorOf(e.id, e.back)?.close();
       this.model.update((b) => {
         R.finishEdit(b, e.id);
@@ -274,6 +283,7 @@ export class App {
     this.model.begin();
     this.hold([id]);
     this.state.renaming = id;
+    this.flight.note("transition", "rename", { id });
     this.view.render();
     const f = this.view.titleOf(id)!;
     f.open(l.title, {
@@ -291,11 +301,27 @@ export class App {
     if (!c) return;
     // too tall at the zoom the camera is going to; the caret is drawn at the zoom it is at
     const r = this.view.rectOf(c), a = this.view.area(), { zoom } = this.view.cam;
-    const at = r.h * this.view.camera.goal().zoom + 32 > a.bottom - a.top ? this.view.editorOf(e.id, e.back)?.caret() : null;
+    const tall = r.h * this.view.camera.goal().zoom + 32 > a.bottom - a.top;
+    const at = tall ? this.view.editorOf(e.id, e.back)?.caret() : null;
     const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
     const top = caret && this.view.topOf(e.id);
+    const why = !tall ? "fits" : !caret ? "no caret" : top == null ? "no top" : "too tall";
+    this.flight.note("decision", "reveal", { path: why === "too tall" ? "caret" : "card", why, ...this.geometry() });
     if (!caret || top == null) return this.view.reveal(r, "bottom");
     this.view.reveal({ x: r.x, y: r.y + (caret.y - top) / zoom, w: r.w, h: caret.h / zoom });
+  }
+
+  /** What shows the board, where the camera is, and the card being edited on screen: its side, rect, caret and top. */
+  geometry(): { [k: string]: Value } {
+    const a = this.view.area(), { x, y, zoom } = this.view.cam, e = this.state.editing;
+    const c = e && R.card(this.model.board, e.id);
+    let editing: Value = null;
+    if (e && c) {
+      const r = this.view.rectOf(c), s = this.view.toScreen(r), at = this.view.editorOf(e.id, e.back)?.caret();
+      const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
+      editing = { id: e.id, back: e.back, card: box({ ...s, w: r.w * zoom, h: r.h * zoom }), caret: box(caret && { ...caret, w: 0 }), top: this.view.topOf(e.id) };
+    }
+    return { area: [a.top, a.bottom], cam: [x, y, zoom].map((n) => Math.round(n * 100) / 100), editing };
   }
 
   colour(n: number) {
