@@ -3,7 +3,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { chromium, type Browser, type Page } from "playwright-core";
-import { readSight } from "../browser.ts";
+import { readSight } from "../../web/sight.ts";
 
 let browser: Browser, page: Page;
 before(async () => {

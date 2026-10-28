@@ -13,6 +13,7 @@ import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, 
 import { inviteLink } from "../web/sync/crypto.ts";
 import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
+import { readSight } from "../web/sight.ts";
 import { Device, readFlight, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
 import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
@@ -191,70 +192,6 @@ function readEditor(): Editor | null {
     view: { x: v.offsetLeft, y: v.offsetTop, w: v.width, h: v.height },
     card: box(el.closest(".cards > [data-id]")?.getBoundingClientRect()) ?? null,
     board: { x: vx, y: top, w: v.width, h: bottom - top },
-    how: `visual viewport ${Math.round(vy)}+${Math.round(v.height)} in ${innerHeight}, layout from ${Math.round(layout.top)}, above ${above ? Math.round(above.bottom) : "none"}, below ${below.map((b) => Math.round(b.top)).join(" ") || "none"}`,
-  };
-}
-
-/**
- * What the sight check needs of the editor, and no more: the card being edited, its caret and what of the screen shows
- * the board, as readEditor reads them, without a box for each character, which made each key's check cost 120 ms on a
- * runner. Null when nothing is edited. Runs in the page.
- */
-export function readSight(): Sight | null {
-  const el = document.activeElement as HTMLElement | null;
-  if (!el?.isContentEditable) return null;
-  const box = (r: DOMRect) => ({ x: r.x, y: r.y, w: r.width, h: r.height });
-  const card = el.closest(".cards > [data-id]")?.getBoundingClientRect();
-  const sel = getSelection();
-  const range = sel?.rangeCount && el.contains(sel.focusNode) ? sel.getRangeAt(0) : null;
-  let at = range?.getClientRects()[0] ?? range?.getBoundingClientRect();
-  // a caret between an element's children, as Chrome on Android leaves it after a card's last text, has no box of its
-  // own: the same place in the text beside it has
-  if (!at?.height && range?.collapsed) {
-    let [node, offset] = [range.startContainer, range.startOffset];
-    if (node instanceof Element) {
-      const before = node.childNodes[offset - 1], after = node.childNodes[offset];
-      [node, offset] = before instanceof Text ? [before, before.length] : after instanceof Text ? [after, 0] : [node, offset];
-    }
-    // nor has one on an empty line, between two newlines: the newline after it is on that line, the one before it
-    // ends the line above
-    if (node instanceof Text) {
-      const box = (from: number, to: number) => {
-        if (from < 0 || to > node.length) return undefined;
-        const r = document.createRange();
-        r.setStart(node, from);
-        r.setEnd(node, to);
-        const b = r.getClientRects()[0];
-        return b?.height ? b : undefined;
-      };
-      const next = box(offset, offset + 1), prev = box(offset - 1, offset);
-      at = next ? new DOMRect(next.x, next.y, 0, next.height) : prev && node.data[offset - 1] === "\n" ? new DOMRect(prev.x, prev.bottom, 0, prev.height) : prev ? new DOMRect(prev.right, prev.y, 0, prev.height) : at;
-    }
-  }
-  // nor has a caret in an empty editor, as the back of a card just turned: it is where the text would start, a line high
-  if (!at?.height && range?.collapsed && !el.textContent) {
-    const b = el.getBoundingClientRect(), cs = getComputedStyle(el), z = el.offsetHeight ? b.height / el.offsetHeight : 1;
-    at = new DOMRect(b.left + Number.parseFloat(cs.paddingLeft) * z, b.top + Number.parseFloat(cs.paddingTop) * z, 0, (Number.parseFloat(cs.lineHeight) || Number.parseFloat(cs.fontSize) * 1.2) * z);
-  }
-  const v = visualViewport!;
-  const bar = (q: string) => {
-    const b = document.querySelector<HTMLElement>(q);
-    return b && !b.hidden && b.getClientRects().length ? b.getBoundingClientRect() : null;
-  };
-  const above = bar("#find") ?? bar("#top"), below = [bar("#keys"), bar("#bottom")].filter((b) => b !== null);
-  const pin = document.createElement("div");
-  pin.style.cssText = "position:fixed;top:0;left:0;width:0;height:0";
-  document.body.append(pin);
-  const layout = pin.getBoundingClientRect();
-  pin.remove();
-  const vx = layout.left + v.offsetLeft, vy = layout.top + v.offsetTop;
-  const top = Math.max(vy, above?.bottom ?? -Infinity), bottom = Math.min(vy + v.height, ...below.map((b) => b.top));
-  return {
-    focus: card ? box(card) : null,
-    caret: at?.height ? { x: at.x, y: at.y, w: 0, h: at.height } : null,
-    visible: { x: vx, y: top, w: v.width, h: bottom - top },
-    bar: above && box(above),
-    screen: { x: vx, y: vy, w: v.width, h: v.height },
     how: `visual viewport ${Math.round(vy)}+${Math.round(v.height)} in ${innerHeight}, layout from ${Math.round(layout.top)}, above ${above ? Math.round(above.bottom) : "none"}, below ${below.map((b) => Math.round(b.top)).join(" ") || "none"}`,
   };
 }
