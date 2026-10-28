@@ -37,7 +37,7 @@ jobs:
     - name: Build breezy-sim
       run: swift build --package-path BreezyKit --product breezy-sim
     - name: Plants
-      run: node scripts/plants.ts --level L1,L3,L4,L8
+      run: node scripts/plants.ts --level L1,L2,L3,L4,L8
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:

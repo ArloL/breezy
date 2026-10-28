@@ -98,8 +98,10 @@ public struct Drag {
   public var drag: Drag?
   /// The selection box being drawn.
   public private(set) var marquee: Rect?
-  /// The card under the pointer, for Space.
-  public var hovered: String?
+  /// Where a press or a move, pressed or not, last left the pointer; nil off the board.
+  public private(set) var pointer: Point?
+  /// The card under the pointer, for Space; found afresh, as a drag moves cards under a still pointer.
+  public var hovered: String? { pointer.flatMap { card(at: $0)?.id } }
 
   public init(model: BoardModel) {
     self.model = model
@@ -147,8 +149,11 @@ public struct Drag {
 
   public func press(at p: Point, clickCount: Int = 1, shift: Bool = false, option: Bool = false) {
     flight.note(.input, "press", ["x": .number(p.x.rounded()), "y": .number(p.y.rounded()), "clicks": .number(Double(clickCount))])
+    pointer = p
     let hit = card(at: p)
-    if let id = hit?.id ?? lane(at: p)?.id, taken().contains(id) { return }
+    // a lane by its corner or header, top first, as its body is the board's and hides no lane under it
+    let handle = board.lanes.last { $0.rect.contains(p.x, p.y) && (Self.hitsCorner($0, p) || p.y < $0.y + Metrics.laneHeader) }
+    if let id = hit?.id ?? handle?.id, taken().contains(id) { return }
     if let t = turned, hit?.id != t { turn(nil) }
     if clickCount == 2 { return onDoubleClick(p) }
     if let c = hit {
@@ -172,7 +177,7 @@ public struct Drag {
                   room: Room(base: board.layout(excluding: Set(held.map(\.id))), heightOf: heightOf))
       return
     }
-    if let l = lane(at: p) {
+    if let l = handle {
       if Self.hitsCorner(l, p) {
         selection = [l.id]
         model.begin()
@@ -200,10 +205,12 @@ public struct Drag {
 
   /// Carries the drag to world point `p`.
   public func dragged(to p: Point) {
+    if !planted("stale-hover") { pointer = p }
     guard var d = drag else { return }
     let dx = p.x - d.start.x
     let dy = p.y - d.start.y
-    if !d.moved && hypot(dx, dy) * zoom() > 3 {
+    // a box starts on any move, as the web app draws one there
+    if !d.moved && hypot(dx, dy) * zoom() > (d.kind == .marquee ? 0 : 3) {
       d.moved = true
       // named as the web app names a drag's action; a box's ids are those it adds to
       let action = switch d.kind { case .cards: "move"; case .lane: "lane"; case .resize: "resize"; case .marquee: "marquee" }
@@ -282,7 +289,7 @@ public struct Drag {
   }
 
   /// The pointer moved to `p` without a press, or left the board with nil.
-  public func hover(at p: Point?) { hovered = p.flatMap { card(at: $0)?.id } }
+  public func hover(at p: Point?) { pointer = p }
 
   // MARK: keys
 
@@ -308,6 +315,7 @@ public struct Drag {
   public func deleteSelection() {
     guard !selection.isEmpty else { return }
     let ids = selection
+    if let t = turned, ids.contains(t) { turned = nil }
     model.begin()
     model.update { $0.remove(ids) }
     model.update { $0.gravity(heightOf) }

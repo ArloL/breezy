@@ -545,6 +545,14 @@ jobs:
         first=$(( 11 + day % 10000 * 120 ))
         echo "::notice::seeds $first-$(( first + 119 )), profile $profile, $web web and $swift Swift devices"
         node scripts/fuzz.ts --seeds "$first-$(( first + 119 ))" --profile "$profile" --web "$web" --swift "$swift" --shrink
+    # steps drawn on both cores, past Main's seeds 1–20; a failure names the fewest steps that still part them
+    - name: Parity
+      if: ${{ !cancelled() }}
+      run: |
+        day=$(( $(date -u +%s) / 86400 ))
+        first=$(( 21 + day % 10000 * 500 ))
+        echo "::notice::parity seeds $first-$(( first + 499 ))"
+        PARITY_SEEDS="$first:500" node --test scenarios/parity.test.ts
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ failure() }}
       with:

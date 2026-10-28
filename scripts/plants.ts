@@ -29,6 +29,11 @@ export const PLANTS: Plant[] = [
   { plant: "reveal-current", class: "B1", level: "L3", command: test("--test-name-pattern=25 %", "scenarios/cases.test.ts"), expect: iosNewCard },
   { plant: "ime-keys", class: "B2", level: "L1", command: test("web/test/ime.test.ts"), expect: /✖ a key an input method takes is composing/ },
   { plant: "lost-release", class: "B3", level: "L1", command: test("web/test/mouse.test.ts"), expect: /✖ a press ends a drag left open by a lost release/ },
+  // past Main's 20 seeds, which miss it, as the nightly's 500 fresh ones would not
+  {
+    plant: "stale-hover", class: "B3", level: "L2", env: { PARITY_SEEDS: "21:200" },
+    command: test("scenarios/parity.test.ts"), expect: /✖ the cores agree on drawn steps/,
+  },
   { plant: "merge-local", class: "B4", level: "L1", command: test("web/test/merge.test.ts"), expect: /✖ merges match the shared cases/ },
   { plant: "merge-local", class: "B4", level: "L4", command: ["node", "scripts/fuzz.ts", "--seeds", "1", "--web", "3", "--swift", "0"], expect: /lost in the merge/ },
   { plant: "pushed-skip", class: "B4", level: "L4", command: ["node", "scripts/fuzz.ts", "--seeds", "1", "--web", "2", "--swift", "2"], expect: /boards differ/ },

@@ -344,7 +344,10 @@ export class App {
 
   removeSelection() {
     const ids = new Set(this.state.selection);
-    if (this.state.turned && ids.has(this.state.turned)) this.state.turned = null;
+    if (this.state.turned && ids.has(this.state.turned)) {
+      this.flight.note("transition", "turn", { from: this.state.turned, to: null });
+      this.state.turned = null;
+    }
     this.model.perform("Delete", (b) => {
       R.remove(b, ids);
       R.gravity(b, this.heightOf);

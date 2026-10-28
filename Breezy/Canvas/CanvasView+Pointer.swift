@@ -12,7 +12,7 @@ extension CanvasView {
   }
 
   override func mouseExited(with event: NSEvent) {
-    hovered = nil
+    core.hover(at: nil)
     onPointer?(nil)
   }
 
