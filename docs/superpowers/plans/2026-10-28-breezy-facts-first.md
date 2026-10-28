@@ -255,7 +255,75 @@ The new columns are Signal, Interventions and Recorded, after Test.
 - [ ] **Step 2: Change `docs/escapes.md`**, then run `node --test scripts/test/docs.test.ts`. Expected: PASS.
 - [ ] **Step 3: Commit, push, and open PR B.** Merge it once Main is green.
 
+**Done:**
+- Part A merged as #147;
+- Part B merged as #149.
+
 ---
+
+## Part C — uploads from the owner's and partner's devices (spec piece 3)
+
+Planned 2026-10-28 with the code as it stood after #147. **Done already:**
+- the wireframe (`scripts/wireframe.ts`, #150);
+- the clock after a sleep (#150).
+
+**Not started, as it waits on the owner:**
+- **It deploys a new endpoint to production on merge.** That's security-sensitive, and the owner should review it rather than have it merged unattended.
+- **The question below is the owner's.**
+
+**Owner's question: how do agents read uploads?** The proposal: read with the space's own token, the same `Authorization: Bearer` that `sync.php` checks.
+- **Who could read:** anyone in the space, which is just the owner and the partner, who can see the board anyway.
+- **No new secret** is needed in `scripts/deploy.py`'s `config_php`.
+- **What an agent needs:** an invite link for the space, which `scripts/diag.ts` takes from `BREEZY_INVITE` and never writes to disk or memory.
+- **The alternative:** a read key in the production config, given to agents by the owner. That needs a GitHub secret, which only the owner can add.
+
+### Task C1: `server/diag.php`
+
+- **Writes:** POST `diag.php?space=…`, with the space's Bearer token, which must match an existing space's `token_hash`. The body is JSON `{ why, recording }`, and may be deflated as `sync.php` takes it.
+  - `why` is one of `asked`, `error` or `sight`.
+  - The body is at most 512 KB once inflated (413 over that).
+- **Storage:** the table `diagnostics (space BINARY(16), id BINARY(16), at BIGINT, why VARCHAR(8), data MEDIUMBLOB, PRIMARY KEY (space, id))`. It is created lazily with `CREATE TABLE IF NOT EXISTS`, as production has no migration step, and is added to `server/schema.sql` too.
+  - At most 20 uploads per space per hour (429 over that).
+  - Rows older than 30 days, and all but a space's newest 100, are deleted on each upload.
+- **Reads:** GET `diag.php?space=…` lists `{ id, at, why, size }`. GET with `&id=` returns that recording. Both take the same token.
+- **Shared helpers:** `reply`, `b64d`, `b64e` and `bytes` are copied from `sync.php`, not shared, so `sync.php` stays untouched (ruling; cost: about 30 duplicated lines).
+- **Deploy:** `scripts/build-site.sh` copies `diag.php`; `deploy.py`'s verify then checks it as built.
+- **Tests:** `server/test/diag.test.mjs`, run by `server/test.sh`:
+  - a write with the wrong token is refused;
+  - an unknown space is refused;
+  - an over-size body is refused;
+  - the 21st write in an hour is refused;
+  - a list holds what was written, without other spaces';
+  - a read returns the recording byte for byte.
+
+### Task C2: the app uploads
+
+- **`web/diag.ts`:** `send(group: Group, why: "asked" | "error" | "sight", recording: Recording): Promise<boolean>`. It reuses `HttpTransport`'s headers and deflate, swapping `sync.php` for `diag.php` in the server's URL. It is bounded by 10 s and never throws.
+- **By hand:** a "Report a Problem" button in the more menu (`web/index.html`, next to Version). It sends `asked` and then says "Sent. Tell Claude what looked wrong." The board "On this device" has no server, so the button is hidden there.
+- **On an error:** `uncaught` and `rejected` send `error`, at most once per 10 minutes per page.
+- **Tests:** `web/test/diag.test.ts`:
+  - the URL and headers;
+  - the 10-minute bound;
+  - a failed send never throws;
+  - no words in the body: reuse the words test's session.
+
+### Task C3: the app's own sight check
+
+- **Move the check into the app:** `readSight` (`scenarios/browser.ts`) moves into `web/view.ts` as `View.sight()`, as `FakeView.sight()` already is. The harness then calls the app's own check, and the copy in the harness goes.
+- **The app checks itself:** once the board stands still after an edit (Part D's idle), the app runs the check from `scenarios/sight.ts` (`problem(s)`, moved to `web/sight.ts`).
+  - A failure is noted as `decision sight broken` with the sight.
+  - It sends `sight` at most once per 10 minutes.
+- **Tests:**
+  - `web/test/sight.test.ts`: a board with #129 put back (a `FakeView` whose `caretRect` gives null for an empty side) notes `sight broken`;
+  - the harness's sight tests pass unchanged against `View.sight()`.
+
+### Task C4: `scripts/diag.ts`
+
+`node scripts/diag.ts [list | get ID]` takes the space from `BREEZY_INVITE` and lists or saves recordings to `build/diag/<id>.json`. Each saved recording is drawn with `scripts/wireframe.ts`. The debugging skill names it as the first fact for a report from the owner or the partner.
+
+### What Part D found while planning
+
+Real devices wait for stillness by polling the camera and viewport until nothing has changed for 500 ms (`BrowserDevice.still`, `IosDevice.still`). That window is mostly there for a keyboard the app cannot foresee. The app's own idle signal would replace the camera polling, but not the window, so Part D gains less than the spec assumed. Measure the waits first (Part F), then decide.
 
 ## Later parts, each planned when reached
 
