@@ -86,6 +86,8 @@ export class Library {
       this.renderStatus();
       app.ui.updateSync();
     };
+    // its sync engines' decisions, with the space they are of, for whoever debugs a sync that never settled
+    spaces.onSyncNote = (g, what, data) => app.flight.note("sync", what, { space: g.space ?? "local", ...data });
     // the scenarios settle once nothing waits to be pushed: the status says it only offline
     spaces.onDirty = () => (document.body.dataset.waiting = String(spaces.spaces.reduce((n, g) => n + g.store.pending().length, 0)));
     spaces.onSaveError = (error) => {

@@ -82,6 +82,8 @@ export class Spaces {
   /** After a change to what a group's boards show, with the boards concerned and whether it came from the server. */
   onChange: (g: Group, boards: Set<string>, remote: boolean) => void;
   onStatus: (g: Group) => void;
+  /** What a group's sync engine decided and why. */
+  onSyncNote: (g: Group, what: string, data?: { [k: string]: number | string | boolean }) => void;
   /** After a store changed, as what waits to be pushed may have. */
   onDirty: () => void;
   /** After a save fails. */
@@ -125,6 +127,7 @@ export class Spaces {
     this.onRefused = () => {};
     this.onChange = () => {};
     this.onStatus = () => {};
+    this.onSyncNote = () => {};
     this.onDirty = () => {};
     this.onSaveError = () => {};
     this.flushLocal = () => {};
@@ -149,6 +152,7 @@ export class Spaces {
       this.onChange(g, boards, remote);
     };
     engine.onStatus = () => this.onStatus(g);
+    engine.note = (what, data) => this.onSyncNote(g, what, data);
     engine.flushLocal = () => this.flushLocal();
     engine.onRelay = (relay) => this.setRelay(g, relay);
     engine.onPushing = () => g.live?.pushing();

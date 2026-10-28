@@ -201,6 +201,11 @@ export class SyncEngine {
   clock: () => number;
   status: Status;
   onStatus: (status: Status) => void;
+  /** The last it noted, so that a cycle that changed nothing is noted once. */
+  private noted = "";
+  /** What it decided and why, for the app's recorder (web/flight.ts): pushes and what came of them, failures and their
+   * back-offs, cycles skipped, changes held back. */
+  note: (what: string, data?: { [k: string]: number | string | boolean }) => void;
   /** Called before merging, so that edits not yet in the store get there first. */
   flushLocal: () => void;
   /** Whether a gesture others follow live is under way: what it changed so far waits for its end. */
@@ -245,6 +250,7 @@ export class SyncEngine {
     this.clock = clock ?? now ?? steadyClock();
     this.status = { state: "local", at: null, waiting: 0, unreadable: 0, held: 0, tooLong: 0 };
     this.onStatus = () => {};
+    this.note = () => {};
     this.flushLocal = () => {};
     this.holdBack = () => false;
     this.onPushing = () => {};
@@ -295,7 +301,7 @@ export class SyncEngine {
   /** A cycle a second from now, once however many changes come meanwhile. */
   changed() {
     // the gesture's end syncs
-    if (this.holdBack()) return;
+    if (this.holdBack()) return this.say("held back", { why: "gesture" });
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.sync(), 1000);
   }
@@ -345,10 +351,18 @@ export class SyncEngine {
     return this.keys!;
   }
 
+  /** `note`, remembering what it said. */
+  private say(what: string, data?: { [k: string]: number | string | boolean }) {
+    this.noted = what === "synced" ? `synced ${data?.waiting}` : what;
+    this.note(what, data);
+  }
+
   async cycle(): Promise<void> {
     const state = this.store.state;
     if (!this.store.syncing) return this.update("local");
-    if (this.stopped || this.retryAt > this.clock()) return;
+    if (this.stopped || this.retryAt > this.clock()) {
+      return this.say("skipped", this.stopped ? { why: "stopped" } : { why: "backing off", wait: Math.round(this.retryAt - this.clock()) });
+    }
     const space = state.space;
     const same = () => this.store.state.space === space;
     try {
@@ -378,7 +392,10 @@ export class SyncEngine {
         this.store.sending(sent);
         await this.persist();
         if (!same()) return;
+        this.say("push", { writes: writes.length, combined });
+        const pushedAt = this.clock();
         const result = await transport.push(writes, request, combined ? this.store.state.epoch : undefined);
+        this.say("pushed", { accepted: result.accepted.length, refused: result.refused.length, ms: Math.round(this.clock() - pushedAt) });
         if (!same()) return;
         if (this.store.noteEpoch(result.epoch)) {
           this.again = true;
@@ -415,14 +432,18 @@ export class SyncEngine {
       this.stalls = 0;
       this.lastCycle = this.clock();
       this.update("synced");
+      // once, not on each poll that changed nothing
+      if (this.noted !== `synced ${this.status.waiting}`) this.say("synced", { waiting: this.status.waiting });
     } catch (e) {
       const error = e as { kind?: unknown } | null | undefined;
       if (!same()) return;
       if (error?.kind === "unauthorized") {
         this.stopped = true;
+        this.say("failed", { kind: "unauthorized" });
         return this.update("notInSpace");
       }
       if (this.restarting || (error?.kind === "stalled" && this.stalls++ < STALLS)) {
+        this.say("again", { why: this.restarting ? "network changed" : "stalled" });
         this.restarting = false;
         this.again = true;
         return;
@@ -431,6 +452,7 @@ export class SyncEngine {
       this.failures++;
       this.retryAt = this.clock() + Math.min(60, 5 * 2 ** (this.failures - 1)) * 1000;
       this.update(error?.kind === "offline" ? "offline" : "unreachable");
+      this.say("failed", { kind: typeof error?.kind === "string" ? error.kind : "error", failures: this.failures, backoff: Math.round(this.retryAt - this.clock()), waiting: this.status.waiting });
     }
   }
 
