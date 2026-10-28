@@ -26,12 +26,23 @@ test("a device that did something a different number of times than on the last n
   const root = mkdtempSync(join(tmpdir(), "nights-"));
   const md = report(night(root, [tap, edit, reveal]), night(root, [tap, tap, edit, reveal, reveal, reveal]));
   assert.match(md, /a card \(chromium → webkit\)/);
-  assert.match(md, /d0 chromium: `decision reveal card\/fits` 1 → 3, `input tap` 1 → 2/);
+  assert.match(md, /d0 chromium: `input tap` 1 → 2/);
 });
 
 test("the same counts, or only geometry, which moves with the runner, give nothing", () => {
   const root = mkdtempSync(join(tmpdir(), "nights-"));
   assert.equal(report(night(root, [tap, edit, geometry]), night(root, [tap, edit, geometry, geometry])), "");
+});
+
+test("reveals, which the keyboard's timing repeats, and a case drawn at random each night are no measure", () => {
+  const root = mkdtempSync(join(tmpdir(), "nights-"));
+  assert.equal(report(night(root, [edit, reveal]), night(root, [edit, reveal, reveal])), "");
+  const randomNight = (d0: Entry[]) => {
+    const dir = night(root, d0);
+    writeFileSync(join(dir, "1", "case.json"), JSON.stringify({ case: "keys pressed at random", pair: ["chromium", "webkit"], verdict: "passed" }));
+    return dir;
+  };
+  assert.equal(report(randomNight([tap]), randomNight([tap, tap])), "");
 });
 
 test("a case that failed on either night is no measure of the other", () => {
