@@ -1,11 +1,11 @@
 // Reads an iPhone's page for the scenarios where safaridriver cannot: on this Mac it finds no session in the
 // simulator at all, and nowhere does it reach the app added to the Home Screen. The scenarios' server puts a script in
 // each page it serves an iPhone; the script asks the server for a function to run, runs it, and posts what it gave.
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { simctl } from "./ios.ts";
 
 /** How long a poll waits for a function before the page asks again. */
 const POLL_MS = 10_000;
@@ -219,7 +219,7 @@ export class AgentPage {
   async screenshot(): Promise<Buffer> {
     const dir = mkdtempSync(join(tmpdir(), "breezy-shot-")), file = join(dir, "screen.png");
     try {
-      execFileSync("xcrun", ["simctl", "io", "booted", "screenshot", "--type=png", file], { timeout: 30_000, stdio: "ignore" });
+      simctl(["io", "booted", "screenshot", "--type=png", file], { timeout: 30_000 });
       return readFileSync(file);
     } finally {
       rmSync(dir, { recursive: true, force: true });

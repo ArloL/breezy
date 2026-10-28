@@ -29,7 +29,8 @@ Where to look for the next fact, by platform and layer, from the application dow
 | Application | as for the web app: `flight.json`, `app` lines | through the page agent (`scenarios/agent.ts`) | yes |
 | Network | requests to sync.php, the relay's socket, edits waiting to be pushed | `<who> page` lines (`IosDevice.syncLog`) | yes |
 | Engine | what is painted | `<who> screen.png` | on failure |
-| Device | the simulator's own log | `xcrun simctl spawn <udid> log show --last 5m` | no |
+| Device | the simulator's own log of the last 5 minutes, from SpringBoard, Safari, WebKit and the Home Screen app, and what of them runs | `iPhone log.txt`, `iPhone state.txt`, `iPhone screen.png` (`iosState` in `scenarios/ios.ts`); its errors and faults as `iPhone log` lines in `timeline.txt` | on failure, a world that never started too |
+| Device | each `simctl` call, how long it took and how it failed | `simctl` lines in `timeline.txt` | yes |
 | Device | the model and iOS version | `context page`'s `ua`; `IPHONE` and the runtime `scripts/ios.ts` boots | yes |
 
 ## The Mac app
