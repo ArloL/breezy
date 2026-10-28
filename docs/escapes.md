@@ -56,6 +56,7 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 | 2026-10-26 | ios | B8 | the iPhone here | L6 | `scenarios/cases.ts` | #116 |
 | 2026-10-26 | ios | B1 | hand | L1 | `web/test/turn.test.ts` | #129 |
 | 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | #145 |
+| 2026-10-27 | ios | B3 | nightly | L6 | `scenarios/taps.test.ts` | #146 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -67,3 +68,5 @@ Rows before 2026-10-25 are seeded from commit messages; "unstated" means the mes
 2026-10-26: on an iPhone 13 mini, a card made with a double tap, given a title and turned showed its back with its top and its caret under the top bar: the back, too tall for the board above the keyboard, is kept in sight by its caret, but an empty back had no text for the caret to be measured from, and the board kept the card's bottom in sight. The hub never saw it, as its fake drew a turned card at its front's size and could not say where a card's top was drawn.
 
 2026-10-27: on the nightly's Linux runner, ⌘Z in WebKit put back nothing two nights running. The app was right: Playwright's WebKit says it is on a Mac on every OS, so the board waits for ⌘, but the scenarios' driver sent Ctrl for ⌘ in any desktop browser off the Mac. It now sends the board's commands as the page takes them, and only the OS's own editing keys (the caret's moves, a field's select-all) as Ctrl.
+
+2026-10-27: on the nightly's iPhone 17, as the Home Screen app, a double tap that had made a card was tapped again, onto the keyboard, and the page stopped answering. The board had taken the two taps as one by their events' own times; the scenarios' driver judged them by when its listener ran, 314 ms apart on a runner at a load of 33 on 3 CPUs, and tried again. It now reads the events' times as the board does. `scenarios/taps.test.ts` holds its rule to the board's; the clock itself shows only on a loaded runner.
