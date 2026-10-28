@@ -8,13 +8,20 @@ import IOSurface
 /// puts the layer on whole pixels, with bounds of whole pixels: the bitmap then shows unscaled,
 /// as sharp as the card's editor.
 final class CardLayer: CALayer {
+  /// A card part way between its faces while it turns: 0 its front, 1 its back, whose size its face keeps.
+  struct Turning: Equatable {
+    var p: Double
+    var back: CGSize
+  }
+
   struct Look: Equatable {
     var card: Card
     var back: Bool
     var editing: Bool
     var dark: Bool
+    var turning: Turning?
 
-    init(card: Card, back: Bool, editing: Bool, dark: Bool) {
+    init(card: Card, back: Bool, editing: Bool, dark: Bool, turning: Turning? = nil) {
       // where the card sits does not change how it looks, nor the text its editor shows
       var c = card
       c.x = 0
@@ -25,6 +32,7 @@ final class CardLayer: CALayer {
       self.back = back
       self.editing = editing
       self.dark = dark
+      self.turning = turning
     }
   }
 
@@ -35,7 +43,11 @@ final class CardLayer: CALayer {
     var scale: CGFloat
     var appearance: NSAppearance
 
-    var ear: CGFloat { look.back ? 24 : (look.card.notes ?? "").isEmpty ? 0 : 16 }
+    var ear: CGFloat {
+      let front: CGFloat = (look.card.notes ?? "").isEmpty ? 0 : 16
+      if let t = look.turning { return front + (24 - front) * t.p }
+      return look.back ? 24 : front
+    }
   }
 
   /// The outline around a card: the accent for this Mac's selection, a person's colour for what they hold or select.
@@ -80,7 +92,7 @@ final class CardLayer: CALayer {
   func configure(_ look: Look, size: CGSize, ring: Ring?, scale: CGFloat, appearance: NSAppearance) {
     setRing(ring)
     guard look != self.look || size != self.size || scale != contentsScale else { return }
-    let turning = look.back != self.look?.back
+    let turning = look.back != self.look?.back || (look.turning == nil) != (self.look?.turning == nil)
     // only the scale changed: the old bitmap, stretched, can show until the sharp one is drawn
     refining = look == self.look && size == self.size && appearance == self.appearance && contents != nil
     self.look = look
@@ -109,7 +121,7 @@ final class CardLayer: CALayer {
   }
 
   private func setShadow(animated: Bool) {
-    let back = look?.back == true
+    let back = look?.back == true || look?.turning != nil
     let opacity: Float = lifted ? 0.26 : back ? 0.24 : 0.16
     let radius: CGFloat = lifted ? 18 : back ? 9 : 2
     let offset = CGSize(width: 0, height: lifted ? 10 : back ? 5 : 1)
@@ -243,17 +255,35 @@ final class CardLayer: CALayer {
         (tint.blended(withFraction: 0.12, of: .black) ?? tint).setFill()
         flap.fill()
       }
-      if look.back {
+      func back(_ r: CGRect) {
         Theme.hairline.setFill()
         var y = Typo.backPad + Typo.line - 1
-        while y < bounds.height - Typo.backPad {
-          NSRect(x: Typo.backPad, y: y, width: bounds.width - 2 * Typo.backPad, height: 1).fill()
+        while y < r.height - Typo.backPad {
+          NSRect(x: Typo.backPad, y: y, width: r.width - 2 * Typo.backPad, height: 1).fill()
           y += Typo.line
         }
         let s = Typo.back(text: look.card.text, notes: look.editing ? "" : (look.card.notes ?? ""), placeholder: !look.editing)
-        s.draw(with: bounds.insetBy(dx: Typo.backPad, dy: Typo.backPad), options: [.usesLineFragmentOrigin])
+        s.draw(with: r.insetBy(dx: Typo.backPad, dy: Typo.backPad), options: [.usesLineFragmentOrigin])
+      }
+      func front(_ r: CGRect) {
+        Typo.front(look.card.text).draw(with: r.insetBy(dx: Typo.padX, dy: Typo.padY), options: [.usesLineFragmentOrigin])
+      }
+      if let t = look.turning {
+        // each face at its own size, cross-fading, inside the sheet as it grows or shrinks between them
+        ctx.saveGState()
+        ctx.addPath(outline(i.size, ear: ear, yDown: true))
+        ctx.clip()
+        // the front's title and the back's heading as one, moving from the front's padding to the back's
+        let dx = Typo.backPad - Typo.padX, dy = Typo.backPad - Typo.padY
+        ctx.setAlpha(t.p)
+        back(CGRect(origin: CGPoint(x: -dx * (1 - t.p), y: -dy * (1 - t.p)), size: t.back))
+        ctx.setAlpha(1 - t.p)
+        front(CGRect(x: dx * t.p, y: dy * t.p, width: look.card.w, height: max(bounds.height, t.back.height)))
+        ctx.restoreGState()
+      } else if look.back {
+        back(bounds)
       } else if !look.editing {
-        Typo.front(look.card.text).draw(with: bounds.insetBy(dx: Typo.padX, dy: Typo.padY), options: [.usesLineFragmentOrigin])
+        front(bounds)
       }
     }
     NSGraphicsContext.restoreGraphicsState()

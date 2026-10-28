@@ -29,6 +29,8 @@ for (const c of cases) {
     if (c.input === "mouse" && PHONES[a]) continue;
     // the Mac's editing is in its app, not in its core yet
     if (c.edits && a === "swift") continue;
+    // the Mac pans in its view, not in its core
+    if (c.pans && a === "swift") continue;
     if (c.offline || c.draws || c.busy || c.fresh || c.buttons || c.outage) continue;
     for (const b of kinds.filter((k) => !PHONES[k])) {
       const name = `${c.name} (${a} → ${b})`;

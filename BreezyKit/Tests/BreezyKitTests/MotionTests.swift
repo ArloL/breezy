@@ -11,7 +11,7 @@ import Testing
 }
 
 @Test func aSpringWithBounceOvershootsAndSettles() {
-  let c = Spring.turn.curve()
+  let c = Spring.lift.curve()
   #expect(c.first == 0 && c.last == 1)
   #expect(c.max()! > 1.01)
   #expect(Spring.settle.curve().max()! <= 1.0001)

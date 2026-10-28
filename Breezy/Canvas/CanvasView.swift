@@ -40,6 +40,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// Where the pointer is during a drag, in window coordinates.
   var dragPoint: NSPoint?
   var edgeScrolling: (link: CADisplayLink, since: CFTimeInterval, last: CFTimeInterval)?
+  /// Each card turning: how far it is from its front, 0, to its back, 1, and how fast it goes there; with reduced motion
+  /// only its faces fade.
+  var turns: [String: (p: Double, v: Double, to: Double, fade: Bool)] = [:]
+  var turnLink: (link: CADisplayLink, last: CFTimeInterval)?
   /// The card under the pointer, for Space.
   var hovered: String? { core.hovered }
   /// Brings cards to the exact scale once a zoom has settled.
@@ -315,14 +319,15 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     var live = Set<String>()
     var lagging = false
     for (i, c) in shown.cards.enumerated() {
-      var r = doc(drawnRect(c))
+      let turning = turns[c.id]
+      var r = doc(turning.map { $0.fade ? drawnRect(c) : turningRect(c, $0.p) } ?? drawnRect(c))
       let isHeld = held.ids.contains(c.id)
       if isHeld { r = r.offsetBy(dx: held.offset.dx, dy: held.offset.dy) }
       guard r.intersects(near) else { continue }
       live.insert(c.id)
       let isNew = cardLayers[c.id] == nil
       let l = cardLayers[c.id] ?? takeLayer(c.id)
-      l.zPosition = CGFloat(i) + (raised.contains(c.id) ? 1e6 : 0) + (c.id == turned ? 2e6 : 0)
+      l.zPosition = CGFloat(i) + (raised.contains(c.id) ? 1e6 : 0) + (c.id == turned || turning != nil ? 2e6 : 0)
       // cards off screen wait for the zoom to settle; on screen, a bitmap a step covers will do
       let keep = !isNew && !settle && (!r.intersects(v) || zooming && step(l.contentsScale) == scale)
       let s = keep ? l.contentsScale : scale
@@ -341,7 +346,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       }
       l.setLifted(raised.contains(c.id), animated: animate && !isNew)
       if isNew && animate && appearing.contains(c.id) { l.appear() }
-      let look = CardLayer.Look(card: c, back: c.id == turned, editing: c.id == editingID, dark: dark)
+      let backSize = { CGSize(width: Metrics.backWidth, height: Double(TextMetrics.backHeight(c))) }
+      let look = CardLayer.Look(card: c, back: c.id == turned, editing: c.id == editingID, dark: dark,
+                                turning: turning.map { CardLayer.Turning(p: $0.p, back: backSize()) })
       let ring: CardLayer.Ring? = selection.contains(c.id) ? CardLayer.Ring(colour: Theme.cg(Theme.accent, in: effectiveAppearance), width: 2)
         : presence.taken[c.id].map { CardLayer.Ring(colour: $0.nsColour.cgColor, width: 2) }
         ?? presence.seen[c.id].map { CardLayer.Ring(colour: $0.nsColour.cgColor, width: 1) }

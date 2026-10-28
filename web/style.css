@@ -106,7 +106,6 @@ body {
   content: ""; position: absolute; inset: -4px; border: 2px solid var(--accent); border-radius: 4px; pointer-events: none;
 }
 .card.found::after { border-width: 3px; }
-.card.flipping::after { display: none; }
 .sheet { position: absolute; inset: 0; background: var(--c1); }
 .c1 { background: var(--c1); }
 .c2 { background: var(--c2); }
@@ -127,6 +126,12 @@ body {
 }
 .card.turned .front { display: none; }
 .card.turned .back { display: block; }
+/* growing between its faces, each at its own size, cross-faded by the view; sized by it on the camera's spring */
+.card.turning { transition: filter 0.2s var(--ease); filter: drop-shadow(0 5px 9px rgb(0 0 0 / 0.24)); }
+.card.turning .sheet { overflow: hidden; clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--ear)), calc(100% - var(--ear)) 100%, 0 100%); }
+.card.turning .ear { display: block; width: var(--ear); height: var(--ear); }
+.card.turning .front { display: block; position: absolute; left: 0; top: 0; box-sizing: border-box; width: var(--front-w); }
+.card.turning .back { display: block; right: auto; bottom: auto; box-sizing: border-box; width: var(--back-w); height: var(--back-h); }
 .heading { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
 .notes { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); outline: none; min-height: 24px; }
 .notes.placeholder { color: var(--ink3); }
@@ -137,7 +142,6 @@ body {
   position: absolute; left: 0; top: 0; z-index: 2000000;
   border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
-.ghost { pointer-events: none; transition: none; }
 
 button {
   font: inherit; color: var(--ink2); background: none; border: 0; border-radius: 10px;

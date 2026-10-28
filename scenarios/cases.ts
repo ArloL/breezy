@@ -21,6 +21,8 @@ export interface Case {
   input: "mouse" | "touch";
   /** Whether the first device must edit text, which the hub's fakes cannot yet. */
   edits?: boolean;
+  /** Whether the first device must pan its camera itself, which the Swift core leaves to the Mac's view. */
+  pans?: boolean;
   /** Whether the first device must draw its text for the case to see, which the hub's fakes do not. */
   draws?: boolean;
   /** Whether the first device must be kept busy, which the hub's fakes and the Mac cannot. */
@@ -997,6 +999,31 @@ export const cases: Case[] = [
       await a.click(c);
       await a.key(" ");
       assert.equal((await a.scene()).turned, card);
+      await a.key(" ");
+      assert.equal((await a.scene()).turned, null);
+    },
+  },
+  {
+    name: "a card turned by the screen's right edge shows its whole back 48 pt in, and Space turns it back",
+    input: "mouse",
+    pans: true,
+    async run(s) {
+      const [a] = s.devices as [Device, Device];
+      const { w } = await a.size();
+      const at = await a.world({ x: w - 300, y: 200 });
+      const card = await a.addCard(at.x, at.y);
+      await s.settle();
+      await a.click(centre(item(await a.scene(), card)));
+      await a.key(" ");
+      // until two looks 50 ms apart find the pan done
+      let last = "";
+      await a.until("the pan to stand still", async () => {
+        const now = JSON.stringify((await a.scene()).camera), same = now === last;
+        last = now;
+        return same;
+      });
+      const r = await onScreen(a, card);
+      assert.ok(r.x >= 47 && r.x + r.w <= w - 47, `the back from ${Math.round(r.x)} to ${Math.round(r.x + r.w)} on a screen ${w} wide`);
       await a.key(" ");
       assert.equal((await a.scene()).turned, null);
     },

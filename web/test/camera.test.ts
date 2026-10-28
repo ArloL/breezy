@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Camera, MIN_ZOOM, MAX_ZOOM, revealing } from "../camera.ts";
 import { projection } from "../physics.ts";
 import type { Cam } from "../types.ts";
+import { fixture } from "./helpers/fixture.ts";
 
 /** A camera on a fake clock: `tick(ms)` advances time and runs one animation frame. */
 function setup(cam: Cam = { x: 0, y: 0, zoom: 1 }) {
@@ -162,6 +163,16 @@ test("revealing a rect too big to show shows its left edge and its preferred one
   const big = { x: 100, y: 300, w: 500, h: 600 };
   assert.deepEqual(revealing(cam, big, a), { x: 16 - 100, y: 116 - 300, zoom: 1 });
   assert.deepEqual(revealing(cam, big, a, "bottom"), { x: 16 - 100, y: 484 - 900, zoom: 1 });
+});
+
+test("revealing shifts as the Mac's reveal does, by the shared cases", () => {
+  type Case = { name: string; area: number[]; rect: number[]; pad: number; prefer: "top" | "bottom"; shift: [number, number] };
+  for (const c of (fixture("reveal.json") as { cases: Case[] }).cases) {
+    const [left, top, right, bottom] = c.area as [number, number, number, number];
+    const [x, y, w, h] = c.rect as [number, number, number, number];
+    const to = revealing({ x: 0, y: 0, zoom: 1 }, { x, y, w, h }, { left, top, right, bottom }, c.prefer, c.pad);
+    assert.deepEqual([to?.x ?? 0, to?.y ?? 0], c.shift, c.name);
+  }
 });
 
 test("revealing measures an area that starts in from the screen's edge by its own width", () => {
