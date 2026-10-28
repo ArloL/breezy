@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Runs server/test against sync.php on PHP's built-in server with a throwaway SQLite database, then the
-# Mac's HTTP client against it: server/test.sh
+# Mac's HTTP client against it, and its FakeServer against what sync.php answered: server/test.sh
 set -e
 cd ${0:A:h}
 dir=$(mktemp -d)
@@ -15,7 +15,8 @@ sleep 1
 # else the tests would talk to whatever else serves there, as a dev server left running
 kill -0 $pid 2>/dev/null || { print -u2 "php could not serve on 127.0.0.1:58566:"; cat $dir/php.log >&2; exit 1 }
 export BREEZY_URL=http://127.0.0.1:58566/sync.php
+export BREEZY_CONTRACT=$dir/contract.json
 # one file at a time: they share one database, which diag.test.mjs and sync.test.mjs also write straight to, and
 # SQLite told a write through sync.php the database was locked
 node --test --test-concurrency=1 test/*.test.mjs || { cat $dir/php.log; exit 1 }
-swift test --package-path ../BreezyKit --filter HTTPTransportTests
+swift test --package-path ../BreezyKit --filter 'HTTPTransportTests|ServerContractTests'

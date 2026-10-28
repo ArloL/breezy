@@ -8,7 +8,7 @@ import type { Page, PushResult, Sealed as ServerRecord, Transport, Write } from 
 
 type Pulled = Page;
 type Pushed = PushResult;
-type Snapshot = { records: Map<string, ServerRecord>; written: Map<string, string>; version: number };
+type Snapshot = { records: Map<string, ServerRecord>; written: Map<string, string>; version: number; existed: boolean };
 
 /** The server's rules, in memory. */
 export class FakeServer {
@@ -65,12 +65,12 @@ export class FakeServer {
 
   /** The database as a backup holds it. */
   snapshot(): Snapshot {
-    return { records: new Map(this.records), written: new Map(this.written), version: this.version };
+    return { records: new Map(this.records), written: new Map(this.written), version: this.version, existed: this.epoch !== null };
   }
 
-  /** The backup put back, with a new epoch as the README says to give it. */
-  restore({ records, written, version }: Snapshot) {
-    Object.assign(this, { records: new Map(records), written: new Map(written), version, epoch: newID() });
+  /** The backup put back, with a new epoch as the README says to give it; a space it did not hold is lost. */
+  restore({ records, written, version, existed }: Snapshot) {
+    Object.assign(this, { records: new Map(records), written: new Map(written), version, epoch: existed ? newID() : null });
   }
 
   /** The space lost. */
