@@ -1,0 +1,18 @@
+{
+  "about": "The least shift of what a screen area shows that brings a rect into it, `pad` in from its edges, less where the area is too small for that, 16 at least; a rect too big for it shows its left edge and its `prefer` one. Screen points; shift is how far the content moves.",
+  "cases": [
+    { "name": "inside, left alone", "area": [0, 0, 1200, 800], "rect": [100, 100, 480, 288], "pad": 48, "prefer": "top", "shift": [0, 0] },
+    { "name": "past the right edge, 48 in", "area": [0, 0, 1200, 800], "rect": [900, 100, 480, 288], "pad": 48, "prefer": "top", "shift": [-228, 0] },
+    { "name": "inside but within 48 of the right edge", "area": [0, 0, 1200, 800], "rect": [700, 100, 480, 288], "pad": 48, "prefer": "top", "shift": [-28, 0] },
+    { "name": "past the bottom", "area": [0, 0, 1200, 800], "rect": [100, 600, 480, 288], "pad": 48, "prefer": "top", "shift": [0, -136] },
+    { "name": "above the top", "area": [0, 0, 1200, 800], "rect": [100, -20, 480, 288], "pad": 48, "prefer": "top", "shift": [0, 68] },
+    { "name": "past a corner", "area": [0, 0, 1200, 800], "rect": [1000, 700, 480, 288], "pad": 48, "prefer": "top", "shift": [-328, -236] },
+    { "name": "an area too narrow for 48 each side takes what fits", "area": [0, 0, 560, 800], "rect": [100, 100, 480, 288], "pad": 48, "prefer": "top", "shift": [-60, 0] },
+    { "name": "a phone's back, as wide as its screen less 32, 16 in", "area": [0, 0, 402, 874], "rect": [10, 100, 370, 288], "pad": 48, "prefer": "top", "shift": [6, 0] },
+    { "name": "too tall shows its top 16 in", "area": [0, 120, 402, 538], "rect": [16, 300, 370, 600], "pad": 48, "prefer": "top", "shift": [0, -164] },
+    { "name": "too tall shows its bottom when that is preferred", "area": [0, 120, 402, 538], "rect": [16, 300, 370, 600], "pad": 48, "prefer": "bottom", "shift": [0, -378] },
+    { "name": "too wide shows its left edge 16 in", "area": [40, 100, 440, 500], "rect": [100, 200, 500, 40], "pad": 16, "prefer": "top", "shift": [-44, 0] },
+    { "name": "16 in by default, as an edited card is", "area": [0, 0, 1200, 800], "rect": [1300, 100, 240, 48], "pad": 16, "prefer": "top", "shift": [-356, 0] },
+    { "name": "at the edge, inside a 16 pad", "area": [0, 100, 400, 500], "rect": [4, 200, 100, 40], "pad": 16, "prefer": "top", "shift": [12, 0] }
+  ]
+}

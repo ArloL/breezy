@@ -10,6 +10,8 @@ export const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)
 // A critically damped spring with a 0.4 s response, per millisecond.
 const STIFFNESS = (2 * Math.PI / 400) ** 2;
 const DAMPING = 2 * Math.sqrt(STIFFNESS);
+/** The same spring for Motion, in seconds, for what moves with the camera: a card turning as the board pans to show it. */
+export const CAMERA_SPRING = { type: "spring", stiffness: STIFFNESS * 1e6, damping: DAMPING * 1e3, mass: 1 };
 const STEP = 4;
 const STOP_V = 0.02; // pt/ms, where UIKit lets a coast end
 // How far past a zoom limit the rubber band can reach, in natural-log units: at most about 1.5×.
@@ -166,19 +168,20 @@ export class Camera {
   }
 }
 
-/** The camera that pans the least from `cam` to show world rect `r` in screen area `a`, or null when it shows; a rect too
- * tall to fit shows its `prefer` edge. */
-export function revealing(cam: Cam, r: Rect, a: Area, prefer: "top" | "bottom" = "top"): Cam | null {
-  const pad = 16;
+/** The camera that pans the least from `cam` to show world rect `r` in screen area `a`, `pad` in from its edges, less
+ * where `a` is too small for that, 16 at least; or null when it shows. A rect too big to fit shows its left edge and its
+ * `prefer` one. As BreezyKit's Rect.revealShift, held to BreezyKit/Tests/Fixtures/reveal.json. */
+export function revealing(cam: Cam, r: Rect, a: Area, prefer: "top" | "bottom" = "top", pad = 16): Cam | null {
   const { zoom } = cam;
   let { x, y } = cam;
   const s = { x: r.x * zoom + cam.x, y: r.y * zoom + cam.y };
   const w = r.w * zoom;
   const h = r.h * zoom;
-  if (w + 2 * pad > a.right - a.left || s.x < a.left + pad) x += a.left + pad - s.x;
-  else if (s.x + w > a.right - pad) x += a.right - pad - (s.x + w);
-  if (h + 2 * pad > a.bottom - a.top) y += prefer === "bottom" ? a.bottom - pad - (s.y + h) : a.top + pad - s.y;
-  else if (s.y < a.top + pad) y += a.top + pad - s.y;
-  else if (s.y + h > a.bottom - pad) y += a.bottom - pad - (s.y + h);
+  const px = Math.min(pad, Math.max(16, (a.right - a.left - w) / 2)), py = Math.min(pad, Math.max(16, (a.bottom - a.top - h) / 2));
+  if (w + 2 * px > a.right - a.left || s.x < a.left + px) x += a.left + px - s.x;
+  else if (s.x + w > a.right - px) x += a.right - px - (s.x + w);
+  if (h + 2 * py > a.bottom - a.top) y += prefer === "bottom" ? a.bottom - py - (s.y + h) : a.top + py - s.y;
+  else if (s.y < a.top + py) y += a.top + py - s.y;
+  else if (s.y + h > a.bottom - py) y += a.bottom - py - (s.y + h);
   return x === cam.x && y === cam.y ? null : { x, y, zoom };
 }

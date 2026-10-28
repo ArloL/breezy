@@ -188,9 +188,10 @@ export class FakeView implements ViewPort {
     this.setCamera({ zoom, x: c.x - (r.x + r.w / 2) * zoom, y: c.y - (r.y + r.h / 2) * zoom });
   }
 
-  reveal(r: Rect, prefer: "top" | "bottom" = "top") {
-    const to = revealing(this.camera.goal(), r, this.area(), prefer);
+  reveal(r: Rect, prefer: "top" | "bottom" = "top", pad = 16) {
+    const from = this.camera.goal(), to = revealing(from, r, this.area(), prefer, pad);
     if (to) this.setCamera(to, true);
+    return to && { x: to.x - from.x, y: to.y - from.y };
   }
 
   /** Where offset `at` of card `id`'s side falls on screen: its line, 24 pt each below a 12 pt margin. */

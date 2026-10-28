@@ -124,7 +124,13 @@ export class App {
     if (next === s.turned) return;
     this.flight.note("transition", "turn", { from: s.turned, to: next });
     this.view.animateTurn([s.turned, next].filter((x): x is string => Boolean(x)), () => (s.turned = next));
-    if (next) this.view.reveal(this.view.rectOf(R.card(this.model.board, next)!));
+    // with room around it, as a back is turned to be read
+    const r = next && this.view.rectOf(R.card(this.model.board, next)!), a = this.view.area();
+    const pan = r && this.view.reveal(r, "top", 48);
+    if (r && pan) {
+      const why = r.w * this.view.cam.zoom + 32 > a.right - a.left || r.h * this.view.cam.zoom + 32 > a.bottom - a.top ? "too big" : "fits";
+      this.flight.note("decision", "reveal", { path: "back", why, pan: [Math.round(pan.x), Math.round(pan.y)] });
+    }
     this.ui.update();
   }
 

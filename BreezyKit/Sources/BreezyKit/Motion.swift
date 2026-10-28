@@ -26,11 +26,9 @@ public struct Spring: Equatable, Sendable {
   public static let settle = Spring(visualDuration: 0.35)
   /// A lift pops slightly, as a drag lift on iOS does.
   public static let lift = Spring(visualDuration: 0.25, bounce: 0.35)
-  /// Turning a card over.
-  public static let turn = Spring(visualDuration: 0.45, bounce: 0.2)
   /// The zoom capsule.
   public static let bar = Spring(visualDuration: 0.35, bounce: 0.15)
-  /// Moves the app makes with the camera.
+  /// Moves the app makes with the camera, and what moves with them: a card turning as the board pans to show it.
   public static let camera = Spring(response: 0.4)
 
   /// One step of `dt` seconds towards `target` from `value` at velocity `v` per second.

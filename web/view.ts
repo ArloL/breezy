@@ -1,6 +1,6 @@
 import { planted } from "./sync/plant.ts";
 import * as R from "./rules.ts";
-import { Camera, clampZoom, revealing } from "./camera.ts";
+import { CAMERA_SPRING, Camera, clampZoom, revealing } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
 import { DomField, fillFront, frontPoint } from "./field.ts";
 import { Grid } from "./grid.ts";
@@ -74,6 +74,8 @@ export class View {
   camera: Camera;
   grid: Grid;
   els: Map<string, Shown>;
+  /** Each card turning: how far it is from its front, 0, to its back, 1; with reduced motion only its faces fade. */
+  turns: Map<string, { p: MotionValue<number>; fade: boolean }>;
   sizes: Map<string, number>;
   frame: number;
   ready: boolean;
@@ -97,6 +99,7 @@ export class View {
     this.grid = new Grid(root.querySelector<HTMLCanvasElement>(".grid")!);
     this.camera = new Camera((c) => this.apply(c));
     this.els = new Map();
+    this.turns = new Map();
     this.sizes = new Map();
     this.frame = 0;
     this.ready = false;
@@ -156,6 +159,12 @@ export class View {
     return { x: c.x, y: c.y, w, h: this.backHeight(c, w) };
   }
 
+  /** Card `c` drawn `p` of the way from its front, 0, to its back, 1, from its top left. */
+  turningRect(c: Card, p: number): Rect {
+    const w = this.backWidth(), h = this.frontHeight(c.text, c.w);
+    return { x: c.x, y: c.y, w: c.w + (w - c.w) * p, h: h + (this.backHeight(c, w) - h) * p };
+  }
+
   toWorld(p: Point): Point {
     const { x, y, zoom } = this.cam;
     return { x: (p.x - x) / zoom, y: (p.y - y) / zoom };
@@ -194,11 +203,12 @@ export class View {
     return { x: (a.left + a.right) / 2, y: (a.top + a.bottom) / 2 };
   }
 
-  /** Pans the least needed to show world rect `r` once the camera gets where it is going; a rect too tall to fit shows
-   * its `prefer` edge. */
-  reveal(r: Rect, prefer: "top" | "bottom" = "top") {
-    const to = revealing(this.camera.goal(), r, this.area(), prefer);
+  /** Pans the least needed to show world rect `r` once the camera gets where it is going, `pad` in from the edges; a
+   * rect too tall to fit shows its `prefer` edge. The pan in screen points, or null when none. */
+  reveal(r: Rect, prefer: "top" | "bottom" = "top", pad = 16) {
+    const from = this.camera.goal(), to = revealing(from, r, this.area(), prefer, pad);
     if (to) this.setCamera(to, true);
+    return to && { x: to.x - from.x, y: to.y - from.y };
   }
 
   centreOn(r: Rect) {
@@ -320,14 +330,15 @@ export class View {
     const s = this.state;
     const editing = s.editing?.id === c.id ? s.editing : null;
     const turned = s.turned === c.id;
-    const r = this.rectOf(c);
+    const t = this.turns.get(c.id), p = t?.p.get() ?? 0;
+    const r = t && !t.fade ? this.turningRect(c, p) : this.rectOf(c);
     const who = s.taken.get(c.id);
     const mark = who?.colour ?? s.seen.get(c.id) ?? "";
-    const flags = ["card", c.notes && "notes", turned && "turned", s.selection.has(c.id) && "selected", s.held.has(c.id) && "held",
+    const flags = ["card", c.notes && "notes", turned && "turned", t && "turning", s.selection.has(c.id) && "selected", s.held.has(c.id) && "held",
       s.lifted.has(c.id) && "lifted", s.found === c.id && "found", editing && "editing", who && "taken", !who && mark && "seen"].filter(Boolean).join(" ");
     const f = s.held.has(c.id) && s.float?.x !== undefined ? s.float : { x: 0, y: 0 };
     const e = this.element(c.id, this.cardsEl, SHEET);
-    const key = JSON.stringify([flags, c.x + f.x, c.y + f.y, r.w, r.h, c.color, c.text, c.notes, i, mark, who?.name]);
+    const key = JSON.stringify([flags, c.x + f.x, c.y + f.y, r.w, r.h, c.color, c.text, c.notes, i, mark, who?.name, p]);
     if (e.key === key) return;
     e.key = key;
     const el = e.el;
@@ -337,10 +348,23 @@ export class View {
     this.place(e, c.x + f.x, c.y + f.y, s.held.has(c.id) || s.taken.has(c.id), s.lifted.has(c.id) ? 1.05 : 1);
     el.style.width = `${r.w}px`;
     el.style.height = `${r.h}px`;
-    el.style.zIndex = String(turned || s.lifted.has(c.id) ? 1000000 : i);
+    el.style.zIndex = String(turned || t || s.lifted.has(c.id) ? 1000000 : i);
     const sheet = el.firstChild as Element;
     sheet.className = `sheet c${c.color}`;
-    const [front, back] = sheet.children;
+    const [front, back] = sheet.children as HTMLCollectionOf<HTMLElement>;
+    // each face at its own size while the sheet grows or shrinks between them, cross-fading
+    if (t) {
+      const w = this.backWidth(), ear = c.notes ? 16 : 0;
+      el.style.setProperty("--front-w", `${c.w}px`);
+      el.style.setProperty("--back-w", `${w}px`);
+      el.style.setProperty("--back-h", `${this.backHeight(c, w)}px`);
+      el.style.setProperty("--ear", `${ear + (24 - ear) * p}px`);
+    }
+    front.style.opacity = t ? String(1 - p) : "";
+    back.style.opacity = t ? String(p) : "";
+    // the front's title and the back's heading as one, moving from the front's padding to the back's
+    front.style.transform = t ? `translate(${8 * p}px, ${12 * p}px)` : "";
+    back.style.transform = t ? `translate(${-8 * (1 - p)}px, ${-12 * (1 - p)}px)` : "";
     const [heading, notes] = back.children;
     if (!editing || editing.back) fillFront(front as HTMLElement, c.text);
     heading.textContent = c.text.split("\n")[0];
@@ -382,41 +406,37 @@ export class View {
     return el ? new DomField(el, "title") : null;
   }
 
-  /** Runs `change` at once and renders; the card flips over in one springy turn, showing the new face past halfway. */
+  /**
+   * Runs `change` at once and renders; each card of `ids` then grows out of its front into its back, or back into its
+   * front, on the camera's spring, so that it moves as one with a pan to show it, as iOS's zoom transitions grow out of
+   * where they start. Turned again on the way, it goes back from where it is, as fast as it was going. With reduced
+   * motion, its faces cross-fade at its new size.
+   */
   animateTurn(ids: string[], change: () => void) {
-    if (reduced()) {
-      change();
-      return this.render();
-    }
-    const ghosts = ids.map((id) => this.els.get(id)?.el).filter((el): el is HTMLElement => Boolean(el)).map((el) => {
-      const g = el.cloneNode(true) as HTMLElement;
-      g.classList.add("ghost");
-      g.style.zIndex = "1000001";
-      this.cardsEl.append(g);
-      return g;
-    });
     change();
+    const fade = reduced();
+    for (const id of ids) {
+      const to = this.state.turned === id ? 1 : 0;
+      let t = this.turns.get(id);
+      if (!t) {
+        const p = motionValue(1 - to);
+        // drawn as it changes, not a frame later, to move with the camera
+        p.on("change", () => {
+          const c = R.card(this.shown(), id);
+          if (c) this.renderCard(c, 0);
+        });
+        t = { p, fade };
+        this.turns.set(id, t);
+      }
+      t.fade = fade;
+      const turn = t;
+      animate(turn.p, to, fade ? { duration: 0.2, ease: "linear" } : CAMERA_SPRING).then(() => {
+        if (turn.p.isAnimating() || this.turns.get(id) !== turn) return;
+        this.turns.delete(id);
+        turn.p.destroy();
+        this.invalidate();
+      });
+    }
     this.render();
-    const fresh = ids.map((id) => this.els.get(id)?.el.firstChild).filter((s): s is HTMLElement => Boolean(s));
-    const p = "perspective(1000px) ";
-    const turn = (a: number) => {
-      for (const g of ghosts) {
-        g.style.visibility = a < 90 ? "" : "hidden";
-        (g.firstChild as HTMLElement).style.transform = `${p}rotateY(${a}deg)`;
-      }
-      // opacity, not visibility: a hidden editor loses the keyboard focus that Tab just gave it
-      for (const s of fresh) {
-        s.style.opacity = a < 90 ? "0" : "";
-        s.style.transform = `${p}rotateY(${a - 180}deg)`;
-      }
-    };
-    const cards = [...ghosts, ...fresh.map((s) => s.parentElement!)];
-    for (const el of cards) el.classList.add("flipping");
-    turn(0);
-    animate(0, 180, { type: "spring", visualDuration: 0.45, bounce: 0.2, onUpdate: turn }).then(() => {
-      for (const g of ghosts) g.remove();
-      for (const s of fresh) s.style.transform = s.style.opacity = "";
-      for (const el of cards) el.classList.remove("flipping");
-    });
   }
 }

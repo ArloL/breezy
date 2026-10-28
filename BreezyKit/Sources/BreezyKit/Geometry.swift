@@ -38,6 +38,20 @@ public struct Rect: Equatable, Sendable {
 
   public func containsCentre(of b: Rect) -> Bool { contains(b.x + b.w / 2, b.y + b.h / 2) }
 
+  /// How far what `area` shows moves, the least, to bring this rect into it `pad` in from its edges, less where `area`
+  /// is too small for that, 16 at least; a rect too big for it shows its left edge and its top, or its bottom with
+  /// `bottom`. As the web app's revealing, held to Tests/Fixtures/reveal.json.
+  public func revealShift(in area: Rect, pad: Double = 16, bottom: Bool = false) -> Vector {
+    let px = min(pad, max(16, (area.w - w) / 2)), py = min(pad, max(16, (area.h - h) / 2))
+    var s = Vector()
+    if w + 2 * px > area.w || x < area.x + px { s.dx = area.x + px - x }
+    else if x + w > area.x + area.w - px { s.dx = area.x + area.w - px - (x + w) }
+    if h + 2 * py > area.h { s.dy = bottom ? area.y + area.h - py - (y + h) : area.y + py - y }
+    else if y < area.y + py { s.dy = area.y + py - y }
+    else if y + h > area.y + area.h - py { s.dy = area.y + area.h - py - (y + h) }
+    return s
+  }
+
   /// Whether the two overlap horizontally, as cards in one column of a lane do.
   public func sharesColumn(with o: Rect) -> Bool { x < o.x + o.w && o.x < x + w }
 

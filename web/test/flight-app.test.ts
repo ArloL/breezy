@@ -52,6 +52,16 @@ test("notes that a reveal kept the card's bottom when the caret had no rect, as 
   assert.deepEqual([reveal[3]!.path, reveal[3]!.why], ["card", "no caret"]);
 });
 
+test("a card turned by the right edge pans its back 48 pt in, and notes it", () => {
+  const app = new App({ cards: [{ id: "a", x: 900, y: 100, w: 240, text: "a title", color: 1 }], lanes: [] }, fakePorts);
+  app.turn("a");
+  assert.deepEqual(app.view.camera.goal(), { x: 1200 - 48 - (900 + 480), y: 0, zoom: 1 });
+  assert.deepEqual(of(app, "decision").map((e) => [e[2], e[3]]), [["reveal", { path: "back", why: "fits", pan: [-228, 0] }]]);
+  app.turn(null);
+  app.turn("a");
+  assert.equal(of(app, "decision").length, 1, "a back in sight pans nothing more");
+});
+
 test("notes a turned card deleted as turned back, as the Mac does", () => {
   const app = phone();
   app.turn("a");
