@@ -10,4 +10,6 @@ pkill -KILL -f "qemu-system-.* -avd " 2> /dev/null
 timeout 30 adb kill-server > /dev/null 2>&1
 # the failed boot's log, which the next one starts afresh
 [ -f build/android-emulator.log ] && mv build/android-emulator.log "build/android-emulator-failed-boot.log"
+# from cold the second time: a snapshot that fails to load on this host would fail every boot from it
+rm -rf "$ANDROID_AVD_HOME"/*.avd/snapshots/breezy-ready
 node scripts/android.ts

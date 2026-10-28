@@ -209,6 +209,15 @@ jobs:
         key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
         # a changed script starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
+    # the emulator booted, set up and snapshotted, which loads in seconds where a cold boot took 2.6 minutes
+    - id: avd-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/avd.tar.zst
+        key: avd-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts', 'scripts/android-snapshot.sh') }}
+    - name: Unpack the emulator's snapshot
+      if: ${{ steps.avd-cache.outputs.cache-hit == 'true' }}
+      run: mise exec -- scripts/android-snapshot.sh unpack ~/avd.tar.zst
     - name: Boot the emulator
       id: boot
       # twice, if need be

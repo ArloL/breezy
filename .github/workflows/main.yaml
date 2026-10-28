@@ -351,6 +351,15 @@ jobs:
         key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
         # a changed script starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
+    # the emulator booted, set up and snapshotted, which loads in seconds where a cold boot took 2.6 minutes
+    - id: avd-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/avd.tar.zst
+        key: avd-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts', 'scripts/android-snapshot.sh') }}
+    - name: Unpack the emulator's snapshot
+      if: ${{ steps.avd-cache.outputs.cache-hit == 'true' }}
+      run: mise exec -- scripts/android-snapshot.sh unpack ~/avd.tar.zst
     - name: Boot the emulator
       # twice, if need be
       timeout-minutes: 16
@@ -362,6 +371,16 @@ jobs:
       with:
         path: ~/.local/share/mise/installs/android-sdk
         key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+    # and the AVD its boot snapshotted, by main alone too, packed with the emulator stopped and booted again from it
+    - name: Pack the emulator's snapshot
+      if: ${{ github.ref == 'refs/heads/main' && steps.avd-cache.outputs.cache-hit != 'true' }}
+      timeout-minutes: 15
+      run: mise exec -- scripts/android-snapshot.sh pack ~/avd.tar.zst
+    - if: ${{ github.ref == 'refs/heads/main' && steps.avd-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/avd.tar.zst
+        key: ${{ steps.avd-cache.outputs.cache-primary-key }}
     - name: Smoke cases on Android
       timeout-minutes: 8
       env:

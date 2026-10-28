@@ -3,7 +3,9 @@
 // firefox-android devices:
 //   MISE_ENV=android mise install && MISE_ENV=android mise exec -- node scripts/android.ts
 // Installs the system image and creates the AVD the first time, and connects adb to the emulator over TCP as well. Each
-// wait is bounded and names what it waited for.
+// wait is bounded and names what it waited for. Once it has booted from cold and set the emulator up, it saves it as the
+// snapshot breezy-ready, which later boots load in seconds, as CI's cache keeps the AVD: a cold boot took 2.6 minutes of
+// the gate's Android job.
 // Stop it with MISE_ENV=android mise exec -- adb emu kill.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
@@ -21,6 +23,9 @@ process.env.PATH = `${join(sdk, "platform-tools")}:${process.env.PATH}`;
 const api = "android-37.0";
 const image = `system-images;${api};google_apis_playstore;${arch() === "arm64" ? "arm64-v8a" : "x86_64"}`;
 const avd = `breezy-${api}`;
+/** The emulator booted and set up, Chrome's and Firefox's first runs behind it. */
+const SNAPSHOT = "breezy-ready";
+const fromSnapshot = existsSync(join(avds, `${avd}.avd`, "snapshots", SNAPSHOT));
 
 const run = (cmd: string, args: string[], { input, timeout = 30_000 }: { input?: string; timeout?: number } = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", input, timeout, stdio: "pipe" });
@@ -62,7 +67,10 @@ if (!/^emulator-\d+\tdevice$/m.test(adb("devices"))) {
   mkdirSync(join(root, "build"), { recursive: true });
   const log = openSync(join(root, "build", "android-emulator.log"), "w");
   // and the kernel's console into the log: a panic's own record keeps only its last lines, not what led up to it
-  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save", "-show-kernel"], { detached: true, stdio: ["ignore", log, log] });
+  const boot = fromSnapshot ? ["-snapshot", SNAPSHOT] : [];
+  console.log(fromSnapshot ? `loading the snapshot ${SNAPSHOT}` : "booting from cold");
+  // without Vulkan, which Chrome draws with otherwise, as the emulator saves no snapshot of a guest using it
+  emulator = spawn(join(sdk, "emulator", "emulator"), ["-avd", avd, ...boot, "-feature", "-Vulkan", "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot-save", "-show-kernel"], { detached: true, stdio: ["ignore", log, log] });
   emulator.unref();
 }
 await within(300, "the emulator to boot", succeeds(() => adb("shell", "getprop", "sys.boot_completed").trim() === "1"));
@@ -187,6 +195,25 @@ await settled("Firefox's notifications granted", "shell", "pm", "grant", FENIX, 
 await firstRun("Firefox", FENIX, () => adb("shell", "am", "start", "-n", `${FENIX}/org.mozilla.fenix.HomeActivity`),
   /Tabs Open/, ["Continue", "Cancel", "Not now"]);
 adb("shell", "am", "force-stop", FENIX);
+
+// all of it as a snapshot, once, for the boots after this one; set up from cold, as one loaded may have had its time
+if (!fromSnapshot) {
+  // with no connection open through the emulator's network, whose sockets a snapshot cannot load again: the browsers
+  // stopped, and this machine's ports let go, which a boot from it opens again
+  for (const pkg of ["com.android.chrome", FENIX]) succeeds(() => adb("shell", "am", "force-stop", pkg))();
+  succeeds(() => adb("reverse", "--remove-all"))();
+  succeeds(() => run("adb", ["disconnect", EMULATOR_TCP]))();
+  succeeds(() => run("adb", ["-s", serial, "emu", "redir", "del", `tcp:${EMULATOR_TCP.split(":")[1]}`]))();
+  await sleep(3000);
+  // the console says KO, not adb's exit, when it saves none
+  const said = run("adb", ["-s", serial, "emu", "avd", "snapshot", "save", SNAPSHOT], { timeout: 180_000 });
+  if (/KO/.test(said)) console.log(`::warning title=Emulator snapshot::saved none: ${said.trim()}`);
+  else console.log(`saved the snapshot ${SNAPSHOT}`);
+  // and this run's connections back
+  succeeds(() => adb("-s", serial, "emu", "redir", "add", `tcp:${EMULATOR_TCP.split(":")[1]}:5555`))();
+  await within(60, `adb to connect to ${EMULATOR_TCP} again`, succeeds(() => run("adb", ["connect", EMULATOR_TCP]).includes("connected")));
+  for (const port of [WEB, SERVER, RELAY]) await within(90, `port ${port} again`, succeeds(() => adb("reverse", `tcp:${port}`, `tcp:${port}`)));
+}
 
 // what a run used, as the SDK's cache keeps them until it is evicted and a new emulator or image comes unannounced
 const revision = (...dir: string[]) => /^Pkg\.Revision=(.*)$/m.exec(readFileSync(join(sdk, ...dir, "source.properties"), "utf8"))?.[1];
