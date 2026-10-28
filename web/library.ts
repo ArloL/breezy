@@ -7,6 +7,8 @@ import { ask } from "./sheet.ts";
 import { chip } from "./presence.ts";
 import { floated, liveFields, overlaid } from "./sync/overlay.ts";
 import { statusLines } from "./sync/engine.ts";
+import { encode } from "./sync/base64.ts";
+import { Reporter } from "./diag.ts";
 import { GestureHolds } from "./sync/gesture-holds.ts";
 import { Collab } from "./sync/collab.ts";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.ts";
@@ -51,6 +53,8 @@ export class Library {
   holds: GestureHolds;
   collabs: WeakMap<Group, Collab>;
   restack: (b: Board) => void;
+  /** Sends what the app recorded to the open board's space, or else the first space with a server. */
+  reporter: Reporter;
   liveDirty?: boolean;
   presenceKey?: string;
   overlaySize?: number;
@@ -60,6 +64,12 @@ export class Library {
   constructor(app: App, spaces: Spaces) {
     this.app = app;
     this.spaces = spaces;
+    this.reporter = new Reporter(async () => {
+      const g = this.group?.store.state.server ? this.group : this.spaces.spaces.find((s) => s.store.state.server);
+      const state = g?.store.state;
+      if (!g || !state?.server || !state.space) return null;
+      return { server: state.server, space: state.space, token: encode((await g.engine.keysOf(state)).token) };
+    }, () => app.flight.recording());
     this.id = null;
     this.group = null;
     this.binding = null;
@@ -344,6 +354,14 @@ export class Library {
   }
 
   /** Asks for this device's name; true once it has one. */
+  /** Sends what the app recorded, for whoever debugs what its owner saw go wrong, and says whether it went. */
+  async reportProblem() {
+    const sent = await this.reporter.report("asked");
+    await ask(sent
+      ? { title: "Sent", message: "Tell Claude what looked wrong.", cancel: null }
+      : { title: "Not Sent", message: "Breezy couldn’t reach the server of a shared space. Try again once it can.", cancel: null });
+  }
+
   async askName() {
     const r = await ask({ title: "Your Name", message: "Others in your spaces see it beside your cursor.", value: this.spaces.me.name, placeholder: "Name", ok: "OK" });
     const name = r?.value?.trim();

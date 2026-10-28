@@ -92,7 +92,7 @@ export class TransportError extends Error {
 }
 
 /** `text` as raw DEFLATE, or null where the browser cannot make it. */
-function deflateRaw(text: string): Promise<ArrayBuffer> | null {
+export function deflateRaw(text: string): Promise<ArrayBuffer> | null {
   let stream;
   try {
     stream = new CompressionStream("deflate-raw");

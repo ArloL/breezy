@@ -55,8 +55,15 @@ function record(app: App) {
   addEventListener("resize", viewport);
   visualViewport?.addEventListener("resize", viewport);
   visualViewport?.addEventListener("scroll", viewport);
-  addEventListener("error", (e) => f.note("error", "uncaught", thrown(e.error ?? e.message)));
-  addEventListener("unhandledrejection", (e) => f.note("error", "rejected", thrown(e.reason)));
+  // the recording goes to the space's server too, at most once in 10 minutes
+  addEventListener("error", (e) => {
+    f.note("error", "uncaught", thrown(e.error ?? e.message));
+    void app.library?.reporter.report("error");
+  });
+  addEventListener("unhandledrejection", (e) => {
+    f.note("error", "rejected", thrown(e.reason));
+    void app.library?.reporter.report("error");
+  });
 }
 
 const params = new URLSearchParams(location.search);
