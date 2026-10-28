@@ -48,6 +48,14 @@ export interface Case {
   run(s: Stage): Promise<void>;
 }
 
+/** World point `p`, or the nearest to it that `d` shows on its screen's board: 24 pt in from its sides, and 160 from its
+ * top and bottom, clear of a phone's bars. A card made low leaves the camera where it showed it, and the lane above the
+ * screen's top. */
+async function aim(d: Device, p: Point) {
+  const s = await d.screen(p), { w, h } = await d.size();
+  return d.world({ x: Math.min(Math.max(s.x, 24), w - 24), y: Math.min(Math.max(s.y, 160), h - 160) });
+}
+
 /** A lane in the middle of the first device's screen and a card beside it, made there, and seen by the others. On a
  * phone, the lane at the top left and the card below it. */
 async function laneAndCard({ devices: [a], settle }: Stage) {
@@ -693,7 +701,8 @@ export const cases: Case[] = [
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
       const made = item(await a.scene(), card);
-      await a.tap({ x: made.x + made.w + 100, y: made.y + made.h / 2 });
+      // left of it: on a phone it runs off the screen's right edge
+      await a.tap(await aim(a, { x: made.x - 60, y: made.y + made.h / 2 }));
       await a.wait(400);
       const before = await a.scene(), seen = item(await b.scene(), card);
       const c = item(before, card);
@@ -874,11 +883,11 @@ export const cases: Case[] = [
       const { lane } = await laneAndCard(s);
       const l = item(await a.scene(), lane);
       const had = new Set((await a.scene()).cards.map((c) => c.id));
-      // right of the lane, on the screen: where the camera has the lane, the point beyond it can be off the screen's edge
-      const at = await a.screen({ x: l.x + l.w + 150, y: l.y + 450 }), { w } = await a.size();
-      await a.doubleTap(await a.world({ x: Math.min(at.x, w - 24), y: at.y }));
+      // right of the lane: where the camera has the lane, the point beyond it can be off the screen
+      await a.doubleTap(await aim(a, { x: l.x + l.w + 150, y: l.y + 450 }));
       await a.wait(300);
       await a.type("from the phone");
+      const { w } = await a.size();
       // a tap on the board ends the edit, as there is no Esc on a phone: just above the card, which the board keeps in
       // sight of the keyboard, and on the screen, as a card by its edge has its middle off it
       const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;

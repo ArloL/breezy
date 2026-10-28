@@ -57,8 +57,9 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-25 | android | B1 | soak | L6 | `scenarios/cases.ts` | unstated | unstated | unstated | #124 |
 | 2026-10-26 | ios | B8 | the iPhone here | L6 | `scenarios/cases.ts` | unstated | unstated | unstated | #116 |
 | 2026-10-26 | ios | B1 | hand | L1 | `web/test/turn.test.ts` | the back's top at 4 and its caret at 52 under the bar ending at 58, the board 250 pt tall, on an iPhone 13 mini (L6, by hand) | 3 | no | #129 |
-| 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | unstated | unstated | unstated | #145 |
-| 2026-10-27 | ios | B3 | nightly | L6 | `scenarios/taps.test.ts` | unstated | unstated | unstated | #146 |
+| 2026-10-27 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | the ⌘Z step's keydown Control in `timeline.txt`, and Playwright's WebKit user agent (application, engine) | 0 | partly: the user agent was not | #145 |
+| 2026-10-27 | ios | B3 | nightly | L6 | `scenarios/taps.test.ts` | the page's pointer lines and "taps reached the page 314 ms apart" in `timeline.txt` (runtime) | 0 | yes | #146 |
+| 2026-10-28 | ios | B3 | nightly | L3 | `scenarios/touch.test.ts` | no pointer line in `timeline.txt` after the double tap, and the camera in its `◀` line (runtime, application) | 0 | yes | #148 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -72,3 +73,5 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 2026-10-27: on the nightly's Linux runner, ⌘Z in WebKit put back nothing two nights running. The app was right: Playwright's WebKit says it is on a Mac on every OS, so the board waits for ⌘, but the scenarios' driver sent Ctrl for ⌘ in any desktop browser off the Mac. It now sends the board's commands as the page takes them, and only the OS's own editing keys (the caret's moves, a field's select-all) as Ctrl.
 
 2026-10-27: on the nightly's iPhone 17, as the Home Screen app, a double tap that had made a card was tapped again, onto the keyboard, and the page stopped answering. The board had taken the two taps as one by their events' own times; the scenarios' driver judged them by when its listener ran, 314 ms apart on a runner at a load of 33 on 3 CPUs, and tried again. It now reads the events' times as the board does. `scenarios/taps.test.ts` holds its rule to the board's; the clock itself shows only on a loaded runner.
+
+2026-10-28: in Safari on the nightly's iPhone 17, a case double tapped at a point it placed by the lane, after a card made low had left the camera with the lane above the screen: the point was in the status bar, which took both taps, and the case typed into nothing. A tap aimed off the screen now fails at once, and on the iPhone a touch the page never hears of; the hub then found a second case tapping "on nothing" off its screen, where a real phone's tap did nothing and its check passed anyway. One case aims onto the screen's board, the other taps where nothing is.

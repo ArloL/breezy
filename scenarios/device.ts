@@ -263,13 +263,21 @@ export abstract class Device {
 
   /** Two taps at world point `p`, as quick as a double tap. */
   async doubleTap(p: Point) {
-    const s = await this.screen(p);
+    const s = await this.onScreen(p);
     await this.gesture([[0, "down", [[0, s]]], [40, "up", [[0, s]]], [60, "down", [[0, s]]], [40, "up", [[0, s]]]]);
   }
 
   async tap(p: Point) {
-    const s = await this.screen(p);
+    const s = await this.onScreen(p);
     await this.gesture([[0, "down", [[0, s]]], [50, "up", [[0, s]]]]);
+  }
+
+  /** Where world point `p` is on the screen, which it must be: above it, an iPhone's status bar takes the touch, and the
+   * page never hears of it. */
+  private async onScreen(p: Point) {
+    const s = await this.screen(p), { w, h } = await this.size();
+    if (s.x < 0 || s.x > w || s.y < 0 || s.y > h) throw new Error(`a tap at ${Math.round(s.x)},${Math.round(s.y)}, off the screen of ${w} × ${h}`);
+    return s;
   }
 
   /** Until the board stands still, as a person waits to aim: on a phone, it moves as the keyboard comes and goes. */
