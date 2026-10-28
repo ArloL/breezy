@@ -20,6 +20,7 @@ import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
 import { Agent, AGENT_SCRIPT, fromIphone, type AgentPage } from "./agent.ts";
+import { dismissal } from "./prompts.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -367,6 +368,7 @@ export class Touchscreen {
         t.sent.length = 0;
         return t;
       }
+      t.dismiss();
     }
     throw new Error(`the page sees no touches: something of Chrome's covers it; ${t.texts()}`);
   }
@@ -396,6 +398,15 @@ export class Touchscreen {
   }
 
   /** The texts on screen, and the screen in build/android-touches.png, for a person to tell what covers the page. */
+  /** Sends away what a browser shows over the page unasked, as Firefox's survey once did, by its button: a person
+   * says No Thanks too. */
+  dismiss() {
+    try {
+      const away = dismissal(execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8", timeout: 20_000 }));
+      if (away) execFileSync("adb", ["-s", this.serial, "shell", "input", "tap", String(away.x), String(away.y)], { timeout: 10_000 });
+    } catch {}
+  }
+
   texts() {
     try {
       writeFileSync(join(root, "build", "android-touches.png"), this.capture());
