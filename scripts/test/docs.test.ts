@@ -28,6 +28,8 @@ function table(text: string, heading?: string): string[][] {
 const CLASSES = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"];
 /** Escapes before this were seeded from commit messages. */
 const SEEDED = "2026-10-25";
+/** Escapes since this say what signal pinned them. */
+const FACTS_FIRST = "2026-10-28";
 const isFile = (path: string) => path !== "" && existsSync(join(root, path)) && statSync(join(root, path)).isFile();
 
 function files(dir: string, ext: string): string[] {
@@ -80,13 +82,19 @@ test("the matrix's plants and scripts/plants.ts's are the same, at the same clas
 test("every escape row is well formed", () => {
   const text = read("docs/escapes.md");
   const header = text.split("\n").find((l) => l.startsWith("|"));
-  assert.equal(header, "| Date | Platform | Class | Found by | Should have caught | Test | Commit |");
+  assert.equal(header, "| Date | Platform | Class | Found by | Should have caught | Test | Signal | Interventions | Recorded | Commit |");
   const rows = table(text);
   assert.ok(rows.length > 0, "no escapes");
   for (const r of rows) {
-    const [date, platform, cls, found, level, t, commit] = r;
+    const [date, platform, cls, found, level, t, signal, interventions, recorded, commit] = r;
     const row = r.join(" | ");
-    assert.equal(r.length, 7, row);
+    assert.equal(r.length, 10, row);
+    // what pinned the cause, how often the owner had to step in after the report, and whether it was recorded anyway:
+    // the measure of debugging from facts (docs/superpowers/specs/2026-10-28-breezy-facts-first-design.md)
+    assert.match(interventions, /^(\d+|—|unstated)$/, row);
+    assert.match(recorded, /^(yes|no|—|unstated)$/, row);
+    if (date < SEEDED) assert.deepEqual([signal, interventions, recorded], ["—", "—", "—"], `${row}: a seeded row has no signal`);
+    if (date >= FACTS_FIRST) assert.ok(signal.length > 1 && /^\d+$/.test(interventions) && /^(yes|no)$/.test(recorded), `${row}: an escape logged since ${FACTS_FIRST} says what pinned it`);
     assert.match(date, /^\d{4}-\d{2}-\d{2}$/, row);
     assert.ok(["mac", "ios", "android", "web", "firefox", "chromium", "webkit"].includes(platform), row);
     assert.ok(CLASSES.includes(cls), row);
