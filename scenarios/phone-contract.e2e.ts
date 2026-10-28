@@ -1,19 +1,19 @@
-// The hub's phones (web/test/fakes.ts) held to the phones they stand for: PHONE to the iPhone's Home Screen app in the iOS
-// Simulator, ANDROID to Chrome on the Android emulator. Where the board shows at rest and while a card is edited, above
-// the keyboard, and how long the keyboard takes to come. Run with node scripts/ios.ts --home first, or as
-// PHONE_KIND=android after node scripts/android.ts, or as PHONE_KIND=ios-safari for a tab, which differs and only reports:
+// The hub's phones (web/test/fakes.ts) held to the phones they stand for: PHONE and MINI to the iPhone 17's and the iPhone
+// 13 mini's Home Screen app in the iOS Simulator, ANDROID to Chrome on the Android emulator. Where the board shows at
+// rest and while a card is edited, above the keyboard, and how long the keyboard takes to come. Run with IPHONE="iPhone
+// 13 mini" or none node scripts/ios.ts --home first, or as PHONE_KIND=android after node scripts/android.ts, or as
+// PHONE_KIND=ios-safari for a tab, which differs and only reports:
 //   node --test --test-force-exit scenarios/phone-contract.e2e.ts
 import { test } from "node:test";
 import { writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { ANDROID, PHONE } from "../web/test/fakes.ts";
+import { ANDROID, MINI, PHONE } from "../web/test/fakes.ts";
 import { BrowserDevice, RealWorld } from "./browser.ts";
 import { iosUnfit, IosDevice } from "./ios.ts";
 import { exitsAfter } from "./exit.ts";
 
 // the Home Screen app, as the owner uses it and the hub's phone stands for; a tab only reports what it measured
 const kind = process.env.PHONE_KIND === "ios-safari" || process.env.PHONE_KIND === "android" ? process.env.PHONE_KIND : "ios-home";
-const fakeOf = kind === "android" ? ANDROID : PHONE;
 /** How far the fake may stand from the phone: a line of text, and a keyboard's animation, which the emulator's varies
  * by hundreds of ms. */
 const PT = 24, MS = kind === "android" ? 400 : 250;
@@ -37,8 +37,12 @@ test(`the hub's phone shows the board, and brings the keyboard, as the phone doe
       addEventListener("focusin", () => t.splice(0, t.length, performance.now()));
       visualViewport!.addEventListener("resize", () => t.push(performance.now()));
     });
+    // the iPhone's by its width
+    const fakeOf = kind === "android" ? ANDROID : [PHONE, MINI].find((s) => s.w === rest.w);
+    if (!fakeOf) throw new Error(`the hub has no phone ${rest.w} pt wide`);
     const size = await d.size();
-    // a board just opened in the Home Screen app takes no touch for a moment
+    // a board just opened in the Home Screen app takes no touch for a moment, and IosDevice fails one the page never hears
+    await d.wait(1500);
     await d.tap(await d.world({ x: size.w / 2, y: size.h * 0.6 }));
     await d.wait(800);
     await d.doubleTap(await d.world({ x: size.w / 2, y: size.h * 0.3 }));
