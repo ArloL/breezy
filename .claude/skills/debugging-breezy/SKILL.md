@@ -26,7 +26,7 @@ Pick the control first:
 |---|---|
 | the owner's iPhone report | the same steps on an iPhone 13 mini on iOS 27, Home Screen app (`IPHONE`, `scripts/ios.ts --home`) |
 | the partner's Android report | Chrome on the emulator at the partner's phone's size |
-| a red nightly case | the same case on a pair that passed, or the same pair on the last green night |
+| a red nightly case | the same case on a pair that passed, which the night's summary already diffs ("Failures against their controls", `node scripts/controls.ts DIR…` on downloaded runs), or the same pair on the last green night |
 | a failing hub case | the same case on the real device of that kind, or with its fake swapped |
 
 Diff the two recordings. What only the variable has is a high-fidelity signal. What both have is noise: it can rule a hypothesis out, but it never points to one.

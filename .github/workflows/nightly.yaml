@@ -538,6 +538,8 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         if [ -d build/nightly ]; then node scripts/scenario-stats.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
+        # each failure beside a run of its case that passed: where their recordings part
+        if [ -d build/nightly ]; then node scripts/controls.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
         {
           echo
           echo "| Job | Result |"
