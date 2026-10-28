@@ -21,6 +21,7 @@ import os
 import ssl
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -141,6 +142,16 @@ def verify(version, files):
                                   {"Authorization": "Bearer " + base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")}))
     check("sync.php does not answer a pull", lambda: None if pull().get("records") == [] else "its answer has records")
 
+    def refused():
+        # PHP running refuses a space nobody has; PHP not running would serve its source
+        try:
+            get("diag.php?space=" + base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip("="),
+                {"Authorization": "Bearer " + base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")})
+            return "it answered a space nobody has"
+        except urllib.error.HTTPError as e:
+            return None if e.code == 401 else f"it answered {e.code}"
+    check("diag.php does not refuse a space nobody has", refused)
+
 
 def main():
     site = Path(sys.argv[1])
@@ -152,7 +163,7 @@ def main():
     # the database's details sit next to sync.php, after the .htaccess that keeps them from browsers
     up.upload((site / ".htaccess").read_bytes(), "httpdocs/.htaccess")
     up.upload(config_php(), "httpdocs/config.php")
-    for f in ["sync.php"] + changed + LAST:
+    for f in ["sync.php", "diag.php"] + changed + LAST:
         up.upload((site / f).read_bytes(), "httpdocs/" + f)
     up.close()
     verify(version, changed + [f for f in LAST if f in version["files"]])

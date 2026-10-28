@@ -13,4 +13,4 @@ if [[ -n $version ]]; then
   node scripts/make-web-version.ts "$out" "$version"
 fi
 # after the version file, which lists what the service worker keeps offline: not these
-cp server/sync.php server/.htaccess "$out/"
+cp server/sync.php server/diag.php server/.htaccess "$out/"
