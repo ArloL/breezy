@@ -565,6 +565,8 @@ class WebDevice {
         return this.open ? (this.open.app.view as FakeView).sight() : null;
       case "still":
         return !this.open || (this.open.app.view as FakeView).still();
+      case "flight":
+        return this.open?.app.flight.recording() ?? null;
     }
     throw new Error(`unknown command ${c.cmd}`);
   }

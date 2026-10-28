@@ -319,7 +319,7 @@ export class App {
     if (e && c) {
       const r = this.view.rectOf(c), s = this.view.toScreen(r), at = this.view.editorOf(e.id, e.back)?.caret();
       const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
-      editing = { id: e.id, back: e.back, card: box({ ...s, w: r.w * zoom, h: r.h * zoom }), caret: box(caret && { ...caret, w: 0 }), top: this.view.topOf(e.id) };
+      editing = { id: e.id, back: e.back, card: box({ ...s, w: r.w * zoom, h: r.h * zoom }), caret: box(caret && { ...caret, w: 0 }), top: ((t) => t == null ? null : Math.round(t * 10) / 10)(this.view.topOf(e.id)) };
     }
     return { area: [a.top, a.bottom], cam: [x, y, zoom].map((n) => Math.round(n * 100) / 100), editing };
   }

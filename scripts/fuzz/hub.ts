@@ -89,7 +89,7 @@ export type Message =
 
 export type DeviceCommand = Message | { cmd: "op"; op: Op } | { cmd: "fire" } | { cmd: "state" } | { cmd: "scene" } | { cmd: "new"; me: Me; seed: number }
   // web devices only, for scenarios: a phone's screen, what of it shows the edited card, and whether it stands still
-  | { cmd: "screen"; screen: Screen } | { cmd: "sight" } | { cmd: "still" };
+  | { cmd: "screen"; screen: Screen } | { cmd: "sight" } | { cmd: "still" } | { cmd: "flight" };
 
 export type Command = (DeviceCommand & { dev: number }) | { cmd: "time"; t: number; skew: Record<string, number> };
 
