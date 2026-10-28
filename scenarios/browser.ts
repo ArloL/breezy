@@ -897,11 +897,26 @@ export class BrowserDevice extends Device {
     await this.page.mouse.dblclick(s.x, s.y);
   }
 
+  /**
+   * A double-click at screen point `p` that opens an editor, and again, as a person clicks again when nothing came, when
+   * none opened: on a runner loaded 13 to 3 CPUs, Firefox stalled under the clicks and its page got the second press
+   * 2.6 s after the first, too far apart to be one. Each try noted in the timeline; three that open nothing fail.
+   */
+  private async dblclickToEdit(p: Point) {
+    for (let tries = 1; ; tries++) {
+      await this.page.mouse.dblclick(p.x, p.y);
+      if (await this.page.waitForFunction(editing, undefined, { timeout: 2000 }).then(() => true, () => false)) return;
+      if (tries === 3) throw new Error("a double-click opened no editor, three times");
+      this.note(`a double-click opened no editor in 2 s: again`);
+      await sleep(1000);
+    }
+  }
+
   override async typeInto(id: string, text: string) {
     const r = (await this.scene()).cards.find((c) => c.id === id);
     if (!r) throw new Error(`nothing shows ${id}`);
     const p = await this.screen({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
-    await this.page.mouse.dblclick(p.x, p.y);
+    await this.dblclickToEdit(p);
     await this.type(text);
     await this.endEdit();
   }
@@ -936,7 +951,7 @@ export class BrowserDevice extends Device {
   async addCard(x: number, y: number): Promise<string> {
     const before = await this.scene();
     const p = await this.screen({ x, y });
-    await this.page.mouse.dblclick(p.x, p.y);
+    await this.dblclickToEdit(p);
     await this.type("card");
     await this.endEdit();
     return this.made(before, "cards");
