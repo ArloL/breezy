@@ -1,7 +1,7 @@
 // A device's recording, read into a case's timeline on the wall clock beside the harness's own lines.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { flightLines } from "./record.ts";
+import { flightLines, logcatLines } from "./record.ts";
 
 test("a recording's entries become timeline lines on the wall clock", () => {
   const r = { schema: 1 as const, origin: 1000, dropped: 0, context: null, entries: [[5, "decision", "reveal", { path: "card" }], [7, "life", "hidden"]] as never };
@@ -18,4 +18,16 @@ test("entries after a device slept are placed by the wall clock it noted on waki
 
 test("no recording gives no lines", () => {
   assert.deepEqual(flightLines(null, "d0 webkit"), []);
+});
+
+test("the emulator's log keeps when a process starts, dies or is killed: a panic came as a browser's processes changed", () => {
+  const log = [
+    "1761628730.120  617  640 I am_proc_start: [0,15347,10166,com.android.chrome:sandboxed_process0,service,{com.android.chrome/x}]",
+    "1761628731.500  617  700 I am_proc_died: [0,15205,com.android.chrome:sandboxed_process0,920,17]",
+    "1761628731.600  617  700 I am_kill : [0,15063,com.android.chrome,920,empty #17]",
+    "1761628731.700  455  455 D some_tag: chatter",
+  ].join("\n");
+  assert.deepEqual(logcatLines(log, "emulator logcat").map(([at, , what]) => [at, what.split(":")[0]]), [
+    [1761628730120, "I am_proc_start"], [1761628731500, "I am_proc_died"], [1761628731600, "I am_kill"],
+  ]);
 });
