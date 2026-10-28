@@ -407,6 +407,12 @@ import Foundation
     return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(open.canvas.scene))
   }
 
+  /// What the open board's core recorded; null without one.
+  func flight() throws -> JSONValue {
+    guard let open else { return .null }
+    return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(open.canvas.flight.recording()))
+  }
+
   private static func json(_ invite: Invite?) throws -> JSONValue {
     guard let i = invite else { throw SimError("not syncing") }
     return .object([

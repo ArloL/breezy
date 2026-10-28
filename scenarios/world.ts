@@ -45,7 +45,7 @@ export class SimDevice extends Device {
   }
 
   override async flight(): Promise<Recording | null> {
-    return this.d.kind === "web" ? (await this.hub.command(this.d, { cmd: "flight" })) as Recording | null : null;
+    return (await this.hub.command(this.d, { cmd: "flight" })) as Recording | null;
   }
 
   override async sight(): Promise<Sight | null> {

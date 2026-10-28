@@ -203,17 +203,12 @@ public struct Drag {
     guard var d = drag else { return }
     let dx = p.x - d.start.x
     let dy = p.y - d.start.y
-    if d.kind == .marquee {
-      let r = Rect(x: min(d.start.x, p.x), y: min(d.start.y, p.y), w: abs(dx), h: abs(dy))
-      marquee = r
-      selection = d.base.union(board.cardsInRect(r, heightOf: heightOf).map(\.id))
-      return
-    }
     if !d.moved && hypot(dx, dy) * zoom() > 3 {
       d.moved = true
-      // named as the web app names a drag's action
+      // named as the web app names a drag's action; a box's ids are those it adds to
       let action = switch d.kind { case .cards: "move"; case .lane: "lane"; case .resize: "resize"; case .marquee: "marquee" }
-      flight.note(.transition, "drag", ["action": .string(action), "ids": .number(Double(selection.count))])
+      let ids = d.kind == .marquee ? d.base.count : selection.count
+      flight.note(.transition, "drag", ["action": .string(action), "ids": .number(Double(ids))])
       switch d.kind {
       case .cards:
         raised = Set(d.origins.map(\.id))
@@ -224,6 +219,12 @@ public struct Drag {
       }
     }
     drag = d
+    if d.kind == .marquee {
+      let r = Rect(x: min(d.start.x, p.x), y: min(d.start.y, p.y), w: abs(dx), h: abs(dy))
+      marquee = r
+      selection = d.base.union(board.cardsInRect(r, heightOf: heightOf).map(\.id))
+      return
+    }
     guard d.moved else { return }
     // what the pointer holds follows it exactly, set before the board's change lays it out
     func offset(_ o: Origin, _ x: Double?, _ y: Double?) -> Vector {

@@ -108,6 +108,9 @@ import Foundation
     case "scene":
       let d = try device(c)
       return try d.run { try d.scene() }
+    case "flight":
+      let d = try device(c)
+      return try d.run { try d.flight() }
     default: throw SimError("unknown command \(cmd)")
     }
     try await settle()
