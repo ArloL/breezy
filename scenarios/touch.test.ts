@@ -24,3 +24,16 @@ test("a tap on a card selects it, and the Mac sees nothing move", async () => {
     w.stop();
   }
 });
+
+test("a tap or double tap aimed off the phone's screen fails at once, as an iPhone's status bar takes the touch", async () => {
+  const w = await World.start(["phone", "web"]);
+  try {
+    const phone = w.devices[0]!, { w: width, h } = await phone.size();
+    for (const p of [{ x: width / 2, y: -15 }, { x: width + 10, y: h / 2 }, { x: width / 2, y: h + 1 }]) {
+      await assert.rejects(phone.doubleTap(await phone.world(p)), /off the screen/);
+      await assert.rejects(phone.tap(await phone.world(p)), /off the screen/);
+    }
+  } finally {
+    w.stop();
+  }
+});
