@@ -94,9 +94,9 @@ A cell is owned only when it names a plant that `node scripts/plants.ts` shows t
 
 ## When a bug escapes
 
-A bug found by hand, or by a nightly run, is fixed with:
+A bug found by hand, or by a nightly run, is debugged from its recordings and a control before its code is read, as `.claude/skills/debugging-breezy/SKILL.md` says, descending `docs/layers.md` for facts no recording has; and fixed with:
 
-1. a test at the lowest level that shows it;
+1. a test at the lowest level that shows it, asserting the signal that was reported;
 2. if a fake was wrong, the fake taught;
 3. a row in `docs/escapes.md`.
 
