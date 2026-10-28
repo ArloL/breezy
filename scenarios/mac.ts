@@ -8,6 +8,7 @@ import { join, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Device, type Editor, type PointerExtra, type PointerPhase, type Scene } from "./device.ts";
 import type { Point } from "../web/types.ts";
+import type { Recording } from "../web/flight.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 export const MAC_APP = join(root, "build/Build/Products/Debug/Breezy.app/Contents/MacOS/Breezy");
@@ -147,6 +148,11 @@ export class MacDevice extends Device {
 
   override async editor() {
     return this.command<Editor | null>({ cmd: "editor" });
+  }
+
+  /** What the open board's canvas recorded, in the web app's format (BreezyKit's Flight). */
+  override async flight() {
+    return this.command<Recording | null>({ cmd: "flight" });
   }
 
   /** A card at rest is drawn from `Typo.front(text)` alone. */

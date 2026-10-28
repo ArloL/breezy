@@ -84,7 +84,13 @@ public struct Drag {
     }
   }
   /// The card showing its back.
-  public var turned: String?
+  public var turned: String? {
+    didSet {
+      if turned != oldValue { flight.note(.transition, "turn", ["from": oldValue.map(JSONValue.string) ?? .null, "to": turned.map(JSONValue.string) ?? .null]) }
+    }
+  }
+  /// What it saw and decided, for whoever debugs it, as the web app's App keeps it.
+  public let flight = Flight()
   /// Cards lifted by a drag: above the others, a little larger.
   public var raised: Set<String> = []
   /// What the pointer holds, which follows it exactly; the board keeps it on the grid, where it lands on release.
@@ -140,6 +146,7 @@ public struct Drag {
   // MARK: gestures
 
   public func press(at p: Point, clickCount: Int = 1, shift: Bool = false, option: Bool = false) {
+    flight.note(.input, "press", ["x": .number(p.x.rounded()), "y": .number(p.y.rounded()), "clicks": .number(Double(clickCount))])
     let hit = card(at: p)
     if let id = hit?.id ?? lane(at: p)?.id, taken().contains(id) { return }
     if let t = turned, hit?.id != t { turn(nil) }
@@ -204,6 +211,9 @@ public struct Drag {
     }
     if !d.moved && hypot(dx, dy) * zoom() > 3 {
       d.moved = true
+      // named as the web app names a drag's action
+      let action = switch d.kind { case .cards: "move"; case .lane: "lane"; case .resize: "resize"; case .marquee: "marquee" }
+      flight.note(.transition, "drag", ["action": .string(action), "ids": .number(Double(selection.count))])
       switch d.kind {
       case .cards:
         raised = Set(d.origins.map(\.id))
@@ -249,6 +259,7 @@ public struct Drag {
 
   public func release() {
     guard let d = drag else { return }
+    flight.note(.input, "release")
     drag = nil
     marquee = nil
     // what was held springs from the pointer to its place on the grid

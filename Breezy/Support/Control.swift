@@ -121,6 +121,9 @@ import Network
     case "scene":
       guard let wc = window else { return .null }
       return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(wc.canvas.core.scene))
+    case "flight":
+      guard let wc = window else { return .null }
+      return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(wc.canvas.core.flight.recording()))
     case "editor":
       guard let wc = window, let tv = wc.window?.firstResponder as? EditorTextView else { return .null }
       return editor(wc, tv)
