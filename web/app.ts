@@ -53,6 +53,8 @@ export class App {
   space: SpacePort | undefined;
   /** What it saw and decided, for whoever debugs it. */
   readonly flight = new Flight();
+  /** The last reveal noted, to note the next only when it decides otherwise. */
+  private revealed = "";
 
   constructor(board: Board, ports: Ports) {
     this.touching = true;
@@ -306,22 +308,34 @@ export class App {
     const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
     const top = caret && this.view.topOf(e.id);
     const why = !tall ? "fits" : !caret ? "no caret" : top == null ? "no top" : "too tall";
-    this.flight.note("decision", "reveal", { path: why === "too tall" ? "caret" : "card", why, ...this.geometry() });
+    const path = why === "too tall" ? "caret" : "card";
+    // once per decision and board, not per key: the geometry is measured only when noted
+    const decided = `${path} ${why} ${e.id} ${e.back} ${a.top} ${a.bottom}`;
+    if (decided !== this.revealed) {
+      this.revealed = decided;
+      this.flight.note("decision", "reveal", { path, why, ...this.geometry() });
+    }
     if (!caret || top == null) return this.view.reveal(r, "bottom");
     this.view.reveal({ x: r.x, y: r.y + (caret.y - top) / zoom, w: r.w, h: caret.h / zoom });
   }
 
-  /** What shows the board, where the camera is, and the card being edited on screen: its side, rect, caret and top. */
+  /** What shows the board, where the camera is, and the card being edited on screen: its side, rect, caret and top;
+   * or that it could not be read, as measuring must never break the app it measures. */
   geometry(): { [k: string]: Value } {
-    const a = this.view.area(), { x, y, zoom } = this.view.cam, e = this.state.editing;
-    const c = e && R.card(this.model.board, e.id);
-    let editing: Value = null;
-    if (e && c) {
-      const r = this.view.rectOf(c), s = this.view.toScreen(r), at = this.view.editorOf(e.id, e.back)?.caret();
-      const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
-      editing = { id: e.id, back: e.back, card: box({ ...s, w: r.w * zoom, h: r.h * zoom }), caret: box(caret && { ...caret, w: 0 }), top: ((t) => t == null ? null : Math.round(t * 10) / 10)(this.view.topOf(e.id)) };
+    try {
+      const a = this.view.area(), { x, y, zoom } = this.view.cam, e = this.state.editing;
+      const c = e && R.card(this.model.board, e.id);
+      let editing: Value = null;
+      if (e && c) {
+        const r = this.view.rectOf(c), s = this.view.toScreen(r), at = this.view.editorOf(e.id, e.back)?.caret();
+        const caret = at == null ? null : this.view.caretRect(e.id, e.back, at);
+        const top = this.view.topOf(e.id);
+        editing = { id: e.id, back: e.back, card: box({ ...s, w: r.w * zoom, h: r.h * zoom }), caret: box(caret && { ...caret, w: 0 }), top: top == null ? null : Math.round(top * 10) / 10 };
+      }
+      return { area: [a.top, a.bottom], cam: [x, y, zoom].map((n) => Math.round(n * 100) / 100), editing };
+    } catch {
+      return { unreadable: true };
     }
-    return { area: [a.top, a.bottom], cam: [x, y, zoom].map((n) => Math.round(n * 100) / 100), editing };
   }
 
   colour(n: number) {

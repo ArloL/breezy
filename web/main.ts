@@ -1,4 +1,5 @@
 import { App } from "./app.ts";
+import { thrown } from "./flight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
 import { sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
@@ -27,16 +28,6 @@ declare global {
   }
 }
 
-/** A text's length and FNV-1a hash: an error's message can quote a card, and its hash still tells two apart. */
-function digest(s: string) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
-  return `${s.length}:${(h >>> 0).toString(16)}`;
-}
-
-/** Where an error was thrown, as the file and line of its stack's top frame. */
-const thrownAt = (e: unknown) => /([\w.-]+\.js:\d+)/.exec(String((e as Error)?.stack ?? ""))?.[1] ?? null;
-
 /** Notes in the app's recorder what only the page knows: which device and build, its lifecycle, what of the screen it
  * shows, a frame at a time, and its errors; and lets a scenario or an upload read the recorder. */
 function record(app: App) {
@@ -44,7 +35,9 @@ function record(app: App) {
   (globalThis as { breezyFlight?: typeof f }).breezyFlight = f;
   const version = document.querySelector<HTMLElement>('[data-act="version"]')?.dataset.version ?? null;
   const standalone = matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
-  f.note("context", "page", { ua: navigator.userAgent, screen: [screen.width, screen.height], dpr: devicePixelRatio, standalone, version });
+  const about = { ua: navigator.userAgent, screen: [screen.width, screen.height], dpr: devicePixelRatio, standalone, version };
+  f.context(about);
+  f.note("context", "page", about);
   document.addEventListener("visibilitychange", () => f.note("life", document.hidden ? "hidden" : "visible"));
   addEventListener("pagehide", () => f.note("life", "pagehide"));
   addEventListener("pageshow", (e) => f.note("life", "pageshow", { persisted: e.persisted }));
@@ -61,8 +54,8 @@ function record(app: App) {
   addEventListener("resize", viewport);
   visualViewport?.addEventListener("resize", viewport);
   visualViewport?.addEventListener("scroll", viewport);
-  addEventListener("error", (e) => f.note("error", "uncaught", { message: digest(String(e.message)), where: thrownAt(e.error) }));
-  addEventListener("unhandledrejection", (e) => f.note("error", "rejected", { message: digest(String((e.reason as Error)?.message ?? e.reason)), where: thrownAt(e.reason) }));
+  addEventListener("error", (e) => f.note("error", "uncaught", thrown(e.error ?? e.message)));
+  addEventListener("unhandledrejection", (e) => f.note("error", "rejected", thrown(e.reason)));
 }
 
 const params = new URLSearchParams(location.search);

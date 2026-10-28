@@ -96,3 +96,22 @@ test("notes gestures, not their frames", () => {
   const start = entries.findIndex((e) => e[2] === "drag start");
   assert.deepEqual(entries.slice(start + 1).filter((e) => e[2] === "drag").map((e) => e[1]), ["transition"]);
 });
+
+test("a view that throws while the app notes a reveal breaks neither the note nor the reveal", async () => {
+  const app = phone((app) => Object.assign(new FakeView(app), { topOf: () => { throw new Error("gone"); } }));
+  app.beginEdit("a");
+  await still(app);
+  const reveal = of(app, "decision").filter((e) => e[2] === "reveal").at(-1)!;
+  assert.equal(reveal[3]!.unreadable, true);
+});
+
+test("notes a reveal again only when what it decided changed, not on every key", async () => {
+  const app = phone();
+  app.beginEdit("a");
+  await still(app);
+  const before = of(app, "decision").length;
+  const field = app.view.editorOf("a", false) as FakeField;
+  for (const k of "abcdefgh") field.type(k);
+  await still(app);
+  assert.equal(of(app, "decision").length, before);
+});

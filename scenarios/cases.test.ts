@@ -27,11 +27,12 @@ for (const c of cases) {
         } catch (e) {
           const dir = join(RECORDS, name.replace(/[^\w -]+/g, "").slice(0, 120));
           mkdirSync(dir, { recursive: true });
+          // whatever the recordings do, the case's own error is what it throws
           await Promise.all(w.devices.map(async (d, i) => {
-            const r = await d.flight();
+            const r = await d.flight().catch(() => null);
             if (r) writeFileSync(join(dir, `d${i} ${d.kind} flight.json`), `${JSON.stringify(r)}\n`);
-          }));
-          (e as Error).message += `\nrecordings in ${dir}`;
+          })).catch(() => {});
+          if (e instanceof Error) e.message += `\nrecordings in ${dir}`;
           throw e;
         } finally {
           w.stop();
