@@ -2,13 +2,14 @@
 // and IndexedDB as an iPhone does, and shows the board. Its touches and keys go through idb as one HID stream per
 // gesture (scripts/sim-hid.py), so a double tap's waits hold; the page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only: idb's touch has one point. scripts/ios.ts boots the simulator.
-import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Device, item, readFlight, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
+import type { Line } from "./record.ts";
 import type { Point } from "../web/types.ts";
 import { DOUBLE_MS } from "../web/gestures.ts";
 
@@ -17,9 +18,68 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** HID usages of the keys cases press. */
 const KEYS: Record<string, number> = { Enter: 40, Escape: 41, Backspace: 42, Tab: 43, " ": 44 };
 
+/** Each simctl call this process made, for a case's timeline: when, what, how long, and how it failed. */
+export const simctlLog: Line[] = [];
+
+/** `xcrun simctl ...args`, its output, noted in simctlLog: a call slow before one that times out is the signal, and its
+ * failure says why only in what it wrote to stderr. */
+export function simctl(args: string[], { timeout }: { timeout: number }, run: (file: string, args: string[], o: ExecFileSyncOptionsWithStringEncoding) => string = execFileSync): string {
+  const t0 = Date.now(), what = `simctl ${args.map((a) => a.length > 80 ? `${a.slice(0, 79)}…` : a).join(" ")}`;
+  // a long run's calls, not without end
+  if (simctlLog.length > 2000) simctlLog.splice(0, 1000);
+  try {
+    const out = run("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"] });
+    simctlLog.push([t0, "simctl", `${what}: ${Date.now() - t0} ms`]);
+    return String(out ?? "");
+  } catch (e) {
+    const { status, signal, stderr } = e as { status?: number | null; signal?: string | null; stderr?: string };
+    const said = String(stderr ?? "").trim().replace(/\s+/g, " ").slice(0, 400);
+    simctlLog.push([t0, "simctl", `${what}: failed after ${Date.now() - t0} ms, ${signal ? `killed by ${signal}` : `exit ${status}`}${said ? `: ${said}` : ""}`]);
+    throw e;
+  }
+}
+
+/** The errors and faults of a `log show --style compact` of the simulator, as timeline lines of `who`'s, on the wall
+ * clock: the rest is too much to read among the case's own, and stays in its file. */
+export function iosLogLines(log: string, who: string): Line[] {
+  const lines: Line[] = [];
+  for (const l of log.split("\n")) {
+    const m = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)\.(\d{3})\S*\s+([EF])\s+([^[\s]+)\[[^\]]*\]\s*(.*)$/.exec(l);
+    if (!m) continue;
+    const [y, mo, d, h, mi, s, ms] = m.slice(1, 8).map(Number) as [number, number, number, number, number, number, number];
+    lines.push([new Date(y, mo - 1, d, h, mi, s, ms).getTime(), `${who} log`, `${m[8]} ${m[9]}: ${m[10]!.slice(0, 300)}`]);
+    if (lines.length >= 200) break;
+  }
+  return lines;
+}
+
+/** What the simulator `udid` was doing as a case on it failed, whatever the harness had made of it, into `dir`: its
+ * screen, its log of the last 5 minutes from what opens and shows the page, and what of that runs; its log's errors
+ * and faults as timeline lines. Each call bounded; what fails is said in its file. */
+export function iosState(udid: string, dir: string, who = "iPhone"): Line[] {
+  const keep = (name: string, f: () => string) => {
+    try {
+      writeFileSync(join(dir, `${who} ${name}`), f());
+    } catch (e) {
+      writeFileSync(join(dir, `${who} ${name}`), `none: ${(e as Error).message.split("\n")[0]}\n`);
+    }
+  };
+  try {
+    simctl(["io", udid, "screenshot", "--type=png", join(dir, `${who} screen.png`)], { timeout: 30_000 });
+  } catch (e) {
+    writeFileSync(join(dir, `${who} screen.txt`), `none: ${(e as Error).message.split("\n")[0]}\n`);
+  }
+  let log = "";
+  keep("log.txt", () => log = simctl(["spawn", udid, "log", "show", "--last", "5m", "--style", "compact", "--predicate",
+    'process == "SpringBoard" OR process CONTAINS[c] "safari" OR process CONTAINS[c] "webkit" OR process CONTAINS[c] "webapp" OR process == "launchd"'], { timeout: 60_000 }));
+  keep("state.txt", () => [simctl(["list", "devices", "booted"], { timeout: 30_000 }),
+    simctl(["spawn", udid, "launchctl", "list"], { timeout: 30_000 }).split("\n").filter((l) => /safari|webkit|webapp|springboard/i.test(l)).join("\n")].join("\n"));
+  return iosLogLines(log, who);
+}
+
 /** The booted iPhone's id, or null. */
 export function bootedIphone(): string | null {
-  const { devices } = JSON.parse(execFileSync("xcrun", ["simctl", "list", "devices", "booted", "--json"], { encoding: "utf8", timeout: 90_000 })) as
+  const { devices } = JSON.parse(simctl(["list", "devices", "booted", "--json"], { timeout: 90_000 })) as
     { devices: Record<string, { udid: string; name: string }[]> };
   return Object.values(devices).flat().find((d) => d.name.startsWith("iPhone"))?.udid ?? null;
 }
