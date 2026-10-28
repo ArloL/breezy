@@ -3,7 +3,7 @@ import Foundation
 
 /// The server's rules, in memory.
 final class FakeServer {
-  typealias Backup = (records: [String: Pulled], written: [String: String], version: Int)
+  typealias Backup = (records: [String: Pulled], written: [String: String], version: Int, existed: Bool)
   var records: [String: Pulled] = [:]
   /// The epoch each record was written in.
   var written: [String: String] = [:]
@@ -57,12 +57,12 @@ final class FakeServer {
   }
 
   /// The database as a backup holds it.
-  func snapshot() -> Backup { (records, written, version) }
+  func snapshot() -> Backup { (records, written, version, epoch != nil) }
 
-  /// The backup put back, with a new epoch as the README says to give it.
+  /// The backup put back, with a new epoch as the README says to give it; a space it did not hold is lost.
   func restore(_ b: Backup) {
-    (records, written, version) = b
-    epoch = newID()
+    (records, written, version) = (b.records, b.written, b.version)
+    epoch = b.existed ? newID() : nil
   }
 
   /// The space lost.
