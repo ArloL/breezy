@@ -61,6 +61,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-27 | ios | B3 | nightly | L6 | `scenarios/taps.test.ts` | the page's pointer lines and "taps reached the page 314 ms apart" in `timeline.txt` (runtime) | 0 | yes | #146 |
 | 2026-10-28 | ios | B3 | nightly | L3 | `scenarios/touch.test.ts` | no pointer line in `timeline.txt` after the double tap, and the camera in its `◀` line (runtime, application) | 0 | yes | #148 |
 | 2026-10-28 | android | B3 | nightly | L6 | `scenarios/prompts.test.ts` | Take Survey and No Thanks among the screen texts in the error (device) | 0 | yes | #160 |
+| 2026-10-28 | ios | B5 | nightly | L1 | `scenarios/open.test.ts` | simctl's own "Operation timed out" in the launch step, at a runner load of 149 on 3 CPUs in `timeline.txt` (device, runner) | 0 | yes | #162 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -78,3 +79,5 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 2026-10-28: in Safari on the nightly's iPhone 17, a case double tapped at a point it placed by the lane, after a card made low had left the camera with the lane above the screen: the point was in the status bar, which took both taps, and the case typed into nothing. A tap aimed off the screen now fails at once, and on the iPhone a touch the page never hears of; the hub then found a second case tapping "on nothing" off its screen, where a real phone's tap did nothing and its check passed anyway. One case aims onto the screen's board, the other taps where nothing is.
 
 2026-10-28: on the emulator, Firefox for Android showed a survey over the page as a case began, and the touches the scenarios send to find where the page starts reached the survey, not the page. The touch probe now sends away what a browser shows over the page by its No Thanks or Not now, as a person would, and tries again.
+
+2026-10-28: in Safari on the nightly's iPhone 13 mini, the first case failed as Safari launched: the simulator, still busy after its boot at a load of 149 on 3 CPUs, gave up on opening the first URL, and the launch ended there. It opens a URL that went nowhere again, up to four times, but took an open that failed as the end. A failed open now counts as one more try. The boot's settling leaves the phone at a load of 170 to 180, where the job runs at 40 to 60.

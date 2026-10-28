@@ -15,7 +15,7 @@ import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
 import { readSight } from "../web/sight.ts";
 import { Device, readFlight, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
-import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, SimHid } from "./ios.ts";
+import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, openUntilAsked, SimHid } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
@@ -1229,15 +1229,7 @@ export class RealWorld {
           const safari = execFileSync("xcrun", ["simctl", "get_app_container", udid, "com.apple.mobilesafari", "data"], { encoding: "utf8", timeout: 90_000 }).trim();
           rmSync(join(safari, "Library/WebKit/com.apple.mobilesafari/WebsiteData"), { recursive: true, force: true });
           execFileSync("xcrun", ["simctl", "launch", udid, "com.apple.mobilesafari"], { timeout: 90_000, stdio: "ignore" });
-          for (let attempt = 1; ; attempt++) {
-            await page.open(`http://localhost:${WEB}/scenarios-clear`);
-            try {
-              await page.connected(10_000);
-              break;
-            } catch (e) {
-              if (attempt === 4) throw e;
-            }
-          }
+          await openUntilAsked(() => page.open(`http://localhost:${WEB}/scenarios-clear`), () => page.connected(10_000), 4);
           this.filmIphone(udid, page);
           return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });
         });

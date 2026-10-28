@@ -167,6 +167,20 @@ export class SimHid {
   }
 }
 
+/** Safari opened at a URL by `open` until its page asks (`asked`), at most `tries` times: a URL opened while Safari
+ * starts goes nowhere, and a simulator busy after its boot gave up on an open after 27 s, at a load of 149 on 3 CPUs. */
+export async function openUntilAsked(open: () => Promise<void>, asked: () => Promise<void>, tries: number) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await open();
+      await asked();
+      return;
+    } catch (e) {
+      if (attempt === tries) throw e;
+    }
+  }
+}
+
 /** How far apart a double tap's taps reached the page, by `times` of its pointer events as the board times them, when
  * too far for the board to take them as one; else null. */
 export function apart(times: [string, number][]): number | null {
