@@ -52,6 +52,15 @@ test("notes that a reveal kept the card's bottom when the caret had no rect, as 
   assert.deepEqual([reveal[3]!.path, reveal[3]!.why], ["card", "no caret"]);
 });
 
+test("notes a turned card deleted as turned back, as the Mac does", () => {
+  const app = phone();
+  app.turn("a");
+  app.select(["a"]);
+  app.removeSelection();
+  assert.equal(app.state.turned, null);
+  assert.deepEqual(of(app, "transition").map((e) => [e[2], e[3]]), [["turn", { from: null, to: "a" }], ["turn", { from: "a", to: null }]]);
+});
+
 test("notes edits and turns as transitions", () => {
   const app = phone();
   app.beginEdit("a");

@@ -8,6 +8,7 @@ import Testing
   c.press(at: Point(x: 30, y: 80))
   for x in stride(from: 40.0, through: 200, by: 20) { c.dragged(to: Point(x: x, y: 80)) }
   c.release()
+  c.hover(at: nil)
   c.selection = ["b"]
   c.turnCard()
   let notes = c.flight.recording().entries.map { "\($0.kind.rawValue) \($0.what)" }
@@ -25,6 +26,13 @@ import Testing
   c.release()
   let drags = c.flight.recording().entries.filter { $0.what == "drag" }
   #expect(drags.map(\.data) == [["action": .string("marquee"), "ids": .number(1)]])
+}
+
+@MainActor @Test func theCoreNotesABoxOnItsFirstMoveAsTheWebAppDrawsOneThere() {
+  let c = CanvasCore(model: BoardModel(board: board([])))
+  c.press(at: Point(x: 100, y: 100))
+  c.dragged(to: Point(x: 101, y: 101))
+  #expect(c.flight.recording().entries.filter { $0.what == "drag" }.map(\.data) == [["action": .string("marquee"), "ids": .number(0)]])
 }
 
 @Test func keepsTheNewestEntriesInOrderAndCountsWhatItDropped() {

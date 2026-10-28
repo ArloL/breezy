@@ -169,6 +169,34 @@ import Testing
   #expect(c.drag?.kind == .marquee)
 }
 
+@MainActor @Test func aLaneOverAnotherHidesNeitherItsCornerNorItsHeaderWithItsBody() {
+  // over's body covers under's corner and header
+  let c = canvas(board([], [lane("under", 0, 0, 288), lane("over", 24, -60, 288, 800)]))
+  c.press(at: Point(x: 280, y: 710))
+  #expect(c.drag?.kind == .resize && c.drag?.id == "under")
+  c.release()
+  c.press(at: Point(x: 30, y: 10))
+  #expect(c.drag?.kind == .lane && c.drag?.id == "under")
+}
+
+@MainActor @Test func spaceTurnsTheCardADragLeftThePointerOn() {
+  let c = canvas(board([card("a", 0, 0), card("b", 300, 0)]))
+  c.press(at: Point(x: 600, y: 100))
+  c.dragged(to: Point(x: 10, y: 10))
+  c.release()
+  #expect(c.selection == ["a", "b"])
+  c.turnCard()
+  #expect(c.turned == "a")
+}
+
+@MainActor @Test func aTurnedCardDeletedIsTurnedBackAsTheWebAppDoes() {
+  let c = canvas(board([card("a", 0, 0)]))
+  c.selection = ["a"]
+  c.turnCard()
+  c.deleteSelection()
+  #expect(c.turned == nil)
+}
+
 @MainActor @Test func aPressMovingExactlyThreePointsStaysAClick() {
   let c = canvas(board([card("a", 0, 0)]))
   c.press(at: Point(x: 10, y: 10))
