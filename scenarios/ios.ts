@@ -325,6 +325,12 @@ export class IosDevice extends Device {
     await sleep(ms);
   }
 
+  /** Where world point `p` is, by the board's frame: the page shrinks under the keyboard, but iOS scrolls the board to
+   * show what it covers, so whether a touch reached the page is told by the page (gesture). */
+  protected override async onScreen(p: Point) {
+    return this.screen(p);
+  }
+
   /** A gesture's frames as one stream, so its waits hold; with one finger. */
   override async gesture(frames: Frame[]) {
     // points in the board's frame, as the camera and tapOn give them, where the screen shows them now: iOS moves the
@@ -346,7 +352,11 @@ export class IosDevice extends Device {
     // and the first touch where it was aimed, as a person sees where their finger lands, but for how far the visual
     // viewport moved meanwhile, as it does a moment after typing
     const aimed = frames[0]?.[1] === "down" ? frames[0][2][0]![1] : null;
-    const down = aimed && await this.page.evaluate(() => (window as { down?: Down }).down ?? null);
+    let down: Down | null = null;
+    // the status bar, or Safari's own bars, take a touch the page never hears of
+    for (const end = Date.now() + 2000; aimed && !(down = await this.page.evaluate(() => (window as { down?: Down }).down ?? null)); await sleep(100)) {
+      if (Date.now() > end) throw new Error(`a touch aimed at ${Math.round(aimed.x)},${Math.round(aimed.y)} on the page never reached it, the visual viewport at ${Math.round(vv.x)},${Math.round(vv.y)}`);
+    }
     if (aimed && down && Math.hypot(down.x - (aimed.x + down.vx - vv.x), down.y - (aimed.y + down.vy - vv.y)) > 2) {
       throw new Error(`a touch aimed at ${Math.round(aimed.x)},${Math.round(aimed.y)} on the page landed at ${Math.round(down.x)},${Math.round(down.y)}, the visual viewport at ${Math.round(vv.x)},${Math.round(vv.y)} then ${Math.round(down.vx)},${Math.round(down.vy)}`);
     }

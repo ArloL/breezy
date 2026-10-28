@@ -274,7 +274,7 @@ export abstract class Device {
 
   /** Where world point `p` is on the screen, which it must be: above it, an iPhone's status bar takes the touch, and the
    * page never hears of it. */
-  private async onScreen(p: Point) {
+  protected async onScreen(p: Point) {
     const s = await this.screen(p), { w, h } = await this.size();
     if (s.x < 0 || s.x > w || s.y < 0 || s.y > h) throw new Error(`a tap at ${Math.round(s.x)},${Math.round(s.y)}, off the screen of ${w} × ${h}`);
     return s;

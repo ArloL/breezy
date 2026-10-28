@@ -56,6 +56,21 @@ async function aim(d: Device, p: Point) {
   return d.world({ x: Math.min(Math.max(s.x, 24), w - 24), y: Math.min(Math.max(s.y, 160), h - 160) });
 }
 
+/** The world point on `d`'s screen's board farthest from every card and lane, for a tap on nothing: where a phone shows
+ * them depends on its size and on where the camera was left. */
+async function nothing(d: Device) {
+  const { w, h } = await d.size(), sc = await d.scene(), c = sc.camera, boxes = [...sc.cards, ...sc.lanes];
+  let best: Point | null = null, far = -1;
+  for (let y = 160; y <= h - 200; y += 16) {
+    for (let x = 24; x <= w - 24; x += 16) {
+      const p = { x: (x - c.x) / c.zoom, y: (y - c.y) / c.zoom };
+      const near = Math.min(Infinity, ...boxes.map((b) => Math.hypot(Math.max(b.x - p.x, 0, p.x - b.x - b.w), Math.max(b.y - p.y, 0, p.y - b.y - b.h))));
+      if (near > far) [best, far] = [p, near];
+    }
+  }
+  return best!;
+}
+
 /** A lane in the middle of the first device's screen and a card beside it, made there, and seen by the others. On a
  * phone, the lane at the top left and the card below it. */
 async function laneAndCard({ devices: [a], settle }: Stage) {
@@ -701,8 +716,7 @@ export const cases: Case[] = [
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
       const made = item(await a.scene(), card);
-      // left of it: on a phone it runs off the screen's right edge
-      await a.tap(await aim(a, { x: made.x - 60, y: made.y + made.h / 2 }));
+      await a.tap(await nothing(a));
       await a.wait(400);
       const before = await a.scene(), seen = item(await b.scene(), card);
       const c = item(before, card);
