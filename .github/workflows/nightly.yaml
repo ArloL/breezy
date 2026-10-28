@@ -547,6 +547,8 @@ jobs:
     permissions:
       contents: read
       issues: write
+      # the night before's runs, to hold this one to
+      actions: read
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -564,6 +566,16 @@ jobs:
         name: hub-fakes
         path: build/hub-nightly
       continue-on-error: true
+    # the scheduled night before this one, whatever its colour: only cases that passed on both are held together
+    - name: The night before's runs
+      continue-on-error: true
+      timeout-minutes: 5
+      env:
+        GH_TOKEN: ${{ github.token }}
+        THIS_RUN: ${{ github.run_id }}
+      run: |
+        id=$(gh run list --workflow nightly.yaml --branch main --event schedule --status completed --limit 2 --json databaseId --jq "[.[] | select(.databaseId != $THIS_RUN)][0].databaseId")
+        if [ -n "$id" ] && [ "$id" != null ]; then gh run download "$id" --pattern 'scenarios-*' --dir build/night-before; fi
     - name: Sum up the night
       env:
         RESULTS: ${{ toJSON(needs) }}
@@ -575,6 +587,8 @@ jobs:
         if [ -d build/nightly ]; then node scripts/controls.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
         # the hub's fakes against the real devices they stand for, a report while it proves itself
         if [ -d build/hub-nightly ]; then node scripts/parity.ts build/nightly build/hub-nightly >> "$GITHUB_STEP_SUMMARY"; fi
+        # what each device did a different number of times than the night before, a report while it proves itself
+        if [ -d build/night-before ]; then node scripts/nights.ts build/night-before build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
         {
           echo
           echo "| Job | Result |"
