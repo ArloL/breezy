@@ -343,20 +343,21 @@ jobs:
       with:
         path: ~/apt-archives
         key: ${{ steps.apt-cache.outputs.cache-primary-key }}
-    # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then
+    # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then;
+    # keyed on its list of them alone, as each change to the script saved another 3 GB
     - id: sdk-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.local/share/mise/installs/android-sdk
-        key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts') }}
-        # a changed script starts from the SDK before it and downloads only what is new
+        key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android-sdk.ts') }}
+        # a changed list starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
     # the emulator booted, set up and snapshotted, which loads in seconds where a cold boot took 2.6 minutes
     - id: avd-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/avd.tar.zst
-        key: avd-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android.ts', 'scripts/android-snapshot.sh') }}
+        key: avd-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android-sdk.ts', 'scripts/android.ts', 'scripts/android-snapshot.sh') }}
     - name: Unpack the emulator's snapshot
       if: ${{ steps.avd-cache.outputs.cache-hit == 'true' }}
       run: mise exec -- scripts/android-snapshot.sh unpack ~/avd.tar.zst
