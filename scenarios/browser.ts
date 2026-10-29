@@ -976,7 +976,8 @@ interface Fenix {
 
 /**
  * The Firefox for Android a world that passed kept for the next: each launch left 200 MB of the emulator's memory behind
- * on a Linux runner, where loading the app again in one Firefox, or in a new tab of it, left none.
+ * on a Linux runner, where loading the app again in one Firefox, or in a new tab of it, left none. Chrome is not kept: its
+ * 41 launches a night cost ≈1.5 min of a 29-min job off the night's critical path (night 40658988206).
  */
 let fenix: Fenix | null = null;
 

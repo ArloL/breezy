@@ -365,7 +365,7 @@ jobs:
       timeout-minutes: 16
       run: mise exec -- scripts/android-boot.sh
     # saved by main alone: a pull request's copy is its own, 3 GB each, and two of them and a stale one filled the
-    # repository's 10 GB of caches
+    # repository's 10 GB of caches; each change to scripts/android.ts saves new keys, so delete the stale ones
     - if: ${{ github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:

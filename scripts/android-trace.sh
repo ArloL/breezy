@@ -3,6 +3,10 @@
 # the Android scenarios run: MISE_ENV=android mise exec -- scripts/android-trace.sh FILE &. Read off the emulator as it
 # comes, so that what led up to a kernel panic outlives the reboot that loses the emulator's own buffers; again from the
 # last line read when adb drops the connection, or the emulator boots again.
+# The panic it was added for, goldfish_sync_timeline_signal on a freed timeline during Firefox for Android's launch, came
+# 4 times in ~25 nightly Android jobs and not since (2026-10-28), with or without this. Start no repro hunt for it; when
+# a night panics, read this file, the kernel lines in android-emulator.log and android-load.txt, then weigh `-gpu guest`,
+# fewer process launches or a newer emulator.
 set -uo pipefail
 touch "$1"
 while :; do
