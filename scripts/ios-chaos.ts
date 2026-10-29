@@ -9,7 +9,8 @@
 // It found the IndexedDB stall of #107 within minutes, and the losses of edits Safari's page lifecycle takes.
 // Not covered: a second tab (window.open is blocked, and simctl cannot tap), the network and sync, memory pressure.
 import { execFile, execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -456,8 +457,13 @@ createServer((req, res) => {
 }).listen(PORT, "127.0.0.1", async () => {
   console.log(`seed ${seed}, ${args.minutes ?? 10} min, log ${out}`);
   record({ start: { seed, site: dir } });
-  // frozen pages of a run before go with Safari
+  // frozen pages of a run before go with Safari, its tabs, and the sites' data, as a service worker a scenario left on
+  // this port served the first page from its snapshot, without the script, and the run heard nothing
   await simctl("terminate", "booted", "com.apple.mobilesafari");
+  const sim = join(homedir(), "Library/Developer/CoreSimulator/Devices", execFileSync("xcrun", ["simctl", "getenv", "booted", "SIMULATOR_UDID"]).toString().trim(), "data");
+  for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(sim, "Library/Safari", f + x), { force: true });
+  const safari = execFileSync("xcrun", ["simctl", "get_app_container", "booted", "com.apple.mobilesafari", "data"]).toString().trim();
+  rmSync(join(safari, "Library/WebKit/com.apple.mobilesafari/WebsiteData"), { recursive: true, force: true });
   await simctl("openurl", "booted", `http://localhost:${PORT}/chaos-clear`);
   for (;;) {
     await sleep(2000);
