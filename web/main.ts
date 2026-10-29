@@ -218,6 +218,7 @@ if (!scratch) {
   await ownBoards({
     locks: globalThis.BroadcastChannel && navigator.locks,
     channel: globalThis.BroadcastChannel && new BroadcastChannel("breezy-boards"),
+    page: globalThis,
     waiting: async (useHere) => {
       waited = true;
       // shown again until the boards come, as the other tab may not answer
