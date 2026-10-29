@@ -147,7 +147,10 @@ public struct Drag {
   // MARK: gestures
 
   public func press(at p: Point, clickCount: Int = 1, shift: Bool = false, option: Bool = false) {
-    flight.note(.input, "press", ["x": .number(p.x.rounded()), "y": .number(p.y.rounded()), "clicks": .number(Double(clickCount))])
+    // on the screen, as the web app notes a press, not on the board
+    let cam = camera()
+    flight.note(.input, "press", ["x": .number((p.x * cam.zoom + cam.x).rounded()), "y": .number((p.y * cam.zoom + cam.y).rounded()),
+                                  "clicks": .number(Double(clickCount))])
     pointer = p
     let hit = card(at: p)
     // a lane by its corner or header, top first, as its body is the board's and hides no lane under it

@@ -32,6 +32,18 @@ public final class Flight: @unchecked Sendable {
     /// Which device and build, kept apart from the ring, which a long session overwrites.
     public let context: [String: JSONValue]?
     public let entries: [Entry]
+
+    private enum CodingKeys: String, CodingKey { case schema, origin, dropped, context, entries }
+
+    /// `context` as null when there is none, as the web app writes it, where Codable would leave the key out.
+    public func encode(to encoder: Encoder) throws {
+      var c = encoder.container(keyedBy: CodingKeys.self)
+      try c.encode(schema, forKey: .schema)
+      try c.encode(origin, forKey: .origin)
+      try c.encode(dropped, forKey: .dropped)
+      try c.encode(context, forKey: .context)
+      try c.encode(entries, forKey: .entries)
+    }
   }
 
   private let now: () -> Double

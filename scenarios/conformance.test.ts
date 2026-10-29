@@ -1,7 +1,22 @@
-// The same input on the Swift core and the web core ends with the same scene, by the same transitions.
+// The same input on the Swift core and the web core ends with the same scene, noted as the same input and transitions.
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { centre, item } from "./world.ts";
 import type { SceneItem } from "./device.ts";
-import { parity, type Steps } from "./parity/core.ts";
+import { misshapen, parity, type Steps } from "./parity/core.ts";
+import { Flight } from "../web/flight.ts";
+
+test("a recording is held to web/flight.ts's shape", () => {
+  const f = new Flight({ now: () => 0, wall: () => 0 });
+  f.note("input", "press", { x: 1, y: 2, clicks: 1 });
+  const r = f.recording();
+  assert.equal(misshapen(r), null);
+  // as BreezyKit's left it out
+  const { context, ...without } = r;
+  assert.equal(misshapen(without), "keys dropped,entries,origin,schema");
+  assert.equal(misshapen({ ...r, entries: [[0, "click", "press"]] }), "entry 0's kind click");
+  assert.equal(misshapen({ ...r, entries: [[5, "input", "press"], [4, "input", "release"]] }), "entry 1's t 4 after 5");
+});
 
 const laneAndCards: Steps = async (d, made) => {
   made.push(await d.addLane(144, 360));
