@@ -377,7 +377,8 @@ const chaos = (input: "mouse" | "touch"): Case => ({
       await a.still("the board to stand still");
       const sc = await a.scene(), size = await a.size(), r = await onScreen(a, c);
       const others = await Promise.all(sc.cards.filter((x) => x.id !== c).map((x) => onScreen(a, x.id)));
-      for (const fy of [0.5, 0.2, 0.8, 0.35, 0.65, 0.1, 0.9]) for (const fx of [0.5, 0.25, 0.75]) {
+      // 0.7 keeps 72 pt of a 240 pt card to its right, clear of a finger's 64 pt corner, which turns rather than opens
+      for (const fy of [0.5, 0.2, 0.8, 0.35, 0.65, 0.1, 0.9]) for (const fx of [0.5, 0.25, 0.7]) {
         const p = { x: r.x + r.w * fx, y: r.y + r.h * fy };
         const shows = p.x > 30 && p.y > 90 && p.x < size.w - 40 && p.y < size.h - 70;
         if (shows && others.every((o) => p.x < o.x - 4 || p.x > o.x + o.w + 4 || p.y < o.y - 4 || p.y > o.y + o.h + 4)) return a.world(p);

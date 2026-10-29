@@ -183,8 +183,8 @@ extension SelfTest {
 }
 
 extension SelfTest {
-  /// Space turns the selected card over and back; the folded corner turns it too; a double-click
-  /// edits the back, Tab goes on editing the front, and the session undoes in one step.
+  /// Space turns the selected card over and back; a double-click on its corner turns it too; a
+  /// double-click edits the back, Tab goes on editing the front, and the session undoes in one step.
   fileprivate static func turnAndTab(_ d: Driver) {
     let name = "turn-and-tab"
     d.click(NSPoint(x: 120, y: 24))
@@ -194,8 +194,8 @@ extension SelfTest {
     if back.w != Metrics.backWidth || back.h < Metrics.backMinHeight { finish(name, "back drawn at \(back)") }
     d.key(" ", code: 49)
     if d.canvas.turned != nil { finish(name, "Space did not turn it back") }
-    d.click(NSPoint(x: 236, y: 44))
-    if d.canvas.turned != "a" { finish(name, "the folded corner did not turn the card") }
+    d.doubleClick(NSPoint(x: 236, y: 44))
+    if d.canvas.turned != "a" { finish(name, "a double-click on the corner did not turn the card") }
     d.doubleClick(NSPoint(x: 120, y: 100))
     guard let e = d.canvas.editing, e.back else { finish(name, "double-click did not edit the back") }
     d.type(" more")
