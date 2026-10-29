@@ -65,6 +65,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-28 | android | B5 | nightly | L1 | `scripts/test/android-snapshot.test.ts` | `adb: device unauthorized` through a cold boot that completed, and a different `qemu.adb.pubkey` on each run, in `android-emulator.log` (host) | 0 | yes | #173 |
 | 2026-10-28 | web | B3 | review | L2 | `web/test/live.test.ts` | the relay's `refusal` (over 500 ids, or ids not 22 characters) missing from both FakeRelays, beside `relay/test/relay.test.mjs` refusing it under `wrangler dev` (relay) | 0 | yes | #177 |
 | 2026-10-29 | ios | B5 | iOS chaos | L1 | `web/test/owner.test.ts` | `pageshow persisted`, then the app's own `pagehide` some 200 ms later, with `navigator.locks.query()` holding nothing in the restored page, in `build/ios-chaos/SEED.jsonl` (application, storage) | 0 | yes | #181 |
+| 2026-10-29 | ios | B5 | iOS chaos | L7 | `web/test/saver.test.ts` | every lost edit made 2–530 ms before the page left, in `ios-chaos.ts`'s summary, and none of the boards lost with the Saver's delay at 0 on the same seed (storage) | 0 | yes | #182 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -90,3 +91,5 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 2026-10-28: dragging a selection of more than 500 cards, as ⌘A then a drag on a big board, was cancelled as it began, on the web and the Mac: the relay refuses a hold past 500 ids whole, and the app took the refusal as someone else's hold. The relay's fakes granted it, and their tests held ids the relay refuses as malformed. The fakes now refuse as the relay does, and a gesture past 500 asks the relay to hold nothing: it goes unguarded, and live all the same.
 
 2026-10-29: in Safari on iOS 27, Back to Breezy showed it reloading some 200 ms after it reappeared, and an edit made in between was lost: Safari lets a tab's Web Lock go while the tab sits in the back-forward cache, and the restored tab's lock request failed, which the app took for a handover. The owner tests' Device kept a frozen tab's lock. It now lets it go as Safari does, and the app starts again on `pageshow` with `persisted`, before a touch can reach it.
+
+2026-10-29: in Safari on iOS, edits made up to half a second before the page left were lost: the Saver wrote 300 ms after the last change, and typing reached the store only at a pause, while a write issued from `pagehide` never lands there, and a kill fires nothing. A save now goes as the action that made it ends, and typing every 300 ms (#110).
