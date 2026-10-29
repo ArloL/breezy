@@ -2,6 +2,12 @@ import { LANE_HEADER, card, contains } from "./rules.ts";
 import type { Board, Card, Point, Rect } from "./types.ts";
 
 export const TOUCH = 44;
+/** Every card's corner, which a double tap or double-click turns. */
+export const FOLD = 32;
+/** A finger's corner on screen at 100 % and above; below 100 % it shrinks with the card. */
+export const FOLD_TOUCH = 64;
+/** Below this zoom a finger's corner would be under `TOUCH`, so a finger has none. */
+export const FOLD_MIN_ZOOM = TOUCH / FOLD_TOUCH;
 
 export type Hit = { kind: "fold" | "card" | "corner" | "header"; id: string } | { kind: "empty"; id?: undefined };
 
@@ -10,13 +16,13 @@ export type DragAction = "move" | "resize" | "lane" | "marquee" | "pan";
 export interface PressAction {
   select: "only" | "toggle" | "pile" | "keep" | "none";
   drag: Exclude<DragAction, "pan"> | null;
-  turn?: boolean;
   collapse?: boolean;
 }
 
 /**
- * What is under world point `p`, top first. Touch areas are `TOUCH` screen points at `zoom`; a pointer gets the Mac's:
- * the fold's own square, a 20 pt lane corner and the 48 pt header.
+ * What is under world point `p`, top first. Touch areas are `TOUCH` screen points at `zoom`, a card's corner
+ * `FOLD_TOUCH` inside the card down to `FOLD_MIN_ZOOM`; a pointer gets the Mac's: the corner's own `FOLD` square, a 20 pt
+ * lane corner and the 48 pt header.
  */
 export function hitTest(
   b: Board,
@@ -28,11 +34,12 @@ export function hitTest(
   const order = [...b.cards].reverse();
   const t = turned && card(b, turned);
   if (t) order.unshift(...order.splice(order.indexOf(t), 1));
+  const fold = !touch ? FOLD : zoom < FOLD_MIN_ZOOM ? 0 : (FOLD_TOUCH * Math.min(zoom, 1)) / zoom;
   for (const c of order) {
     const r = rectOf(c);
-    const ear = c.id === turned ? 24 : c.notes ? 16 : 0;
-    if (ear && near(r.x + r.w - ear / 2, r.y + r.h - ear / 2, touch ? reach : ear / 2)) return { kind: "fold", id: c.id };
-    if (contains(r, p.x, p.y)) return { kind: "card", id: c.id };
+    if (!contains(r, p.x, p.y)) continue;
+    if (p.x > r.x + r.w - fold && p.y > r.y + r.h - fold) return { kind: "fold", id: c.id };
+    return { kind: "card", id: c.id };
   }
   for (const l of [...b.lanes].reverse()) {
     if (near(l.x + l.w - 10, l.y + l.h - 10, touch ? reach : 10)) return { kind: "corner", id: l.id };
@@ -46,7 +53,6 @@ export function hitTest(
 export function pressAction(hit: Hit, { shift, alt }: { shift: boolean; alt: boolean }, selection: ReadonlySet<string>): PressAction {
   switch (hit.kind) {
     case "fold":
-      return { select: "only", drag: null, turn: true };
     case "card":
       if (shift) return { select: "toggle", drag: null };
       if (alt) return { select: "pile", drag: "move", collapse: true };

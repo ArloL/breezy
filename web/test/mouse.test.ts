@@ -99,15 +99,17 @@ test("a third quick press is a click again", () => {
   assert.deepEqual(names(app).filter((n) => n === "double").length, 1);
 });
 
-test("a press anywhere but the turned card turns it back; on its fold it turns", () => {
+test("a press anywhere but the turned card turns it back, its fold too", () => {
   const app = fakeApp({ "10,10": { kind: "card", id: "b" }, "50,50": { kind: "fold", id: "b" } });
   app.state.turned = "a";
   const m = new Mouse(app);
   m.down(at(10, 10), 0);
   assert.deepEqual(app.calls.slice(0, 1), [["turn", null]]);
   m.up({ x: 10, y: 10 });
+  app.state.turned = "a";
+  app.calls.length = 0;
   m.down(at(50, 50), 1000);
-  assert.deepEqual(app.calls.at(-1), ["turn", "b"]);
+  assert.deepEqual(app.calls.filter((c) => c[0] === "turn"), [["turn", null]]);
 });
 
 test("the system taking the pointer cancels the drag", () => {

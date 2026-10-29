@@ -83,10 +83,6 @@ export class Input {
     const h = this.hit(p);
     if (s.editing && s.editing.id === h.id) return;
     app.endEditing();
-    if (h.kind === "fold") {
-      app.select([h.id]);
-      return app.turn(s.turned === h.id ? null : h.id);
-    }
     if (s.turned && h.id !== s.turned) app.turn(null);
     app.select(h.kind === "empty" ? [] : [h.id]);
   }
@@ -95,17 +91,26 @@ export class Input {
     this.app.flight.note("input", "double tap", { x: Math.round(p.x), y: Math.round(p.y) });
     const app = this.app;
     const h = this.hit(p);
+    if (h.kind === "fold") return this.turnByCorner(h.id);
     if (isCard(h)) return app.beginEdit(h.id);
     if (h.kind === "header") return app.beginRename(h.id);
     if (h.kind === "empty") app.newCard(app.view.toWorld(p));
   }
 
-  /** As on the Mac: edit a card, rename a lane; a new card's top-left goes where the pointer is. */
+  /** As on the Mac: turn a card by its corner, edit it elsewhere, rename a lane; a new card's top-left goes where the pointer is. */
   doubleClick(p: Point, h: Hit) {
     const app = this.app;
+    if (h.kind === "fold") return this.turnByCorner(h.id);
     if (isCard(h)) return app.beginEdit(h.id);
     if (h.kind === "header") return app.beginRename(h.id);
     if (h.kind === "empty") app.newCard(app.view.toWorld(p), "corner");
+  }
+
+  turnByCorner(id: string) {
+    const app = this.app;
+    app.endEditing();
+    app.select([id]);
+    app.turn(app.state.turned === id ? null : id);
   }
 
   hold(p: Point) {

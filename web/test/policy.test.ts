@@ -9,16 +9,23 @@ const card = (id: string, x: number, y: number, notes?: string): Card => ({ id, 
 const lane: Lane = { id: "l", x: 0, y: 0, w: 480, h: 720, title: "Lane" };
 const at = (b: Board, x: number, y: number, zoom = 1, turned: string | null = null) => hitTest(b, { x, y }, { rectOf, zoom, turned });
 
-test("the folded corner takes a 44 pt touch area, reaching outside the card", () => {
-  const b = { cards: [card("a", 0, 0, "n")], lanes: [] };
-  assert.deepEqual(at(b, 250, 50), { kind: "fold", id: "a" });
-  assert.deepEqual(at(b, 200, 24), { kind: "card", id: "a" });
+test("every card's corner takes a 64 pt touch area inside the card", () => {
+  const b = { cards: [card("a", 0, 0)], lanes: [] };
+  assert.deepEqual(at(b, 180, 10), { kind: "fold", id: "a" });
+  assert.deepEqual(at(b, 170, 40), { kind: "card", id: "a" });
+  assert.deepEqual(at(b, 250, 50), { kind: "empty" });
 });
 
-test("a card without notes has no fold", () => {
+test("zoomed in, the touch corner stays 64 pt on screen", () => {
   const b = { cards: [card("a", 0, 0)], lanes: [] };
-  assert.deepEqual(at(b, 238, 46), { kind: "card", id: "a" });
-  assert.deepEqual(at(b, 250, 50), { kind: "empty" });
+  assert.deepEqual(at(b, 210, 20, 2), { kind: "fold", id: "a" });
+  assert.deepEqual(at(b, 200, 20, 2), { kind: "card", id: "a" });
+});
+
+test("below 69 % the touch corner is the card's", () => {
+  const b = { cards: [card("a", 0, 0)], lanes: [] };
+  assert.deepEqual(at(b, 230, 40, 0.7), { kind: "fold", id: "a" });
+  assert.deepEqual(at(b, 230, 40, 0.68), { kind: "card", id: "a" });
 });
 
 test("cards win over the lane header beneath them", () => {
@@ -61,11 +68,12 @@ test("one finger pans unless the drag starts on a selected card or after a hold"
 
 const mouseAt = (b: Board, x: number, y: number, zoom = 1, turned: string | null = null) => hitTest(b, { x, y }, { rectOf, zoom, turned, touch: false });
 
-test("a pointer's fold is the card's own corner, without a touch area", () => {
-  const b = { cards: [card("a", 0, 0, "n")], lanes: [] };
-  assert.deepEqual(mouseAt(b, 236, 44), { kind: "fold", id: "a" });
-  assert.deepEqual(mouseAt(b, 250, 50), { kind: "empty" });
-  assert.deepEqual(mouseAt(b, 220, 30), { kind: "card", id: "a" });
+test("a pointer's fold is the card's own 32 pt corner, at any zoom", () => {
+  const b = { cards: [card("a", 0, 0)], lanes: [] };
+  assert.deepEqual(mouseAt(b, 210, 20), { kind: "fold", id: "a" });
+  assert.deepEqual(mouseAt(b, 200, 40), { kind: "card", id: "a" });
+  assert.deepEqual(mouseAt(b, 210, 10), { kind: "card", id: "a" });
+  assert.deepEqual(mouseAt(b, 210, 20, 0.25), { kind: "fold", id: "a" });
 });
 
 test("a pointer's lane corner is 20 pt and its header 48 pt at any zoom", () => {
@@ -85,9 +93,10 @@ test("a press on a card selects it alone and drags; in a selection it keeps the 
   assert.deepEqual(press("card", { alt: true }), { select: "pile", drag: "move", collapse: true });
 });
 
-test("a press on a fold turns the card, with or without shift", () => {
-  assert.deepEqual(press("fold"), { select: "only", drag: null, turn: true });
-  assert.deepEqual(press("fold", { shift: true }), { select: "only", drag: null, turn: true });
+test("a press on a fold is a press on the card", () => {
+  for (const mods of [{}, { shift: true }, { alt: true }]) for (const sel of [[], ["a", "b"]]) {
+    assert.deepEqual(press("fold", mods, sel), press("card", mods, sel));
+  }
 });
 
 test("lane presses select the lane; shift on the header toggles it", () => {

@@ -67,7 +67,7 @@ export class Mouse {
     app.ui.closeMenu();
     app.endEditing();
     const h = app.input.hit(p, false);
-    if (s.turned && h.id !== s.turned && h.kind !== "fold") app.turn(null);
+    if (s.turned && h.id !== s.turned) app.turn(null);
     if (double) return app.input.doubleClick(p, h);
     const a = pressAction(h, { shift: shiftKey, alt: altKey }, s.selection);
     // only an empty hit, which has no id, leaves the selection or turns nothing
@@ -75,7 +75,6 @@ export class Mouse {
     if (a.select === "toggle") app.toggle(h.id!);
     if (a.select === "pile") app.select(R.pile(app.model.board, h.id!, app.heightOf));
     if (a.select === "none") app.select([]);
-    if (a.turn) app.turn(s.turned === h.id ? null : h.id!);
     this.press = a.drag && { p0: p, h, action: a.drag, collapse: a.collapse, dragging: false };
   }
 
