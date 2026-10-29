@@ -1,5 +1,6 @@
 // The same input on the Swift core and the web core ends with the same scene, by the same transitions.
 import { centre, item } from "./world.ts";
+import type { SceneItem } from "./device.ts";
 import { parity, type Steps } from "./parity/core.ts";
 
 const laneAndCards: Steps = async (d, made) => {
@@ -52,6 +53,13 @@ parity("Space turns the card clicked over", laneAndCards, async (d, made) => {
   const s = await d.scene();
   await d.click(centre(item(s, made[2]!)));
   await d.key(" ");
+});
+
+parity("a double-click on a card's corner turns it, and on another's turns that one", laneAndCards, async (d, made) => {
+  const corner = (i: SceneItem) => ({ x: i.x + i.w - 8, y: i.y + i.h - 8 });
+  await d.doubleClick(corner(item(await d.scene(), made[1]!)));
+  // one its back does not cover: a double-click on a card's body edits, which the Swift core leaves to the Mac app
+  await d.doubleClick(corner(item(await d.scene(), made[3]!)));
 });
 
 parity("⌘Z undoes a drag into a lane, and ⇧⌘Z does it again", laneAndCards, async (d, made) => {

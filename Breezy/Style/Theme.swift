@@ -10,6 +10,8 @@ enum Theme {
   static let hairline = dynamic(0x2b2a27, 0xe9e6df, alpha: 0.12)
   static let dot = dynamic(0x2b2a27, 0xe9e6df, alpha: 0.16)
   static let accent = dynamic(0xe8620a, 0xff8a3d)
+  /// The crease across the corner of a card without notes.
+  static let crease = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.25) : NSColor(white: 0, alpha: 0.3) }
   static let laneFill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.04) : NSColor(white: 1, alpha: 0.45) }
   static let tints = [
     dynamic(0xf8eca2, 0x4f4628), dynamic(0xf5d2ca, 0x553a35), dynamic(0xcfe0ee, 0x2f4152),

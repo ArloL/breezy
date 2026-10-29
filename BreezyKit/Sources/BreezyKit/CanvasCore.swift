@@ -126,11 +126,10 @@ public struct Drag {
 
   public func lane(at p: Point) -> Lane? { board.lanes.last { $0.rect.contains(p.x, p.y) } }
 
-  /// The folded corner, which turns the card over.
+  /// The corner every card has, which a double-click turns.
   public func hitsFold(_ c: Card, _ p: Point) -> Bool {
-    let ear = c.id == turned ? 24.0 : ((c.notes ?? "").isEmpty ? 0 : 16)
     let r = drawnRect(c)
-    return ear > 0 && p.x > r.x + r.w - ear && p.y > r.y + r.h - ear
+    return r.contains(p.x, p.y) && p.x > r.x + r.w - Metrics.fold && p.y > r.y + r.h - Metrics.fold
   }
 
   /// The resize corner of lane `l`.
@@ -155,12 +154,12 @@ public struct Drag {
     let handle = board.lanes.last { $0.rect.contains(p.x, p.y) && (Self.hitsCorner($0, p) || p.y < $0.y + Metrics.laneHeader) }
     if let id = hit?.id ?? handle?.id, taken().contains(id) { return }
     if let t = turned, hit?.id != t { turn(nil) }
-    if clickCount == 2 { return onDoubleClick(p) }
+    if clickCount == 2 {
+      guard let c = hit, hitsFold(c, p) else { return onDoubleClick(p) }
+      selection = [c.id]
+      return turn(turned == c.id ? nil : c.id)
+    }
     if let c = hit {
-      if hitsFold(c, p) {
-        selection = [c.id]
-        return turn(turned == c.id ? nil : c.id)
-      }
       if shift {
         selection.formSymmetricDifference([c.id])
         return

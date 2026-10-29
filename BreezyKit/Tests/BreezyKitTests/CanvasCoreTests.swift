@@ -75,22 +75,40 @@ import Testing
   #expect(!c.refused(["a"]))
 }
 
-@MainActor @Test func theFoldTurnsACardWithNotesOverAndBack() {
-  var a = card("a", 0, 0)
-  a.notes = "n"
-  let c = canvas(board([a, card("b", 0, 96)]))
+@MainActor @Test func aDoubleClickOnAnyCardsCornerTurnsItOverAndBack() {
+  let a = card("a", 0, 0)
+  let c = canvas(board([a]))
   #expect(c.hitsFold(a, Point(x: 230, y: 40)))
-  #expect(!c.hitsFold(a, Point(x: 224, y: 40)))
-  #expect(!c.hitsFold(a, Point(x: 230, y: 32)))
-  #expect(!c.hitsFold(c.board.card("b")!, Point(x: 241, y: 145)))
+  #expect(c.hitsFold(a, Point(x: 210, y: 20)))
+  #expect(!c.hitsFold(a, Point(x: 200, y: 40)))
+  #expect(!c.hitsFold(a, Point(x: 210, y: 10)))
   c.press(at: Point(x: 230, y: 40))
+  c.release()
+  #expect(c.turned == nil)
+  #expect(c.selection == ["a"])
+  c.press(at: Point(x: 230, y: 40), clickCount: 2)
   #expect(c.turned == "a")
   #expect(c.selection == ["a"])
   #expect(c.drag == nil)
   #expect(c.drawnRect(a) == Rect(x: 0, y: 0, w: 480, h: 288))
   #expect(c.hitsFold(a, Point(x: 460, y: 270)))
   c.press(at: Point(x: 460, y: 270))
+  c.release()
+  #expect(c.turned == "a")
+  c.press(at: Point(x: 460, y: 270), clickCount: 2)
   #expect(c.turned == nil)
+}
+
+@MainActor @Test func aDoubleClickOnAnotherCardsCornerTurnsTheTurnedOneBackFirst() {
+  let c = canvas(board([card("a", 0, 0), card("b", 600, 0)]))
+  c.turned = "a"
+  var turns: [String?] = []
+  c.turn = { [unowned c] in turns.append($0); c.turned = $0 }
+  c.press(at: Point(x: 830, y: 40))
+  c.release()
+  c.press(at: Point(x: 830, y: 40), clickCount: 2)
+  #expect(turns == [nil, "b"])
+  #expect(c.selection == ["b"])
 }
 
 @MainActor @Test func aTurnedCardIsTallerByEachLineOfItsNotesBlankOnesToo() {

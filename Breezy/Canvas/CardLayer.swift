@@ -43,10 +43,11 @@ final class CardLayer: CALayer {
     var scale: CGFloat
     var appearance: NSAppearance
 
+    /// The fold; 0 leaves the crease of a card without notes.
     var ear: CGFloat {
-      let front: CGFloat = (look.card.notes ?? "").isEmpty ? 0 : 16
-      if let t = look.turning { return front + (24 - front) * t.p }
-      return look.back ? 24 : front
+      let fold = CGFloat(Metrics.fold), front: CGFloat = (look.card.notes ?? "").isEmpty ? 0 : fold
+      if let t = look.turning { return front + (fold - front) * t.p }
+      return look.back ? fold : front
     }
   }
 
@@ -254,6 +255,13 @@ final class CardLayer: CALayer {
         flap.close()
         (tint.blended(withFraction: 0.12, of: .black) ?? tint).setFill()
         flap.fill()
+      } else {
+        let fold = CGFloat(Metrics.fold), crease = NSBezierPath()
+        crease.move(to: NSPoint(x: bounds.maxX - fold, y: bounds.maxY))
+        crease.line(to: NSPoint(x: bounds.maxX, y: bounds.maxY - fold))
+        crease.lineWidth = 1.5
+        Theme.crease.setStroke()
+        crease.stroke()
       }
       func back(_ r: CGRect) {
         Theme.hairline.setFill()
