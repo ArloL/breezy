@@ -10,6 +10,7 @@ import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
+import { FENIX_VERSION } from "../scripts/android-sdk.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
@@ -52,8 +53,6 @@ export const EMULATOR_TCP = "127.0.0.1:5600";
 /** Firefox for Android's package, and the port of its WebDriver BiDi on the emulator and on this machine: below both
  * systems' ephemeral ports. */
 export const FENIX = "org.mozilla.firefox", FENIX_BIDI = 29222;
-/** The Firefox for Android scripts/android.ts installs. */
-export const FENIX_VERSION = "157.0.1";
 /** The web app's version, so that its service worker runs as on breezy.k5d.de. */
 const VERSION = "scenarios";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

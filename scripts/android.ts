@@ -12,17 +12,15 @@ import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { arch } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { EMULATOR_TCP, FENIX, FENIX_VERSION, RELAY, SERVER, WEB } from "../scenarios/browser.ts";
+import { EMULATOR_TCP, FENIX, RELAY, SERVER, WEB } from "../scenarios/browser.ts";
+import { API, FENIX_VERSION, IMAGE as image, PACKAGES } from "./android-sdk.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const sdk = process.env.ANDROID_HOME!;
 const avds = process.env.ANDROID_AVD_HOME!;
 // mise puts it on PATH only once it is installed
 process.env.PATH = `${join(sdk, "platform-tools")}:${process.env.PATH}`;
-// Android 17 with Google Play, whose Chrome is the one a phone gets; the AVD is named for it, so a new one replaces it
-const api = "android-37.0";
-const image = `system-images;${api};google_apis_playstore;${arch() === "arm64" ? "arm64-v8a" : "x86_64"}`;
-const avd = `breezy-${api}`;
+const avd = `breezy-${API}`;
 /** The emulator booted and set up, Chrome's and Firefox's first runs behind it. */
 const SNAPSHOT = "breezy-ready";
 const fromSnapshot = existsSync(join(avds, `${avd}.avd`, "snapshots", SNAPSHOT));
@@ -50,10 +48,8 @@ async function within(seconds: number, what: string, ok: () => boolean) {
   }
 }
 
-// build-tools and the platform build tools/breezy-ime, the keyboard the platform rows type with
-const tools = ["build-tools;35.0.0", "platforms;android-35"];
-if (!existsSync(join(sdk, "emulator", "emulator")) || !existsSync(join(sdk, ...image.split(";"))) || !tools.every((t) => existsSync(join(sdk, ...t.split(";"))))) {
-  run("sdkmanager", ["emulator", "platform-tools", image, ...tools], { timeout: 0 });
+if (!PACKAGES.every((p) => existsSync(join(sdk, ...p.split(";"))))) {
+  run("sdkmanager", PACKAGES, { timeout: 0 });
 }
 if (!existsSync(join(avds, `${avd}.ini`))) {
   // avdmanager writes elsewhere when the directory is missing
@@ -217,4 +213,4 @@ if (!fromSnapshot) {
 
 // what a run used, as the SDK's cache keeps them until it is evicted and a new emulator or image comes unannounced
 const revision = (...dir: string[]) => /^Pkg\.Revision=(.*)$/m.exec(readFileSync(join(sdk, ...dir, "source.properties"), "utf8"))?.[1];
-console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]}, Firefox ${FENIX_VERSION} on ${api} image ${revision(...image.split(";"))}, emulator ${revision("emulator")}`);
+console.log(`Chrome ${/versionName=(\S+)/.exec(adb("shell", "dumpsys", "package", "com.android.chrome"))?.[1]}, Firefox ${FENIX_VERSION} on ${API} image ${revision(...image.split(";"))}, emulator ${revision("emulator")}`);
