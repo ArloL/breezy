@@ -1,6 +1,7 @@
 import * as R from "./rules.ts";
 import { pressAction } from "./policy.ts";
 import type { DragAction, Hit } from "./policy.ts";
+import type { Flight } from "./flight.ts";
 import { planted } from "./sync/plant.ts";
 import type { Board, HeightOf, Point } from "./types.ts";
 
@@ -13,6 +14,7 @@ export interface MouseApp {
   state: { selection: ReadonlySet<string>; turned: string | null };
   model: { board: Board };
   heightOf: HeightOf;
+  flight: Pick<Flight, "note">;
   input: {
     hit(p: Point, touch?: boolean): Hit;
     doubleClick(p: Point, h: Hit): void;
@@ -60,6 +62,7 @@ export class Mouse {
     const double = !!this.last && t - this.last.t <= DOUBLE_MS && Math.hypot(x - this.last.x, y - this.last.y) <= DOUBLE_SLOP;
     this.last = double ? null : { ...p, t };
     this.pointer = p;
+    app.flight.note("input", "press", { x: Math.round(x), y: Math.round(y), clicks: double ? 2 : 1 });
     // a release lost to the system leaves its drag open
     if (this.press?.dragging && !planted("lost-release")) app.input.dragEnd(p, { x: 0, y: 0 });
     this.press = null;

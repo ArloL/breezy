@@ -14,6 +14,7 @@ function fakeApp(hits: Record<string, Hit> = {}) {
     state: { selection: new Set<string>(), turned: null as string | null },
     model: { board: { cards: [card("a", 0, 0), card("b", 0, 72)], lanes: [] } },
     heightOf: () => 48,
+    flight: { note: () => {} },
     select: (ids: string[]) => { app.state.selection = new Set(ids); calls.push(["select", [...ids]]); },
     toggle: (id: string) => calls.push(["toggle", id]),
     turn: (id: string | null) => { app.state.turned = id; calls.push(["turn", id]); },

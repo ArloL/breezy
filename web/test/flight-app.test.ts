@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { App } from "../app.ts";
+import { Mouse } from "../mouse.ts";
 import type { Entry } from "../flight.ts";
 import { fakePorts, FakeView, PHONE, type FakeField } from "./fakes.ts";
 
@@ -114,6 +115,15 @@ test("notes gestures, not their frames", () => {
   assert.deepEqual(entries.filter((e) => e[1] === "input").map((e) => e[2]), ["tap", "double tap", "drag start", "drag end"]);
   const start = entries.findIndex((e) => e[2] === "drag start");
   assert.deepEqual(entries.slice(start + 1).filter((e) => e[2] === "drag").map((e) => e[1]), ["transition"]);
+});
+
+test("notes a mouse press where it fell, as the Mac does", () => {
+  const app = phone();
+  const m = new Mouse(app);
+  m.down({ x: 100.4, y: 48, shiftKey: false, altKey: false }, 0);
+  m.up({ x: 100.4, y: 48 });
+  m.down({ x: 100.4, y: 48, shiftKey: false, altKey: false }, 100);
+  assert.deepEqual(of(app, "input").map((e) => [e[2], e[3]]), [["press", { x: 100, y: 48, clicks: 1 }], ["press", { x: 100, y: 48, clicks: 2 }]]);
 });
 
 test("a view that throws while the app notes a reveal breaks neither the note nor the reveal", async () => {
