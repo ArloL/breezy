@@ -1,23 +1,24 @@
-/** Writes what `save` saves shortly after the last `schedule`, or at once on `flush`; one write at a time. A failed
- * write is tried again on the next. */
+/** Writes what `save` saves as the task that last called `schedule` ends, or at once on `flush`; one write at a time,
+ * what is scheduled during one written once it is done. A failed write is tried again on the next.
+ *
+ * Not on a timer: Safari on iOS loses a write the page leaves before, and one issued from `pagehide` never lands. */
 export class Saver {
   save: () => unknown;
-  delay: number;
   enabled: boolean;
   dirty: boolean;
-  timer: ReturnType<typeof setTimeout> | null;
+  /** A flush is due when the current task ends. */
+  queued: boolean;
   writing: Promise<void>;
   /** Whether the last save failed. */
   failed: boolean;
   /** After a save fails. */
   onError: (error: unknown) => void;
 
-  constructor(save: () => unknown, delay = 300) {
+  constructor(save: () => unknown) {
     this.save = save;
-    this.delay = delay;
     this.enabled = true;
     this.dirty = false;
-    this.timer = null;
+    this.queued = false;
     this.writing = Promise.resolve();
     this.failed = false;
     this.onError = () => {};
@@ -25,13 +26,15 @@ export class Saver {
 
   schedule(): void {
     this.dirty = true;
-    clearTimeout(this.timer ?? undefined);
-    this.timer = setTimeout(() => this.flush(), this.delay);
+    if (this.queued) return;
+    this.queued = true;
+    queueMicrotask(() => {
+      this.queued = false;
+      this.flush();
+    });
   }
 
   flush(): Promise<void> {
-    clearTimeout(this.timer ?? undefined);
-    this.timer = null;
     if (!this.dirty || !this.enabled) return this.writing;
     this.dirty = false;
     this.writing = this.writing.then(() => this.save()).then(() => {
