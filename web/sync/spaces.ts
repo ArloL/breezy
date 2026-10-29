@@ -19,12 +19,14 @@ export interface StateStorage {
   remove(key: string): Promise<void>;
 }
 
-/** What `StateStorage` holds: `local`, `space:<id>`, `server`, `me`, and `space` from before spaces. */
+/** What `StateStorage` holds: `local`, `space:<id>`, `server`, `me`, `owner`, the tab that took the boards last
+ * (`web/owner.ts`), and `space` from before spaces. */
 export interface Saved {
   local?: StoreState | null;
   space?: StoreState;
   server?: unknown;
   me?: { device?: unknown; name?: unknown };
+  owner?: unknown;
   [key: string]: unknown;
 }
 
@@ -92,11 +94,14 @@ export class Spaces {
   flushLocal: () => void;
   local: Group;
   spaces: Group[];
+  /** Groups `pause` stopped, to start again on `resume`. */
+  paused: Group[];
 
-  /** The groups in `storage`, after moving a store from before spaces among them; `fresh` when it held nothing. */
+  /** The groups in `storage`, after moving a store from before spaces among them; `fresh` when it held nothing but
+   * the owner's stamp, written as the tab took the boards. */
   static async open(storage: StateStorage, options: SpacesOptions = {}): Promise<Spaces> {
     const all: Saved = await storage.loadAll();
-    const fresh = !Object.keys(all).length;
+    const fresh = Object.keys(all).every((k) => k === "owner");
     if (all.space) {
       const key = keyOf(all.space);
       if (!all[key]) {
@@ -119,6 +124,7 @@ export class Spaces {
     this.now = now;
     this.readOnly = readOnly;
     this.fresh = false;
+    this.paused = [];
     this.lastServer = typeof states.server === "string" ? states.server : null;
     const me = states.me;
     this.me = decode(me?.device)?.length === 16 && typeof me!.name === "string" ? { device: me!.device as string, name: me!.name as string } : { device: encode(randomBytes(16)), name: "" };
@@ -292,14 +298,42 @@ export class Spaces {
   /** Saves what is pending, then nothing more, and stops syncing, as when another tab takes the boards over. */
   stop(): Promise<void[]> {
     return Promise.all(this.groups().map((g) => {
-      g.engine.stopped = true;
-      clearTimeout(g.engine.timer);
       g.engine.abort?.abort();
-      g.live?.close();
-      g.live = null;
       const written = g.saver.flush();
-      g.saver.enabled = false;
+      this.pauseGroup(g);
       return written;
     }));
+  }
+
+  /** Saves nothing and syncs nothing, keeping what changes meanwhile for `resume`, as while the tab doesn't hold the
+   * boards' lock. A cycle under way finishes. */
+  pause(): void {
+    for (const g of this.groups()) {
+      if (!g.engine.stopped) this.paused.push(g);
+      this.pauseGroup(g);
+    }
+  }
+
+  pauseGroup(g: Group): void {
+    g.engine.stopped = true;
+    clearTimeout(g.engine.timer);
+    g.live?.close();
+    g.live = null;
+    g.saver.enabled = false;
+  }
+
+  /** Saves what changed while paused, and syncs and joins the relay again. */
+  resume(): void {
+    for (const g of this.groups()) {
+      g.saver.enabled = !this.readOnly;
+      g.saver.flush();
+    }
+    for (const g of this.paused) {
+      if (!this.groups().includes(g)) continue;
+      g.engine.stopped = false;
+      void this.setRelay(g, g.engine.relay);
+      g.engine.retryNow();
+    }
+    this.paused = [];
   }
 }

@@ -14,18 +14,26 @@ type Seen = { tab: Tab; owns: boolean; waited: boolean; events: string[]; useHer
 
 const aborted = () => new DOMException("aborted", "AbortError");
 
-/** Web Locks and a BroadcastChannel shared by a device's tabs, as browsers have them; `close` ends a tab and frees what it
- * held. `freeze` puts a tab in the back-forward cache as Safari does: it frees what the tab held, and the tab's requests
- * for it fail only a moment after the tab is shown again. */
+/** Web Locks and a BroadcastChannel shared by a device's tabs, as browsers have them, and the owner's stamp in storage,
+ * read a moment later as IndexedDB answers; `close` ends a tab and frees what it held. `freeze` puts a tab in the
+ * back-forward cache as Safari does: it frees what the tab held, and the tab's requests for it fail only a moment after
+ * the tab is shown again. */
 class Device {
   held: Map<string, Want>;
   queue: Want[];
   tabs: Tab[];
+  stamped: unknown;
+  stamp: Ports["stamp"];
 
   constructor() {
     this.held = new Map();
     this.queue = [];
     this.tabs = [];
+    this.stamped = undefined;
+    this.stamp = {
+      write: (id) => void (this.stamped = id),
+      read: () => new Promise((r) => setTimeout(() => r(this.stamped))),
+    };
   }
 
   tab() {
@@ -82,6 +90,7 @@ class Device {
 
   /** Returns a function that shows the tab again. */
   freeze(tab: Tab) {
+    tab.page.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: true }));
     const lost = [...this.held.values()].filter((w) => w.tab === tab);
     this.close(tab);
     for (const w of lost) w.stolen = true;
@@ -104,10 +113,13 @@ function open(device: Device, { slow = false } = {}) {
     locks: tab.locks,
     channel: tab.channel,
     page: tab.page,
+    stamp: device.stamp,
     waiting: (useHere) => {
       seen.waited = true;
       seen.useHere = useHere;
     },
+    away: () => seen.events.push("away"),
+    back: (changed) => seen.events.push(changed ? "back, changed" : "back"),
     handOver: () => new Promise<void>((resolve) => {
       seen.saved = () => {
         seen.events.push("saved");
@@ -215,7 +227,34 @@ test("the tab that handed over lets the boards go even if the asking tab closed"
   assert.deepEqual(a.events, ["saved", "handed over"]);
 });
 
-test("a tab shown again from the back-forward cache starts again before anything can be edited", async () => {
+test("a tab shown again from the back-forward cache takes the boards again, as no other tab had them", async () => {
+  const device = new Device();
+  const a = open(device);
+  await settle();
+  const restore = device.freeze(a.tab);
+  assert.deepEqual(a.events, ["away"]);
+  restore();
+  await settle();
+  assert.deepEqual(a.events, ["away", "back"]);
+  const b = open(device);
+  await settle();
+  assert.deepEqual([a.events, b.owns, b.waited], [["away", "back"], false, true]);
+});
+
+test("a tab shown again takes the boards again as changed, as another tab had them meanwhile", async () => {
+  const device = new Device();
+  const a = open(device);
+  await settle();
+  const restore = device.freeze(a.tab);
+  const b = open(device);
+  await settle();
+  device.close(b.tab);
+  restore();
+  await settle();
+  assert.deepEqual([a.events, b.owns], [["away", "back, changed"], true]);
+});
+
+test("a tab shown again while another has the boards waits, and gets them back as changed once it asks", async () => {
   const device = new Device();
   const a = open(device);
   await settle();
@@ -223,19 +262,40 @@ test("a tab shown again from the back-forward cache starts again before anything
   const b = open(device);
   await settle();
   restore();
-  // a touch comes as a task of its own
-  assert.deepEqual(a.events, ["handed over"]);
   await settle();
-  assert.deepEqual([a.events, b.owns, b.waited], [["handed over"], true, false]);
+  assert.deepEqual([a.events, a.waited, b.owns], [["away"], true, true]);
+  a.useHere();
+  await settle(), await settle(), await settle();
+  assert.deepEqual([a.events, b.events], [["away", "back, changed"], ["saved", "handed over"]]);
 });
 
-test("a tab waiting for the boards starts again too when shown from the back-forward cache", async () => {
+test("a tab waiting for the boards waits again when shown from the back-forward cache, and owns them once they are free", async () => {
   const device = new Device();
-  open(device);
+  const a = open(device);
   await settle();
   const b = open(device);
   await settle();
   const restore = device.freeze(b.tab);
+  b.waited = false;
   restore();
-  assert.deepEqual(b.events, ["handed over"]);
+  await settle();
+  assert.deepEqual([b.waited, b.owns], [true, false]);
+  device.close(a.tab);
+  await settle();
+  assert.deepEqual([b.owns, b.events], [true, []]);
 });
+
+test("a tab stamps the boards as it takes them", async () => {
+  const device = new Device();
+  const a = open(device);
+  await settle();
+  const first = device.stamped;
+  const b = open(device);
+  await settle();
+  device.close(a.tab);
+  await settle();
+  assert.equal(typeof first, "string");
+  assert.notEqual(device.stamped, first);
+  assert.equal(b.owns, true);
+});
+
