@@ -11,9 +11,10 @@ import type { Board, Cam, Card, Point, Rect } from "../types.ts";
  * short to wrap. */
 export const fakeHeight = (text: string | undefined) => 24 + 24 * Math.max(1, String(text ?? "").split("\n").length);
 
-/** A device's screen in points: the board shows between `top` and `bottom` at rest, and a phone's keyboard, `keyboard`
- * tall, comes `keyboardMs` after an editor takes focus and goes as long after it lets go; while it is up, the board shows
- * from `keyboardTop`, as iOS scrolls the page up a little. */
+/** A device's page in points, as the app and a case's taps see it: on an iPhone from below its status bar, which takes a
+ * touch above it, to the screen's bottom, or to Safari's toolbar in a tab. The board shows between `top` and `bottom` at
+ * rest, and a phone's keyboard, `keyboard` tall, comes `keyboardMs` after an editor takes focus and goes as long after
+ * it lets go; while it is up, the board shows from `keyboardTop`, as iOS scrolls the page up a little. */
 export interface Screen {
   w: number;
   h: number;
@@ -25,12 +26,18 @@ export interface Screen {
 }
 
 export const DESKTOP: Screen = { w: 1200, h: 800, top: 0, bottom: 800, keyboard: 0, keyboardMs: 0 };
-/** The iPhone 17's in the app added to its Home Screen, on iOS 27 in the simulator: at rest, the board between the top
- * bar and the bottom bar, read off a screenshot; editing, where scenarios/phone-contract.e2e.ts measured it. */
-export const PHONE: Screen = { w: 402, h: 874, top: 120, bottom: 774, keyboard: 396, keyboardMs: 165, keyboardTop: 120 };
-/** The owner's iPhone 13 mini, the app on its Home Screen, measured by scenarios/phone-contract.e2e.ts: shorter, its
- * board shows 282 pt above the keyboard where the iPhone 17's shows 314. */
-export const MINI: Screen = { w: 375, h: 812, top: 108, bottom: 702, keyboard: 378, keyboardMs: 165, keyboardTop: 108 };
+/** The iPhone 17's in the app added to its Home Screen, on iOS 27 in the simulator: its page below the 62 pt status bar;
+ * at rest, the board between the top bar and the bottom bar, read off a screenshot; editing, where
+ * scenarios/phone-contract.e2e.ts measured it. */
+export const PHONE: Screen = { w: 402, h: 812, top: 58, bottom: 712, keyboard: 396, keyboardMs: 165, keyboardTop: 58 };
+/** The owner's iPhone 13 mini, the app on its Home Screen, measured by scenarios/phone-contract.e2e.ts: shorter, below a
+ * 50 pt status bar, its board shows 282 pt above the keyboard where the iPhone 17's shows 314. */
+export const MINI: Screen = { w: 375, h: 762, top: 58, bottom: 652, keyboard: 378, keyboardMs: 165, keyboardTop: 58 };
+/** The iPhone 17's in a Safari tab, as the nightly's recorded it (run 40843908664): 714 pt of page above Safari's
+ * toolbar, the board to 628 at rest and to 367 above the keyboard. */
+export const SAFARI: Screen = { w: 402, h: 714, top: 58, bottom: 628, keyboard: 303, keyboardMs: 165, keyboardTop: 58 };
+/** The iPhone 13 mini's in a Safari tab, recorded as SAFARI's: 664 pt of page, the board to 578 at rest and 308 editing. */
+export const SAFARI_MINI: Screen = { w: 375, h: 664, top: 58, bottom: 578, keyboard: 312, keyboardMs: 165, keyboardTop: 58 };
 /** Chrome's page on the Pixel 8a emulator, as the partner's Android phone, measured by scenarios/phone-contract.e2e.ts:
  * its keyboard came in 670 to 1010 ms. */
 export const ANDROID: Screen = { w: 411, h: 812, top: 58, bottom: 712, keyboard: 336, keyboardMs: 800, keyboardTop: 58 };

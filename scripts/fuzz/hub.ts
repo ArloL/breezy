@@ -11,6 +11,7 @@ import { WebDevices } from "./web-device.ts";
 import { SwiftDevices } from "./swift-devices.ts";
 import type { IncomingHttpHeaders, OutgoingHttpHeaders } from "node:http";
 import type { Screen } from "../../web/test/fakes.ts";
+import type { Cam } from "../../web/types.ts";
 import type { ServerSocket } from "./cloudflare-shim.ts";
 import type { Attachment } from "./relay.ts";
 import type { Dest, State as LinkState } from "./links.ts";
@@ -88,8 +89,9 @@ export type Message =
   | { cmd: "peer-candidate"; peer: string; candidate: Candidate | null };
 
 export type DeviceCommand = Message | { cmd: "op"; op: Op } | { cmd: "fire" } | { cmd: "state" } | { cmd: "scene" } | { cmd: "new"; me: Me; seed: number }
-  // web devices only, for scenarios: a phone's screen, what of it shows the edited card, and whether it stands still
-  | { cmd: "screen"; screen: Screen } | { cmd: "sight" } | { cmd: "still" } | { cmd: "flight" };
+  // web devices only, for scenarios: a phone's screen, what of it shows the edited card, whether it stands still, and
+  // its camera set, for the cores' conformance at the Swift core's
+  | { cmd: "screen"; screen: Screen } | { cmd: "sight" } | { cmd: "still" } | { cmd: "flight" } | { cmd: "camera"; cam: Cam };
 
 export type Command = (DeviceCommand & { dev: number }) | { cmd: "time"; t: number; skew: Record<string, number> };
 

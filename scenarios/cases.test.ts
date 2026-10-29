@@ -6,7 +6,7 @@ import { cases } from "./cases.ts";
 import { watchSight } from "./sight.ts";
 import { PHONES, World, type Kind } from "./world.ts";
 
-const kinds: Kind[] = ["swift", "web", "phone", "mini", "android"];
+const kinds: Kind[] = ["swift", "web", "phone", "mini", "safari", "safari-mini", "android"];
 /** Where a failing case keeps its devices' recordings, and with HUB_RECORDS=all a passing one too, for the fakes to be
  * held to the real devices nightly (scripts/parity.ts). */
 const RECORDS = join(new URL("..", import.meta.url).pathname, "build", "hub");
