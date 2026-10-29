@@ -4,6 +4,7 @@ import { CAMERA_SPRING, Camera, clampZoom, revealing } from "./camera.ts";
 import { animate, motionValue } from "./motion.ts";
 import { DomField, fillFront, frontPoint } from "./field.ts";
 import { Grid } from "./grid.ts";
+import { FOLD } from "./policy.ts";
 import type { Field } from "./ports.ts";
 import type { MotionValue } from "./motion.ts";
 import type { Model } from "./model.ts";
@@ -354,11 +355,11 @@ export class View {
     const [front, back] = sheet.children as HTMLCollectionOf<HTMLElement>;
     // each face at its own size while the sheet grows or shrinks between them, cross-fading
     if (t) {
-      const w = this.backWidth(), ear = c.notes ? 16 : 0;
+      const w = this.backWidth(), ear = c.notes ? FOLD : 0;
       el.style.setProperty("--front-w", `${c.w}px`);
       el.style.setProperty("--back-w", `${w}px`);
       el.style.setProperty("--back-h", `${this.backHeight(c, w)}px`);
-      el.style.setProperty("--ear", `${ear + (24 - ear) * p}px`);
+      el.style.setProperty("--ear", `${ear + (FOLD - ear) * p}px`);
     }
     front.style.opacity = t ? String(1 - p) : "";
     back.style.opacity = t ? String(p) : "";
