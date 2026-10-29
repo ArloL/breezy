@@ -41,10 +41,12 @@ export function hitTest(
     if (p.x > r.x + r.w - fold && p.y > r.y + r.h - fold) return { kind: "fold", id: c.id };
     return { kind: "card", id: c.id };
   }
+  // a pointer's lane corner and header leave the lines they end on to the board, as the Mac's do
   for (const l of [...b.lanes].reverse()) {
-    if (near(l.x + l.w - 10, l.y + l.h - 10, touch ? reach : 10)) return { kind: "corner", id: l.id };
-    const header = { x: l.x, y: l.y, w: l.w, h: touch ? Math.max(LANE_HEADER, TOUCH / zoom) : LANE_HEADER };
-    if (contains(header, p.x, p.y)) return { kind: "header", id: l.id };
+    const corner = touch ? near(l.x + l.w - 10, l.y + l.h - 10, reach) : contains(l, p.x, p.y) && p.x > l.x + l.w - 20 && p.y > l.y + l.h - 20;
+    if (corner) return { kind: "corner", id: l.id };
+    const header = touch ? Math.max(LANE_HEADER, TOUCH / zoom) : LANE_HEADER;
+    if (p.x >= l.x && p.x <= l.x + l.w && p.y >= l.y && p.y < l.y + header) return { kind: "header", id: l.id };
   }
   return { kind: "empty" };
 }

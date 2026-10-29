@@ -84,6 +84,16 @@ test("a pointer's lane corner is 20 pt and its header 48 pt at any zoom", () => 
   assert.deepEqual(mouseAt(b, 100, 60, 0.25), { kind: "empty" });
 });
 
+test("a lane's header ends above its 48th point and its corner starts past 20 pt in, as on the Mac", () => {
+  const b = { cards: [], lanes: [lane] };
+  assert.deepEqual(mouseAt(b, 100, 47.5), { kind: "header", id: "l" });
+  assert.deepEqual(mouseAt(b, 100, 48), { kind: "empty" });
+  assert.deepEqual(at(b, 100, 48), { kind: "empty" });
+  assert.deepEqual(mouseAt(b, 460.5, 700.5), { kind: "corner", id: "l" });
+  assert.deepEqual(mouseAt(b, 460, 710), { kind: "empty" });
+  assert.deepEqual(mouseAt(b, 470, 700), { kind: "empty" });
+});
+
 const press = (kind: Hit["kind"], mods: { shift?: boolean; alt?: boolean } = {}, sel: string[] = []) => pressAction({ kind, id: "a" } as Hit, { shift: false, alt: false, ...mods }, new Set(sel));
 
 test("a press on a card selects it alone and drags; in a selection it keeps the selection", () => {

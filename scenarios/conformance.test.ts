@@ -32,6 +32,18 @@ parity("a lane resized by its corner", laneAndCards, async (d, made) => {
   await d.drag({ x: l.x + l.w - 5, y: l.y + l.h - 5 }, { x: l.x + l.w + 200, y: l.y + l.h - 100 });
 });
 
+// on the line below a lane's header and the one beside its corner, which the grid and the board's edge snap points to
+parity("a click on the line below a lane's header is the board's", laneAndCards, async (d, made) => {
+  const l = item(await d.scene(), made[0]!);
+  await d.click({ x: l.x + 100, y: l.y + 24 });
+  await d.click({ x: l.x + 100, y: l.y + 48 });
+});
+
+parity("a click on the line beside a lane's corner is the board's", laneAndCards, async (d, made) => {
+  const l = item(await d.scene(), made[0]!);
+  await d.click({ x: l.x + l.w - 20, y: l.y + l.h - 10 });
+});
+
 parity("a box selects what it touches", laneAndCards, async (d) => {
   await d.drag({ x: 1000, y: 600 }, { x: 610, y: 100 });
 });
