@@ -25,7 +25,7 @@ Releases update themselves with [Sparkle](https://sparkle-project.org): they dow
 | Select | click; ⇧-click to add; drag on empty space for a box |
 | New card | double-click empty space |
 | Edit card | double-click it; Esc or ⌘↩ to finish; the first line is the title |
-| Card back | Space over a card or its folded corner turns it over; Tab while editing turns it too |
+| Card back | Space over a card, or a double-click or double tap on its corner, turns it over; Tab while editing turns it too; a crease in the corner means nothing on the back, a fold means notes |
 | Stack | cards in a lane float up their column and make room where you drag one in, which lands centred in its column; ⌥-drag takes a card with those below it |
 | Colour | `1`–`5` |
 | Delete | ⌫ |

@@ -10,6 +10,8 @@ public enum Metrics {
   public static let laneHeight = 720.0
   public static let laneMin = 4 * grid
   public static let laneHeader = 2 * grid
+  /// Every card's corner, which a double-click turns.
+  public static let fold = 32.0
   /// Stacked cards sit on the first grid line at least this far below the card above.
   public static let room = grid / 2
   /// Lane cards float up to this far below the lane top.
