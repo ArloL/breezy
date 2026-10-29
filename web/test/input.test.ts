@@ -83,3 +83,40 @@ test("a held card someone else holds is not left lifted when the drag cannot sta
   a.input.dragStart({ x: 700, y: 100 }, { x: 650, y: 150 }, true);
   assert.deepEqual([...a.state.lifted], []);
 });
+
+test("a click on the corner selects the card, a double-click turns it", () => {
+  const { app: a, mouse } = app();
+  mouse.down({ x: 830, y: 110, shiftKey: false, altKey: false }, 0);
+  mouse.up({ x: 830, y: 110 });
+  assert.equal(a.state.turned, null);
+  assert.deepEqual([...a.state.selection], ["a"]);
+  mouse.down({ x: 830, y: 110, shiftKey: false, altKey: false }, 100);
+  mouse.up({ x: 830, y: 110 });
+  assert.equal(a.state.turned, "a");
+  assert.equal(a.state.editing, null);
+});
+
+test("a tap on the corner selects the card, a double tap turns it; below 69 % it edits", () => {
+  const { app: a } = app();
+  a.input.tap({ x: 830, y: 110 });
+  assert.equal(a.state.turned, null);
+  assert.deepEqual([...a.state.selection], ["a"]);
+  a.input.doubleTap({ x: 830, y: 110 });
+  assert.equal(a.state.turned, "a");
+  // the back is bigger: its corner is elsewhere
+  const r = a.view.rectOf(a.model.board.cards[0]!);
+  a.input.doubleTap({ x: r.x + r.w - 10, y: r.y + r.h - 10 });
+  assert.equal(a.state.turned, null);
+  a.view.setCamera({ x: 0, y: 0, zoom: 0.5 });
+  a.input.doubleTap({ x: 415, y: 55 });
+  assert.equal(a.state.turned, null);
+  assert.equal(a.state.editing?.id, "a");
+});
+
+test("a double tap on the corner of the card being edited ends the edit and turns it", () => {
+  const { app: a } = app();
+  a.beginEdit("a");
+  a.input.doubleTap({ x: 830, y: 110 });
+  assert.equal(a.state.editing, null);
+  assert.equal(a.state.turned, "a");
+});
