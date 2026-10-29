@@ -28,7 +28,8 @@ export function simctl(args: string[], { timeout }: { timeout: number }, run: (f
   // a long run's calls, not without end
   if (simctlLog.length > 2000) simctlLog.splice(0, 1000);
   try {
-    const out = run("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"] });
+    // a busy iPhone's log show of 5 minutes passes Node's 1 MiB
+    const out = run("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 2 ** 20 });
     simctlLog.push([t0, "simctl", `${what}: ${Date.now() - t0} ms`]);
     return String(out ?? "");
   } catch (e) {
