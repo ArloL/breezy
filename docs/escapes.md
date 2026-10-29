@@ -68,6 +68,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-29 | ios | B5 | iOS chaos | L7 | `web/test/saver.test.ts` | every lost edit made 2–530 ms before the page left, in `ios-chaos.ts`'s summary, and none of the boards lost with the Saver's delay at 0 on the same seed (storage) | 0 | yes | #182 |
 | 2026-10-29 | web | B3 | nightly | L1 | `web/test/policy.test.ts` | the Swift core's `press` at y 48 on a lane snapped to y 0, its header's end, which the drawn steps' clamp to 48 pt in from the board's edge reaches; the web core noted no mouse press, and now does (application) | 0 | yes | #189 |
 | 2026-10-29 | ios | B5 | iOS chaos | L1 | `web/test/owner.test.ts` | `pageshow persisted`, then the app's own `pagehide` at once, on every Back, in `build/ios-chaos/SEED.jsonl` (application, storage) | 0 | yes | #191 |
+| 2026-10-30 | ios | B5 | iOS chaos | L1 | `web/test/binding.test.ts` | every lost card left with its editor open, and no `put` between its ack and `pagehide`, in `build/ios-chaos/SEED.jsonl` (application, storage) | 0 | yes | #197 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
@@ -97,4 +98,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 2026-10-29: in Safari on iOS, edits made up to half a second before the page left were lost: the Saver wrote 300 ms after the last change, and typing reached the store only at a pause, while a write issued from `pagehide` never lands there, and a kill fires nothing. A save now goes as the action that made it ends, and typing every 300 ms (#110).
 
 2026-10-29: drawn steps, seed 377747, parted the cores on a click on the line below a lane's header: the web's pointer took a lane's header and its resize corner to include the lines they end on, where the Mac leaves them to the board, so the web kept the lane selected and the Mac cleared it. The web now hits them as the Mac does, held to it by two cases in `scenarios/conformance.test.ts`, and notes each mouse press, as the Mac does (#189).
+
 2026-10-29: in Safari on iOS 27, every Back to Breezy still reloaded it, at once since the fix above, as the restored tab could not tell whether another tab had taken the boards while it sat in the cache. A tab now stamps the boards as it takes them; going into the cache it saves and then pauses, and shown again it takes the lock again, or waits behind the other tab's sheet, and goes on where it was if its stamp is still the last, or reads its boards back from IndexedDB if not (#111).
+
+2026-10-30: in Safari on iOS, a card just made and typed into lost its text when the page left within 300 ms, its editor still open: the change that made the card was not typing, so the binding waited 300 ms for a pause, and the first key waited behind that. The binding's test typed only into a card already there. A key after a pause is now written at once (#110).
