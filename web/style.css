@@ -20,6 +20,7 @@
   --c3: #cfe0ee;
   --c4: #d6e6c6;
   --c5: #e3e0d9;
+  --crease: rgb(0 0 0 / 0.3);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   color-scheme: light dark;
 }
@@ -47,6 +48,7 @@
     --c3: #2f4152;
     --c4: #384731;
     --c5: #403e3a;
+    --crease: rgb(255 255 255 / 0.25);
   }
 }
 
@@ -112,11 +114,13 @@ body {
 .c3 { background: var(--c3); }
 .c4 { background: var(--c4); }
 .c5 { background: var(--c5); }
-.card.notes .sheet { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%); }
-.card.turned .sheet { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0 100%); }
-.ear { display: none; position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; background: linear-gradient(135deg, rgb(0 0 0 / 0.12) 50%, transparent 50%); }
-.card.notes .ear { display: block; }
-.card.turned .ear { display: block; width: 24px; height: 24px; }
+/* every card's corner: a crease where it would fold, folded with notes and on the back */
+.card.notes .sheet, .card.turned .sheet { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 32px) 100%, 0 100%); }
+.ear {
+  position: absolute; right: 0; bottom: 0; width: 32px; height: 32px;
+  background: linear-gradient(135deg, transparent calc(50% - 0.75px), var(--crease) 50%, transparent calc(50% + 0.75px));
+}
+.card.notes .ear, .card.turned .ear, .card.turning .ear { background: linear-gradient(135deg, rgb(0 0 0 / 0.12) 50%, transparent 50%); }
 
 .front { padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink2); outline: none; }
 .headline { font-weight: 600; color: var(--ink); }
