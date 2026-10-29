@@ -121,6 +121,8 @@ body {
   background: linear-gradient(135deg, transparent calc(50% - 0.75px), var(--crease) 50%, transparent calc(50% + 0.75px));
 }
 .card.notes .ear, .card.turned .ear, .card.turning .ear { background: linear-gradient(135deg, rgb(0 0 0 / 0.12) 50%, transparent 50%); }
+/* the card being edited gives its corner to the editor, as the Mac's text view takes it */
+.card.editing .ear { pointer-events: none; }
 
 .front { padding: 12px 16px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink2); outline: none; }
 .headline { font-weight: 600; color: var(--ink); }
