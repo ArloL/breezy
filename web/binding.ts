@@ -25,6 +25,7 @@ export class Binding {
   seen: Board;
   waiting: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
+  throttled: boolean;
   taken: () => ReadonlySet<string>;
   typing: () => boolean;
 
@@ -37,25 +38,38 @@ export class Binding {
     this.seen = structuredClone(model.board);
     this.waiting = false;
     this.timer = undefined;
+    /** The timer is typing's 300 ms between flushes, not a gesture's wait for a pause. */
+    this.throttled = false;
     /** Items someone else holds: local changes to them are not written, as the holder's are the ones that count. */
     this.taken = () => new Set();
-    /** Whether the gesture under way is typing: its text is flushed every 300 ms however fast the keys come, as Safari
-     * on iOS loses what a page left or killed had not written. */
+    /** Whether the gesture under way is typing: a key after a pause is flushed at once, the rest at most every 300 ms
+     * however fast they come, as Safari on iOS loses what a page left or killed had not written. */
     this.typing = () => false;
   }
 
   /** After every change to the model: a merge that waited comes in now, else the change is flushed shortly. */
   changed() {
     if (this.waiting && !this.model.inGesture) return this.pull();
-    if (this.timer !== undefined && this.model.inGesture && this.typing()) return;
+    if (this.model.inGesture && this.typing()) {
+      if (!this.throttled) this.typed();
+      return;
+    }
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), 300);
+  }
+
+  /** Flushes typing, then waits 300 ms before the next flush while keys keep coming. */
+  typed() {
+    if (!this.flush()) return;
+    this.throttled = true;
+    this.timer = setTimeout(() => this.typed(), 300);
   }
 
   /** Writes what changed since the store last saw the board; → whether anything did. */
   flush() {
     clearTimeout(this.timer);
     this.timer = undefined;
+    this.throttled = false;
     const held = this.taken();
     const c = changes(this.seen, this.model.board, this.id, this.store.orders(this.id));
     for (const id of held) delete c[id];

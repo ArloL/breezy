@@ -103,11 +103,40 @@ test("typing is written every 300 ms however fast the keys come, as a page may l
   binding.typing = () => true;
   model.begin();
   for (let i = 1; i <= 10; i++) {
-    model.update((b) => (b.cards[0].text = "x".repeat(i)));
+    model.update((b) => (b.cards[0].text = "y".repeat(i)));
     t.mock.timers.tick(100);
   }
   // after 1 s of a key every 100 ms, what was typed by 900 ms is in the store
-  assert.equal(store.board(id).cards[0].text, "x".repeat(9));
+  assert.equal(store.board(id).cards[0].text, "y".repeat(9));
+});
+
+test("a key typed after a pause is written at once, as a page may leave a moment later", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { store, id, model, binding } = opened([card("a", 0)]);
+  binding.typing = () => true;
+  model.begin();
+  model.update((b) => (b.cards[0].text = "c1"));
+  assert.equal(store.board(id).cards[0].text, "c1");
+  t.mock.timers.tick(100);
+  model.update((b) => (b.cards[0].text = "c12"));
+  assert.equal(store.board(id).cards[0].text, "c1");
+  t.mock.timers.tick(200);
+  assert.equal(store.board(id).cards[0].text, "c12");
+  t.mock.timers.tick(1000);
+  model.update((b) => (b.cards[0].text = "c123"));
+  assert.equal(store.board(id).cards[0].text, "c123");
+});
+
+test("the first key into a card just made is written at once, as the change that made it is not typing", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { store, id, model, binding } = opened([card("a", 0)]);
+  let typing = false;
+  binding.typing = () => typing;
+  model.begin();
+  model.update((b) => b.cards.push(card("n", 96, "")));
+  typing = true;
+  model.update((b) => (b.cards[1].text = "c7"));
+  assert.equal(store.board(id).cards.find((c) => c.id === "n")?.text, "c7");
 });
 
 test("a drag is written 300 ms after it pauses, not while it moves", (t) => {
