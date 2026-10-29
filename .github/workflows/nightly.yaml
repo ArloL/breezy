@@ -14,6 +14,7 @@ name: Nightly
 # scripts/baselines/bench-ref to the commit that made it.
 on:
   schedule:
+  # GitHub starts it ~5.5 h late, 07:40–08:05 UTC
   - cron: "23 2 * * *"
   workflow_dispatch:
     inputs:
@@ -122,7 +123,8 @@ jobs:
         path: build/plants
         if-no-files-found: ignore
   # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
-  # cannot run one
+  # cannot run one: Apple Silicon has no nested virtualization (the emulator segfaulted booting in software), and the
+  # Intel one, which has it, had not booted after 14 min (probed 2026-10-28, run 40655831748)
   android:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'android' }}
     runs-on: ubuntu-latest

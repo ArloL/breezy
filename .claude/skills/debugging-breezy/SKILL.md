@@ -16,7 +16,7 @@ the hypothesis every fact allows. Design: `docs/superpowers/specs/2026-10-28-bre
   - a failing hub case's `build/hub/<test>/`;
   - a nightly's artifacts: `gh run download`, a failing case's `<who> video` among them when the night filmed;
   - what the owner's or partner's phone sent, on "Report a Problem", an error, or a card out of sight (its `decision sight broken` entry holds the card, caret and board as the app's own sight check read them): `BREEZY_INVITE='<invite link>' node scripts/diag.ts` lists them, and with an id saves and draws one under build/diag. Ask the owner for an invite link once a session, and never keep it in a file or a memory.
-- **Versions and devices.** Read code only to explain a fact you hold.
+- **Versions and devices.** Ask which OS version before chasing a finding seen only on one the owner and partner don't run: a caret bug on CI's iOS 26.5 was no bug of theirs. Read code only to explain a fact you hold.
 
 ## 2. Find the high-fidelity signals with a control
 
@@ -61,7 +61,7 @@ Check that the control is not broken the same way.
 ## 6. Decide, then make it policy
 
 - Choices a fix forces that only the owner can make go to them as options, each with its trade-off.
-- Record their answer as a memory, so agents apply it next time without asking.
+- Record their answer where agents read it next time: `CLAUDE.md` for any change, `TESTING.md` or this skill for testing and debugging, a comment beside the code it constrains.
 
 ## Log the escape
 
