@@ -58,6 +58,21 @@ async function aim(d: Device, p: Point) {
   return d.world({ x: Math.min(Math.max(s.x, 24), w - 24), y: Math.min(Math.max(s.y, 160), h - 160) });
 }
 
+/** A world point on the board `d` shows, 40 pt above card `id`, else 40 pt below it, for a tap that ends its edit, as a
+ * phone has no Esc; on the screen too, as a card by its edge has its middle off it. iOS scrolls the page to show a card
+ * made low, to just under the top bar, where a tap 40 pt above it landed on the bar and ended nothing. */
+export async function offCard(d: Device, id: string): Promise<Point> {
+  const c = item(await d.scene(), id), { w } = await d.size(), s = await d.sight();
+  const top = await d.screen({ x: c.x + c.w / 2, y: c.y }), x = Math.min(Math.max(top.x, 24), w - 24);
+  if (!s?.focus) return d.world({ x, y: top.y - 40 });
+  // what shows the board, from the page's frame into the board's, which part as iOS scrolls the page
+  const from = s.visible.y + top.y - s.focus.y, to = from + s.visible.h, bottom = top.y + s.focus.h;
+  const fits = (y: number) => y >= from + 12 && y <= to - 12;
+  const y = fits(top.y - 40) ? top.y - 40 : fits(bottom + 40) ? bottom + 40 : null;
+  if (y === null) throw new Error(`no board to tap 40 pt above or below the card at ${Math.round(top.y)}–${Math.round(bottom)}, the board showing ${Math.round(from)}–${Math.round(to)}`);
+  return d.world({ x, y });
+}
+
 /** The world point on `d`'s screen's board farthest from every card and lane, for a tap on nothing: where a phone shows
  * them depends on its size and on where the camera was left. */
 async function nothing(d: Device) {
@@ -882,10 +897,7 @@ export const cases: Case[] = [
       await a.doubleTap(await a.world({ x: w / 2, y: h - 220 }));
       await a.wait(300);
       await a.type("low");
-      // a tap on the board just above the card ends the edit, as in the case below
-      const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;
-      const above = await a.screen({ x: card.x + card.w / 2, y: card.y - 40 });
-      await a.tap(await a.world({ x: Math.min(Math.max(above.x, 24), w - 24), y: above.y }));
+      await a.tap(await offCard(a, (await a.scene()).cards.find((c) => !had.has(c.id))!.id));
       await s.settle();
       assert.deepEqual((await b.scene()).cards.filter((c) => !had.has(c.id)).map((c) => c.text), ["low"]);
     },
@@ -904,12 +916,7 @@ export const cases: Case[] = [
       await a.doubleTap(await aim(a, { x: l.x + l.w + 150, y: l.y + 450 }));
       await a.wait(300);
       await a.type("from the phone");
-      const { w } = await a.size();
-      // a tap on the board ends the edit, as there is no Esc on a phone: just above the card, which the board keeps in
-      // sight of the keyboard, and on the screen, as a card by its edge has its middle off it
-      const card = (await a.scene()).cards.find((c) => !had.has(c.id))!;
-      const above = await a.screen({ x: card.x + card.w / 2, y: card.y - 40 });
-      await a.tap(await a.world({ x: Math.min(Math.max(above.x, 24), w - 24), y: above.y }));
+      await a.tap(await offCard(a, (await a.scene()).cards.find((c) => !had.has(c.id))!.id));
       await s.settle();
       const made = (await b.scene()).cards.filter((c) => !had.has(c.id));
       assert.deepEqual(made.map((c) => c.text), ["from the phone"]);
