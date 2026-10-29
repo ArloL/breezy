@@ -13,16 +13,22 @@ interface Message {
  * Resolves once this tab owns the boards, holding the lock until the tab closes or another asks for them: then
  * `handOver` saves what is pending and stops, the other tab takes the lock, and `handedOver` follows. If another tab
  * owns them, calls `waiting` first with a function that asks it for them. Without Web Locks every tab owns them.
+ *
+ * Safari lets a tab's lock go while the tab sits in the back-forward cache, and another tab may take the boards and
+ * write meanwhile; so a tab it shows again on Back follows `handedOver` at once, before anything can be edited, rather
+ * than when its lost lock fails a moment later.
  */
 export function ownBoards({
   locks,
   channel,
+  page,
   waiting,
   handOver,
   handedOver,
 }: {
   locks: Pick<LockManager, "request"> | undefined;
   channel: Pick<BroadcastChannel, "onmessage" | "postMessage">;
+  page: Pick<EventTarget, "addEventListener">;
   waiting: (useHere: () => void) => unknown;
   handOver: () => Promise<unknown>;
   handedOver: () => void;
@@ -37,6 +43,7 @@ export function ownBoards({
     };
     // a queued request given up is no loss
     const lost = () => owns && leave();
+    page.addEventListener("pageshow", (e) => (e as PageTransitionEvent).persisted && leave());
     const hold = () => {
       owns = true;
       owned();

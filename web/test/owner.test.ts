@@ -7,6 +7,7 @@ type Grant = (lock: { name: string } | null) => unknown;
 type Tab = {
   channel: { onmessage: ((e: { data: unknown }) => void) | null; postMessage: (data: unknown) => void };
   locks: Pick<LockManager, "request">;
+  page: EventTarget;
 };
 type Want = { tab: Tab; name: string; cb: Grant; resolve: (value: unknown) => void; reject: (reason: unknown) => void; stolen?: boolean };
 type Seen = { tab: Tab; owns: boolean; waited: boolean; events: string[]; useHere: () => void; saved: () => void };
@@ -14,7 +15,8 @@ type Seen = { tab: Tab; owns: boolean; waited: boolean; events: string[]; useHer
 const aborted = () => new DOMException("aborted", "AbortError");
 
 /** Web Locks and a BroadcastChannel shared by a device's tabs, as browsers have them; `close` ends a tab and frees what it
- * held. */
+ * held. `freeze` puts a tab in the back-forward cache as Safari does: it frees what the tab held, and the tab's requests
+ * for it fail only a moment after the tab is shown again. */
 class Device {
   held: Map<string, Want>;
   queue: Want[];
@@ -27,7 +29,7 @@ class Device {
   }
 
   tab() {
-    const tab = { channel: { onmessage: null, postMessage: (data: unknown) => this.post(tab, data) } } as Tab;
+    const tab = { channel: { onmessage: null, postMessage: (data: unknown) => this.post(tab, data) }, page: new EventTarget() } as Tab;
     tab.locks = {
       request: (name: string, options: LockOptions | Grant, cb?: Grant) => {
         if (typeof options === "function") [cb, options] = [options, {}];
@@ -77,6 +79,18 @@ class Device {
     this.queue = this.queue.filter((w) => w.tab !== tab);
     for (const [name, w] of this.held) if (w.tab === tab) this.release(name);
   }
+
+  /** Returns a function that shows the tab again. */
+  freeze(tab: Tab) {
+    const lost = [...this.held.values()].filter((w) => w.tab === tab);
+    this.close(tab);
+    for (const w of lost) w.stolen = true;
+    return () => {
+      this.tabs.push(tab);
+      tab.page.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+      setTimeout(() => lost.forEach((w) => w.reject(aborted())));
+    };
+  }
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
@@ -89,6 +103,7 @@ function open(device: Device, { slow = false } = {}) {
   ownBoards({
     locks: tab.locks,
     channel: tab.channel,
+    page: tab.page,
     waiting: (useHere) => {
       seen.waited = true;
       seen.useHere = useHere;
@@ -198,4 +213,29 @@ test("the tab that handed over lets the boards go even if the asking tab closed"
   assert.deepEqual(a.events, ["saved"]);
   t.mock.timers.tick(2000);
   assert.deepEqual(a.events, ["saved", "handed over"]);
+});
+
+test("a tab shown again from the back-forward cache starts again before anything can be edited", async () => {
+  const device = new Device();
+  const a = open(device);
+  await settle();
+  const restore = device.freeze(a.tab);
+  const b = open(device);
+  await settle();
+  restore();
+  // a touch comes as a task of its own
+  assert.deepEqual(a.events, ["handed over"]);
+  await settle();
+  assert.deepEqual([a.events, b.owns, b.waited], [["handed over"], true, false]);
+});
+
+test("a tab waiting for the boards starts again too when shown from the back-forward cache", async () => {
+  const device = new Device();
+  open(device);
+  await settle();
+  const b = open(device);
+  await settle();
+  const restore = device.freeze(b.tab);
+  restore();
+  assert.deepEqual(b.events, ["handed over"]);
 });
