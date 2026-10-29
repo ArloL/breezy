@@ -3,3 +3,4 @@ build/
 server/config.php
 /node_modules/
 tools/oskeys/.build/
+.superpowers/

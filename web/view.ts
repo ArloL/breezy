@@ -352,15 +352,17 @@ export class View {
     el.style.zIndex = String(turned || t || s.lifted.has(c.id) ? 1000000 : i);
     const sheet = el.firstChild as Element;
     sheet.className = `sheet c${c.color}`;
-    const [front, back] = sheet.children as HTMLCollectionOf<HTMLElement>;
+    const [front, back, ear] = sheet.children as HTMLCollectionOf<HTMLElement>;
     // each face at its own size while the sheet grows or shrinks between them, cross-fading
     if (t) {
-      const w = this.backWidth(), ear = c.notes ? FOLD : 0;
+      const w = this.backWidth();
       el.style.setProperty("--front-w", `${c.w}px`);
       el.style.setProperty("--back-w", `${w}px`);
       el.style.setProperty("--back-h", `${this.backHeight(c, w)}px`);
-      el.style.setProperty("--ear", `${ear + (FOLD - ear) * p}px`);
+      el.style.setProperty("--ear", `${c.notes ? FOLD * (1 - p) : 0}px`);
     }
+    // the fold flattens and the crease fades as the front turns away
+    ear.style.opacity = t && !c.notes ? String(1 - p) : "";
     front.style.opacity = t ? String(1 - p) : "";
     back.style.opacity = t ? String(p) : "";
     // the front's title and the back's heading as one, moving from the front's padding to the back's
