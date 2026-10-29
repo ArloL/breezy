@@ -70,3 +70,15 @@ import Testing
   #expect((entries[0][3] as? [String: String]) == ["path": "card", "why": "fits"])
   #expect(entries[1].count == 3)
 }
+
+@Test func aRecordingWithoutContextSaysSoAsTheWebAppDoes() throws {
+  let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Flight().recording())) as! [String: Any]
+  #expect(json["context"] is NSNull)
+}
+
+@MainActor @Test func theCoreNotesAPressWhereTheScreenHasItAsTheWebAppDoes() {
+  let c = CanvasCore(model: BoardModel(board: board([])))
+  c.camera = { Scene.Camera(x: 100, y: -50, zoom: 2) }
+  c.press(at: Point(x: 10, y: 20.2))
+  #expect(c.flight.recording().entries.first?.data == ["x": .number(120), "y": .number(-10), "clicks": .number(1)])
+}

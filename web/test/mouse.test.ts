@@ -26,7 +26,7 @@ function fakeApp(hits: Record<string, Hit> = {}) {
       hit: (p: Point): Hit => hits[`${p.x},${p.y}`] ?? { kind: "empty" },
       beginDrag: (action: DragAction, h: Hit) => { app.input.drag = { action }; calls.push(["drag", action, h.id]); },
       dragMove: () => calls.push(["move"]),
-      dragEnd: () => { app.input.drag = null; calls.push(["end"]); },
+      endDrag: () => { app.input.drag = null; calls.push(["end"]); },
       dragCancel: () => { app.input.drag = null; calls.push(["cancel"]); },
       doubleClick: (p: Point, h: Hit) => calls.push(["double", h.kind]),
     },

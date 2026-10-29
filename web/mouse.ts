@@ -20,7 +20,7 @@ export interface MouseApp {
     doubleClick(p: Point, h: Hit): void;
     beginDrag(action: DragAction, h: Hit, p0: Point, p: Point): void;
     dragMove(p: Point): void;
-    dragEnd(p: Point, v: Point): void;
+    endDrag(p: Point, v: Point): void;
     dragCancel(): void;
     stopCoast(): void;
   };
@@ -64,7 +64,7 @@ export class Mouse {
     this.pointer = p;
     app.flight.note("input", "press", { x: Math.round(x), y: Math.round(y), clicks: double ? 2 : 1 });
     // a release lost to the system leaves its drag open
-    if (this.press?.dragging && !planted("lost-release")) app.input.dragEnd(p, { x: 0, y: 0 });
+    if (this.press?.dragging && !planted("lost-release")) app.input.endDrag(p, { x: 0, y: 0 });
     this.press = null;
     app.input.stopCoast();
     app.ui.closeMenu();
@@ -106,9 +106,10 @@ export class Mouse {
       d.dragging = true;
       this.app.input.beginDrag(d.action, d.h, d.p0, p);
     }
+    this.app.flight.note("input", "release");
     if (d.dragging) {
       if (this.pointer?.x !== x || this.pointer?.y !== y) this.app.input.dragMove(p);
-      return this.app.input.dragEnd(p, { x: 0, y: 0 });
+      return this.app.input.endDrag(p, { x: 0, y: 0 });
     }
     if (d.collapse) this.app.select([d.h.id!]);
   }

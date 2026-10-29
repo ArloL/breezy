@@ -250,6 +250,11 @@ export class Input {
 
   dragEnd(p: Point, v: Point) {
     this.app.flight.note("input", "drag end", { x: Math.round(p.x), y: Math.round(p.y) });
+    this.endDrag(p, v);
+  }
+
+  /** Lands what a drag holds; a finger's notes itself as `dragEnd`, a mouse's as its release (web/mouse.ts). */
+  endDrag(p: Point, v: Point) {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
