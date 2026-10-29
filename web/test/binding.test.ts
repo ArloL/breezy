@@ -96,3 +96,29 @@ test("undoing a delete on a board deleted since brings nothing back", () => {
   binding.flush();
   assert.equal(store.state.records.a.current.deleted, true);
 });
+
+test("typing is written every 300 ms however fast the keys come, as a page may leave mid-word", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { store, id, model, binding } = opened([card("a", 0)]);
+  binding.typing = () => true;
+  model.begin();
+  for (let i = 1; i <= 10; i++) {
+    model.update((b) => (b.cards[0].text = "x".repeat(i)));
+    t.mock.timers.tick(100);
+  }
+  // after 1 s of a key every 100 ms, what was typed by 900 ms is in the store
+  assert.equal(store.board(id).cards[0].text, "x".repeat(9));
+});
+
+test("a drag is written 300 ms after it pauses, not while it moves", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { store, id, model } = opened([card("a", 0)]);
+  model.begin();
+  for (let i = 1; i <= 10; i++) {
+    model.update((b) => (b.cards[0].x = i));
+    t.mock.timers.tick(100);
+  }
+  assert.equal(store.board(id).cards[0].x, 0);
+  t.mock.timers.tick(200);
+  assert.equal(store.board(id).cards[0].x, 10);
+});

@@ -9,6 +9,7 @@ import { floated, liveFields, overlaid } from "./sync/overlay.ts";
 import { statusLines } from "./sync/engine.ts";
 import { encode } from "./sync/base64.ts";
 import { Reporter } from "./diag.ts";
+import { thrown } from "./flight.ts";
 import { GestureHolds } from "./sync/gesture-holds.ts";
 import { Collab } from "./sync/collab.ts";
 import { inviteLink, parseInvite, validServer } from "./sync/crypto.ts";
@@ -92,6 +93,7 @@ export class Library {
     spaces.onDirty = () => (document.body.dataset.waiting = String(spaces.spaces.reduce((n, g) => n + g.store.pending().length, 0)));
     spaces.onSaveError = (error) => {
       console.warn("boards not saved", error);
+      app.flight.note("error", "save failed", thrown(error));
       app.ui.updateSync();
     };
     spaces.flushLocal = () => this.binding?.flush();
@@ -153,6 +155,7 @@ export class Library {
     document.body.dataset.screen = "board";
     this.app.load(b);
     this.binding = new Binding(group.store, this.app.model, id, this.restack);
+    this.binding.typing = () => this.app.state.editing !== null;
     const s = this.app.state;
     this.session = this.collab(group).open(id, this.app.model, this.binding, {
       caret: () => this.app.caret(),

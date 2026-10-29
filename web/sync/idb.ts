@@ -60,7 +60,8 @@ function change(d: IDBDatabase, apply: (s: IDBObjectStore) => void): Promise<voi
     // transaction never committed keeps every other page of the site from reading the store
     t.commit();
     t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
+    // Safari on iOS fails one the page froze before with no error
+    t.onerror = () => reject(t.error ?? new Error("transaction failed"));
     t.onabort = () => reject(t.error ?? new Error("transaction aborted"));
   });
 }

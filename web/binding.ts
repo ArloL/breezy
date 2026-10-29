@@ -26,6 +26,7 @@ export class Binding {
   waiting: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
   taken: () => ReadonlySet<string>;
+  typing: () => boolean;
 
   constructor(store: BindingStore, model: Model, id: string, restack: (b: Board) => void) {
     this.store = store;
@@ -38,11 +39,15 @@ export class Binding {
     this.timer = undefined;
     /** Items someone else holds: local changes to them are not written, as the holder's are the ones that count. */
     this.taken = () => new Set();
+    /** Whether the gesture under way is typing: its text is flushed every 300 ms however fast the keys come, as Safari
+     * on iOS loses what a page left or killed had not written. */
+    this.typing = () => false;
   }
 
   /** After every change to the model: a merge that waited comes in now, else the change is flushed shortly. */
   changed() {
     if (this.waiting && !this.model.inGesture) return this.pull();
+    if (this.timer !== undefined && this.model.inGesture && this.typing()) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), 300);
   }
@@ -50,6 +55,7 @@ export class Binding {
   /** Writes what changed since the store last saw the board; → whether anything did. */
   flush() {
     clearTimeout(this.timer);
+    this.timer = undefined;
     const held = this.taken();
     const c = changes(this.seen, this.model.board, this.id, this.store.orders(this.id));
     for (const id of held) delete c[id];
