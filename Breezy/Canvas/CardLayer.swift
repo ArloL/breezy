@@ -43,11 +43,18 @@ final class CardLayer: CALayer {
     var scale: CGFloat
     var appearance: NSAppearance
 
-    /// The fold; 0 leaves the crease of a card without notes.
+    /// The fold of a front with notes, flattening as it turns away; the back's corner is clean.
     var ear: CGFloat {
-      let fold = CGFloat(Metrics.fold), front: CGFloat = (look.card.notes ?? "").isEmpty ? 0 : fold
-      if let t = look.turning { return front + (fold - front) * t.p }
-      return look.back ? fold : front
+      let front: CGFloat = (look.card.notes ?? "").isEmpty ? 0 : CGFloat(Metrics.fold)
+      if let t = look.turning { return front * (1 - t.p) }
+      return look.back ? 0 : front
+    }
+
+    /// The crease of a front without notes, fading as it turns away.
+    var crease: CGFloat {
+      guard (look.card.notes ?? "").isEmpty else { return 0 }
+      if let t = look.turning { return 1 - t.p }
+      return look.back ? 0 : 1
     }
   }
 
@@ -255,13 +262,20 @@ final class CardLayer: CALayer {
         flap.close()
         (tint.blended(withFraction: 0.12, of: .black) ?? tint).setFill()
         flap.fill()
-      } else {
-        let fold = CGFloat(Metrics.fold), crease = NSBezierPath()
-        crease.move(to: NSPoint(x: bounds.maxX - fold, y: bounds.maxY))
-        crease.line(to: NSPoint(x: bounds.maxX, y: bounds.maxY - fold))
-        crease.lineWidth = 1.5
-        Theme.crease.setStroke()
-        crease.stroke()
+      } else if i.crease > 0 {
+        // a 1 pt shadow and a 1 pt highlight either side of where the fold would be
+        let fold = CGFloat(Metrics.fold), d = 0.5 / 2.squareRoot()
+        ctx.saveGState()
+        ctx.setAlpha(i.crease)
+        for (o, color) in [(-d, Theme.creaseShadow), (d, Theme.creaseLight)] {
+          let line = NSBezierPath()
+          line.move(to: NSPoint(x: bounds.maxX - fold + o, y: bounds.maxY + o))
+          line.line(to: NSPoint(x: bounds.maxX + o, y: bounds.maxY - fold + o))
+          line.lineWidth = 1
+          color.setStroke()
+          line.stroke()
+        }
+        ctx.restoreGState()
       }
       func back(_ r: CGRect) {
         Theme.hairline.setFill()

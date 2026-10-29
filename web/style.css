@@ -20,7 +20,8 @@
   --c3: #cfe0ee;
   --c4: #d6e6c6;
   --c5: #e3e0d9;
-  --crease: rgb(0 0 0 / 0.3);
+  --crease-lo: rgb(43 42 39 / 0.075);
+  --crease-hi: rgb(255 255 255 / 0.45);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   color-scheme: light dark;
 }
@@ -48,7 +49,8 @@
     --c3: #2f4152;
     --c4: #384731;
     --c5: #403e3a;
-    --crease: rgb(255 255 255 / 0.25);
+    --crease-lo: rgb(0 0 0 / 0.26);
+    --crease-hi: rgb(255 255 255 / 0.05);
   }
 }
 
@@ -114,13 +116,15 @@ body {
 .c3 { background: var(--c3); }
 .c4 { background: var(--c4); }
 .c5 { background: var(--c5); }
-/* every card's corner: a crease where it would fold, folded with notes and on the back */
-.card.notes .sheet, .card.turned .sheet { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 32px) 100%, 0 100%); }
+/* a front's corner: a pressed crease where it would fold, folded with notes; the back's is clean */
+.card.notes .sheet { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 32px) 100%, 0 100%); }
+.card.turned .sheet { clip-path: none; }
 .ear {
   position: absolute; right: 0; bottom: 0; width: 32px; height: 32px;
-  background: linear-gradient(135deg, transparent calc(50% - 0.75px), var(--crease) 50%, transparent calc(50% + 0.75px));
+  background: linear-gradient(135deg, transparent calc(50% - 1px), var(--crease-lo) calc(50% - 1px) 50%, var(--crease-hi) 50% calc(50% + 1px), transparent calc(50% + 1px));
 }
-.card.notes .ear, .card.turned .ear, .card.turning .ear { background: linear-gradient(135deg, rgb(0 0 0 / 0.12) 50%, transparent 50%); }
+.card.notes .ear { background: linear-gradient(135deg, rgb(0 0 0 / 0.12) 50%, transparent 50%); }
+.card.turned .ear { display: none; }
 /* the card being edited gives its corner to the editor, as the Mac's text view takes it */
 .card.editing .ear { pointer-events: none; }
 
@@ -135,7 +139,8 @@ body {
 /* growing between its faces, each at its own size, cross-faded by the view; sized by it on the camera's spring */
 .card.turning { transition: filter 0.2s var(--ease); filter: drop-shadow(0 5px 9px rgb(0 0 0 / 0.24)); }
 .card.turning .sheet { overflow: hidden; clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--ear)), calc(100% - var(--ear)) 100%, 0 100%); }
-.card.turning .ear { display: block; width: var(--ear); height: var(--ear); }
+.card.turning .ear { display: block; }
+.card.turning.notes .ear { width: var(--ear); height: var(--ear); }
 .card.turning .front { display: block; position: absolute; left: 0; top: 0; box-sizing: border-box; width: var(--front-w); }
 .card.turning .back { display: block; right: auto; bottom: auto; box-sizing: border-box; width: var(--back-w); height: var(--back-h); }
 .heading { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
