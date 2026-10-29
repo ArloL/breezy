@@ -28,14 +28,14 @@ async function still(view: FakeView) {
 
 test("a phone's keyboard rises after an editor takes focus, and the area above it shrinks", async () => {
   const { app, view } = phone();
-  assert.deepEqual(app.ui.area(), { top: 120, bottom: 774, left: 0, right: 402 });
+  assert.deepEqual(app.ui.area(), { top: PHONE.top, bottom: PHONE.bottom, left: 0, right: 402 });
   app.beginEdit("a");
-  assert.equal(app.ui.area().bottom, 774, "not before the keyboard has come");
+  assert.equal(app.ui.area().bottom, PHONE.bottom, "not before the keyboard has come");
   await sleep(PHONE.keyboardMs + 50);
   assert.deepEqual(app.ui.area(), { top: PHONE.keyboardTop, bottom: PHONE.h - PHONE.keyboard - 44, left: 0, right: 402 });
   app.endEditing();
   await sleep(PHONE.keyboardMs + 50);
-  assert.equal(app.ui.area().bottom, 774);
+  assert.equal(app.ui.area().bottom, PHONE.bottom);
   await still(view);
 });
 

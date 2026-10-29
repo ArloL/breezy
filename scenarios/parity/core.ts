@@ -47,6 +47,8 @@ export async function play(kind: "swift" | "web", setUp: Steps, steps: Steps[]):
   const w = await World.start([kind]);
   try {
     const [d] = w.devices as [SimDevice];
+    // a browser opens a board at ×0.75; the Swift core's camera stays where it starts
+    if (kind === "web") await w.hub.command(d.d, { cmd: "camera", cam: { x: 0, y: 0, zoom: 1 } });
     const names = new Names(), made: string[] = [];
     await setUp(d, made);
     await w.settle();

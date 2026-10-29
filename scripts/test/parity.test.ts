@@ -29,7 +29,9 @@ const night = (real: Entry[], fake: Entry[], known: Known[] = []) => {
 
 test("each real kind is held to the fake that stands for it", () => {
   assert.equal(fakeOf("ios-home"), "phone");
-  assert.equal(fakeOf("ios-safari"), "phone");
+  assert.equal(fakeOf("ios-home", 375), "mini");
+  assert.equal(fakeOf("ios-safari", 402), "safari");
+  assert.equal(fakeOf("ios-safari", 375), "safari-mini");
   assert.equal(fakeOf("firefox-android"), "android");
   assert.equal(fakeOf("webkit"), "web");
   assert.equal(fakeOf("mac"), "swift");

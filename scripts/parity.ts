@@ -19,9 +19,18 @@ export interface Known {
 
 const KNOWN = fileURLToPath(new URL("parity-known.json", import.meta.url));
 
-/** The hub's device that stands for real device `kind`. */
-export const fakeOf = (kind: string) =>
-  kind.startsWith("ios-") ? "phone" : kind.endsWith("android") ? "android" : kind === "mac" ? "swift" : "web";
+/** The hub's device that stands for real device `kind`, an iPhone's by its screen's width as its app recorded it. */
+export const fakeOf = (kind: string, width?: number) => {
+  const mini = width === 375 ? "mini" : null;
+  if (kind === "ios-safari") return mini ? "safari-mini" : "safari";
+  if (kind.startsWith("ios-")) return mini ?? "phone";
+  return kind.endsWith("android") ? "android" : kind === "mac" ? "swift" : "web";
+};
+
+const widthOf = (r: Recording | null) => {
+  const s = r?.context?.screen;
+  return Array.isArray(s) && typeof s[0] === "number" ? s[0] : undefined;
+};
 
 const decisions = (r: Recording) => new Set(r.entries.filter((e) => e[1] === "decision").map(sign));
 
@@ -32,7 +41,7 @@ export function report(realDir: string, hubDir: string, knownFile = KNOWN): stri
   const out: string[] = [];
   for (const real of existsSync(realDir) ? runs(realDir) : []) {
     if (real.verdict !== "passed") continue;
-    const fake = fakes.find((f) => f.case === real.case && f.pair.every((k, i) => k === fakeOf(real.pair[i]!)));
+    const fake = fakes.find((f) => f.case === real.case && f.pair.every((k, i) => k === fakeOf(real.pair[i]!, widthOf(recording(real, i)))));
     if (!fake) continue;
     const lines = real.pair.flatMap((kind, i) => {
       const a = recording(real, i), b = recording(fake, i);

@@ -237,9 +237,11 @@ class WebDevice {
     if (!g || id == null || g.store.title(id) === null) return;
     const b = g.store.board(id);
     this.restack(b);
-    // the app's core, drawn by fakes: input goes through it as in a browser
-    const app = new App(b, fakePorts);
+    // the app's core, drawn by fakes: input goes through it as in a browser, and it opens the board as web/library.ts
+    // does, its camera at ×0.75 where a browser's starts
+    const app = new App({ cards: [], lanes: [] }, fakePorts);
     (app.view as FakeView).screen = this.screen;
+    app.load(b);
     const model = app.model;
     const binding = new Binding(g.store, model, id, (x) => this.restack(x));
     binding.taken = () => g.live?.taken() ?? new Set();
@@ -565,6 +567,9 @@ class WebDevice {
         return this.open ? (this.open.app.view as FakeView).sight() : null;
       case "still":
         return !this.open || (this.open.app.view as FakeView).still();
+      case "camera":
+        this.open?.app.view.setCamera(c.cam);
+        return null;
       case "flight":
         return this.open?.app.flight.recording() ?? null;
     }

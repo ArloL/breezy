@@ -5,7 +5,7 @@ import { LANE_H, LANE_W } from "../web/rules.ts";
 import * as V from "../scripts/fuzz/virtual.ts";
 import type { Board, Point } from "../web/types.ts";
 import type { Invite } from "../web/sync/crypto.ts";
-import { ANDROID, MINI, PHONE, type Screen } from "../web/test/fakes.ts";
+import { ANDROID, MINI, PHONE, SAFARI, SAFARI_MINI, type Screen } from "../web/test/fakes.ts";
 import { Device, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { Recording } from "../web/flight.ts";
 
@@ -14,11 +14,11 @@ export * from "./device.ts";
 /** The plant a run was started with: read once, as a hub started with a plant sets BREEZY_PLANT for its Swift devices. */
 const PLANT = process.env.BREEZY_PLANT ?? null;
 
-/** A phone is a web device with an iPhone 17's screen and keyboard, a mini with the owner's iPhone 13 mini's, an android
- * one with the partner's Android's. */
-export type Kind = "web" | "swift" | "phone" | "mini" | "android";
-/** The screen of each kind of phone. */
-export const PHONES: Partial<Record<Kind, Screen>> = { phone: PHONE, mini: MINI, android: ANDROID };
+/** A phone is a web device with an iPhone 17's Home Screen app's page and keyboard, a mini with the owner's iPhone 13
+ * mini's, a safari and a safari-mini with each one's Safari tab, an android one with the partner's Android's. */
+export type Kind = "web" | "swift" | "phone" | "mini" | "safari" | "safari-mini" | "android";
+/** The page of each kind of phone. */
+export const PHONES: Partial<Record<Kind, Screen>> = { phone: PHONE, mini: MINI, safari: SAFARI, "safari-mini": SAFARI_MINI, android: ANDROID };
 
 export class SimDevice extends Device {
   readonly sim: World;
@@ -37,6 +37,13 @@ export class SimDevice extends Device {
   override async size() {
     const screen = PHONES[this.kind];
     return screen ? { w: screen.w, h: screen.h } : super.size();
+  }
+
+  /** On a phone, on its board too: a real phone's bars and keyboard take a tap there, which the hub's have none of. */
+  protected override async onScreen(p: Point) {
+    const s = await super.onScreen(p), v = PHONES[this.kind] && (await this.sight())?.visible;
+    if (v && (s.y < v.y || s.y > v.y + v.h)) throw new Error(`a tap at ${Math.round(s.x)},${Math.round(s.y)}, off the board from ${v.y} to ${v.y + v.h}`);
+    return s;
   }
 
   /** Until the camera has stopped and no keyboard is on its way. */
@@ -60,8 +67,21 @@ export class SimDevice extends Device {
     return (await this.hub.op(this.d, o)) as T;
   }
 
+  /** On a phone, as a real phone's harness makes one, by a double tap and keys, which zoom and move the camera: one made
+   * by an op left the lane on the screen where Safari's tab had it above (#148). Elsewhere by an op, as the cores'
+   * conformance places cards at exact points. */
   async addCard(x: number, y: number): Promise<string> {
-    return (await this.op<{ id: string }>({ op: "addCard", x, y })).id;
+    if (!PHONES[this.kind]) return (await this.op<{ id: string }>({ op: "addCard", x, y })).id;
+    const had = new Set((await this.scene()).cards.map((c) => c.id));
+    await this.still("the board to stand still");
+    await this.doubleTap({ x, y });
+    const id = (await this.scene()).cards.find((c) => !had.has(c.id))?.id;
+    if (!id) throw new Error(`the double tap at ${Math.round(x)},${Math.round(y)} made no card`);
+    await this.type("card");
+    // Esc, as Done on the keys bar ends it alike
+    await this.key("Escape");
+    await this.still("the keyboard to go and the board to stand still");
+    return id;
   }
 
   async addLane(x: number, y: number): Promise<string> {
