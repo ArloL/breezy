@@ -15,38 +15,69 @@ interface Message {
  * owns them, calls `waiting` first with a function that asks it for them. Without Web Locks every tab owns them.
  *
  * Safari lets a tab's lock go while the tab sits in the back-forward cache, and another tab may take the boards and
- * write meanwhile; so a tab it shows again on Back follows `handedOver` at once, before anything can be edited, rather
- * than when its lost lock fails a moment later.
+ * write meanwhile. A tab going into the cache calls `away`, to save what is pending and then save and sync nothing;
+ * shown again on Back, it asks for the lock again, through `waiting` if another tab holds it, and once it holds it
+ * `back` follows, `changed` if another tab took the boards since this one last held them, as the `stamp` each tab
+ * writes on taking them says.
  */
 export function ownBoards({
   locks,
   channel,
   page,
+  stamp,
   waiting,
   handOver,
   handedOver,
+  away,
+  back,
 }: {
   locks: Pick<LockManager, "request"> | undefined;
   channel: Pick<BroadcastChannel, "onmessage" | "postMessage">;
   page: Pick<EventTarget, "addEventListener">;
+  /** Who took the boards last, kept where every tab reads it. */
+  stamp: { write: (id: string) => unknown; read: () => Promise<unknown> };
   waiting: (useHere: () => void) => unknown;
   handOver: () => Promise<unknown>;
   handedOver: () => void;
+  away: () => void;
+  back: (changed: boolean) => void;
 }): Promise<void> {
   if (!locks) return Promise.resolve();
   const me = crypto.randomUUID();
   return new Promise<void>((owned) => {
-    let owns = false, left = false;
+    let left = false, ever = false, shows = 0;
+    /** The request whose lock this tab holds. */
+    let holding: object | null = null;
     const leave = () => {
       if (!left) handedOver();
       left = true;
     };
-    // a queued request given up is no loss
-    const lost = () => owns && leave();
-    page.addEventListener("pageshow", (e) => (e as PageTransitionEvent).persisted && leave());
-    const hold = () => {
-      owns = true;
-      owned();
+    const ask = () => {
+      const show = shows;
+      const request = (options: LockOptions) => {
+        const mine = {};
+        locks.request(LOCK, options, (lock) => (lock ? hold(mine, show) : free(show)))
+          // a queued request given up, or one Safari failed as the tab froze, is no loss
+          .catch(() => holding === mine && leave());
+      };
+      const free = (show: number) => {
+        if (show !== shows) return;
+        const queued = new AbortController();
+        request({ signal: queued.signal });
+        channel.onmessage = ({ data }: MessageEvent<Message>) => {
+          if (data.take !== me) return;
+          queued.abort();
+          // ahead of any tab that waited longer
+          request({ steal: true });
+        };
+        waiting(() => channel.postMessage({ want: me }));
+      };
+      request({ ifAvailable: true });
+    };
+    const hold = (mine: object, show: number) => {
+      // asked for before Safari showed the tab again
+      if (show !== shows || left) return;
+      holding = mine;
       let handing = false;
       channel.onmessage = async ({ data }: MessageEvent<Message>) => {
         if (!data.want || handing) return;
@@ -55,19 +86,27 @@ export function ownBoards({
         channel.postMessage({ take: data.want });
         setTimeout(leave, TAKE_MS);
       };
+      if (!ever) {
+        ever = true;
+        stamp.write(me);
+        owned();
+      } else {
+        void stamp.read().then((last) => {
+          if (holding !== mine || handing) return;
+          stamp.write(me);
+          back(last !== me);
+        });
+      }
       return new Promise(() => {});
     };
-    locks.request(LOCK, { ifAvailable: true }, (lock) => {
-      if (lock) return hold();
-      const queued = new AbortController();
-      locks.request(LOCK, { signal: queued.signal }, hold).catch(lost);
-      channel.onmessage = ({ data }: MessageEvent<Message>) => {
-        if (data.take !== me) return;
-        queued.abort();
-        // ahead of any tab that waited longer
-        locks.request(LOCK, { steal: true }, hold).catch(lost);
-      };
-      waiting(() => channel.postMessage({ want: me }));
-    }).catch(lost);
+    // still holding the lock; the page shows visible again before its pageshow, which would sync
+    page.addEventListener("pagehide", (e) => (e as PageTransitionEvent).persisted && holding && !left && away());
+    page.addEventListener("pageshow", (e) => {
+      if (!(e as PageTransitionEvent).persisted || left) return;
+      shows++;
+      holding = null;
+      ask();
+    });
+    ask();
   });
 }

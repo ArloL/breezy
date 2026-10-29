@@ -132,6 +132,41 @@ test("stopping saves what is pending, then nothing more", async () => {
   assert.equal(new Store(storage.data.get("local") as StoreState).title(id), "Plans");
 });
 
+test("paused, the spaces save and sync nothing; resumed, they save what changed meanwhile and sync again", async () => {
+  const { server, transport } = servers();
+  const storage = new MemoryStorage();
+  const spaces = await Spaces.open(storage, { transport });
+  const g = spaces.newSpace(SERVER, "Work");
+  await g.engine.sync();
+  await spaces.flushAll();
+  spaces.pause();
+  const id = g.store.createBoard("Plans");
+  await g.engine.sync();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(new Store(storage.data.get(g.key) as StoreState).title(id), null);
+  const other = device(server(g.space), g.store.invite);
+  await other.engine.sync();
+  assert.equal(other.store.title(id), null);
+  spaces.resume();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(new Store(storage.data.get(g.key) as StoreState).title(id), "Plans");
+  await other.engine.sync();
+  assert.equal(other.store.title(id), "Plans");
+});
+
+test("a space refused before a pause stays stopped after it", async () => {
+  const spaces = await Spaces.open(new MemoryStorage());
+  const g = spaces.newSpace(SERVER, "Work");
+  g.engine.stopped = true;
+  spaces.pause();
+  spaces.resume();
+  assert.equal(g.engine.stopped, true);
+});
+
+test("storage holding only the owner's stamp is fresh", async () => {
+  assert.equal((await Spaces.open(new MemoryStorage({ owner: "a tab" }))).fresh, true);
+});
+
 test("moving a board copies it with new ids and deletes it where it was", async () => {
   const storage = new MemoryStorage();
   const spaces = await Spaces.open(storage);

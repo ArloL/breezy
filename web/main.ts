@@ -9,6 +9,7 @@ import { wheelAction } from "./wheel.ts";
 import { command, onMac, perform } from "./keys.ts";
 import { Library } from "./library.ts";
 import { ownBoards } from "./owner.ts";
+import { loadState, saveState } from "./sync/idb.ts";
 import { ask } from "./sheet.ts";
 import { View } from "./view.ts";
 import { UI } from "./ui.ts";
@@ -214,11 +215,17 @@ if (demo === "add") app.ui.act("add");
 
 if (!scratch) {
   document.body.dataset.screen = "boards";
+  const sheet = document.getElementById("sheet")!;
   let waited = false, opened: Promise<Library>;
+  const owned = () => {
+    if (waited) sheet.hidden = true;
+    waited = false;
+  };
   await ownBoards({
     locks: globalThis.BroadcastChannel && navigator.locks,
     channel: globalThis.BroadcastChannel && new BroadcastChannel("breezy-boards"),
     page: globalThis,
+    stamp: { write: (id) => saveState("owner", id).catch(() => {}), read: () => loadState("owner").catch(() => null) },
     waiting: async (useHere) => {
       waited = true;
       // shown again until the boards come, as the other tab may not answer
@@ -229,8 +236,17 @@ if (!scratch) {
     },
     handOver: () => opened.then((library) => library.handOver()),
     handedOver: () => location.reload(),
+    away: () => {
+      app.flight.note("decision", "boards paused");
+      void opened.then((library) => library.pause());
+    },
+    back: (changed) => {
+      app.flight.note("decision", "boards back", { changed });
+      owned();
+      opened = opened.then((library) => (changed ? library.reopen() : library.resume()));
+    },
   });
-  if (waited) document.getElementById("sheet")!.hidden = true;
+  owned();
   opened = Library.open(app);
   await opened;
 }

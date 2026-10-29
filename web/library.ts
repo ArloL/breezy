@@ -61,10 +61,13 @@ export class Library {
   overlaySize?: number;
   frame?: number | null;
   touchTimer?: ReturnType<typeof setTimeout>;
+  /** Aborted as the Library ends, taking its listeners and timers with it. */
+  ended: AbortController;
 
   constructor(app: App, spaces: Spaces) {
     this.app = app;
     this.spaces = spaces;
+    this.ended = new AbortController();
     this.reporter = new Reporter(async () => {
       const g = this.group?.store.state.server ? this.group : this.spaces.spaces.find((s) => s.store.state.server);
       const state = g?.store.state;
@@ -97,19 +100,21 @@ export class Library {
       app.ui.updateSync();
     };
     spaces.flushLocal = () => this.binding?.flush();
-    setInterval(() => !document.hidden && spaces.syncAll({ polling: true }), 5000);
-    setInterval(() => this.tick(), 1000);
+    const signal = this.ended.signal;
+    const timers = [setInterval(() => !document.hidden && spaces.syncAll({ polling: true }), 5000), setInterval(() => this.tick(), 1000)];
+    signal.addEventListener("abort", () => timers.forEach(clearInterval));
     spaces.onLive = () => this.liveChanged();
     app.onSelect = () => this.updateLive();
-    document.addEventListener("visibilitychange", () => this.updateLive());
-    document.addEventListener("visibilitychange", () => document.hidden || spaces.retryAll());
-    addEventListener("online", () => spaces.retryAll(true));
+    document.addEventListener("visibilitychange", () => this.updateLive(), { signal });
+    document.addEventListener("visibilitychange", () => document.hidden || spaces.retryAll(), { signal });
+    addEventListener("online", () => spaces.retryAll(true), { signal });
     const change = app.model.onChange;
     app.model.onChange = () => {
       change();
       this.binding?.changed();
       this.session?.edited();
     };
+    signal.addEventListener("abort", () => (app.model.onChange = change));
     app.view.shown = () => (this.live && this.id ? overlaid(app.model.board, this.live.overlay(this.id)) : app.model.board);
     spaces.onRefused = (g, ids) => g === this.group && this.app.refused(ids);
     this.restack = (b: Board) => R.gravity(b, (id) => {
@@ -120,8 +125,8 @@ export class Library {
       this.binding?.flush();
       spaces.flushAll();
     };
-    document.addEventListener("visibilitychange", () => document.hidden && hide());
-    addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", () => document.hidden && hide(), { signal });
+    addEventListener("pagehide", hide, { signal });
     document.querySelector<HTMLElement>('[data-act="boards"]')!.hidden = false;
   }
 
@@ -130,6 +135,47 @@ export class Library {
     this.app.endEditing();
     this.binding?.flush();
     return this.spaces.stop();
+  }
+
+  /** Saves what is pending, then saves and syncs nothing, keeping what changes, while this tab doesn't hold the
+   * boards. */
+  pause() {
+    this.binding?.flush();
+    void this.spaces.flushAll();
+    this.spaces.pause();
+  }
+
+  /** Saves what changed while paused, and syncs again. */
+  resume(): Library {
+    this.spaces.resume();
+    this.updateLive();
+    return this;
+  }
+
+  /** A Library read again from storage, as another tab had the boards and may have written, showing the board this one
+   * showed, where it was; this one ends. */
+  async reopen(): Promise<Library> {
+    const { id } = this, camera = { ...this.app.view.cam };
+    this.end();
+    const lib = await Library.open(this.app);
+    if (id && lib.spaces.groupOf(id)) {
+      lib.open(id);
+      this.app.view.setCamera(camera);
+    }
+    return lib;
+  }
+
+  /** Stops for good: saves, syncs and draws nothing more. */
+  end() {
+    this.spaces.pause();
+    this.app.endEditing();
+    this.session?.close();
+    this.session = this.binding = null;
+    const s = this.spaces;
+    s.onLive = s.onRefused = s.onChange = s.onStatus = s.onSyncNote = s.onDirty = s.onSaveError = s.flushLocal = () => {};
+    if (this.frame) cancelAnimationFrame(this.frame);
+    clearTimeout(this.touchTimer);
+    this.ended.abort();
   }
 
   changed(group: Group, boards: ReadonlySet<string>, remote: boolean) {

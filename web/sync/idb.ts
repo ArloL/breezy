@@ -52,6 +52,14 @@ export function loadAll(): Promise<{ [key: string]: unknown }> {
   }));
 }
 
+export function loadState(key: string): Promise<unknown> {
+  return attempt((d) => new Promise((resolve, reject) => {
+    const q = d.transaction("state").objectStore("state").get(key);
+    q.onsuccess = () => resolve(q.result);
+    q.onerror = () => reject(q.error);
+  }));
+}
+
 function change(d: IDBDatabase, apply: (s: IDBObjectStore) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const t = d.transaction("state", "readwrite");
