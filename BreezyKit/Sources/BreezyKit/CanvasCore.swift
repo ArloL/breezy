@@ -348,8 +348,8 @@ public struct Drag {
 
   /// Puts `clip` on the board near `centre` and selects the copies; nothing during a drag.
   public func paste(_ clip: Clip, board id: String, centre: Point) {
-    turned = nil
     guard !model.inGesture else { return }
+    turned = nil
     var ids: [String] = []
     model.perform("Paste") { ids = $0.paste(clip, board: id, centre: centre, heightOf: heightOf) }
     guard !ids.isEmpty else { return }

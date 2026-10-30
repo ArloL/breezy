@@ -185,13 +185,15 @@ test("copy with only lanes selected returns null", () => {
   assert.equal(of(app, "transition").length, 0);
 });
 
-test("paste during a drag does nothing", () => {
+test("paste during a drag does nothing, leaving a turned card turned", () => {
   const app = board(1);
   app.select(["c0"]);
   const clip = app.copySelection()!;
+  app.turn("c0");
   app.model.begin();
   app.paste(clip);
   assert.equal(app.model.board.cards.length, 1);
+  assert.equal(app.state.turned, "c0");
 });
 
 test("paste during an edit ends it and puts the copies on the board", () => {
