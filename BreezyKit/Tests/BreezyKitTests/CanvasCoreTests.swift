@@ -275,13 +275,15 @@ import Testing
   #expect(c.flight.recording().entries.isEmpty)
 }
 
-@MainActor @Test func pasteDuringADragDoesNothing() {
+@MainActor @Test func pasteDuringADragDoesNothingLeavingATurnedCardTurned() {
   let c = canvas(board([card("a", 400, 40)]))
   c.selection = ["a"]
   let clip = c.copySelection(board: "x")!
+  c.turned = "a"
   c.model.begin()
   c.paste(clip, board: "x", centre: Point(x: 0, y: 0))
   #expect(c.board.cards.count == 1)
+  #expect(c.turned == "a")
 }
 
 @MainActor @Test func cutDuringADragDoesNothing() {

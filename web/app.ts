@@ -388,8 +388,8 @@ export class App {
   /** Puts `clip` on the board near `centre`, by default the middle of the view, and selects the copies. */
   paste(clip: Clip, centre: Point = this.view.toWorld(this.view.centre())) {
     this.endEditing();
-    this.turn(null);
     if (this.model.inGesture) return;
+    this.turn(null);
     let ids: string[] = [];
     this.model.perform("Paste", (b) => {
       ids = R.paste(b, clip, { board: this.library?.id ?? "", centre }, this.heightOf);
