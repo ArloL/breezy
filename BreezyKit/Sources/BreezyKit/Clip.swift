@@ -130,38 +130,35 @@ extension Board {
   /// Adds copies of the clip's cards and returns their ids, in clip order. On the clip's board a copy
   /// of a card in a lane goes right below its original, or, the original gone, before the first card
   /// of that lane's column at or below where it stood; the rest move as a block to the clear space
-  /// nearest their originals, or on another board nearest `centre`. As the web app's `paste`.
+  /// nearest their originals, or on another board nearest `centre`. Lane copies go one at a time, the
+  /// board settled after each, so that a run of cut cards finds its places among those put back. As
+  /// the web app's `paste`.
   @discardableResult
   public mutating func paste(_ clip: Clip, board: String, centre: Point, heightOf: HeightOf) -> [String] {
     let same = clip.board == board
     let ids = clip.cards.map { _ in newID() }
     var free: [(ClipCard, Card)] = []
     func home(_ r: Rect) -> Lane? { lanes.first { $0.rect.containsCentre(of: r) } }
-    var prev: (k: ClipCard, copy: Card, lane: String)?
     for (k, id) in zip(clip.cards, ids) {
-      let before = prev
-      prev = nil
-      let copy = Card(id: id, x: k.x, y: k.y, w: k.w, text: k.text, notes: k.notes, color: k.color)
+      var copy = Card(id: id, x: k.x, y: k.y, w: k.w, text: k.text, notes: k.notes, color: k.color)
       let o = same ? card(k.id) : nil
       let kr = Rect(x: k.x, y: k.y, w: k.w, h: k.h)
       let l = same && o == nil ? home(kr) : nil
       if let o, home(o.rect(height: heightOf(o.id))) != nil {
-        cards.append(Card(id: id, x: o.x, y: o.y + 1, w: k.w, text: k.text, notes: k.notes, color: k.color))
+        // Centre just after the original's: settle orders the copy next.
+        copy.x = o.x
+        copy.y = o.y + heightOf(o.id) / 2 - k.h / 2 + 1
       } else if let l {
-        // A run of cut cards goes back in order: each just below the last, by less than a grid so that no centre ties.
-        var c = copy
-        if let before, before.lane == l.id, Rect(x: before.k.x, y: before.k.y, w: before.k.w, h: before.k.h).sharesColumn(with: kr) {
-          c.y = before.copy.y + 1.0 / 64
-        } else {
-          let n = cards.filter { $0.y >= k.y && l.rect.containsCentre(of: $0.rect(height: heightOf($0.id))) && kr.sharesColumn(with: $0.rect(height: heightOf($0.id))) }
-            .min { $0.y < $1.y }
-          c.y = n.map { $0.y + heightOf($0.id) / 2 - k.h / 2 - 1 } ?? k.y
-        }
-        cards.append(c)
-        prev = (k, c, l.id)
+        let n = cards.filter { $0.y >= k.y && l.rect.containsCentre(of: $0.rect(height: heightOf($0.id))) && kr.sharesColumn(with: $0.rect(height: heightOf($0.id))) }
+          .min { $0.y < $1.y }
+        // Centre just before n's.
+        if let n { copy.y = n.y + heightOf(n.id) / 2 - k.h / 2 - 1 }
       } else {
         free.append((k, copy))
+        continue
       }
+      cards.append(copy)
+      gravity(heightOf)
     }
     if !free.isEmpty {
       let x0 = free.map(\.0.x).min()!, y0 = free.map(\.0.y).min()!
