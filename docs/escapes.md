@@ -70,7 +70,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-10-29 | ios | B5 | iOS chaos | L1 | `web/test/owner.test.ts` | `pageshow persisted`, then the app's own `pagehide` at once, on every Back, in `build/ios-chaos/SEED.jsonl` (application, storage) | 0 | yes | #191 |
 | 2026-10-29 | ios | B3 | nightly | L1 | `scenarios/off-card.test.ts` | `pointerdown at 196,34 on span.person` in `timeline.txt` after `the page scrolled 350 of 412`, where the controls' taps were `on div#board`, and neither `input tap` nor `transition edit end` after it in the iPhone's `flight.json` (runtime, application) | 0 | yes | #190 |
 | 2026-10-30 | ios | B5 | iOS chaos | L1 | `web/test/binding.test.ts` | every lost card left with its editor open, and no `put` between its ack and `pagehide`, in `build/ios-chaos/SEED.jsonl` (application, storage) | 0 | yes | #197 |
-| 2026-10-30 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | `page keydown Meta`, `c` and no `transition copy` in WebKit's `timeline.txt` and `flight.json`, where Chromium's had `keydown Control` and `transition copy` (engine, harness) | 0 | yes | copy-paste-web |
+| 2026-10-30 | webkit | B3 | nightly | L2 | `scenarios/chord.test.ts` | `page keydown Meta`, `c` and no `transition copy` in WebKit's `timeline.txt` and `flight.json`, where Chromium's had `keydown Control` and `transition copy` (engine, harness) | 0 | yes | #203 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
