@@ -118,11 +118,10 @@ private func isClear(_ b: Board, _ id: String, of others: [String]) -> Bool {
   #expect(Clip(html: "<div data-breezy=\"{nope\"></div>") == nil)
 }
 
-@Test func clipClampsTheColourAndMendsTheWidth() {
+@Test func clipClampsTheColourAndMakesEveryCopyACardWide() {
   #expect(one(",\"color\":9")?.color == 5)
   #expect(one(",\"color\":0")?.color == 1)
-  #expect(one(",\"w\":0")?.w == 240)
-  #expect(one(",\"w\":-5")?.w == 240)
+  for w in ["0", "-5", "480"] { #expect(one(",\"w\":\(w)")?.w == 240) }
 }
 
 @Test func adjacentCutLaneCardsPasteBackInOrder() {

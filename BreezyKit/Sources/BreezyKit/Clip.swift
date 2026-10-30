@@ -22,17 +22,18 @@ public struct ClipCard: Codable, Equatable, Sendable {
     self.notes = notes
   }
 
-  /// A size, colour or notes of the wrong type or missing is mended as the web app mends it, not refused.
+  /// Every copy is a card wide, whatever the width says; a height, colour or notes of the wrong type or missing is
+  /// mended as the web app mends it, not refused.
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     id = try c.decode(String.self, forKey: .id)
     x = try c.decode(Double.self, forKey: .x)
     y = try c.decode(Double.self, forKey: .y)
-    w = (try? c.decode(Double.self, forKey: .w)) ?? 0
-    h = (try? c.decode(Double.self, forKey: .h)) ?? 0
+    w = Metrics.cardWidth
+    h = (try? c.decode(Double.self, forKey: .h)).flatMap { $0 > 0 ? $0 : nil } ?? 2 * Metrics.grid
     text = try c.decode(String.self, forKey: .text)
     color = (try? c.decode(Double.self, forKey: .color)).map { Int($0.rounded().clamped(1, 5)) } ?? 1
-    notes = try? c.decode(String.self, forKey: .notes)
+    notes = (try? c.decode(String.self, forKey: .notes)).flatMap { $0.isEmpty ? nil : $0 }
   }
 }
 
@@ -66,15 +67,7 @@ public struct Clip: Codable, Equatable, Sendable {
       let end = html[key.upperBound...].firstIndex(of: "\"")
     else { return nil }
     let json = String(html[key.upperBound..<end]).htmlUnescaped
-    guard var clip = try? JSONDecoder().decode(Clip.self, from: Data(json.utf8)),
-      clip.v == 1
-    else { return nil }
-    for i in clip.cards.indices {
-      if !(clip.cards[i].w > 0) { clip.cards[i].w = Metrics.cardWidth }
-      if !(clip.cards[i].h > 0) { clip.cards[i].h = 2 * Metrics.grid }
-      clip.cards[i].color = min(5, max(1, clip.cards[i].color))
-      if clip.cards[i].notes == "" { clip.cards[i].notes = nil }
-    }
+    guard let clip = try? JSONDecoder().decode(Clip.self, from: Data(json.utf8)), clip.v == 1 else { return nil }
     self = clip
   }
 }
