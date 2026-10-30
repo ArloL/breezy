@@ -1,7 +1,7 @@
-/** What Playwright presses in a desktop browser for `key` with ⌘ (`meta`) or ⇧. On the Mac, ⌘. Off it, the caret's moves
- * and a field's select-all, copy, cut and paste as the OS edits: Ctrl, with Ctrl+Home and Ctrl+End for ⌘↑ and ⌘↓, and
- * Home and End for ⌘← and ⌘→, as the OS fires no copy event for Meta+C, whatever the page says; and the board's commands
- * as the page takes them, by whether it says it is on a Mac (`pageMac`), as Playwright's WebKit does on every OS. */
+/** What Playwright presses in a desktop browser for `key` with ⌘ (`meta`) or ⇧. On the Mac, ⌘. Off it, the caret's moves,
+ * a field's select-all, and copy, cut and paste, as the OS fires no copy event for Meta+C, go as the OS edits, whatever
+ * the page says: Ctrl, with Ctrl+Home and Ctrl+End for ⌘↑ and ⌘↓, and Home and End for ⌘← and ⌘→; and the board's
+ * commands as the page takes them, by whether it says it is on a Mac (`pageMac`), as Playwright's WebKit does on every OS. */
 export function chord(key: string, mods: { meta?: boolean; shift?: boolean }, { macOS, pageMac }: { macOS: boolean; pageMac: boolean }) {
   const shift = mods.shift ? "Shift+" : "";
   if (!mods.meta) return `${shift}${key}`;

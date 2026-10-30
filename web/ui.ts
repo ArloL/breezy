@@ -5,9 +5,8 @@ import { haptic } from "./haptics.ts";
 import { animate } from "./motion.ts";
 import { clampZoom } from "./view.ts";
 import { composingKey } from "./ime.ts";
-import { clipHTML, clipText, readClip } from "./clip.ts";
+import { Taps } from "./clip.ts";
 import type { App, Match } from "./app.ts";
-import type { Clip } from "./types.ts";
 
 const KEYS_H = 44;
 const MENUS: Partial<Record<string, string>> = { add: ".add .menu", more: ".menu.more", colours: ".colours .menu" };
@@ -45,9 +44,11 @@ export class UI {
   menus: Menus;
   zoom: number | undefined;
   zoomTimer: ReturnType<typeof setTimeout> | undefined;
+  taps: Taps;
 
   constructor(app: App) {
     this.app = app;
+    this.taps = new Taps(app, () => navigator.clipboard);
     this.matches = [];
     this.index = -1;
     this.$ = <E extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<E>(sel)!;
@@ -116,13 +117,13 @@ export class UI {
       case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
-      case "paste": this.closeMenu(); return void this.paste();
+      case "paste": this.closeMenu(); return void this.taps.paste();
       case "colour": this.closeMenu(); return app.colour(Number(b!.dataset.colour));
       case "turn": {
         const [c] = app.selectedCards();
         return c && app.turn(app.state.turned === c.id ? null : c.id);
       }
-      case "copy": return this.copy();
+      case "copy": return void (this.taps.copy() && haptic());
       case "delete": return app.removeSelection();
       case "key-turn": return app.switchSide();
       case "key-done": return app.endEditing();
@@ -137,35 +138,6 @@ export class UI {
         return this.find("");
       }
     }
-  }
-
-  /** The selected cards to the clipboard, written within the tap, as Safari and Chrome on a phone want. */
-  copy() {
-    const clip = this.app.copySelection();
-    if (!clip) return;
-    const blob = (type: string, text: string) => new Blob([text], { type });
-    const refused = (e: Error) => this.app.flight.note("decision", "copy refused", { why: e.name });
-    try {
-      navigator.clipboard.write([new ClipboardItem({ "text/html": blob("text/html", clipHTML(clip)), "text/plain": blob("text/plain", clipText(clip)) })]).catch(refused);
-    } catch (e) {
-      refused(e as Error);
-    }
-  }
-
-  /** The clipboard's cards, read from the tap, which iOS asks to Paste; else what this page last copied, if anything. */
-  async paste() {
-    const app = this.app;
-    let clip: Clip | null = null, why = "no cards";
-    try {
-      for (const item of await navigator.clipboard.read()) {
-        if (item.types.includes("text/html") && (clip = readClip(await (await item.getType("text/html")).text()))) break;
-      }
-    } catch (e) {
-      why = (e as Error).name;
-    }
-    app.flight.note("decision", "paste source", clip ? { from: "clipboard" } : { from: "page", why, copied: !!app.copied });
-    clip ??= app.copied;
-    if (clip) app.paste(clip);
   }
 
   update() {
