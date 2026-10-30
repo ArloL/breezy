@@ -776,7 +776,7 @@ export class BrowserDevice extends Device {
   }
 
   /** On a phone, what the browser asks before the page reads the clipboard answered, once the page has not pasted a
-   * moment after the tap: Chrome asks whether to allow it, and Firefox shows Paste over the page. */
+   * moment after the tap: Chrome asks whether to allow it; Firefox, reading what its page wrote, asks nothing. */
   override async tapToPaste(selector: string) {
     const last = async () => (await this.page.evaluate(readFlight))?.entries.findLast(([, k, w]) => k === "decision" && w === "paste source")?.[0] ?? -1;
     const before = this.touchscreen ? await last() : 0;

@@ -16,3 +16,7 @@ test("Chrome's question whether the page may read the clipboard is answered by i
   const ui = '<node text="localhost:58565 wants to see text and images copied to the clipboard" bounds="[63,1500][1017,1700]" /><node text="Allow while visiting the site" bounds="[63,1802][1017,1928]" /><node text="Don\'t allow" bounds="[63,2060][1017,2186]" />';
   assert.deepEqual(allowance(ui), { text: "Allow while visiting the site", x: 540, y: 1865 });
 });
+
+test("the page's own Paste is no answer to the browser", () => {
+  assert.equal(allowance('<node text="Card" bounds="[300,1600][700,1700]" /><node text="Paste" bounds="[300,1800][700,1900]" />'), null);
+});
