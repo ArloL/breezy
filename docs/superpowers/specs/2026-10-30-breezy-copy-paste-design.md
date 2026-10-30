@@ -37,7 +37,20 @@ The clipboard carries each card's id and where it stood, and the board pasted to
 
 **Both apps.** The placement is a rule of the board, in `web/rules.ts` and BreezyKit's `Edits.swift`, tested on both and held to the same results by the parity tests. The Mac's `CanvasView` answers `copy:`, `cut:` and `paste:` while no editor is first responder and enables the Edit menu's items by the selection and the clipboard; the web app answers the document's `copy`, `cut` and `paste` events while the board has the keyboard. The README's table gets a Copy row.
 
-**Clipboard between the apps.** A browser's custom clipboard types (`application/x-…` in a `DataTransfer`) stay inside that browser, so the cards also travel as HTML both sides can write and read: the plain text, with the cards as JSON in an attribute. The builder confirms that Safari, Chrome and Firefox keep that attribute through a paste from the Mac app, and from another browser, before building on it. If one drops it, another carrier is found for that browser; failing that, it pastes only what it copied itself (my call).
+**Clipboard between the apps.** A browser's custom clipboard types (`application/x-…` in a `DataTransfer`) stay inside that browser, so the cards also travel as HTML both sides can write and read: the plain text, with the cards as JSON in an attribute. Three carriers were measured, each with a copy written in a `copy` event (on the Mac, `public.html` through `NSPasteboard`) and read in a `paste` event (on the Mac, `public.html`), on macOS 27.0.1 with Chromium 156 for Chrome, Safari 27.0.1, Firefox 159 and Safari on the iOS 27.0 Simulator:
+
+| Pasted in ← copied in | `<div data-breezy="JSON">` | `<!--breezy:JSON-->` | `<meta name="breezy" content="JSON">` |
+|---|---|---|---|
+| Chrome ← Chrome, Firefox, the Mac | kept | kept | kept |
+| Firefox ← Firefox, Chrome, the Mac | kept | kept | kept |
+| Safari ← Safari, same origin | kept | kept | kept |
+| Safari ← Safari of another origin, Chrome, Firefox, the Mac | kept | dropped | dropped |
+| Chrome, Firefox, the Mac ← Safari | kept | dropped | dropped |
+| the Mac ← Chrome, Firefox | kept | kept | kept |
+| iOS Safari ← iOS Safari, another origin | kept | dropped | dropped |
+| iOS Safari ← the Mac, another browser | not measured | not measured | not measured |
+
+Safari serialises what it writes, and what it reads from another origin, afresh: it adds a `<head>` and inline styles and drops comments and `<meta>`, but keeps `data-` attributes. The carrier is `<div data-breezy="JSON">text</div>`, kept on every path measured: the JSON with `<`, `>` and `&` written as `<`, `>` and `&`, then `&` and `"` escaped for the attribute; a reader finds the element by its attribute, as browsers wrap the fragment.
 
 ## Approaches to placement, tried or weighed
 
