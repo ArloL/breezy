@@ -603,8 +603,7 @@ export const cases: Case[] = [
   {
     name: "a card in a lane copied and pasted shows right below it on the other device",
     input: "mouse",
-    // no real device until its app takes ⌘C and ⌘V
-    acts: [],
+    acts: ["chromium", "webkit", "firefox"],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
@@ -624,8 +623,7 @@ export const cases: Case[] = [
     name: "⌘V in a card being edited pastes the copied card's front as text, not a copy of the card",
     input: "mouse",
     edits: true,
-    // no real device until its app takes ⌘C and ⌘V
-    acts: [],
+    acts: ["chromium", "webkit", "firefox"],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
