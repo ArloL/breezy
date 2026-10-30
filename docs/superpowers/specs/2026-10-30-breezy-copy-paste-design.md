@@ -50,7 +50,7 @@ The clipboard carries each card's id and where it stood, and the board pasted to
 | iOS Safari ← iOS Safari, another origin | kept | dropped | dropped |
 | iOS Safari ← the Mac, another browser | not measured | not measured | not measured |
 
-Safari serialises what it writes, and what it reads from another origin, afresh: it adds a `<head>` and inline styles and drops comments and `<meta>`, but keeps `data-` attributes. The carrier is `<div data-breezy="JSON">text</div>`, kept on every path measured: the JSON with `<`, `>` and `&` written as `<`, `>` and `&`, then `&` and `"` escaped for the attribute; a reader finds the element by its attribute, as browsers wrap the fragment.
+Safari serialises what it writes, and what it reads from another origin, afresh: it adds a `<head>` and inline styles and drops comments and `<meta>`, but keeps `data-` attributes. The carrier is `<div data-breezy="JSON">text</div>`, kept on every path measured: the JSON with `<`, `>` and `&` written as `\u003c`, `\u003e` and `\u0026`, then `&` and `"` escaped for the attribute; a reader finds the element by its attribute, as browsers wrap the fragment.
 
 ## Approaches to placement, tried or weighed
 
