@@ -1,5 +1,5 @@
 import { encode } from "./sync/base64.ts";
-import type { Board, Card, HeightOf, Lane, Rect } from "./types.ts";
+import type { Board, Card, Clip, ClipCard, HeightOf, Lane, Point, Rect } from "./types.ts";
 
 export const GRID = 24;
 export const CARD_W = 240;
@@ -114,6 +114,55 @@ export function setColor(b: Board, ids: ReadonlySet<string>, color: number) {
 export function remove(b: Board, ids: ReadonlySet<string>) {
   b.cards = b.cards.filter((c) => !ids.has(c.id));
   b.lanes = b.lanes.filter((l) => !ids.has(l.id));
+}
+
+/** The selected cards, lanes left out, in reading order; null when none is a card. */
+export function clip(b: Board, board: string, ids: ReadonlySet<string>, heightOf: HeightOf): Clip | null {
+  const cards = b.cards
+    .filter((c) => ids.has(c.id))
+    .sort((p, q) => p.y - q.y || p.x - q.x)
+    .map((c): ClipCard => ({ id: c.id, x: c.x, y: c.y, w: c.w, h: heightOf(c.id), text: c.text, color: c.color, ...(c.notes ? { notes: c.notes } : {}) }));
+  return cards.length ? { v: 1, board, cards } : null;
+}
+
+/**
+ * Adds copies of the clip's cards and returns their ids, in clip order. On the clip's board a copy
+ * of a card in a lane goes right below its original, or, the original gone, before the first card
+ * of that lane's column at or below where it stood; the rest move as a block to the clear space
+ * nearest their originals, or on another board nearest `here.centre`.
+ */
+export function paste(b: Board, clip: Clip, here: { board: string; centre: Point }, heightOf: HeightOf): string[] {
+  const same = clip.board === here.board;
+  const ids = clip.cards.map(newID);
+  const free: [ClipCard, Card][] = [];
+  clip.cards.forEach((k, i) => {
+    const copy: Card = { id: ids[i], x: k.x, y: k.y, w: k.w, text: k.text, color: k.color, ...(k.notes ? { notes: k.notes } : {}) };
+    const o = same ? card(b, k.id) : undefined;
+    const kr = { x: k.x, y: k.y, w: k.w, h: k.h };
+    const home = (r: Rect) => b.lanes.find((l) => containsCentre(laneRect(l), r));
+    if (o && home(cardRect(o, heightOf(o.id)))) {
+      b.cards.push({ ...copy, x: o.x, y: o.y + 1 });
+    } else if (same && !o && home(kr)) {
+      const l = home(kr)!;
+      const n = b.cards
+        .filter((c) => c.y >= k.y && containsCentre(laneRect(l), cardRect(c, heightOf(c.id))) && sharesColumn(kr, cardRect(c, heightOf(c.id))))
+        .sort((p, q) => p.y - q.y)[0];
+      b.cards.push({ ...copy, y: n ? n.y + heightOf(n.id) / 2 - k.h / 2 - 1 : k.y });
+    } else {
+      free.push([k, copy]);
+    }
+  });
+  if (free.length) {
+    const x0 = Math.min(...free.map(([k]) => k.x));
+    const y0 = Math.min(...free.map(([k]) => k.y));
+    const w = Math.max(...free.map(([k]) => k.x + k.w)) - x0;
+    const h = Math.max(...free.map(([k]) => k.y + k.h)) - y0;
+    const at = same ? { x: x0, y: y0 } : { x: here.centre.x - w / 2, y: here.centre.y - h / 2 };
+    const s = openSpot(b, w, h, at.x, at.y, heightOf);
+    for (const [k, copy] of free) b.cards.push({ ...copy, x: k.x + s.x - x0, y: k.y + s.y - y0 });
+  }
+  gravity(b, heightOf);
+  return ids;
 }
 
 /** The grid point nearest (`x`, `y`) where a `w` × `h` rect stays a grid clear of every card and lane. */
