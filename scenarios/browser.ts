@@ -764,6 +764,13 @@ export class BrowserDevice extends Device {
     await this.gesture([[0, "down", [[0, p]]], [50, "up", [[0, p]]]]);
   }
 
+  /** Firefox reads it unasked; Chromium and WebKit once granted. */
+  override async clipboard() {
+    const grant = { chromium: ["clipboard-read", "clipboard-write"], webkit: ["clipboard-read"] }[this.kind as string];
+    if (grant) await this.page.context().grantPermissions(grant);
+    return this.page.evaluate(() => navigator.clipboard.readText());
+  }
+
   override async sight() {
     return this.page.evaluate(readSight);
   }

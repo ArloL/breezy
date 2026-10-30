@@ -7,6 +7,8 @@ import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
 import { wheelAction } from "./wheel.ts";
 import { command, onMac, perform } from "./keys.ts";
+import { clipHTML, clipText, readClip } from "./clip.ts";
+import type { Clip } from "./types.ts";
 import { Library } from "./library.ts";
 import { ownBoards } from "./owner.ts";
 import { loadState, saveState } from "./sync/idb.ts";
@@ -175,6 +177,22 @@ addEventListener("keydown", (e) => {
   if (!cmd) return;
   e.preventDefault();
   perform(app, cmd, mouse);
+});
+// ⌘C, ⌘X and ⌘V, which keydown leaves to the browser: an editor or a field copies and pastes its text
+const boardKeys = (e: ClipboardEvent) => e.clipboardData && document.body.dataset.screen !== "boards" && !app.state.editing && !app.state.renaming && !(e.target as Element).closest?.("input, textarea");
+const copied = (e: ClipboardEvent, clip: Clip | null) => {
+  if (!clip) return;
+  e.clipboardData!.setData("text/plain", clipText(clip));
+  e.clipboardData!.setData("text/html", clipHTML(clip));
+  e.preventDefault();
+};
+document.addEventListener("copy", (e) => boardKeys(e) && copied(e, app.copySelection()));
+document.addEventListener("cut", (e) => boardKeys(e) && copied(e, app.cutSelection()));
+document.addEventListener("paste", (e) => {
+  const clip = boardKeys(e) && readClip(e.clipboardData!.getData("text/html"));
+  if (!clip) return;
+  e.preventDefault();
+  app.paste(clip);
 });
 // iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
