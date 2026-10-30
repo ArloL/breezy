@@ -751,6 +751,31 @@ export const cases: Case[] = [
     },
   },
   {
+    name: "a card copied and pasted with the selection bar on a phone shows right below it on the other device",
+    input: "touch",
+    buttons: true,
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      const at = await a.scene();
+      await a.touchDrag(press(item(at, card)), centre(item(at, lane)));
+      await s.settle();
+      // the drag leaves it selected, and the camera where it was, the lane above a short screen's top
+      assert.ok(item(await a.scene(), card).selected, "the card is selected after its drag");
+      await a.tapOn('[data-act="copy"]');
+      // the + shows once nothing is selected
+      await a.tap(await nothing(a));
+      await a.tapOn('[data-act="add"]');
+      await a.tapToPaste('[data-act="paste"]');
+      const text = item(await a.scene(), card).text;
+      await a.until("the copy", async () => (await a.scene()).cards.filter((c) => c.text === text).length === 2);
+      await s.settle();
+      const seen = await b.scene(), l = item(seen, lane);
+      const column = seen.cards.filter((c) => c.text === text && c.x === l.x + 24).map((c) => c.y - l.y).sort((p, q) => p - q);
+      assert.deepEqual(column, [72, 144]);
+    },
+  },
+  {
     name: "a card dragged into a lane with a finger in the app launched without network shows there on the other device once online",
     input: "touch",
     offline: true,

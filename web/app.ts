@@ -55,6 +55,8 @@ export class App {
   readonly flight = new Flight();
   /** The last reveal noted, to note the next only when it decides otherwise. */
   private revealed = "";
+  /** What this page last copied, for a paste the clipboard refuses or holds no cards for. */
+  copied: Clip | null = null;
 
   constructor(board: Board, ports: Ports) {
     this.touching = true;
@@ -364,8 +366,9 @@ export class App {
   /** The selected cards as a clip, null when none is a card. */
   copySelection(): Clip | null {
     const c = R.clip(this.model.board, this.library?.id ?? "", this.state.selection, this.heightOf);
-    if (c) this.flight.note("transition", "copy", { ids: c.cards.length });
-    return c;
+    if (!c) return null;
+    this.flight.note("transition", "copy", { ids: c.cards.length });
+    return (this.copied = c);
   }
 
   /** Copies the selected cards and removes them, lanes staying. */

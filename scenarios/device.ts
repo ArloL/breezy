@@ -152,6 +152,12 @@ export abstract class Device {
     throw new Error(`${this.kind} devices find no elements`);
   }
 
+  /** A tap on what `selector` finds, which reads the clipboard, and on what the system then shows to allow it, where it
+   * shows something. */
+  async tapToPaste(selector: string): Promise<void> {
+    await this.tapOn(selector);
+  }
+
   /** The plain text on its clipboard, as another app pastes it. */
   async clipboard(): Promise<string> {
     throw new Error(`${this.kind} devices cannot read their clipboard`);
