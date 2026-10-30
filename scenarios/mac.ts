@@ -123,10 +123,11 @@ export class MacDevice extends Device {
     ArrowLeft: ["\uf702", 123], ArrowRight: ["\uf703", 124], ArrowDown: ["\uf701", 125], ArrowUp: ["\uf700", 126],
   };
 
-  async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
+  async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}): Promise<void | "disabled"> {
     const k = MacDevice.codes[key];
     if (!k) throw new Error(`no key code for ${key}`);
-    await this.command({ cmd: "key", chars: k[0], code: k[1], command: !!mods.meta, shift: !!mods.shift });
+    const r = await this.command<{ disabled?: boolean } | null>({ cmd: "key", chars: k[0], code: k[1], command: !!mods.meta, shift: !!mods.shift });
+    if (r?.disabled) return "disabled";
   }
 
   override get edits() {

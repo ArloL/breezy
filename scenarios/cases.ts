@@ -531,10 +531,10 @@ const chaos = (input: "mouse" | "touch"): Case => ({
             (w) => ({ ...w, at: to }));
         } else if (r < 0.86) {
           const top = rnd() < 0.5;
-          await step(top ? "⌘↑" : "⌘↓", () => a.key(top ? "ArrowUp" : "ArrowDown", { meta: true }), (w) => ({ ...w, at: top ? 0 : len }));
+          await step(top ? "⌘↑" : "⌘↓", async () => { await a.key(top ? "ArrowUp" : "ArrowDown", { meta: true }); }, (w) => ({ ...w, at: top ? 0 : len }));
         } else if (r < 0.9) {
           const meta = rnd() < 0.5, k = pick(meta ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"]);
-          await step(`${meta ? "⌘" : ""}${k}`, () => a.key(k, { meta }), theirs);
+          await step(`${meta ? "⌘" : ""}${k}`, async () => { await a.key(k, { meta }); }, theirs);
         } else if (r < 0.97 && len) {
           // a selection of up to 6 to the left or right, typed over or deleted. Where AppKit squeezes spaces that end a
           // wrapped line to nothing, ⇧-arrows select more or fewer and ⌫ deletes yet other characters, as in any Mac text
@@ -660,7 +660,8 @@ export const cases: Case[] = [
       const l = item(await a.scene(), lane);
       await a.click({ x: l.x + l.w / 2, y: l.y + 12 });
       assert.deepEqual((await a.scene()).cards.filter((c) => c.selected), [], "a card selected with the lane");
-      await a.key("c", { meta: true });
+      const lone = await a.key("c", { meta: true });
+      if (a.kind === "mac") assert.equal(lone, "disabled", "Copy in the Edit menu with the lane alone selected");
       assert.equal(await a.clipboard(), text, "after ⌘C with the lane alone selected");
       // still the card, as ⌘V shows
       await a.key("v", { meta: true });
@@ -676,6 +677,11 @@ export const cases: Case[] = [
       await a.key("v", { meta: true });
       await s.settle();
       assert.equal((await b.scene()).cards.length, 2, "cards after ⌘V of the find field's text");
+      // the board with the keyboard, as Esc leaves the Mac's window without it
+      if (a.kind === "mac") {
+        await a.click(await nothing(a));
+        assert.equal(await a.key("v", { meta: true }), "disabled", "Paste in the Edit menu with plain text alone on the pasteboard");
+      }
     },
   },
   {

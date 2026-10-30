@@ -39,7 +39,7 @@ export function run(step: Step): Steps {
     const s = await d.scene();
     if (step.do === "drag") return d.drag(where(s, step.from), where(s, step.to), { shift: step.shift, option: step.option });
     if (step.do === "click") return d.click(where(s, step.at), { shift: step.shift });
-    return d.key(step.key, { meta: step.meta, shift: step.shift });
+    await d.key(step.key, { meta: step.meta, shift: step.shift });
   };
 }
 
