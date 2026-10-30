@@ -8,6 +8,7 @@ import { App } from "../../web/app.ts";
 import { Mouse } from "../../web/mouse.ts";
 import { Gestures, HOLD_MS } from "../../web/gestures.ts";
 import { command, perform } from "../../web/keys.ts";
+import { clipText } from "../../web/clip.ts";
 import { DESKTOP, FakeView, fakeHeight, fakePorts, type Screen } from "../../web/test/fakes.ts";
 import type { Person } from "../../web/presence.ts";
 import type { Model } from "../../web/model.ts";
@@ -135,8 +136,8 @@ class WebDevice {
   declare _collab: Collab;
   /** Where the fuzzer's press went down. */
   pressedAt: { x: number; y: number } | null = null;
-  /** What ⌘C or ⌘X last took. */
-  clip: Clip | null = null;
+  /** What ⌘C or ⌘X last took: text, and the cards when from the board. */
+  clip: { text: string; cards: Clip | null } | null = null;
   /** The time a mouse event carries, which tells a double-click from two clicks. */
   clicks = 0;
   /** Its screen: a desktop's, or a phone's that a scenario asks for. */
@@ -417,13 +418,24 @@ class WebDevice {
       case "key": {
         // as main.ts hands a key to the app, on a Mac
         const a = this.open!.app, s = a.state;
-        // the field with the keyboard takes its keys first, as the focused element does in a browser
-        if ((a.view as FakeView).focused?.key(o.key, !!o.meta)) return null;
+        const f = (a.view as FakeView).focused;
         if (o.meta && (o.key === "c" || o.key === "x" || o.key === "v")) {
-          if (o.key === "v") this.clip && a.paste(this.clip, { x: DESKTOP.w / 2, y: DESKTOP.h / 2 });
-          else this.clip = (o.key === "c" ? a.copySelection() : a.cutSelection()) ?? this.clip;
+          // the field with the keyboard copies and pastes its text, as the focused element does in a browser; the board,
+          // the cards as cards and as their fronts
+          if (f && o.key === "v") this.clip && f.type(this.clip.text);
+          else if (f) {
+            const text = f.copy(o.key === "x");
+            if (text !== null) this.clip = { text, cards: null };
+          }
+          else if (o.key === "v") this.clip?.cards && a.paste(this.clip.cards, { x: DESKTOP.w / 2, y: DESKTOP.h / 2 });
+          else {
+            const c = o.key === "c" ? a.copySelection() : a.cutSelection();
+            if (c) this.clip = { text: clipText(c), cards: c };
+          }
           return null;
         }
+        // the field with the keyboard takes its keys first, as the focused element does in a browser
+        if (f?.key(o.key, !!o.meta)) return null;
         const typing = s.editing ? "card" : s.renaming ? "lane" : null;
         const e = { key: o.key, code: o.key === "0" ? "Digit0" : "", metaKey: !!o.meta, shiftKey: !!o.shift, ctrlKey: false, altKey: false, isComposing: false, keyCode: 0 };
         const cmd = command(e, { mac: true, typing });

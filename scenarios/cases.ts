@@ -633,6 +633,9 @@ export const cases: Case[] = [
       await a.click(at);
       await a.key("c", { meta: true });
       await a.doubleClick(at);
+      // over another front, for the paste to show
+      await a.selectAll();
+      await a.type("y");
       await a.selectAll();
       await a.key("v", { meta: true });
       await a.key("Escape");
