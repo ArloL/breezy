@@ -96,11 +96,21 @@ export class FakeField implements Field {
     }
   }
 
-  /** A key the field takes before the board, as a browser gives the focused element its keys first; false if not. Its
-   * ⌘C, ⌘X and ⌘V copy and paste text, which the fakes keep no clipboard of. */
+  /** What ⌘C copies, or with `cut` ⌘X: the text when all of it is selected, as ⌘A is the only selection here; else null. */
+  copy(cut: boolean) {
+    if (!this.selected) return null;
+    const text = this.value;
+    if (cut) {
+      this.value = "";
+      this.selected = false;
+      this.on?.input();
+    }
+    return text;
+  }
+
+  /** A key the field takes before the board, as a browser gives the focused element its keys first; false if not. */
   key(key: string, meta: boolean) {
     if (meta && key === "a") return (this.selected = true);
-    if (meta && "cxv".includes(key)) return true;
     if (!meta && key === "Enter" && this.on?.enter) {
       this.type("\n");
       return true;
