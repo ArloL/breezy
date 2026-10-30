@@ -169,7 +169,9 @@ test("paste of 200 cards is one undo step that undo takes back whole", () => {
   const undos = app.model.undos.length;
   app.paste(clip, { x: 0, y: 3000 });
   assert.equal(app.model.board.cards.length, 400);
+  const old = new Set(app.model.board.cards.slice(0, 200).map((c) => c.id));
   assert.equal(app.state.selection.size, 200);
+  assert.ok([...app.state.selection].every((id) => !old.has(id)));
   assert.equal(app.model.undos.length, undos + 1);
   app.model.undo();
   assert.equal(app.model.board.cards.length, 200);
@@ -190,4 +192,23 @@ test("paste during a drag does nothing", () => {
   app.model.begin();
   app.paste(clip);
   assert.equal(app.model.board.cards.length, 1);
+});
+
+test("paste during an edit ends it and puts the copies on the board", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  const clip = app.copySelection()!;
+  app.beginEdit("c0");
+  app.paste(clip);
+  assert.equal(app.state.editing, null);
+  assert.equal(app.model.board.cards.length, 2);
+});
+
+test("cut during a drag does nothing", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  app.model.begin();
+  assert.equal(app.cutSelection(), null);
+  assert.equal(app.model.board.cards.length, 1);
+  assert.ok(app.model.inGesture);
 });
