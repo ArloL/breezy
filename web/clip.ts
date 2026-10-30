@@ -1,4 +1,5 @@
 import { CARD_W } from "./rules.ts";
+import type { Flight } from "./flight.ts";
 import type { Clip, ClipCard } from "./types.ts";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
@@ -56,4 +57,63 @@ export function readClip(html: string): Clip | null {
   if (!j || j.v !== 1 || typeof j.board !== "string" || !Array.isArray(j.cards)) return null;
   const cards = j.cards.map(readCard);
   return cards.includes(null) ? null : { v: 1, board: j.board, cards };
+}
+
+/** What `Taps` needs of the app. */
+export interface Copier {
+  copied: Clip | null;
+  copySelection(): Clip | null;
+  paste(c: Clip): void;
+  flight: Pick<Flight, "note">;
+}
+
+/** A phone's Copy and Paste by buttons, through the system's clipboard; what this page last copied when that fails. */
+export class Taps {
+  private readonly app: Copier;
+  private readonly clipboard: () => Pick<Clipboard, "read" | "write">;
+  /** Whether the last Copy's write was refused: the clipboard then holds older cards than this page copied, if any. */
+  private refused = false;
+
+  constructor(app: Copier, clipboard: () => Pick<Clipboard, "read" | "write">) {
+    this.app = app;
+    this.clipboard = clipboard;
+  }
+
+  /** The selected cards to the clipboard, written within the tap, as Safari and Chrome on a phone want; the clip, if any. */
+  copy(): Clip | null {
+    const clip = this.app.copySelection();
+    if (!clip) return null;
+    const blob = (type: string, text: string) => new Blob([text], { type });
+    const refused = (e: Error) => {
+      this.refused = true;
+      this.app.flight.note("decision", "copy refused", { why: e.name });
+    };
+    try {
+      this.clipboard().write([new ClipboardItem({ "text/html": blob("text/html", clipHTML(clip)), "text/plain": blob("text/plain", clipText(clip)) })])
+        .then(() => (this.refused = false), refused);
+    } catch (e) {
+      refused(e as Error);
+    }
+    return clip;
+  }
+
+  /** The clipboard's cards, read from the tap, which iOS asks to Paste; else what this page last copied, if anything. */
+  async paste() {
+    const app = this.app;
+    let clip: Clip | null = null, why = "no cards";
+    if (this.refused && app.copied) {
+      app.flight.note("decision", "paste source", { from: "page", why: "copy refused", copied: true });
+      return app.paste(app.copied);
+    }
+    try {
+      for (const item of await this.clipboard().read()) {
+        if (item.types.includes("text/html") && (clip = readClip(await (await item.getType("text/html")).text()))) break;
+      }
+    } catch (e) {
+      why = (e as Error).name;
+    }
+    app.flight.note("decision", "paste source", clip ? { from: "clipboard" } : { from: "page", why, copied: !!app.copied });
+    clip ??= app.copied;
+    if (clip) app.paste(clip);
+  }
 }

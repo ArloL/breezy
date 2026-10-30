@@ -618,6 +618,11 @@ export const cases: Case[] = [
       const seen = await b.scene(), l = item(seen, lane), text = item(seen, card).text;
       const column = seen.cards.filter((c) => c.text === text && c.x === l.x + 24).map((c) => c.y - l.y).sort((p, q) => p - q);
       assert.deepEqual(column, [72, 144]);
+      // through the phone's clipboard, as the page's own copy would hide a write or read that never works
+      if (/^ios-|android/.test(a.kind)) {
+        const said = (await a.flight())?.entries.filter(([, , what]) => what === "copy refused" || what === "paste source");
+        assert.deepEqual(said?.map(([, , what, data]) => [what, data?.from]), [["paste source", "clipboard"]], "what the phone's app said of the clipboard");
+      }
     },
   },
   {
@@ -773,6 +778,11 @@ export const cases: Case[] = [
       const seen = await b.scene(), l = item(seen, lane);
       const column = seen.cards.filter((c) => c.text === text && c.x === l.x + 24).map((c) => c.y - l.y).sort((p, q) => p - q);
       assert.deepEqual(column, [72, 144]);
+      // through the phone's clipboard, as the page's own copy would hide a write or read that never works
+      if (/^ios-|android/.test(a.kind)) {
+        const said = (await a.flight())?.entries.filter(([, , what]) => what === "copy refused" || what === "paste source");
+        assert.deepEqual(said?.map(([, , what, data]) => [what, data?.from]), [["paste source", "clipboard"]], "what the phone's app said of the clipboard");
+      }
     },
   },
   {

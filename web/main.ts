@@ -180,17 +180,18 @@ addEventListener("keydown", (e) => {
 });
 // ⌘C, ⌘X and ⌘V, which keydown leaves to the browser: an editor or a field copies and pastes its text
 const boardKeys = (e: ClipboardEvent) => e.clipboardData && document.body.dataset.screen !== "boards" && !app.state.editing && !app.state.renaming && !(e.target as Element).closest?.("input, textarea");
-const copied = (e: ClipboardEvent, clip: Clip | null) => {
+const put = (e: ClipboardEvent, clip: Clip | null) => {
   if (!clip) return;
   e.clipboardData!.setData("text/plain", clipText(clip));
   e.clipboardData!.setData("text/html", clipHTML(clip));
   e.preventDefault();
 };
-document.addEventListener("copy", (e) => boardKeys(e) && copied(e, app.copySelection()));
-document.addEventListener("cut", (e) => boardKeys(e) && copied(e, app.cutSelection()));
+document.addEventListener("copy", (e) => boardKeys(e) && put(e, app.copySelection()));
+document.addEventListener("cut", (e) => boardKeys(e) && put(e, app.cutSelection()));
 document.addEventListener("paste", (e) => {
-  const clip = boardKeys(e) && readClip(e.clipboardData!.getData("text/html"));
-  if (!clip) return;
+  if (!boardKeys(e)) return;
+  const clip = readClip(e.clipboardData!.getData("text/html"));
+  if (!clip) return app.flight.note("decision", "paste source", { from: "none" });
   e.preventDefault();
   app.paste(clip);
 });

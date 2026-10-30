@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { clipHTML, clipText, readClip } from "../clip.ts";
+import { clipHTML, clipText, readClip, Taps } from "../clip.ts";
 import type { Clip } from "../types.ts";
 
 const clip: Clip = {
@@ -63,4 +63,30 @@ test("readClip mends a card's colour, size and notes of the wrong type", () => {
   assert.equal(one({ w: "x" }).w, 240);
   assert.equal(one({ h: "x" }).h, 48);
   assert.equal(one({ notes: 5 }).notes, undefined);
+});
+
+// Node has no ClipboardItem; Taps only hands it to the clipboard.
+globalThis.ClipboardItem ??= class {
+  readonly types: string[];
+  constructor(items: Record<string, Blob>) {
+    this.types = Object.keys(items);
+  }
+} as unknown as typeof ClipboardItem;
+
+test("after the clipboard refuses a Copy a Paste takes what this page copied, not the older cards still there", async () => {
+  const older: Clip = { ...clip, cards: [clip.cards[1]] };
+  const pasted: Clip[] = [], notes: unknown[] = [];
+  const app = { copied: null as Clip | null, copySelection: () => (app.copied = clip), paste: (c: Clip) => void pasted.push(c), flight: { note: (...n: unknown[]) => void notes.push(n) } };
+  const html = new Blob([clipHTML(older)], { type: "text/html" });
+  const board = {
+    write: async () => {
+      throw new DOMException("not allowed", "NotAllowedError");
+    },
+    read: async () => [{ types: ["text/html"], getType: async () => html }] as unknown as ClipboardItems,
+  };
+  const taps = new Taps(app, () => board);
+  taps.copy();
+  await new Promise((r) => setTimeout(r));
+  await taps.paste();
+  assert.deepEqual(pasted, [clip]);
 });
