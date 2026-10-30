@@ -2,7 +2,7 @@
 // read from the call that timed out and the slow ones before it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { iosLogLines, simctl, simctlLog } from "./ios.ts";
+import { iosLogLines, simctl, simctlFailures, simctlLog } from "./ios.ts";
 
 test("the simulator's errors and faults join the timeline on the wall clock, the rest stays in its file", () => {
   const log = [
@@ -45,4 +45,13 @@ test("a busy iPhone's log of 5 minutes, past Node's 1 MiB, is kept", () => {
     return out;
   };
   assert.equal(simctl(["spawn", "U", "log", "show"], { timeout: 1000 }, run).length, 8 * 2 ** 20);
+});
+
+test("a call that failed since a case began is found, though the case went on past it", () => {
+  // as the launch opens Safari's first URL again when simctl gives up on it, and the case then passes
+  simctlLog.length = 0;
+  simctlLog.push([1, "simctl", "simctl openurl U http://x: failed after 51000 ms, exit 60: Operation timed out"],
+    [5, "simctl", "simctl openurl U http://x: 1200 ms"],
+    [9, "simctl", "simctl openurl U http://y: failed after 33000 ms, exit 60: Operation timed out"]);
+  assert.deepEqual(simctlFailures(5), ["simctl openurl U http://y: failed after 33000 ms, exit 60: Operation timed out"]);
 });

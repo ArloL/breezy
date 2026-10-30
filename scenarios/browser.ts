@@ -16,7 +16,7 @@ import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
 import { readSight } from "../web/sight.ts";
 import { Device, readFlight, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
-import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, iosState, openUntilAsked, SimHid, simctl, simctlLog } from "./ios.ts";
+import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, iosState, openUntilAsked, SimHid, simctl, simctlFailures, simctlLog } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
@@ -1585,8 +1585,10 @@ export class RealWorld {
       }
     }
     // what the iPhone was doing as a case on it failed, read from the simulator itself: a world that never made its
-    // device, as when simctl timed out opening Safari's first page, kept nothing of it otherwise
-    if (error && c.pair.some((k) => k.startsWith("ios-"))) {
+    // device, as when simctl timed out opening Safari's first page, kept nothing of it otherwise; and as a simctl call
+    // failed in a case that went on, as the launch opens that page again, so the night's timeout is read all the same
+    const simctlFailed = simctlFailures(this.started);
+    if ((error || simctlFailed.length) && c.pair.some((k) => k.startsWith("ios-"))) {
       let udid: string | null = null;
       try {
         udid = bootedIphone();
@@ -1613,6 +1615,7 @@ export class RealWorld {
       step: failing && { who: failing.who, action: failing.action, args: failing.args, error: failing.error ?? "never ended" },
       steps: this.steps.list.map((s) => ({ ...s, at: s.at - this.started })),
       devices: parts.map((p) => p.device),
+      ...simctlFailed.length ? { simctlFailed } : {},
       environment: environ,
     }, null, 2)}\n`);
   }

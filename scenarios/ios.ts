@@ -40,6 +40,11 @@ export function simctl(args: string[], { timeout }: { timeout: number }, run: (f
   }
 }
 
+/** The simctl calls since `since` that failed, as simctlLog says them. */
+export function simctlFailures(since: number): string[] {
+  return simctlLog.filter(([at, , what]) => at >= since && /: failed after \d+ ms, /.test(what)).map(([, , what]) => what);
+}
+
 /** The errors and faults of a `log show --style compact` of the simulator, as timeline lines of `who`'s, on the wall
  * clock: the rest is too much to read among the case's own, and stays in its file. */
 export function iosLogLines(log: string, who: string): Line[] {
@@ -54,7 +59,7 @@ export function iosLogLines(log: string, who: string): Line[] {
   return lines;
 }
 
-/** What the simulator `udid` was doing as a case on it failed, whatever the harness had made of it, into `dir`: its
+/** What the simulator `udid` was doing as a case on it failed, or a simctl call did, whatever the harness had made of it, into `dir`: its
  * screen, its log of the last 5 minutes from what opens and shows the page, and what of that runs; its log's errors
  * and faults as timeline lines. Each call bounded; what fails is said in its file. */
 export function iosState(udid: string, dir: string, who = "iPhone"): Line[] {
