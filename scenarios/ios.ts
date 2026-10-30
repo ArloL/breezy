@@ -149,12 +149,13 @@ function labelled(out: string, label: string, types: string[]): Point | null {
   return e ? { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 } : null;
 }
 
-/** Where the iPhone shows iOS's Paste callout, which its accessibility lists as text, or null; without holding up the
- * cases' clock, as a describe-all takes seconds. */
+/** Where the iPhone shows iOS's Paste callout, which its accessibility lists as text, or null; not a button, as the
+ * page's own Paste is one, which WebKit may hold from closing while the callout shows. Without holding up the cases'
+ * clock, as a describe-all takes seconds. */
 function pasteCallout(udid: string): Promise<Point | null> {
   dropEndedCompanions();
   return new Promise((resolve) => execFile("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
-    { encoding: "utf8", timeout: 30_000 }, (e, out) => resolve(e ? null : labelled(out, "Paste", ["StaticText", "Button"]))));
+    { encoding: "utf8", timeout: 30_000 }, (e, out) => resolve(e ? null : labelled(out, "Paste", ["StaticText"]))));
 }
 
 /** Clears what the app on the Home Screen keeps, its storage, caches and service worker, while it does not run: cleared
@@ -180,6 +181,8 @@ export class SimHid {
   private readonly replies: ((line: string) => void)[] = [];
   private tail: Promise<unknown> = Promise.resolve();
   private ended = "";
+  /** How many streams of touches it has sent. */
+  touched = 0;
 
   private constructor(child: ChildProcessWithoutNullStreams) {
     this.child = child;
@@ -226,7 +229,7 @@ export class SimHid {
 
   /** One finger's events in screen points, each after its wait in ms, as one stream. */
   touches(t: [number, PointerPhase, number, number][]) {
-    return this.send({ touches: t });
+    return this.send({ touches: t }).finally(() => this.touched++);
   }
 
   text(s: string) {
@@ -624,7 +627,9 @@ export class IosDevice extends Device {
     let tapped = false;
     // its error kept for later, not left unhandled meanwhile
     const tap = this.tapOn(selector).then(() => null, (e: Error) => e).finally(() => (tapped = true));
-    const udid = bootedIphone()!;
+    const udid = bootedIphone()!, touched = this.hid.touched;
+    // looked for once the tap is sent, as a callout an earlier page left showing is not this one's
+    while (!tapped && this.hid.touched === touched) await sleep(50);
     let callout: Point | null = null;
     while (!tapped && !(callout = await pasteCallout(udid))) await sleep(250);
     if (callout) await this.hid.touches([[0, "down", callout.x, callout.y], [50, "up", callout.x, callout.y]]);
