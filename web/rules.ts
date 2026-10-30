@@ -135,19 +135,28 @@ export function paste(b: Board, clip: Clip, here: { board: string; centre: Point
   const same = clip.board === here.board;
   const ids = clip.cards.map(newID);
   const free: [ClipCard, Card][] = [];
+  let prev: { k: ClipCard; copy: Card; l: Lane } | null = null;
   clip.cards.forEach((k, i) => {
+    const before = prev;
+    prev = null;
     const copy: Card = { id: ids[i], x: k.x, y: k.y, w: k.w, text: k.text, color: k.color, ...(k.notes ? { notes: k.notes } : {}) };
     const o = same ? card(b, k.id) : undefined;
     const kr = { x: k.x, y: k.y, w: k.w, h: k.h };
     const home = (r: Rect) => b.lanes.find((l) => containsCentre(laneRect(l), r));
+    const l = same && !o ? home(kr) : undefined;
     if (o && home(cardRect(o, heightOf(o.id)))) {
       b.cards.push({ ...copy, x: o.x, y: o.y + 1 });
-    } else if (same && !o && home(kr)) {
-      const l = home(kr)!;
-      const n = b.cards
-        .filter((c) => c.y >= k.y && containsCentre(laneRect(l), cardRect(c, heightOf(c.id))) && sharesColumn(kr, cardRect(c, heightOf(c.id))))
-        .sort((p, q) => p.y - q.y)[0];
-      b.cards.push({ ...copy, y: n ? n.y + heightOf(n.id) / 2 - k.h / 2 - 1 : k.y });
+    } else if (l) {
+      // A run of cut cards goes back in order: each just below the last, by less than a grid so that no centre ties.
+      if (before?.l === l && sharesColumn(before.k, kr)) copy.y = before.copy.y + 1 / 64;
+      else {
+        const n = b.cards
+          .filter((c) => c.y >= k.y && containsCentre(laneRect(l), cardRect(c, heightOf(c.id))) && sharesColumn(kr, cardRect(c, heightOf(c.id))))
+          .sort((p, q) => p.y - q.y)[0];
+        if (n) copy.y = n.y + heightOf(n.id) / 2 - k.h / 2 - 1;
+      }
+      b.cards.push(copy);
+      prev = { k, copy, l };
     } else {
       free.push([k, copy]);
     }

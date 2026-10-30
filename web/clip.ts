@@ -8,13 +8,13 @@ export const clipText = (c: Clip) => c.cards.map((k) => k.text).join("\n\n");
 
 /** The text as HTML with the clip as JSON in a `data-breezy` attribute, which Safari keeps where it drops comments and metas. */
 export function clipHTML(c: Clip) {
-  const json = JSON.stringify(c).replace(/[<>&]/g, (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
+  const json = JSON.stringify(c).replace(/[<>&\u00a0]/g, (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
   return `<div data-breezy="${escape(json)}">${escape(clipText(c)).replaceAll("\n", "<br>")}</div>`;
 }
 
 function unescape(s: string) {
-  return s.replace(/&(quot|amp|lt|gt|apos|#\d+|#x[0-9a-f]+);/gi, (m, e: string) => {
-    const named: Record<string, string> = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'" };
+  return s.replace(/&(quot|amp|lt|gt|apos|nbsp|#\d+|#x[0-9a-f]+);/gi, (m, e: string) => {
+    const named: Record<string, string> = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: "\u00a0" };
     if (e.toLowerCase() in named) return named[e.toLowerCase()];
     const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
     return n <= 0x10ffff ? String.fromCodePoint(n) : m;

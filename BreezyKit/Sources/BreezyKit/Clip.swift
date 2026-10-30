@@ -22,17 +22,17 @@ public struct ClipCard: Codable, Equatable, Sendable {
     self.notes = notes
   }
 
-  /// A missing size or colour is mended as the web app mends it, not refused.
+  /// A size, colour or notes of the wrong type or missing is mended as the web app mends it, not refused.
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     id = try c.decode(String.self, forKey: .id)
     x = try c.decode(Double.self, forKey: .x)
     y = try c.decode(Double.self, forKey: .y)
-    w = try c.decodeIfPresent(Double.self, forKey: .w) ?? 0
-    h = try c.decodeIfPresent(Double.self, forKey: .h) ?? 0
+    w = (try? c.decode(Double.self, forKey: .w)) ?? 0
+    h = (try? c.decode(Double.self, forKey: .h)) ?? 0
     text = try c.decode(String.self, forKey: .text)
-    color = try c.decodeIfPresent(Int.self, forKey: .color) ?? 1
-    notes = try c.decodeIfPresent(String.self, forKey: .notes)
+    color = (try? c.decode(Double.self, forKey: .color)).map { Int($0.rounded().clamped(1, 5)) } ?? 1
+    notes = try? c.decode(String.self, forKey: .notes)
   }
 }
 
@@ -56,6 +56,7 @@ public struct Clip: Codable, Equatable, Sendable {
     encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
     var json = String(decoding: try! encoder.encode(self), as: UTF8.self)
     json = json.replacingOccurrences(of: "&", with: "\\u0026").replacingOccurrences(of: "<", with: "\\u003c").replacingOccurrences(of: ">", with: "\\u003e")
+      .replacingOccurrences(of: "\u{00A0}", with: "\\u00a0")
     return "<div data-breezy=\"\(json.htmlEscaped)\">\(text.htmlEscaped.replacingOccurrences(of: "\n", with: "<br>"))</div>"
   }
 
@@ -78,6 +79,10 @@ public struct Clip: Codable, Equatable, Sendable {
   }
 }
 
+extension Double {
+  fileprivate func clamped(_ lo: Double, _ hi: Double) -> Double { Swift.min(hi, Swift.max(lo, self)) }
+}
+
 extension String {
   fileprivate var htmlEscaped: String {
     replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
@@ -96,7 +101,7 @@ extension String {
         continue
       }
       let name = rest[rest.index(after: rest.startIndex)..<semi].lowercased()
-      let named = ["quot": "\"", "amp": "&", "lt": "<", "gt": ">", "apos": "'"]
+      let named = ["quot": "\"", "amp": "&", "lt": "<", "gt": ">", "apos": "'", "nbsp": "\u{00A0}"]
       var decoded = named[name]
       if decoded == nil, name.hasPrefix("#") {
         let n = name.hasPrefix("#x") ? UInt32(name.dropFirst(2), radix: 16) : UInt32(name.dropFirst())
@@ -132,18 +137,28 @@ extension Board {
     let ids = clip.cards.map { _ in newID() }
     var free: [(ClipCard, Card)] = []
     func home(_ r: Rect) -> Lane? { lanes.first { $0.rect.containsCentre(of: r) } }
+    var prev: (k: ClipCard, copy: Card, lane: String)?
     for (k, id) in zip(clip.cards, ids) {
+      let before = prev
+      prev = nil
       let copy = Card(id: id, x: k.x, y: k.y, w: k.w, text: k.text, notes: k.notes, color: k.color)
       let o = same ? card(k.id) : nil
       let kr = Rect(x: k.x, y: k.y, w: k.w, h: k.h)
+      let l = same && o == nil ? home(kr) : nil
       if let o, home(o.rect(height: heightOf(o.id))) != nil {
         cards.append(Card(id: id, x: o.x, y: o.y + 1, w: k.w, text: k.text, notes: k.notes, color: k.color))
-      } else if same, o == nil, let l = home(kr) {
-        let n = cards.filter { $0.y >= k.y && l.rect.containsCentre(of: $0.rect(height: heightOf($0.id))) && kr.sharesColumn(with: $0.rect(height: heightOf($0.id))) }
-          .min { $0.y < $1.y }
+      } else if let l {
+        // A run of cut cards goes back in order: each just below the last, by less than a grid so that no centre ties.
         var c = copy
-        c.y = n.map { $0.y + heightOf($0.id) / 2 - k.h / 2 - 1 } ?? k.y
+        if let before, before.lane == l.id, Rect(x: before.k.x, y: before.k.y, w: before.k.w, h: before.k.h).sharesColumn(with: kr) {
+          c.y = before.copy.y + 1.0 / 64
+        } else {
+          let n = cards.filter { $0.y >= k.y && l.rect.containsCentre(of: $0.rect(height: heightOf($0.id))) && kr.sharesColumn(with: $0.rect(height: heightOf($0.id))) }
+            .min { $0.y < $1.y }
+          c.y = n.map { $0.y + heightOf($0.id) / 2 - k.h / 2 - 1 } ?? k.y
+        }
         cards.append(c)
+        prev = (k, c, l.id)
       } else {
         free.append((k, copy))
       }

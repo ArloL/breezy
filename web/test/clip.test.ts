@@ -49,3 +49,19 @@ test("readClip clamps the colour and mends the width", () => {
   assert.equal(one({ w: 0 }).w, 240);
   assert.equal(one({ w: -5 }).w, 240);
 });
+
+test("a no-break space survives a round trip and &nbsp; is read as one", () => {
+  const c: Clip = { v: 1, board: "B", cards: [{ ...clip.cards[1], text: "10\u00a0km" }] };
+  assert.equal(readClip(clipHTML(c))!.cards[0].text, "10\u00a0km");
+  assert.equal(clipHTML(c).split('">')[0].includes("\u00a0"), false);
+  const h = clipHTML(c).replace("\\u00a0", "&nbsp;");
+  assert.equal(readClip(h)!.cards[0].text, "10\u00a0km");
+});
+
+test("readClip mends a card's colour, size and notes of the wrong type", () => {
+  assert.equal(one({ color: 2.5 }).color, 3);
+  assert.equal(one({ color: "x" }).color, 1);
+  assert.equal(one({ w: "x" }).w, 240);
+  assert.equal(one({ h: "x" }).h, 48);
+  assert.equal(one({ notes: 5 }).notes, undefined);
+});
