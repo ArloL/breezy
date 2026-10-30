@@ -43,11 +43,10 @@ test("readClip rejects what is not a clip", () => {
   assert.equal(readClip('<div data-breezy="{nope"></div>'), null);
 });
 
-test("readClip clamps the colour and mends the width", () => {
+test("readClip clamps the colour and makes every copy a card wide", () => {
   assert.equal(one({ color: 9 }).color, 5);
   assert.equal(one({ color: 0 }).color, 1);
-  assert.equal(one({ w: 0 }).w, 240);
-  assert.equal(one({ w: -5 }).w, 240);
+  for (const w of [0, -5, 480]) assert.equal(one({ w }).w, 240);
 });
 
 test("a no-break space survives a round trip and &nbsp; is read as one", () => {

@@ -1,3 +1,4 @@
+import { CARD_W } from "./rules.ts";
 import type { Clip, ClipCard } from "./types.ts";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
@@ -12,7 +13,7 @@ export function clipHTML(c: Clip) {
   return `<div data-breezy="${escape(json)}">${escape(clipText(c)).replaceAll("\n", "<br>")}</div>`;
 }
 
-function unescape(s: string) {
+function decodeEntities(s: string) {
   return s.replace(/&(quot|amp|lt|gt|apos|nbsp|#\d+|#x[0-9a-f]+);/gi, (m, e: string) => {
     const named: Record<string, string> = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: "\u00a0" };
     if (e.toLowerCase() in named) return named[e.toLowerCase()];
@@ -31,7 +32,7 @@ function readCard(v: unknown): ClipCard | null {
     id: k.id,
     x: k.x,
     y: k.y,
-    w: isNum(k.w) && k.w > 0 ? k.w : 240,
+    w: CARD_W,
     h: isNum(k.h) && k.h > 0 ? k.h : 48,
     text: k.text,
     color: isNum(k.color) ? Math.min(5, Math.max(1, Math.round(k.color))) : 1,
@@ -48,7 +49,7 @@ export function readClip(html: string): Clip | null {
   if (!m) return null;
   let j: any;
   try {
-    j = JSON.parse(unescape(m[1]));
+    j = JSON.parse(decodeEntities(m[1]));
   } catch {
     return null;
   }
