@@ -25,3 +25,10 @@ test("off the Mac, ⌘A in a field and ⌘↑ are the OS's own Ctrl+A and Ctrl+H
   assert.equal(chord("ArrowUp", { meta: true, shift: true }, { macOS: false, pageMac: true }), "Shift+Control+Home");
   assert.equal(chord("ArrowRight", { meta: true }, { macOS: false, pageMac: false }), "End");
 });
+
+test("off the Mac, ⌘C, ⌘X and ⌘V are the OS's Ctrl+C, Ctrl+X and Ctrl+V, whatever the page says it is on", () => {
+  for (const k of ["c", "x", "v"]) {
+    assert.equal(chord(k, { meta: true }, { macOS: false, pageMac: true }), `Control+${k}`);
+    assert.equal(chord(k, { meta: true }, { macOS: true, pageMac: true }), `Meta+${k}`);
+  }
+});
