@@ -145,3 +145,49 @@ test("notes a reveal again only when what it decided changed, not on every key",
   await still(app);
   assert.equal(of(app, "decision").length, before);
 });
+
+const board = (n: number) => {
+  const app = new App({ cards: Array.from({ length: n }, (_, i) => ({ id: `c${i}`, x: 400 + (i % 20) * 260, y: 40 + Math.floor(i / 20) * 80, w: 240, text: `card ${i}`, color: 1 })), lanes: [{ id: "l", x: 0, y: 0, w: 360, h: 200, title: "lane" }] }, fakePorts);
+  return app;
+};
+
+test("cut is one undo step and leaves lanes", () => {
+  const app = board(2);
+  app.select(["c0", "c1", "l"]);
+  const clip = app.cutSelection();
+  assert.equal(clip?.cards.length, 2);
+  assert.deepEqual([app.model.board.cards.length, app.model.board.lanes.length], [0, 1]);
+  app.model.undo();
+  assert.equal(app.model.board.cards.length, 2);
+  assert.deepEqual(of(app, "transition").map((e) => [e[2], e[3]]), [["copy", { ids: 2 }], ["cut", { ids: 2 }]]);
+});
+
+test("paste of 200 cards is one undo step that undo takes back whole", () => {
+  const app = board(200);
+  app.select(app.model.board.cards.map((c) => c.id));
+  const clip = app.copySelection()!;
+  const undos = app.model.undos.length;
+  app.paste(clip, { x: 0, y: 3000 });
+  assert.equal(app.model.board.cards.length, 400);
+  assert.equal(app.state.selection.size, 200);
+  assert.equal(app.model.undos.length, undos + 1);
+  app.model.undo();
+  assert.equal(app.model.board.cards.length, 200);
+});
+
+test("copy with only lanes selected returns null", () => {
+  const app = board(1);
+  app.select(["l"]);
+  assert.equal(app.copySelection(), null);
+  assert.equal(app.cutSelection(), null);
+  assert.equal(of(app, "transition").length, 0);
+});
+
+test("paste during a drag does nothing", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  const clip = app.copySelection()!;
+  app.model.begin();
+  app.paste(clip);
+  assert.equal(app.model.board.cards.length, 1);
+});

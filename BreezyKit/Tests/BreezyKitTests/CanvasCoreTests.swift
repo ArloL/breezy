@@ -243,3 +243,42 @@ import Testing
   #expect(c.selection.isEmpty)
   #expect(!c.key(code: 0, chars: "a"))
 }
+
+@MainActor @Test func cutIsOneUndoStepAndLeavesLanes() {
+  let c = canvas(board([card("a", 400, 40), card("b", 700, 40)], [lane("l", 0, 0, 288)]))
+  c.selection = ["a", "b", "l"]
+  #expect(c.cutSelection(board: "x")?.cards.count == 2)
+  #expect(c.board.cards.isEmpty && c.board.lanes.count == 1)
+  c.model.undoManager.undo()
+  #expect(c.board.cards.count == 2)
+  #expect(c.flight.recording().entries.map(\.what) == ["copy", "cut"])
+}
+
+@MainActor @Test func pasteOf200CardsIsOneUndoStepThatUndoTakesBackWhole() {
+  let cards = (0..<200).map { card("c\($0)", 400 + Double($0 % 20) * 260, 40 + Double($0 / 20) * 80) }
+  let c = canvas(board(cards, [lane("l", 0, 0, 288)]))
+  c.selection = Set(cards.map(\.id))
+  let clip = c.copySelection(board: "x")!
+  c.paste(clip, board: "x", centre: Point(x: 0, y: 3000))
+  #expect(c.board.cards.count == 400)
+  #expect(c.selection.count == 200)
+  c.model.undoManager.undo()
+  #expect(c.board.cards.count == 200)
+}
+
+@MainActor @Test func copyWithOnlyLanesSelectedReturnsNil() {
+  let c = canvas(board([card("a", 400, 40)], [lane("l", 0, 0, 288)]))
+  c.selection = ["l"]
+  #expect(c.copySelection(board: "x") == nil)
+  #expect(c.cutSelection(board: "x") == nil)
+  #expect(c.flight.recording().entries.isEmpty)
+}
+
+@MainActor @Test func pasteDuringADragDoesNothing() {
+  let c = canvas(board([card("a", 400, 40)]))
+  c.selection = ["a"]
+  let clip = c.copySelection(board: "x")!
+  c.model.begin()
+  c.paste(clip, board: "x", centre: Point(x: 0, y: 0))
+  #expect(c.board.cards.count == 1)
+}

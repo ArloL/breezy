@@ -44,6 +44,8 @@ import Foundation
   /// Where the press that started the drag under way was.
   private var pressedAt: Point?
   private var visible = true
+  /// What ⌘C or ⌘X last took.
+  private var clip: Clip?
 
   init(_ index: Int, me: Person, seed: UInt64, directory: URL, host: SimHost) throws {
     self.index = index
@@ -269,9 +271,14 @@ import Foundation
       // by name, as scenarios give them; ⌘Z and ⇧⌘Z as the Mac's Edit menu has them
       let key = try o.string("key"), shift = o["shift"]?.bool == true
       if o["meta"]?.bool == true {
-        guard key == "z" else { throw SimError("no ⌘\(key) on the board here") }
-        let u = model.undoManager
-        if shift { if u.canRedo { u.redo() } } else if u.canUndo { u.undo() }
+        switch key {
+        case "c", "x": clip = (key == "c" ? open.canvas.copySelection(board: "") : open.canvas.cutSelection(board: "")) ?? clip
+        case "v": if let clip { open.canvas.paste(clip, board: "", centre: Point(x: 600, y: 400)) }
+        case "z":
+          let u = model.undoManager
+          if shift { if u.canRedo { u.redo() } } else if u.canUndo { u.undo() }
+        default: throw SimError("no ⌘\(key) on the board here")
+        }
         break
       }
       let codes: [String: (UInt16, String)] = [

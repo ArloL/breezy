@@ -13,7 +13,7 @@ import type { Person } from "../../web/presence.ts";
 import type { Model } from "../../web/model.ts";
 import { Binding } from "../../web/binding.ts";
 import * as R from "../../web/rules.ts";
-import type { Board } from "../../web/types.ts";
+import type { Board, Clip } from "../../web/types.ts";
 import { encode, decode } from "../../web/sync/base64.ts";
 import type { Ice, LinkState, PeerTransport } from "../../web/sync/direct.ts";
 import type { Command, DeviceCommand, Event, Me, Op, Pointer, Reply, Snapshot, Target } from "./hub.ts";
@@ -135,6 +135,8 @@ class WebDevice {
   declare _collab: Collab;
   /** Where the fuzzer's press went down. */
   pressedAt: { x: number; y: number } | null = null;
+  /** What ⌘C or ⌘X last took. */
+  clip: Clip | null = null;
   /** The time a mouse event carries, which tells a double-click from two clicks. */
   clicks = 0;
   /** Its screen: a desktop's, or a phone's that a scenario asks for. */
@@ -415,6 +417,11 @@ class WebDevice {
       case "key": {
         // as main.ts hands a key to the app, on a Mac
         const a = this.open!.app, s = a.state;
+        if (o.meta && (o.key === "c" || o.key === "x" || o.key === "v")) {
+          if (o.key === "v") this.clip && a.paste(this.clip, { x: DESKTOP.w / 2, y: DESKTOP.h / 2 });
+          else this.clip = (o.key === "c" ? a.copySelection() : a.cutSelection()) ?? this.clip;
+          return null;
+        }
         // the field with the keyboard takes its keys first, as the focused element does in a browser
         if ((a.view as FakeView).focused?.key(o.key, !!o.meta)) return null;
         const typing = s.editing ? "card" : s.renaming ? "lane" : null;

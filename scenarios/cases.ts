@@ -599,6 +599,24 @@ export const cases: Case[] = [
     },
   },
   {
+    name: "a card in a lane copied and pasted shows right below it on the other device",
+    input: "mouse",
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      const at = await a.scene();
+      await a.drag(centre(item(at, card)), centre(item(at, lane)));
+      await s.settle();
+      await a.click(centre(item(await a.scene(), card)));
+      await a.key("c", { meta: true });
+      await a.key("v", { meta: true });
+      await s.settle();
+      const seen = await b.scene(), l = item(seen, lane), text = item(seen, card).text;
+      const column = seen.cards.filter((c) => c.text === text && c.x === l.x + 24).map((c) => c.y - l.y).sort((p, q) => p - q);
+      assert.deepEqual(column, [72, 144]);
+    },
+  },
+  {
     name: "a card held and dragged into a lane with a finger shows at the top of its column on the other device",
     input: "touch",
     smoke: true,
