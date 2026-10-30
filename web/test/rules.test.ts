@@ -307,3 +307,11 @@ test("a copy of an original that grew taller lands below it", () => {
   const [copy] = R.paste(b, c, here(), h);
   assert.deepEqual(ys(b, "a", copy, "b"), [72, 192, 264]);
 });
+
+test("a copy of a tall card stands as tall as its clip before the board measures it", () => {
+  const b = board([card("a", 24, 72), card("b", 24, 192)], [lane("l", 0, 0)]);
+  // As the Mac measures: by the board it last drew, so a fresh copy is 48 until then.
+  const h = (id: string) => (id === "a" ? 96 : 48);
+  const [copy] = R.paste(b, R.clip(b, "B", new Set(["a"]), h)!, here(), h);
+  assert.deepEqual(ys(b, "a", copy, "b"), [72, 192, 312]);
+});

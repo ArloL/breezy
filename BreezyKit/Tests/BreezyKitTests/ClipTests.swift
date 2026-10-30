@@ -157,15 +157,7 @@ private func cutAndPaste(_ b: inout Board, _ cut: Set<String>, heightOf: HeightO
 
 @Test func aCutRunOfMixedHeightsPastesBackInOrder() {
   var b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 264), card("d", 24, 336)], [lane("l", 0, 0)])
-  // Heights can't be read from the board while it pastes: b is tall, and so is the first copy measured, which is b's.
-  var tall: Set<String> = ["b"]
-  var seen: Set<String> = ["a", "b", "c", "d"]
-  let heightOf: HeightOf = { id in
-    if seen.insert(id).inserted, seen.count == 5 { tall.insert(id) }
-    return tall.contains(id) ? 96 : 48
-  }
-  let copies = cutAndPaste(&b, ["b", "c"], heightOf: heightOf)
-  #expect(tall.contains(copies[0]))
+  let copies = cutAndPaste(&b, ["b", "c"], heightOf: { $0 == "b" ? 96 : 48 })
   #expect(ys(b, "a", copies[0], copies[1], "d") == [72, 144, 264, 336])
 }
 
@@ -186,6 +178,15 @@ private func cutAndPaste(_ b: inout Board, _ cut: Set<String>, heightOf: HeightO
   b.gravity(tall)
   let copy = b.paste(c, board: "B", centre: Point(x: 0, y: 0), heightOf: tall)[0]
   #expect(ys(b, "a", copy, "b") == [72, 192, 264])
+}
+
+@Test func aCopyOfATallCardStandsAsTallAsItsClipBeforeTheBoardMeasuresIt() {
+  var b = board([card("a", 24, 72), card("b", 24, 192)], [lane("l", 0, 0)])
+  // As the Mac measures: by the board it last drew, so a fresh copy is 48 until then.
+  let heightOf: HeightOf = { $0 == "a" ? 96 : 48 }
+  let c = b.clip(board: "B", ids: ["a"], heightOf: heightOf)!
+  let copy = b.paste(c, board: "B", centre: Point(x: 0, y: 0), heightOf: heightOf)[0]
+  #expect(ys(b, "a", copy, "b") == [72, 192, 312])
 }
 
 @Test func aCoordinateThatIsNoNumberIsWrittenAsNullAsTheWebAppWritesIt() {

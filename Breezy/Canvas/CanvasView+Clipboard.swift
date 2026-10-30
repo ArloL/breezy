@@ -19,7 +19,10 @@ extension CanvasView: NSMenuItemValidation {
 
   /// The copies near the middle of the view, scrolled into sight.
   @objc func paste(_ sender: Any?) {
-    guard let id = boardID, let html = NSPasteboard.general.string(forType: .html), let clip = Clip(html: html) else { return }
+    guard let id = boardID else { return }
+    guard let html = NSPasteboard.general.string(forType: .html), let clip = Clip(html: html) else {
+      return core.flight.note(.decision, "paste source", ["from": .string("none")])
+    }
     let had = Set(board.cards.map(\.id)), c = visibleWorldCentre
     core.paste(clip, board: id, centre: Point(x: Double(c.x), y: Double(c.y)))
     let r = board.cards.filter { !had.contains($0.id) }.reduce(NSRect.null) { $0.union(doc(drawnRect($1))) }
