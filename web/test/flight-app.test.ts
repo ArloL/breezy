@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { App } from "../app.ts";
+import * as R from "../rules.ts";
 import { Mouse } from "../mouse.ts";
 import type { Entry } from "../flight.ts";
 import { fakePorts, FakeView, PHONE, type FakeField } from "./fakes.ts";
@@ -204,6 +205,19 @@ test("paste during an edit ends it and puts the copies on the board", () => {
   app.paste(clip);
   assert.equal(app.state.editing, null);
   assert.equal(app.model.board.cards.length, 2);
+});
+
+test("paste turns a turned card back and reveals the copies", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  const clip = app.copySelection()!;
+  app.turn("c0");
+  // from another board, so the copy goes far below the view
+  app.paste({ ...clip, board: "elsewhere" }, { x: 400, y: 3000 });
+  assert.equal(app.state.turned, null);
+  const [id] = app.state.selection, r = app.view.rectOf(R.card(app.model.board, id!)!);
+  const cam = app.view.camera.goal(), area = app.view.area(), y = r.y * cam.zoom + cam.y;
+  assert.ok(r.y > 2000 && y >= area.top && y + r.h * cam.zoom <= area.bottom, `the copy at ${r.y} shows at ${y}, the view ${area.top}–${area.bottom}`);
 });
 
 test("cut during a drag does nothing", () => {
