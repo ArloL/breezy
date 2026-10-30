@@ -325,6 +325,38 @@ public struct Drag {
     selection = []
   }
 
+  /// The selected cards as a clip, nil when none is a card.
+  public func copySelection(board id: String) -> Clip? {
+    guard let c = board.clip(board: id, ids: selection, heightOf: heightOf) else { return nil }
+    flight.note(.transition, "copy", ["ids": .number(Double(c.cards.count))])
+    return c
+  }
+
+  /// Copies the selected cards and removes them, lanes staying.
+  public func cutSelection(board id: String) -> Clip? {
+    guard let c = copySelection(board: id) else { return nil }
+    let ids = Set(c.cards.map(\.id))
+    if let t = turned, ids.contains(t) { turned = nil }
+    model.begin()
+    model.update { $0.remove(ids) }
+    model.update { $0.gravity(heightOf) }
+    model.end("Cut")
+    selection = []
+    flight.note(.transition, "cut", ["ids": .number(Double(ids.count))])
+    return c
+  }
+
+  /// Puts `clip` on the board near `centre` and selects the copies; nothing during a drag.
+  public func paste(_ clip: Clip, board id: String, centre: Point) {
+    guard !model.inGesture else { return }
+    turned = nil
+    var ids: [String] = []
+    model.perform("Paste") { ids = $0.paste(clip, board: id, centre: centre, heightOf: heightOf) }
+    guard !ids.isEmpty else { return }
+    flight.note(.transition, "paste", ["ids": .number(Double(ids.count))])
+    selection = Set(ids)
+  }
+
   public func setColor(_ color: Int) {
     let ids = selection
     model.perform("Colour") { $0.setColor(ids, color) }

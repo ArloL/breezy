@@ -4,7 +4,7 @@ import { Input } from "./input.ts";
 import type { Ports, PresencePort, SpacePort, UIPort, ViewPort } from "./ports.ts";
 import type { Person } from "./presence.ts";
 import type { Library } from "./library.ts";
-import type { Board, Lane, Point, Rect } from "./types.ts";
+import type { Board, Clip, Lane, Point, Rect } from "./types.ts";
 import { box, Flight, type Value } from "./flight.ts";
 
 /** The card being edited, which side of it, and the undo step the edit records. */
@@ -359,6 +359,46 @@ export class App {
       R.gravity(b, this.heightOf);
     });
     this.select([]);
+  }
+
+  /** The selected cards as a clip, null when none is a card. */
+  copySelection(): Clip | null {
+    const c = R.clip(this.model.board, this.library?.id ?? "", this.state.selection, this.heightOf);
+    if (c) this.flight.note("transition", "copy", { ids: c.cards.length });
+    return c;
+  }
+
+  /** Copies the selected cards and removes them, lanes staying. */
+  cutSelection(): Clip | null {
+    const c = this.copySelection();
+    if (!c) return null;
+    const ids = new Set(c.cards.map((k) => k.id));
+    this.endEditing();
+    if (this.state.turned && ids.has(this.state.turned)) this.turn(null);
+    this.model.perform("Cut", (b) => {
+      R.remove(b, ids);
+      R.gravity(b, this.heightOf);
+    });
+    this.select([]);
+    this.flight.note("transition", "cut", { ids: ids.size });
+    return c;
+  }
+
+  /** Puts `clip` on the board near `centre`, by default the middle of the view, and selects the copies. */
+  paste(clip: Clip, centre: Point = this.view.toWorld(this.view.centre())) {
+    if (this.model.inGesture) return;
+    this.endEditing();
+    this.turn(null);
+    let ids: string[] = [];
+    this.model.perform("Paste", (b) => {
+      ids = R.paste(b, clip, { board: this.library?.id ?? "", centre }, this.heightOf);
+    });
+    if (!ids.length) return;
+    this.flight.note("transition", "paste", { ids: ids.length });
+    this.select(ids);
+    const rs = ids.map((id) => R.card(this.model.board, id)).filter((c) => c).map((c) => this.view.rectOf(c!));
+    const x = Math.min(...rs.map((r) => r.x)), y = Math.min(...rs.map((r) => r.y));
+    this.view.reveal({ x, y, w: Math.max(...rs.map((r) => r.x + r.w)) - x, h: Math.max(...rs.map((r) => r.y + r.h)) - y }, "top", 48);
   }
 
   /** Ends any edit first; when that recorded nothing, the undo is spent on the edit, not on an earlier step. */

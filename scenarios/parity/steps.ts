@@ -56,7 +56,7 @@ function at(r: Rng): At {
 
 function step(r: Rng): Step {
   const mods = { ...r.chance(0.15) && { shift: true as const } };
-  switch (r.weighted({ drag: 5, click: 3, key: 3, undo: 1 })) {
+  switch (r.weighted({ drag: 5, click: 3, key: 3, clip: 1, undo: 1 })) {
     case "drag": {
       const from = at(r);
       // a nudge as often as a move, which stays under a drag's threshold or just past it
@@ -65,6 +65,7 @@ function step(r: Rng): Step {
     }
     case "click": return { do: "click", at: at(r), ...mods };
     case "key": return { do: "key", key: r.pick(KEYS) };
+    case "clip": return { do: "key", key: r.pick(["c", "x", "v"]), meta: true };
     default: return { do: "key", key: "z", meta: true, ...mods };
   }
 }
