@@ -35,6 +35,20 @@ public struct ClipCard: Codable, Equatable, Sendable {
     color = (try? c.decode(Double.self, forKey: .color)).map { Int($0.rounded().clamped(1, 5)) } ?? 1
     notes = (try? c.decode(String.self, forKey: .notes)).flatMap { $0.isEmpty ? nil : $0 }
   }
+
+  private enum CodingKeys: String, CodingKey { case id, x, y, w, h, text, color, notes }
+
+  /// A coordinate that is no number is written as null, as `JSON.stringify` writes it.
+  public func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    for (v, k) in [(x, CodingKeys.x), (y, .y), (w, .w), (h, .h)] {
+      if v.isFinite { try c.encode(v, forKey: k) } else { try c.encodeNil(forKey: k) }
+    }
+    try c.encode(id, forKey: .id)
+    try c.encode(text, forKey: .text)
+    try c.encode(color, forKey: .color)
+    try c.encodeIfPresent(notes, forKey: .notes)
+  }
 }
 
 /// Cards copied from `board`, in reading order; the web app's `Clip`.

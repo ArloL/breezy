@@ -187,3 +187,9 @@ private func cutAndPaste(_ b: inout Board, _ cut: Set<String>, heightOf: HeightO
   let copy = b.paste(c, board: "B", centre: Point(x: 0, y: 0), heightOf: tall)[0]
   #expect(ys(b, "a", copy, "b") == [72, 192, 264])
 }
+
+@Test func aCoordinateThatIsNoNumberIsWrittenAsNullAsTheWebAppWritesIt() {
+  let c = Clip(board: "B", cards: [ClipCard(id: "a", x: .nan, y: .infinity, w: 240, h: -.infinity, text: "t", color: 1)])
+  #expect(c.html.contains("&quot;x&quot;:null") && c.html.contains("&quot;y&quot;:null") && c.html.contains("&quot;h&quot;:null"))
+  #expect(Clip(html: c.html) == nil)
+}
