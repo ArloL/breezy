@@ -151,6 +151,11 @@ export abstract class Device {
     throw new Error(`${this.kind} devices find no elements`);
   }
 
+  /** The plain text on its clipboard, as another app pastes it. */
+  async clipboard(): Promise<string> {
+    throw new Error(`${this.kind} devices cannot read their clipboard`);
+  }
+
   /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
   async relaunch(): Promise<void> {
     throw new Error(`${this.kind} devices cannot launch again`);

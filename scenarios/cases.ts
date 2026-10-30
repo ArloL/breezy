@@ -31,6 +31,8 @@ export interface Case {
   fresh?: boolean;
   /** Whether the case taps the app's buttons, which the hub's devices have none of. */
   buttons?: boolean;
+  /** Whether the case reads the first device's clipboard, or uses the find field, which the hub's fakes have neither of. */
+  clipboard?: boolean;
   /** Whether the case stops sync.php and the relay, which the hub's world cannot. */
   outage?: boolean;
   /** Whether the first device must go offline and launch again, which the hub's fakes cannot. */
@@ -638,6 +640,40 @@ export const cases: Case[] = [
       await a.key("Escape");
       await s.settle();
       assert.deepEqual((await b.scene()).cards.map((c) => [c.id, c.text]), [[card, text]]);
+    },
+  },
+  {
+    name: "⌘C copies a card's front, leaves the clipboard as it was with a lane alone selected, and in the find field copies its text",
+    input: "mouse",
+    edits: true,
+    clipboard: true,
+    acts: ["chromium", "webkit", "firefox"],
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { lane, card } = await laneAndCard(s);
+      const text = item(await a.scene(), card).text;
+      await a.click(centre(item(await a.scene(), card)));
+      await a.key("c", { meta: true });
+      assert.equal(await a.clipboard(), text, "after ⌘C with the card selected");
+      const l = item(await a.scene(), lane);
+      await a.click({ x: l.x + l.w / 2, y: l.y + 12 });
+      assert.deepEqual((await a.scene()).cards.filter((c) => c.selected), [], "a card selected with the lane");
+      await a.key("c", { meta: true });
+      assert.equal(await a.clipboard(), text, "after ⌘C with the lane alone selected");
+      // still the card, as ⌘V shows
+      await a.key("v", { meta: true });
+      await s.settle();
+      assert.equal((await b.scene()).cards.filter((c) => c.text === text).length, 2, "copies of the card after ⌘V");
+      await a.key("f", { meta: true });
+      await a.type("plan");
+      await a.selectAll();
+      await a.key("c", { meta: true });
+      assert.equal(await a.clipboard(), "plan", "after ⌘C in the find field, the copy selected");
+      // the board takes the keyboard back, and pastes no text as a card
+      await a.key("Escape");
+      await a.key("v", { meta: true });
+      await s.settle();
+      assert.equal((await b.scene()).cards.length, 2, "cards after ⌘V of the find field's text");
     },
   },
   {
