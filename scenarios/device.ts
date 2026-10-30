@@ -156,6 +156,16 @@ export abstract class Device {
     throw new Error(`${this.kind} devices cannot read their clipboard`);
   }
 
+  /** The HTML on its clipboard, as another app pastes it. */
+  async clipboardHTML(): Promise<string> {
+    throw new Error(`${this.kind} devices cannot read their clipboard`);
+  }
+
+  /** Puts `html` and `text` on its clipboard, as another app copying them does. */
+  async putOnClipboard(_html: string, _text: string): Promise<void> {
+    throw new Error(`${this.kind} devices cannot write their clipboard`);
+  }
+
   /** Starts the app again, as a phone does after the system ended it, and opens the board it showed. */
   async relaunch(): Promise<void> {
     throw new Error(`${this.kind} devices cannot launch again`);

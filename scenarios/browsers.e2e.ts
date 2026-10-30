@@ -22,7 +22,8 @@ const noAndroid = (() => {
 })();
 /** Each kind acts once and watches once, which a run of minutes can afford; a phone acts only with a finger, and the
  * emulator's two browsers never share a world, as only one is on its screen.
- * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others; SCENARIO_SMOKE=1 runs the cases marked smoke alone. */
+ * SCENARIO_PAIRS="chromium:mac mac:chromium" runs others, "mac:chromium mac:webkit mac:firefox" the Mac's copy into
+ * each browser; SCENARIO_SMOKE=1 runs the cases marked smoke alone. */
 const pairs = (process.env.SCENARIO_PAIRS?.split(" ").map((p) => p.split(":") as [RealKind, RealKind])
   ?? [["chromium", "firefox-android"], ["firefox-android", "webkit"], ["webkit", "firefox"], ["firefox", "mac"], ["mac", "android"], ["android", "chromium"]]);
 const ios = (k: RealKind) => k === "ios-safari" || k === "ios-home";

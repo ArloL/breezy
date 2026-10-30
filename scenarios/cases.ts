@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { centre, item, type Box, type Device, type Editor, type Frame } from "./device.ts";
 import { LANE_H, LANE_W } from "../web/rules.ts";
+import { readClip } from "../web/clip.ts";
 import type { Point } from "../web/types.ts";
 
 export interface Stage {
@@ -603,7 +604,7 @@ export const cases: Case[] = [
   {
     name: "a card in a lane copied and pasted shows right below it on the other device",
     input: "mouse",
-    acts: ["chromium", "webkit", "firefox"],
+    acts: ["chromium", "webkit", "firefox", "mac"],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
@@ -623,7 +624,7 @@ export const cases: Case[] = [
     name: "⌘V in a card being edited pastes the copied card's front as text, not a copy of the card",
     input: "mouse",
     edits: true,
-    acts: ["chromium", "webkit", "firefox"],
+    acts: ["chromium", "webkit", "firefox", "mac"],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { card } = await laneAndCard(s);
@@ -648,7 +649,7 @@ export const cases: Case[] = [
     input: "mouse",
     edits: true,
     clipboard: true,
-    acts: ["chromium", "webkit", "firefox"],
+    acts: ["chromium", "webkit", "firefox", "mac"],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
@@ -675,6 +676,59 @@ export const cases: Case[] = [
       await a.key("v", { meta: true });
       await s.settle();
       assert.equal((await b.scene()).cards.length, 2, "cards after ⌘V of the find field's text");
+    },
+  },
+  {
+    // A headless browser's clipboard is its own, not the system's: what one app wrote is put on the other's clipboard
+    // as it is, and pasted from there with ⌘V.
+    name: "a card copied in the Mac app pastes in each browser, and back",
+    input: "mouse",
+    edits: true,
+    clipboard: true,
+    acts: ["mac"],
+    watches: ["chromium", "webkit", "firefox"],
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const at = await a.world({ x: 600, y: 300 });
+      const card = await a.addCard(at.x, at.y);
+      await a.typeInto(card, " & <soup>");
+      const mid = centre(item(await a.scene(), card));
+      await a.click(mid);
+      await a.key("3");
+      await a.key(" ");
+      await a.until("the card to turn", async () => (await a.scene()).turned === card);
+      await a.doubleClick(centre(item(await a.scene(), card)));
+      await a.type("the back");
+      await a.key("Escape");
+      await a.key(" ");
+      await a.until("the card to turn back", async () => (await a.scene()).turned === null);
+      await s.settle();
+      const text = item(await a.scene(), card).text!, want = [text, "the back", 3];
+      const carried = async (d: Device) => readClip(await d.clipboardHTML())?.cards.map((k) => [k.id, k.text, k.notes, k.color]);
+
+      await a.click(mid);
+      await a.key("c", { meta: true });
+      assert.deepEqual(await carried(a), [[card, ...want]], "what the Mac copied");
+      assert.equal(await a.clipboard(), text);
+      await b.putOnClipboard(await a.clipboardHTML(), await a.clipboard());
+      await b.click(await nothing(b));
+      await b.key("v", { meta: true });
+      await s.settle();
+      const copies = (d: Device) => d.scene().then((sc) => sc.cards.filter((c) => c.id !== card));
+      const [copy] = await copies(b);
+      assert.deepEqual((await copies(b)).map((c) => [c.text, c.color]), [[text, 3]], `the ${b.kind} copy`);
+      await b.click(centre(copy!));
+      await b.key("c", { meta: true });
+      assert.deepEqual(await carried(b), [[copy!.id, ...want]], `what ${b.kind} copied`);
+
+      await a.putOnClipboard(await b.clipboardHTML(), await b.clipboard());
+      await a.click(await nothing(a));
+      await a.key("v", { meta: true });
+      await s.settle();
+      const back = (await copies(b)).filter((c) => c.id !== copy!.id);
+      assert.deepEqual(back.map((c) => [c.text, c.color]), [[text, 3]], `the Mac's copy of the ${b.kind} copy`);
+      await a.key("c", { meta: true });
+      assert.deepEqual(await carried(a), [[back[0]!.id, ...want]], "what the Mac copied of its copy");
     },
   },
   {
