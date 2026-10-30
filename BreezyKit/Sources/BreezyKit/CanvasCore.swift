@@ -334,7 +334,7 @@ public struct Drag {
 
   /// Copies the selected cards and removes them, lanes staying.
   public func cutSelection(board id: String) -> Clip? {
-    guard let c = copySelection(board: id) else { return nil }
+    guard !model.inGesture, let c = copySelection(board: id) else { return nil }
     let ids = Set(c.cards.map(\.id))
     if let t = turned, ids.contains(t) { turned = nil }
     model.begin()
@@ -348,8 +348,8 @@ public struct Drag {
 
   /// Puts `clip` on the board near `centre` and selects the copies; nothing during a drag.
   public func paste(_ clip: Clip, board id: String, centre: Point) {
-    guard !model.inGesture else { return }
     turned = nil
+    guard !model.inGesture else { return }
     var ids: [String] = []
     model.perform("Paste") { ids = $0.paste(clip, board: id, centre: centre, heightOf: heightOf) }
     guard !ids.isEmpty else { return }

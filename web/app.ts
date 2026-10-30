@@ -370,10 +370,11 @@ export class App {
 
   /** Copies the selected cards and removes them, lanes staying. */
   cutSelection(): Clip | null {
+    this.endEditing();
+    if (this.model.inGesture) return null;
     const c = this.copySelection();
     if (!c) return null;
     const ids = new Set(c.cards.map((k) => k.id));
-    this.endEditing();
     if (this.state.turned && ids.has(this.state.turned)) this.turn(null);
     this.model.perform("Cut", (b) => {
       R.remove(b, ids);
@@ -386,9 +387,9 @@ export class App {
 
   /** Puts `clip` on the board near `centre`, by default the middle of the view, and selects the copies. */
   paste(clip: Clip, centre: Point = this.view.toWorld(this.view.centre())) {
-    if (this.model.inGesture) return;
     this.endEditing();
     this.turn(null);
+    if (this.model.inGesture) return;
     let ids: string[] = [];
     this.model.perform("Paste", (b) => {
       ids = R.paste(b, clip, { board: this.library?.id ?? "", centre }, this.heightOf);

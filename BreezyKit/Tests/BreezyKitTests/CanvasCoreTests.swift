@@ -262,6 +262,7 @@ import Testing
   c.paste(clip, board: "x", centre: Point(x: 0, y: 3000))
   #expect(c.board.cards.count == 400)
   #expect(c.selection.count == 200)
+  #expect(c.selection.isDisjoint(with: cards.map(\.id)))
   c.model.undoManager.undo()
   #expect(c.board.cards.count == 200)
 }
@@ -281,4 +282,13 @@ import Testing
   c.model.begin()
   c.paste(clip, board: "x", centre: Point(x: 0, y: 0))
   #expect(c.board.cards.count == 1)
+}
+
+@MainActor @Test func cutDuringADragDoesNothing() {
+  let c = canvas(board([card("a", 400, 40)]))
+  c.selection = ["a"]
+  c.model.begin()
+  #expect(c.cutSelection(board: "x") == nil)
+  #expect(c.board.cards.count == 1)
+  #expect(c.model.inGesture)
 }
