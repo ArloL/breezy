@@ -14,6 +14,7 @@ interface Run {
   ms: number;
   step?: { who: string; action: string; error: string };
   steps: Step[];
+  simctlFailed?: string[];
 }
 
 function* records(dir: string): Generator<string> {
@@ -50,6 +51,12 @@ if (failed.length) {
   table(["step", "failed"], [...group(failed, (r) => r.step ? `${kind(r.step.who)} ${r.step.action}` : r.verdict)].map(([k, rs]) => [k, rs.length] as [string, number]).sort((a, b) => b[1] - a[1]));
   out.push("### Failures by error", "");
   table(["error", "failed"], [...group(failed, (r) => firstLine(r.step?.error ?? r.error))].map(([k, rs]) => [`\`${k.replace(/[|`]/g, " ")}\``, rs.length] as [string, number]).sort((a, b) => b[1] - a[1]));
+}
+// a simctl call that failed in a case that went on, whose record holds the iPhone's log of it all the same
+const simctlFailed = runs.flatMap((r) => (r.simctlFailed ?? []).map((what) => [`${r.case} (${r.pair.join(" → ")})`, r.verdict, `\`${what.replace(/[|`]/g, " ")}\``]));
+if (simctlFailed.length) {
+  out.push("### simctl calls that failed", "");
+  table(["case", "verdict", "call"], simctlFailed);
 }
 // a case that takes most of its 90 s, or a step most of its own limit, fails on a slower runner
 out.push("### Slowest cases", "");
