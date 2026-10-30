@@ -41,3 +41,23 @@ export type HeightOf = (id: string) => number;
 export interface Cam extends Point {
   zoom: number;
 }
+
+/** A card as the clipboard carries it: where and how tall it stood, for placing its copy. */
+export interface ClipCard {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  /** 1–5 */
+  color: number;
+  notes?: string;
+}
+
+/** Cards copied from `board`, in reading order. */
+export interface Clip {
+  v: 1;
+  board: string;
+  cards: ClipCard[];
+}

@@ -192,3 +192,76 @@ test("openSpot is the nearest place a grid clear of everything", () => {
   assert.deepEqual(R.openSpot(b, 288, 720, 120, 0, h48), { x: 504, y: 72 });
   assert.deepEqual(R.openSpot(b, 288, 720, 130, 1000, h48), { x: 120, y: 1008 });
 });
+
+const clipOf = (b: Board, ...ids: string[]) => R.clip(b, "B", new Set(ids), h48)!;
+const here = (board = "B", x = 0, y = 0) => ({ board, centre: { x, y } });
+
+test("clip takes the selected cards in reading order and leaves lanes out", () => {
+  const b = board([card("b", 0, 96), card("a", 0, 0)], [lane("l", 600, 0)]);
+  const c = R.clip(b, "B", new Set(["b", "a", "l"]), h48)!;
+  assert.deepEqual(c.cards.map((k) => k.id), ["a", "b"]);
+  assert.deepEqual(c.cards.map((k) => k.h), [48, 48]);
+  assert.equal(R.clip(b, "B", new Set(["l"]), h48), null);
+});
+
+test("a copy of a card in a lane pastes right below it, the cards below making room", () => {
+  const b = stackBoard();
+  const [copy] = R.paste(b, clipOf(b, "a"), here(), h48);
+  assert.deepEqual(ys(b, "a", copy, "b"), [72, 144, 216]);
+  assert.equal(R.card(b, copy)!.x, 24);
+});
+
+test("pasting a lane card twice stacks both copies below it", () => {
+  const b = stackBoard();
+  const c = clipOf(b, "a");
+  const [one] = R.paste(b, c, here(), h48);
+  const [two] = R.paste(b, c, here(), h48);
+  assert.deepEqual(ys(b, "a", two, one, "b"), [72, 144, 216, 288]);
+});
+
+test("after a cut a lane card pastes back where it stood", () => {
+  const b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216)], [lane("l", 0, 0)]);
+  const c = clipOf(b, "b");
+  R.remove(b, new Set(["b"]));
+  R.gravity(b, h48);
+  const [copy] = R.paste(b, c, here(), h48);
+  assert.deepEqual(ys(b, "a", copy, "c"), [72, 144, 216]);
+});
+
+const clear = (b: Board, ids: string[], others: string[]) => {
+  const g = R.GRID;
+  for (const id of ids) {
+    const c = R.card(b, id)!;
+    const r = { x: c.x - g, y: c.y - g, w: c.w + 2 * g, h: 48 + 2 * g };
+    for (const o of others) assert.equal(R.intersects(r, R.cardRect(R.card(b, o)!, 48)), false);
+  }
+};
+
+test("free cards paste as a block to the nearest clear space", () => {
+  const b = board([card("a", 600, 0), card("b", 912, 0)]);
+  const copies = R.paste(b, clipOf(b, "a", "b"), here(), h48);
+  const [p, q] = copies.map((id) => R.card(b, id)!);
+  assert.equal(q.x - p.x, 312);
+  assert.equal(q.y, p.y);
+  clear(b, copies, ["a", "b"]);
+});
+
+test("on another board the block pastes nearest the view's centre", () => {
+  const b = board();
+  const c = clipOf(board([card("a", 0, 0)]), "a");
+  const [copy] = R.paste(b, c, here("other", 1000, 1000), h48);
+  const k = R.card(b, copy)!;
+  assert.ok(Math.abs(k.x + 120 - 1000) <= R.GRID && Math.abs(k.y + 24 - 1000) <= R.GRID);
+});
+
+test("a lane original moved to another lane or deleted pastes without throwing", () => {
+  const b = board([card("a", 24, 72), card("z", 600, 72)], [lane("l", 0, 0), lane("m", 576, 0)]);
+  const c = clipOf(b, "a");
+  R.moveCards(b, [{ id: "a", x: 24, y: 72 }], 576, 24);
+  R.gravity(b, h48);
+  const [one] = R.paste(b, c, here(), h48);
+  assert.ok(R.card(b, one)!.x >= 576 && R.card(b, one)!.y > R.card(b, "a")!.y);
+  R.remove(b, new Set(["a", "l"]));
+  const [two] = R.paste(b, c, here(), h48);
+  clear(b, [two], ["z", one]);
+});
