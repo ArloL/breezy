@@ -771,6 +771,37 @@ export class BrowserDevice extends Device {
     return this.page.evaluate(() => navigator.clipboard.readText());
   }
 
+  override async clipboardHTML() {
+    await this.clipboard();
+    return this.page.evaluate(async () => {
+      const item = (await navigator.clipboard.read()).find((i) => i.types.includes("text/html"));
+      return item ? (await item.getType("text/html")).text() : "";
+    });
+  }
+
+  /** Written in the copy event of a ⌘C, as a page writes HTML, ahead of the app's own: a headless browser's clipboard
+   * is its own, not the system's, and WebKit's execCommand("copy") copied nothing on the board. */
+  override async putOnClipboard(html: string, text: string) {
+    await this.page.evaluate(([html, text]) => {
+      const put = (e: ClipboardEvent) => {
+        e.clipboardData!.setData("text/html", html);
+        e.clipboardData!.setData("text/plain", text);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        removeEventListener("copy", put, { capture: true });
+        (globalThis as { breezyPut?: boolean }).breezyPut = true;
+      };
+      addEventListener("copy", put, { capture: true });
+    }, [html, text] as const);
+    await this.key("c", { meta: true });
+    const put = await this.page.evaluate(() => {
+      const g = globalThis as { breezyPut?: boolean }, put = g.breezyPut === true;
+      delete g.breezyPut;
+      return put;
+    });
+    if (!put) throw new Error(`${this.kind} fired no copy event for ⌘C`);
+  }
+
   override async sight() {
     return this.page.evaluate(readSight);
   }

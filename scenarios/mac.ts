@@ -118,7 +118,8 @@ export class MacDevice extends Device {
   /** By key code, as AppKit has them on a US layout. */
   static readonly codes: Record<string, [string, number]> = {
     "1": ["1", 18], "2": ["2", 19], "3": ["3", 20], "4": ["4", 21], "5": ["5", 23], " ": [" ", 49], Backspace: ["\u007f", 51],
-    Escape: ["\u001b", 53], Enter: ["\r", 36], z: ["z", 6], a: ["a", 0], l: ["l", 37], Delete: ["\uf728", 117],
+    Escape: ["\u001b", 53], Enter: ["\r", 36], z: ["z", 6], a: ["a", 0], l: ["l", 37], c: ["c", 8], x: ["x", 7], v: ["v", 9],
+    f: ["f", 3], Delete: ["\uf728", 117],
     ArrowLeft: ["\uf702", 123], ArrowRight: ["\uf703", 124], ArrowDown: ["\uf701", 125], ArrowUp: ["\uf700", 126],
   };
 
@@ -148,6 +149,19 @@ export class MacDevice extends Device {
 
   override async editor() {
     return this.command<Editor | null>({ cmd: "editor" });
+  }
+
+  /** NSPasteboard.general, which every app shares, read and written in the app: pbpaste reads no HTML. */
+  override async clipboard() {
+    return (await this.command<{ text: string }>({ cmd: "pasteboard" })).text;
+  }
+
+  override async clipboardHTML() {
+    return (await this.command<{ html: string }>({ cmd: "pasteboard" })).html;
+  }
+
+  override async putOnClipboard(html: string, text: string) {
+    await this.command({ cmd: "pasteboard", html, text });
   }
 
   /** What the open board's canvas recorded, in the web app's format (BreezyKit's Flight). */

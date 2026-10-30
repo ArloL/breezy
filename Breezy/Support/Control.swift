@@ -56,7 +56,7 @@ import Network
   /// What a command line may hold.
   struct Command: Decodable {
     var cmd: String
-    var link, board, title, phase, kind, chars, text: String?
+    var link, board, title, phase, kind, chars, text, html: String?
     var x, y: Double?
     var code, clicks: Int?
     var shift, option, atEnd, command: Bool?
@@ -118,6 +118,15 @@ import Network
       guard let tv = window?.window?.firstResponder as? NSTextView else { throw Failure(description: "nothing is being edited") }
       if c.atEnd == true { tv.moveToEndOfDocument(nil) }
       tv.insertText(try c.need(c.text, "text"), replacementRange: NSRange(location: NSNotFound, length: 0))
+    case "pasteboard":
+      // the system's, which every app shares, as a person copies and pastes between them
+      let pb = NSPasteboard.general
+      if let html = c.html {
+        pb.clearContents()
+        pb.setString(html, forType: .html)
+        pb.setString(try c.need(c.text, "text"), forType: .string)
+      }
+      return .object(["text": .string(pb.string(forType: .string) ?? ""), "html": .string(pb.string(forType: .html) ?? "")])
     case "scene":
       guard let wc = window else { return .null }
       return try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(wc.canvas.core.scene))
