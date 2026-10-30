@@ -95,3 +95,13 @@ parity("⌘Z undoes a drag into a lane, and ⇧⌘Z does it again", laneAndCards
   await d.key("z", { meta: true });
   await d.key("z", { meta: true, shift: true });
 });
+
+parity("⌘C ⌘V copies a lane card below it and a free card into clear space; ⌘X ⌘V puts them back", laneAndCards, async (d, made) => {
+  const s = await d.scene();
+  await d.drag(centre(item(s, made[1]!)), centre(item(s, made[0]!)));
+  for (const keys of [["c", "v"], ["x", "v"]])
+    for (const id of [made[1]!, made[2]!]) {
+      await d.click(centre(item(await d.scene(), id)));
+      for (const k of keys) await d.key(k, { meta: true });
+    }
+});
