@@ -95,9 +95,17 @@ import Network
       let function = chars.unicodeScalars.first.map { (0xF700...0xF8FF).contains($0.value) } ?? false
       if c.command == true {
         mods.insert(.command)
-        // the menu's action along the window's responder chain, as AppKit does for the key window, which nobody makes key
+        // the menu's action along the window's responder chain, then its delegate, the app and the app's delegate, as
+        // AppKit does for the key window, which nobody makes key; an item with no target, or one its target greys out,
+        // does nothing
         if let item = menuItem(chars, mods, in: NSApp.mainMenu!), let action = item.action {
-          _ = w.firstResponder?.tryToPerform(action, with: item)
+          var targets: [AnyObject] = []
+          for r in sequence(first: w.firstResponder, next: { $0?.nextResponder }) { if let r { targets.append(r) } }
+          targets += [w.delegate as AnyObject?, NSApp, NSApp.delegate as AnyObject?].compactMap { $0 }
+          guard let target = targets.first(where: { $0.responds(to: action) }),
+            (target as? NSMenuItemValidation)?.validateMenuItem(item) ?? (target as? NSUserInterfaceValidations)?.validateUserInterfaceItem(item) ?? true
+          else { return .object(["disabled": .bool(true)]) }
+          _ = NSApp.sendAction(action, to: target, from: item)
           return .null
         }
         if !function { throw Failure(description: "no menu item for ⌘\(chars)") }
@@ -122,9 +130,10 @@ import Network
       // the system's, which every app shares, as a person copies and pastes between them
       let pb = NSPasteboard.general
       if let html = c.html {
+        let text = try c.need(c.text, "text")
         pb.clearContents()
         pb.setString(html, forType: .html)
-        pb.setString(try c.need(c.text, "text"), forType: .string)
+        pb.setString(text, forType: .string)
       }
       return .object(["text": .string(pb.string(forType: .string) ?? ""), "html": .string(pb.string(forType: .html) ?? "")])
     case "scene":

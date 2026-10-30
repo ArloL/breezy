@@ -69,8 +69,9 @@ export abstract class Device {
   /** A lane centred near world point (x, y), where this kind of device puts one; its id. */
   abstract addLane(x: number, y: number): Promise<string>;
 
-  /** A key as Playwright names it ("3", "Backspace", " ", "z"), with ⌘ (`meta`) or ⇧ held. */
-  abstract key(key: string, mods?: { meta?: boolean; shift?: boolean }): Promise<void>;
+  /** A key as Playwright names it ("3", "Backspace", " ", "z"), with ⌘ (`meta`) or ⇧ held; "disabled" where the menu
+   * item it presses is greyed out and did nothing, as on the Mac. */
+  abstract key(key: string, mods?: { meta?: boolean; shift?: boolean }): Promise<void | "disabled">;
 
   /** Its screen in points: the scenarios' 1200 × 800 window, but on a phone. */
   async size() {
