@@ -132,9 +132,12 @@ export function clip(b: Board, board: string, ids: ReadonlySet<string>, heightOf
  * nearest their originals, or on another board nearest `here.centre`. Lane copies go one at a time,
  * the board settled after each, so that a run of cut cards finds its places among those put back.
  */
-export function paste(b: Board, clip: Clip, here: { board: string; centre: Point }, heightOf: HeightOf): string[] {
+export function paste(b: Board, clip: Clip, here: { board: string; centre: Point }, measured: HeightOf): string[] {
   const same = clip.board === here.board;
   const ids = clip.cards.map(newID);
+  // A copy is as tall as its clip card until the board is measured afresh: it carries the text measured.
+  const copies = new Map(ids.map((id, i) => [id, clip.cards[i].h]));
+  const heightOf = (id: string) => copies.get(id) ?? measured(id);
   const free: [ClipCard, Card][] = [];
   const home = (r: Rect) => b.lanes.find((l) => containsCentre(laneRect(l), r));
   clip.cards.forEach((k, i) => {

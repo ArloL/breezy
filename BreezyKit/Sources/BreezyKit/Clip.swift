@@ -141,9 +141,12 @@ extension Board {
   /// board settled after each, so that a run of cut cards finds its places among those put back. As
   /// the web app's `paste`.
   @discardableResult
-  public mutating func paste(_ clip: Clip, board: String, centre: Point, heightOf: HeightOf) -> [String] {
+  public mutating func paste(_ clip: Clip, board: String, centre: Point, heightOf measured: HeightOf) -> [String] {
     let same = clip.board == board
     let ids = clip.cards.map { _ in newID() }
+    // A copy is as tall as its clip card until the board is measured afresh: it carries the text measured.
+    let copies = Dictionary(uniqueKeysWithValues: zip(ids, clip.cards.map(\.h)))
+    func heightOf(_ id: String) -> Double { copies[id] ?? measured(id) }
     var free: [(ClipCard, Card)] = []
     func home(_ r: Rect) -> Lane? { lanes.first { $0.rect.containsCentre(of: r) } }
     for (k, id) in zip(clip.cards, ids) {
