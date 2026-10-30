@@ -148,3 +148,43 @@ private func isClear(_ b: Board, _ id: String, of others: [String]) -> Bool {
   #expect(one(",\"h\":\"x\"")?.h == 48)
   #expect(one(",\"notes\":5")?.notes == nil)
 }
+
+private func cutAndPaste(_ b: inout Board, _ cut: Set<String>, heightOf: HeightOf = h48) -> [String] {
+  let c = b.clip(board: "B", ids: cut, heightOf: heightOf)!
+  b.remove(cut)
+  b.gravity(heightOf)
+  return b.paste(c, board: "B", centre: Point(x: 0, y: 0), heightOf: heightOf)
+}
+
+@Test func aCutRunOfMixedHeightsPastesBackInOrder() {
+  var b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 264), card("d", 24, 336)], [lane("l", 0, 0)])
+  // Heights can't be read from the board while it pastes: b is tall, and so is the first copy measured, which is b's.
+  var tall: Set<String> = ["b"]
+  var seen: Set<String> = ["a", "b", "c", "d"]
+  let heightOf: HeightOf = { id in
+    if seen.insert(id).inserted, seen.count == 5 { tall.insert(id) }
+    return tall.contains(id) ? 96 : 48
+  }
+  let copies = cutAndPaste(&b, ["b", "c"], heightOf: heightOf)
+  #expect(tall.contains(copies[0]))
+  #expect(ys(b, "a", copies[0], copies[1], "d") == [72, 144, 264, 336])
+}
+
+@Test func cutLaneCardsWithOneBetweenPasteBackEitherSideOfIt() {
+  let abcd = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216), card("d", 24, 288)], [lane("l", 0, 0)])
+  var b = abcd
+  var copies = cutAndPaste(&b, ["b", "d"])
+  #expect(ys(b, "a", copies[0], "c", copies[1]) == [72, 144, 216, 288])
+  b = abcd
+  copies = cutAndPaste(&b, ["a", "c"])
+  #expect(ys(b, copies[0], "b", copies[1], "d") == [72, 144, 216, 288])
+}
+
+@Test func aCopyOfAnOriginalThatGrewTallerLandsBelowIt() {
+  var b = stackBoard()
+  let c = clipOf(b, "a")
+  let tall: HeightOf = { $0 == "a" ? 96 : 48 }
+  b.gravity(tall)
+  let copy = b.paste(c, board: "B", centre: Point(x: 0, y: 0), heightOf: tall)[0]
+  #expect(ys(b, "a", copy, "b") == [72, 192, 264])
+}

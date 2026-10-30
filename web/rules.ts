@@ -129,37 +129,34 @@ export function clip(b: Board, board: string, ids: ReadonlySet<string>, heightOf
  * Adds copies of the clip's cards and returns their ids, in clip order. On the clip's board a copy
  * of a card in a lane goes right below its original, or, the original gone, before the first card
  * of that lane's column at or below where it stood; the rest move as a block to the clear space
- * nearest their originals, or on another board nearest `here.centre`.
+ * nearest their originals, or on another board nearest `here.centre`. Lane copies go one at a time,
+ * the board settled after each, so that a run of cut cards finds its places among those put back.
  */
 export function paste(b: Board, clip: Clip, here: { board: string; centre: Point }, heightOf: HeightOf): string[] {
   const same = clip.board === here.board;
   const ids = clip.cards.map(newID);
   const free: [ClipCard, Card][] = [];
-  let prev: { k: ClipCard; copy: Card; l: Lane } | null = null;
+  const home = (r: Rect) => b.lanes.find((l) => containsCentre(laneRect(l), r));
   clip.cards.forEach((k, i) => {
-    const before = prev;
-    prev = null;
     const copy: Card = { id: ids[i], x: k.x, y: k.y, w: k.w, text: k.text, color: k.color, ...(k.notes ? { notes: k.notes } : {}) };
     const o = same ? card(b, k.id) : undefined;
     const kr = { x: k.x, y: k.y, w: k.w, h: k.h };
-    const home = (r: Rect) => b.lanes.find((l) => containsCentre(laneRect(l), r));
     const l = same && !o ? home(kr) : undefined;
     if (o && home(cardRect(o, heightOf(o.id)))) {
-      b.cards.push({ ...copy, x: o.x, y: o.y + 1 });
+      // Centre just after the original's: settle orders the copy next.
+      b.cards.push({ ...copy, x: o.x, y: o.y + heightOf(o.id) / 2 - k.h / 2 + 1 });
     } else if (l) {
-      // A run of cut cards goes back in order: each just below the last, by less than a grid so that no centre ties.
-      if (before?.l === l && sharesColumn(before.k, kr)) copy.y = before.copy.y + 1 / 64;
-      else {
-        const n = b.cards
-          .filter((c) => c.y >= k.y && containsCentre(laneRect(l), cardRect(c, heightOf(c.id))) && sharesColumn(kr, cardRect(c, heightOf(c.id))))
-          .sort((p, q) => p.y - q.y)[0];
-        if (n) copy.y = n.y + heightOf(n.id) / 2 - k.h / 2 - 1;
-      }
+      const n = b.cards
+        .filter((c) => c.y >= k.y && containsCentre(laneRect(l), cardRect(c, heightOf(c.id))) && sharesColumn(kr, cardRect(c, heightOf(c.id))))
+        .sort((p, q) => p.y - q.y)[0];
+      // Centre just before n's.
+      if (n) copy.y = n.y + heightOf(n.id) / 2 - k.h / 2 - 1;
       b.cards.push(copy);
-      prev = { k, copy, l };
     } else {
       free.push([k, copy]);
+      return;
     }
+    gravity(b, heightOf);
   });
   if (free.length) {
     const x0 = Math.min(...free.map(([k]) => k.x));

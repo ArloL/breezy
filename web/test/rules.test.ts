@@ -274,3 +274,36 @@ test("adjacent cut lane cards paste back in order", () => {
   const [x, y] = R.paste(b, c, here(), h48);
   assert.deepEqual(ys(b, "a", x, y, "d"), [72, 144, 216, 288]);
 });
+
+const cutAndPaste = (b: Board, cut: string[], heightOf: (id: string) => number = h48) => {
+  const c = R.clip(b, "B", new Set(cut), heightOf)!;
+  R.remove(b, new Set(cut));
+  R.gravity(b, heightOf);
+  return R.paste(b, c, here(), heightOf);
+};
+
+test("a cut run of mixed heights pastes back in order", () => {
+  const b = board([card("a", 24, 72), card("b", 24, 144, "tall"), card("c", 24, 264), card("d", 24, 336)], [lane("l", 0, 0)]);
+  const [x, y] = cutAndPaste(b, ["b", "c"], (id) => (R.card(b, id)?.text === "tall" ? 96 : 48));
+  assert.deepEqual(ys(b, "a", x, y, "d"), [72, 144, 264, 336]);
+});
+
+test("cut lane cards with one between paste back either side of it", () => {
+  const abcd = () => board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216), card("d", 24, 288)], [lane("l", 0, 0)]);
+  let b = abcd();
+  let [x, y] = cutAndPaste(b, ["b", "d"]);
+  assert.deepEqual(ys(b, "a", x, "c", y), [72, 144, 216, 288]);
+  b = abcd();
+  [x, y] = cutAndPaste(b, ["a", "c"]);
+  assert.deepEqual(ys(b, x, "b", y, "d"), [72, 144, 216, 288]);
+});
+
+test("a copy of an original that grew taller lands below it", () => {
+  const b = stackBoard();
+  const c = clipOf(b, "a");
+  const h = (id: string) => (R.card(b, id)?.text === "tall" ? 96 : 48);
+  R.setText(b, "a", "tall");
+  R.gravity(b, h);
+  const [copy] = R.paste(b, c, here(), h);
+  assert.deepEqual(ys(b, "a", copy, "b"), [72, 192, 264]);
+});
