@@ -601,6 +601,8 @@ export const cases: Case[] = [
   {
     name: "a card in a lane copied and pasted shows right below it on the other device",
     input: "mouse",
+    // no real device until its app takes ⌘C and ⌘V
+    acts: [],
     async run(s) {
       const [a, b] = s.devices as [Device, Device];
       const { lane, card } = await laneAndCard(s);
