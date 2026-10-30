@@ -124,3 +124,27 @@ private func isClear(_ b: Board, _ id: String, of others: [String]) -> Bool {
   #expect(one(",\"w\":0")?.w == 240)
   #expect(one(",\"w\":-5")?.w == 240)
 }
+
+@Test func adjacentCutLaneCardsPasteBackInOrder() {
+  var b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216), card("d", 24, 288)], [lane("l", 0, 0)])
+  let c = clipOf(b, "b", "c")
+  b.remove(["b", "c"])
+  b.gravity(h48)
+  let copies = b.paste(c, board: "B", centre: Point(x: 0, y: 0), heightOf: h48)
+  #expect(ys(b, "a", copies[0], copies[1], "d") == [72, 144, 216, 288])
+}
+
+@Test func aNoBreakSpaceSurvivesARoundTripAndNbspIsReadAsOne() {
+  let c = Clip(board: "B", cards: [ClipCard(id: "a", x: 0, y: 0, w: 240, h: 48, text: "10\u{00A0}km", color: 1)])
+  #expect(!c.html.components(separatedBy: "\">")[0].contains("\u{00A0}"))
+  #expect(Clip(html: c.html)?.cards[0].text == "10\u{00A0}km")
+  #expect(Clip(html: c.html.replacingOccurrences(of: "\\u00a0", with: "&nbsp;"))?.cards[0].text == "10\u{00A0}km")
+}
+
+@Test func clipMendsACardsColourSizeAndNotesOfTheWrongType() {
+  #expect(one(",\"color\":2.5")?.color == 3)
+  #expect(one(",\"color\":\"x\"")?.color == 1)
+  #expect(one(",\"w\":\"x\"")?.w == 240)
+  #expect(one(",\"h\":\"x\"")?.h == 48)
+  #expect(one(",\"notes\":5")?.notes == nil)
+}

@@ -265,3 +265,12 @@ test("a lane original moved to another lane or deleted pastes without throwing",
   const [two] = R.paste(b, c, here(), h48);
   clear(b, [two], ["z", one]);
 });
+
+test("adjacent cut lane cards paste back in order", () => {
+  const b = board([card("a", 24, 72), card("b", 24, 144), card("c", 24, 216), card("d", 24, 288)], [lane("l", 0, 0)]);
+  const c = clipOf(b, "b", "c");
+  R.remove(b, new Set(["b", "c"]));
+  R.gravity(b, h48);
+  const [x, y] = R.paste(b, c, here(), h48);
+  assert.deepEqual(ys(b, "a", x, y, "d"), [72, 144, 216, 288]);
+});
