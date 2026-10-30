@@ -619,6 +619,28 @@ export const cases: Case[] = [
     },
   },
   {
+    name: "⌘V in a card being edited pastes the copied card's front as text, not a copy of the card",
+    input: "mouse",
+    edits: true,
+    // no real device until its app takes ⌘C and ⌘V
+    acts: [],
+    async run(s) {
+      const [a, b] = s.devices as [Device, Device];
+      const { card } = await laneAndCard(s);
+      // a front, as one left empty goes when its edit ends
+      await a.typeInto(card, "x");
+      const at = centre(item(await a.scene(), card)), text = item(await a.scene(), card).text;
+      await a.click(at);
+      await a.key("c", { meta: true });
+      await a.doubleClick(at);
+      await a.selectAll();
+      await a.key("v", { meta: true });
+      await a.key("Escape");
+      await s.settle();
+      assert.deepEqual((await b.scene()).cards.map((c) => [c.id, c.text]), [[card, text]]);
+    },
+  },
+  {
     name: "a card held and dragged into a lane with a finger shows at the top of its column on the other device",
     input: "touch",
     smoke: true,
