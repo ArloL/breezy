@@ -21,7 +21,7 @@ import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
 import { Agent, AGENT_SCRIPT, fromIphone, type AgentPage } from "./agent.ts";
-import { dismissal } from "./prompts.ts";
+import { allowance, dismissal } from "./prompts.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -418,6 +418,17 @@ export class Touchscreen {
     } catch {}
   }
 
+  /** Lets the page read the clipboard, as the browser asks: the button's text, or null when it asks nothing. */
+  allow() {
+    try {
+      const yes = allowance(execFileSync("adb", ["-s", this.serial, "shell", "uiautomator dump /sdcard/ui.xml >/dev/null && cat /sdcard/ui.xml"], { encoding: "utf8", timeout: 20_000 }));
+      if (yes) execFileSync("adb", ["-s", this.serial, "shell", "input", "tap", String(yes.x), String(yes.y)], { timeout: 10_000 });
+      return yes?.text ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   texts() {
     try {
       writeFileSync(join(root, "build", "android-touches.png"), this.capture());
@@ -762,6 +773,20 @@ export class BrowserDevice extends Device {
     // in a form waits for: on a desktop, a person clicks it
     if (this.kind === "webkit" || this.kind === "firefox") return this.page.mouse.click(p.x, p.y);
     await this.gesture([[0, "down", [[0, p]]], [50, "up", [[0, p]]]]);
+  }
+
+  /** On a phone, what the browser asks before the page reads the clipboard answered, once the page has not pasted a
+   * moment after the tap: Chrome asks whether to allow it, and Firefox shows Paste over the page. */
+  override async tapToPaste(selector: string) {
+    const last = async () => (await this.page.evaluate(readFlight))?.entries.findLast(([, k, w]) => k === "decision" && w === "paste source")?.[0] ?? -1;
+    const before = this.touchscreen ? await last() : 0;
+    await this.tapOn(selector);
+    for (let tries = 0; this.touchscreen && tries < 3; tries++) {
+      await sleep(500);
+      if (await last() > before) return;
+      const yes = this.touchscreen.allow();
+      if (yes) this.note(`tapped ${yes}`);
+    }
   }
 
   /** Firefox reads it unasked; Chromium and WebKit once granted. */

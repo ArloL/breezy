@@ -2,7 +2,7 @@
 // and IndexedDB as an iPhone does, and shows the board. Its touches and keys go through idb as one HID stream per
 // gesture (scripts/sim-hid.py), so a double tap's waits hold; the page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only: idb's touch has one point. scripts/ios.ts boots the simulator.
-import { execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -139,9 +139,22 @@ export function homeIcon(udid: string, label = HOME_ICON): { x: number; y: numbe
       execFileSync("sleep", ["2"]);
     }
   }
+  return labelled(out, label, ["Button"]);
+}
+
+/** The middle of what idb's `describe-all` output `out` lists as one of `types` labelled `label`, in screen points. */
+function labelled(out: string, label: string, types: string[]): Point | null {
   const e = (JSON.parse(out) as { AXLabel?: string; type?: string; frame: { x: number; y: number; width: number; height: number } }[])
-    .find((x) => x.type === "Button" && x.AXLabel === label);
+    .find((x) => types.includes(x.type ?? "") && x.AXLabel === label);
   return e ? { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 } : null;
+}
+
+/** Where the iPhone shows iOS's Paste callout, which its accessibility lists as text, or null; without holding up the
+ * cases' clock, as a describe-all takes seconds. */
+function pasteCallout(udid: string): Promise<Point | null> {
+  dropEndedCompanions();
+  return new Promise((resolve) => execFile("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
+    { encoding: "utf8", timeout: 30_000 }, (e, out) => resolve(e ? null : labelled(out, "Paste", ["StaticText", "Button"]))));
 }
 
 /** Clears what the app on the Home Screen keeps, its storage, caches and service worker, while it does not run: cleared
@@ -603,6 +616,21 @@ export class IosDevice extends Device {
     }, [selector, text ?? null] as const);
     if (!r) throw new Error(`nothing shows ${selector}`);
     await this.tapAt(r);
+  }
+
+  /** WebKit holds the page while iOS's Paste callout shows, as when another app wrote the clipboard, and the tap's check
+   * that the page saw it with it: the callout is tapped by where it shows, as long as the tap waits. */
+  override async tapToPaste(selector: string) {
+    let tapped = false;
+    // its error kept for later, not left unhandled meanwhile
+    const tap = this.tapOn(selector).then(() => null, (e: Error) => e).finally(() => (tapped = true));
+    const udid = bootedIphone()!;
+    let callout: Point | null = null;
+    while (!tapped && !(callout = await pasteCallout(udid))) await sleep(250);
+    if (callout) await this.hid.touches([[0, "down", callout.x, callout.y], [50, "up", callout.x, callout.y]]);
+    const error = await tap;
+    if (error) throw error;
+    if (callout) await this.note(`tapped iOS's Paste at ${Math.round(callout.x)},${Math.round(callout.y)}`);
   }
 
   /** A tap at page point `p`. */
