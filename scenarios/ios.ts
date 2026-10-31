@@ -1,9 +1,10 @@
 // Safari on the iOS Simulator as a scenario device: it loads the app from this Mac's localhost, keeps a service worker
-// and IndexedDB as an iPhone does, and shows the board. Its touches and keys go through idb as one HID stream per
-// gesture (scripts/sim-hid.py), so a double tap's waits hold; the page is read through the agent the scenarios' server
-// puts in it (agent.ts). One finger only: idb's touch has one point. scripts/ios.ts boots the simulator.
+// and IndexedDB as an iPhone does, and shows the board. Its page's touches go through scripts/sim-finger.m, each event
+// stamped for when it was meant, so a gesture's times hold however late a busy runner sends it; its keys, the Home Screen
+// and Safari's own touches go through idb (scripts/sim-hid.py). The page is read through the agent the scenarios' server
+// puts in it (agent.ts). One finger only. scripts/ios.ts boots the simulator.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -240,6 +241,82 @@ export class SimHid {
 
 /** Safari opened at a URL by `open` until its page asks (`asked`), at most `tries` times: a URL opened while Safari
  * starts goes nowhere, and a simulator busy after its boot gave up on an open after 27 s, at a load of 149 on 3 CPUs. */
+/** scripts/sim-finger.m in the booted iPhone, built first: touches stamped with the times they were meant for, as idb's
+ * companion overran a tap's 50 ms wait by 90–200 ms on CI's runner, and the board read a tap as a hold. A line of JSON per
+ * command, answered in turn. It touches as one of the touchscreens dtuhidd adds once idb has touched, the one `use` names. */
+export class SimFinger {
+  private readonly child: ChildProcessWithoutNullStreams;
+  private readonly replies: ((line: string) => void)[] = [];
+  private tail: Promise<unknown> = Promise.resolve();
+  private ended = "";
+
+  private constructor(child: ChildProcessWithoutNullStreams) {
+    this.child = child;
+    createInterface({ input: child.stdout }).on("line", (l) => this.replies.shift()?.(l));
+    let err = "";
+    child.stderr.on("data", (d: Buffer) => (err = (err + d.toString()).slice(-2000)));
+    child.stdin.on("error", () => {});
+    child.on("exit", (code) => {
+      this.ended = `scripts/sim-finger.m exited with ${code}: ${err.trim().split("\n").at(-1) ?? ""}`;
+      for (const r of this.replies.splice(0)) r(JSON.stringify({ error: this.ended }));
+    });
+  }
+
+  /** On the booted iPhone `udid`, whose screen is `w` × `h` points. */
+  static async start(udid: string, w: number, h: number): Promise<SimFinger> {
+    const src = `${root}scripts/sim-finger.m`, bin = `${root}build/sim-finger`;
+    if (!existsSync(bin) || statSync(bin).mtimeMs < statSync(src).mtimeMs) {
+      mkdirSync(`${root}build`, { recursive: true });
+      execFileSync("xcrun", ["--sdk", "iphonesimulator", "clang", "-fobjc-arc", "-arch", "arm64", "-mios-simulator-version-min=17.0",
+        "-framework", "Foundation", "-o", bin, src], { stdio: ["ignore", "ignore", "pipe"], timeout: 120_000 });
+    }
+    const f = new SimFinger(spawn("xcrun", ["simctl", "spawn", udid, bin, String(w), String(h)], { stdio: ["pipe", "pipe", "pipe"] }));
+    await f.answer(60_000);
+    return f;
+  }
+
+  private answer(ms = 30_000) {
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      if (this.ended) return reject(new Error(this.ended));
+      const timer = setTimeout(() => reject(new Error(`scripts/sim-finger.m did not answer in ${ms / 1000} s`)), ms);
+      this.replies.push((line) => {
+        clearTimeout(timer);
+        const r = JSON.parse(line) as { error?: string };
+        if (r.error) reject(new Error(`scripts/sim-finger.m: ${r.error}`));
+        else resolve(r);
+      });
+    });
+  }
+
+  private send(c: unknown) {
+    const done = this.tail.then(() => {
+      const a = this.answer();
+      if (!this.ended) this.child.stdin.write(`${JSON.stringify(c)}\n`);
+      return a;
+    });
+    this.tail = done.catch(() => {});
+    return done;
+  }
+
+  /** The touchscreens it may touch as, dtuhidd's first. */
+  async touchscreens(): Promise<{ id: string; display: string; transport: string }[]> {
+    return (await this.send({ senders: true })).senders as { id: string; display: string; transport: string }[];
+  }
+
+  use(id: string) {
+    return this.send({ sender: id });
+  }
+
+  /** One finger's events in screen points, each after its wait in ms, each stamped for when it was meant. */
+  touches(t: [number, PointerPhase, number, number][]) {
+    return this.send({ touches: t });
+  }
+
+  stop() {
+    this.child.kill();
+  }
+}
+
 export async function openUntilAsked(open: () => Promise<void>, asked: () => Promise<void>, tries: number) {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -264,6 +341,8 @@ export class IosDevice extends Device {
   readonly kind: "ios-safari" | "ios-home";
   readonly page: AgentPage;
   readonly hid: SimHid;
+  /** What touches the page, once calibrate has found the touchscreen Safari hears. */
+  finger: SimFinger | null = null;
   private readonly fns: { scene: () => Scene; editor: () => Editor | null; weights: (id: string) => number[] | null; sight: () => Sight | null };
   /** Where the visual viewport's top left is on the screen, in points. */
   offset: Point = { x: 0, y: 0 };
@@ -300,6 +379,27 @@ export class IosDevice extends Device {
       if (Date.now() > end) {
         const page = await this.page.evaluate(() => `${location.href}, ${document.visibilityState}, saw ${(window as { calibrated?: string[] }).calibrated?.join(" ") || "nothing"}`);
         throw new Error(`the iPhone's page never saw the calibrating tap at ${at.x},${at.y}: ${page}`);
+      }
+    }
+    // and the touchscreen of dtuhidd's Safari hears, now that idb's tap has started it: only the main display's is, and
+    // which that is shows only by trying
+    if (!this.finger) {
+      const finger = await SimFinger.start(bootedIphone()!, s.w, s.h);
+      const tried: string[] = [];
+      for (const t of await finger.touchscreens()) {
+        await finger.use(t.id);
+        await this.page.evaluate(() => void delete (window as { tapped?: Point }).tapped);
+        await finger.touches([[0, "down", at.x, at.y], [50, "up", at.x, at.y]]);
+        for (const end = Date.now() + 3000; !(await this.page.evaluate(() => !!(window as { tapped?: Point }).tapped)) && Date.now() < end; await sleep(50));
+        if (await this.page.evaluate(() => !!(window as { tapped?: Point }).tapped)) {
+          this.finger = finger;
+          break;
+        }
+        tried.push(`${t.transport || "the simulator's"} ${t.id} of display ${t.display}`);
+      }
+      if (!this.finger) {
+        finger.stop();
+        throw new Error(`Safari heard none of the iPhone's touchscreens: ${tried.join(", ")}`);
       }
     }
     await this.page.evaluate(() => {
@@ -432,8 +532,12 @@ export class IosDevice extends Device {
     }
     const fingers = new Set(frames.flatMap(([, , moves]) => moves.map(([f]) => f)));
     if (fingers.size > 1) throw new Error("Safari on the iOS Simulator has one finger only");
-    await this.page.evaluate(() => void delete (window as { down?: Down }).down);
-    await this.hid.touches(t);
+    await this.page.evaluate(() => {
+      delete (window as { down?: Down }).down;
+      (window as { touchTimes?: [string, number][] }).touchTimes = [];
+    });
+    if (!this.finger) throw new Error("the iPhone was not calibrated");
+    await this.finger.touches(t);
     // and the first touch where it was aimed, as a person sees where their finger lands, but for how far the visual
     // viewport moved meanwhile, as it does a moment after typing
     const aimed = frames[0]?.[1] === "down" ? frames[0][2][0]![1] : null;
@@ -444,6 +548,19 @@ export class IosDevice extends Device {
     }
     if (aimed && down && Math.hypot(down.x - (aimed.x + down.vx - vv.x), down.y - (aimed.y + down.vy - vv.y)) > 2) {
       throw new Error(`a touch aimed at ${Math.round(aimed.x)},${Math.round(aimed.y)} on the page landed at ${Math.round(down.x)},${Math.round(down.y)}, the visual viewport at ${Math.round(vv.x)},${Math.round(vv.y)} then ${Math.round(down.vx)},${Math.round(down.vy)}`);
+    }
+    // and as long as it was sent, by the events' own times as the board reads them: idb's taps came 90–200 ms long
+    if (aimed && t.at(-1)?.[1] === "up") {
+      const sent = t.slice(1).reduce((ms, [wait]) => ms + wait, 0);
+      let times: [string, number][] = [];
+      for (const end = Date.now() + 2000; Date.now() < end; await sleep(50)) {
+        times = await this.page.evaluate(() => (window as { touchTimes?: [string, number][] }).touchTimes ?? []);
+        if (times.filter(([e]) => e === "pointerup").length === t.filter(([, phase]) => phase === "up").length) break;
+      }
+      const first = times.find(([e]) => e === "pointerdown")?.[1], last = times.findLast(([e]) => e === "pointerup")?.[1];
+      if (first !== undefined && last !== undefined && Math.abs(last - first - sent) > 2) {
+        throw new Error(`a gesture sent as ${sent} ms from its first touch to its last lift reached the page ${Math.round(last - first)} ms long`);
+      }
     }
   }
 
@@ -622,5 +739,6 @@ export class IosDevice extends Device {
 
   stop() {
     this.hid.stop();
+    this.finger?.stop();
   }
 }
