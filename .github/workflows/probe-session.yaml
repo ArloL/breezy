@@ -1,0 +1,87 @@
+name: Probe session
+
+# A booted iPhone on the nightly's runner for an hour, running each probe pushed to this repo's probe-commands branch and
+# pushing what it printed to probe-results, for a fact in a minute where a run takes 25: scripts/probe-session.sh FILE
+# sends one and prints its result. A probe runs in this checkout with UDID set, for at most 10 minutes; one holding only
+# `exit-session` ends the session. It runs what anyone who may push to this repository pushes there, as any workflow
+# does; dispatch it only while probing.
+on:
+  workflow_dispatch:
+permissions: {}
+defaults:
+  run:
+    shell: bash -e -o pipefail {0}
+
+jobs:
+  session:
+    # the nightly's iOS runner: macOS 27 with Xcode 27 and iOS 27.0
+    runs-on: xcode-27
+    timeout-minutes: 75
+    env:
+      IPHONE: iPhone 13 mini
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # it pushes its results
+        persist-credentials: true
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Install the toolchain
+      run: npm ci
+    # as the nightly does: CoreSimulator's own cache folders keep the iPhone's log from composing
+    - name: Leave the iPhone its runtime's own shared cache
+      run: xcrun simctl runtime dyld_shared_cache remove --all
+    - name: Start booting an iPhone
+      run: node scripts/ios.ts --start
+    - name: Install idb
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: brew install facebook/fb/idb-companion
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+    # booted, not settled: a probe sees the load as it is, and notes it
+    - name: Boot the iPhone
+      timeout-minutes: 15
+      run: |
+        udid=$(xcrun simctl list devices booted --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+        xcrun simctl bootstatus "$udid" -b > /dev/null
+        echo "UDID=$udid" >> "$GITHUB_ENV"
+    - name: Probes
+      timeout-minutes: 62
+      run: |
+        git config user.name "probe session"
+        git config user.email "probe-session@users.noreply.github.com"
+        res="$RUNNER_TEMP/results"
+        if git fetch --quiet origin probe-results 2>/dev/null; then git worktree add --quiet -B probe-results "$res" FETCH_HEAD; else git worktree add --quiet --orphan -b probe-results "$res"; fi
+        mkdir -p "$res/results"
+        # results/NAME on probe-results, pushed: the session is its only writer
+        publish() { cp "$1" "$res/results/$2"; git -C "$res" add results; git -C "$res" commit --quiet --message "$2"; git -C "$res" push --quiet --force origin HEAD:probe-results; }
+        { echo "udid $UDID"; echo "load $(sysctl -n vm.loadavg)"; echo "at $(date -u +%FT%TZ)"; echo "run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; } > "$RUNNER_TEMP/ready.txt"
+        publish "$RUNNER_TEMP/ready.txt" ready.txt
+        last=$(git ls-remote origin refs/heads/probe-commands | cut -f1)
+        end=$(( SECONDS + 3600 ))
+        while [ $SECONDS -lt $end ]; do
+          sleep 10
+          sha=$(git ls-remote origin refs/heads/probe-commands | cut -f1)
+          if [ -z "$sha" ] || [ "$sha" = "$last" ]; then continue; fi
+          last=$sha
+          git fetch --quiet origin probe-commands
+          git show "$sha:run.sh" > "$RUNNER_TEMP/run.sh"
+          [ "$(tr -d '[:space:]' < "$RUNNER_TEMP/run.sh")" = "exit-session" ] && break
+          out="$RUNNER_TEMP/$sha.txt"
+          t=$SECONDS
+          set +e
+          bash -e -o pipefail "$RUNNER_TEMP/run.sh" > "$out" 2>&1 &
+          pid=$!
+          ( sleep 600; kill -TERM "$pid" 2> /dev/null ) &
+          killer=$!
+          wait "$pid"
+          code=$?
+          kill "$killer" 2> /dev/null
+          set -e
+          { echo; echo "exit $code after $(( SECONDS - t )) s, load $(sysctl -n vm.loadavg), $(date -u +%FT%TZ)"; } >> "$out"
+          publish "$out" "$sha.txt"
+        done
