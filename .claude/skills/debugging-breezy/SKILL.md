@@ -1,12 +1,25 @@
 ---
 name: debugging-breezy
-description: Use when a Breezy bug is reported by hand, a nightly run is red, or a test fails for a reason not yet known — before reading code to explain it
+description: Use when a Breezy bug is reported by hand, a nightly run is red, a test fails for a reason not yet known, or the harness, CI, a device, a tool or a setup step misbehaves (a slow or flaky step, a log that does not read, a probe's surprising number) — before reading code or guessing to explain it
 ---
 
 # Debugging Breezy
 
 Code says what can happen; recordings say what did. Start from facts, find the signal a control lacks, and keep only
 the hypothesis every fact allows. Design: `docs/superpowers/specs/2026-10-28-breezy-facts-first-design.md`.
+
+This holds for everything that fails, not only the app: a driver's tap, a CI step, the simulator's log, a probe of your
+own. A tap's 317 ms was idb's companion overrunning its own sleep, found from the companion's log against the page's
+event times; the iPhone's log failing to compose on CI was a `DYLD_SHARED_CACHE_DIR` pointing at an empty folder, found
+from `logd_helper`'s own log against a Mac's. Neither was a guess that came true.
+
+- **Your own probes are facts gathered by you:** check the path, the clock and the instrument before reading the
+  number. A probe looked for the iPhone's text under a folder no iPhone has, and a HID client listed the touchscreens of
+  the moment it was made; both read as findings.
+- **Keep each measurement where it can be read back:** in the job's log or artifact, not only its step summary, which
+  no API returns.
+- **Iterate where a cycle is short:** the local simulator for what reproduces there, `.github/workflows/probe-session.yaml`
+  for what only CI's runner shows. One question per run, its control alongside.
 
 ## 1. Gather facts before reading code
 

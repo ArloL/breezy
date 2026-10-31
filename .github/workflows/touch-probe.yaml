@@ -1,0 +1,76 @@
+name: Touch probe
+
+# Where a tap's time goes on the nightly's iPhone, through idb and through scripts/sim-finger.m, and whether its log
+# composes (scripts/touch-probe.ts): dispatch it when the nightly's taps reach the page too long or too far apart. The
+# summary and the log hold the numbers, the artifact the logs.
+on:
+  workflow_dispatch:
+    inputs:
+      taps:
+        description: "Taps per driver under each load"
+        default: "200"
+      stress:
+        description: "Busy processes added for each load, comma-separated"
+        default: "0"
+permissions: {}
+# each step's summary lines go to its log too, which the API reads and a summary it does not
+defaults:
+  run:
+    shell: bash -e -o pipefail {0}
+
+jobs:
+  probe:
+    # the nightly's iOS runner: macOS 27 with Xcode 27 and iOS 27.0
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      IPHONE: iPhone 13 mini
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Install the toolchain
+      run: npm ci
+    # as the nightly does: CoreSimulator's own cache folders keep the iPhone's log from composing
+    - name: Leave the iPhone its runtime's own shared cache
+      run: xcrun simctl runtime dyld_shared_cache remove --all
+    - name: Start booting an iPhone
+      run: node scripts/ios.ts --start
+    - name: Install idb
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: brew install facebook/fb/idb-companion
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+    - name: Boot an iPhone
+      timeout-minutes: 15
+      run: node scripts/ios.ts
+    # each probe whatever became of the one before
+    - name: What runs here, and the iPhone's log after its boot
+      continue-on-error: true
+      timeout-minutes: 10
+      run: node scripts/touch-probe.ts boot | tee -a "$GITHUB_STEP_SUMMARY"
+    - name: Taps
+      continue-on-error: true
+      timeout-minutes: 30
+      env:
+        TAPS: ${{ inputs.taps || '200' }}
+        STRESS: ${{ inputs.stress || '0' }}
+      run: node scripts/touch-probe.ts taps --taps "$TAPS" --stress "$STRESS" | tee -a "$GITHUB_STEP_SUMMARY"
+    - name: The iPhone's log, after the taps
+      if: ${{ always() }}
+      timeout-minutes: 15
+      run: node scripts/touch-probe.ts log after | tee -a "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: touch-probe
+        path: build/touch-probe
+        if-no-files-found: ignore
