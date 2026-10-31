@@ -2,7 +2,7 @@
 // and IndexedDB as an iPhone does, and shows the board. Its touches and keys go through idb as one HID stream per
 // gesture (scripts/sim-hid.py), so a double tap's waits hold; the page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only: idb's touch has one point. scripts/ios.ts boots the simulator.
-import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -172,8 +172,6 @@ export class SimHid {
   private readonly replies: ((line: string) => void)[] = [];
   private tail: Promise<unknown> = Promise.resolve();
   private ended = "";
-  /** How many streams of touches it has sent. */
-  touched = 0;
 
   private constructor(child: ChildProcessWithoutNullStreams) {
     this.child = child;
@@ -220,7 +218,7 @@ export class SimHid {
 
   /** One finger's events in screen points, each after its wait in ms, as one stream. */
   touches(t: [number, PointerPhase, number, number][]) {
-    return this.send({ touches: t }).finally(() => this.touched++);
+    return this.send({ touches: t });
   }
 
   text(s: string) {
