@@ -29,7 +29,7 @@ Releases update themselves with [Sparkle](https://sparkle-project.org): they dow
 | Stack | cards in a lane float up their column and make room where you drag one in, which lands centred in its column; ⌥-drag takes a card with those below it |
 | Colour | `1`–`5` |
 | Delete | ⌫ |
-| Copy | ⌘C, ⌘X and ⌘V copy, cut and paste cards; a copy goes below its original in a lane, else in the nearest clear space; on a phone, Copy in the selection bar and Paste in the + menu |
+| Copy | ⌘C, ⌘X and ⌘V copy, cut and paste cards; a copy goes below its original in a lane, else in the nearest clear space; Duplicate in the selection bar does both in one tap, without the clipboard |
 | New lane | `L` at the pointer, or New Lane in the toolbar; it goes in the nearest space clear of cards and lanes |
 | Lane | drag the header to move it with its cards, the corner to resize, double-click the header to rename |
 | Find | ⌘F searches fronts, backs and lane titles |

@@ -5,7 +5,6 @@ import { haptic } from "./haptics.ts";
 import { animate } from "./motion.ts";
 import { clampZoom } from "./view.ts";
 import { composingKey } from "./ime.ts";
-import { Taps } from "./clip.ts";
 import type { App, Match } from "./app.ts";
 
 const KEYS_H = 44;
@@ -44,11 +43,9 @@ export class UI {
   menus: Menus;
   zoom: number | undefined;
   zoomTimer: ReturnType<typeof setTimeout> | undefined;
-  taps: Taps;
 
   constructor(app: App) {
     this.app = app;
-    this.taps = new Taps(app, () => navigator.clipboard);
     this.matches = [];
     this.index = -1;
     this.$ = <E extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<E>(sel)!;
@@ -117,13 +114,12 @@ export class UI {
       case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();
-      case "paste": this.closeMenu(); return void this.taps.paste();
       case "colour": this.closeMenu(); return app.colour(Number(b!.dataset.colour));
       case "turn": {
         const [c] = app.selectedCards();
         return c && app.turn(app.state.turned === c.id ? null : c.id);
       }
-      case "copy": return void (this.taps.copy() && haptic());
+      case "duplicate": return void (app.duplicateSelection().length && haptic());
       case "delete": return app.removeSelection();
       case "key-turn": return app.switchSide();
       case "key-done": return app.endEditing();
@@ -165,7 +161,7 @@ export class UI {
     if (!selecting && this.menus.menu === this.$(".colours .menu")) this.menus.close(true);
     const one = cards.length === 1 && !lanes.length ? cards[0] : null;
     this.$('[data-act="turn"]').hidden = !one;
-    this.$('[data-act="copy"]').hidden = !cards.length;
+    this.$('[data-act="duplicate"]').hidden = !cards.length;
     this.$("#keys").hidden = !s.editing;
     this.place();
   }
