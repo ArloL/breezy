@@ -295,8 +295,9 @@ body[data-screen="board"] #boards { display: none; }
 }
 .sheet-buttons { display: flex; gap: 8px; margin-top: 16px; }
 .sheet-buttons button { flex: 1; height: 44px; border-radius: 999px; background: var(--press); color: var(--ink); }
+.sheet-buttons .strong { background: var(--accent); color: #fff; }
 .sheet-buttons .danger { color: #d93a2b; }
-@media (prefers-color-scheme: dark) { .sheet-buttons .danger { color: #ff6b5e; } }
+@media (prefers-color-scheme: dark) { .sheet-buttons .danger { color: #ff6b5e; } .sheet-buttons .strong { color: var(--paper); } }
 .sheet-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .sheet-choices button { height: 44px; border-radius: 999px; background: var(--press); color: var(--ink); }
 .menu .status { margin: 0; padding: 8px 14px; color: var(--ink2); font-size: 15px; line-height: 20px; white-space: pre-line; }
