@@ -293,6 +293,16 @@ test("duplicate turns a turned card back", () => {
   assert.equal(app.model.board.cards.length, 2);
 });
 
+test("duplicate reveals a copy that falls below the view", () => {
+  // a loose card far below the view: its copy goes to the clear space beside it
+  const app = new App({ cards: [{ id: "c0", x: 400, y: 3000, w: 240, text: "card", color: 1 }], lanes: [] }, fakePorts);
+  app.select(["c0"]);
+  const [id] = app.duplicateSelection();
+  const r = app.view.rectOf(R.card(app.model.board, id!)!);
+  const cam = app.view.camera.goal(), area = app.view.area(), y = r.y * cam.zoom + cam.y;
+  assert.ok(y >= area.top && y + r.h * cam.zoom <= area.bottom, `the copy at ${r.y} shows at ${y}, the view ${area.top}–${area.bottom}`);
+});
+
 test("cut during a drag does nothing", () => {
   const app = board(1);
   app.select(["c0"]);
