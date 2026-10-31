@@ -149,15 +149,6 @@ function labelled(out: string, label: string, types: string[]): Point | null {
   return e ? { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 } : null;
 }
 
-/** Where the iPhone shows iOS's Paste callout, which its accessibility lists as text, or null; not a button, as the
- * page's own Paste is one, which WebKit may hold from closing while the callout shows. Without holding up the cases'
- * clock, as a describe-all takes seconds. */
-function pasteCallout(udid: string): Promise<Point | null> {
-  dropEndedCompanions();
-  return new Promise((resolve) => execFile("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
-    { encoding: "utf8", timeout: 30_000 }, (e, out) => resolve(e ? null : labelled(out, "Paste", ["StaticText"]))));
-}
-
 /** Clears what the app on the Home Screen keeps, its storage, caches and service worker, while it does not run: cleared
  * from its page instead, it would have to load again, and a page loaded again there sees no touch. */
 export function clearHomeApp(udid: string) {
@@ -619,23 +610,6 @@ export class IosDevice extends Device {
     }, [selector, text ?? null] as const);
     if (!r) throw new Error(`nothing shows ${selector}`);
     await this.tapAt(r);
-  }
-
-  /** WebKit holds the page while iOS's Paste callout shows, as when another app wrote the clipboard, and the tap's check
-   * that the page saw it with it: the callout is tapped by where it shows, as long as the tap waits. */
-  override async tapToPaste(selector: string) {
-    let tapped = false;
-    // its error kept for later, not left unhandled meanwhile
-    const tap = this.tapOn(selector).then(() => null, (e: Error) => e).finally(() => (tapped = true));
-    const udid = bootedIphone()!, touched = this.hid.touched;
-    // looked for once the tap is sent, as a callout an earlier page left showing is not this one's
-    while (!tapped && this.hid.touched === touched) await sleep(50);
-    let callout: Point | null = null;
-    while (!tapped && !(callout = await pasteCallout(udid))) await sleep(250);
-    if (callout) await this.hid.touches([[0, "down", callout.x, callout.y], [50, "up", callout.x, callout.y]]);
-    const error = await tap;
-    if (error) throw error;
-    if (callout) await this.note(`tapped iOS's Paste at ${Math.round(callout.x)},${Math.round(callout.y)}`);
   }
 
   /** A tap at page point `p`. */
