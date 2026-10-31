@@ -393,16 +393,32 @@ export class App {
     this.endEditing();
     if (this.model.inGesture) return;
     this.turn(null);
+    this.place("Paste", clip, centre);
+  }
+
+  /** Copies of the selected cards where a paste on their board puts them, without the clipboard; their ids. */
+  duplicateSelection(): string[] {
+    this.endEditing();
+    if (this.model.inGesture) return [];
+    const clip = R.clip(this.model.board, this.library?.id ?? "", this.state.selection, this.heightOf);
+    if (!clip) return [];
+    this.turn(null);
+    return this.place("Duplicate", clip, this.view.toWorld(this.view.centre()));
+  }
+
+  /** Puts `clip` on the board as one undo step named `name`, then selects and reveals the copies. */
+  private place(name: string, clip: Clip, centre: Point): string[] {
     let ids: string[] = [];
-    this.model.perform("Paste", (b) => {
+    this.model.perform(name, (b) => {
       ids = R.paste(b, clip, { board: this.library?.id ?? "", centre }, this.heightOf);
     });
-    if (!ids.length) return;
-    this.flight.note("transition", "paste", { ids: ids.length });
+    if (!ids.length) return ids;
+    this.flight.note("transition", name.toLowerCase(), { ids: ids.length });
     this.select(ids);
     const rs = ids.map((id) => R.card(this.model.board, id)).filter((c) => c).map((c) => this.view.rectOf(c!));
     const x = Math.min(...rs.map((r) => r.x)), y = Math.min(...rs.map((r) => r.y));
     this.view.reveal({ x, y, w: Math.max(...rs.map((r) => r.x + r.w)) - x, h: Math.max(...rs.map((r) => r.y + r.h)) - y }, "top", 48);
+    return ids;
   }
 
   /** Ends any edit first; when that recorded nothing, the undo is spent on the edit, not on an earlier step. */
