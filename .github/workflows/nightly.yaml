@@ -311,6 +311,11 @@ jobs:
         npm ci --prefix relay
     # a fresh iPhone keeps the runner busy for minutes, which pass here meanwhile; the Home Screen app's clip is written
     # before this one boot, as the Home Screen reads it while booting and a second boot cost the ios-home jobs 4 minutes
+    # the runner keeps CoreSimulator's own builds of the simulators' shared caches, which an obsolete tool left holding
+    # only its output, and CoreSimulator points the iPhone's DYLD_SHARED_CACHE_DIR there: its logd_helper then finds no
+    # cache to take the text of, and the iPhone's log shows half its lines as `<compose failure [shared UUID]>`
+    - name: Leave the iPhone its runtime's own shared cache
+      run: xcrun simctl runtime dyld_shared_cache remove --all
     - name: Start booting an iPhone
       run: node scripts/ios.ts --start ${{ matrix.kind == 'ios-home' && '--home' || '' }}
     # brew's php drags 17 bottles behind it after minutes updating its taps on the preview image: 9 of the job's minutes
