@@ -220,6 +220,79 @@ test("paste turns a turned card back and reveals the copies", () => {
   assert.ok(r.y > 2000 && y >= area.top && y + r.h * cam.zoom <= area.bottom, `the copy at ${r.y} shows at ${y}, the view ${area.top}–${area.bottom}`);
 });
 
+/** A card `c0` standing in lane `l`. */
+const inLane = () => new App({ cards: [{ id: "c0", x: 24, y: 72, w: 240, text: "card", color: 1 }], lanes: [{ id: "l", x: 0, y: 0, w: 360, h: 200, title: "lane" }] }, fakePorts);
+
+test("duplicate puts a lane card's copy right below it, selected, as one undo step named Duplicate", () => {
+  const app = inLane();
+  app.select(["c0"]);
+  const undos = app.model.undos.length;
+  const ids = app.duplicateSelection();
+  assert.equal(ids.length, 1);
+  assert.notEqual(ids[0], "c0");
+  assert.deepEqual([...app.state.selection], ids);
+  const o = R.card(app.model.board, "c0")!, copy = R.card(app.model.board, ids[0]!)!;
+  assert.equal(copy.x, o.x);
+  assert.ok(copy.y > o.y, `the copy at ${copy.y}, the original at ${o.y}`);
+  assert.equal(app.model.undos.length, undos + 1);
+  assert.equal(app.model.undos.at(-1)!.name, "Duplicate");
+  assert.deepEqual(of(app, "transition").map((e) => [e[2], e[3]]).at(-1), ["duplicate", { ids: 1 }]);
+  app.model.undo();
+  assert.equal(app.model.board.cards.length, 1);
+});
+
+test("duplicate twice stacks the second copy under the first", () => {
+  const app = inLane();
+  app.select(["c0"]);
+  const [first] = app.duplicateSelection();
+  const [second] = app.duplicateSelection();
+  const y = (id: string) => R.card(app.model.board, id)!.y;
+  assert.ok(y("c0") < y(first!) && y(first!) < y(second!), `${y("c0")}, ${y(first!)}, ${y(second!)}`);
+});
+
+test("duplicate leaves a selection's lanes and copies its cards", () => {
+  const app = board(2);
+  app.select(["c0", "c1", "l"]);
+  assert.equal(app.duplicateSelection().length, 2);
+  assert.deepEqual([app.model.board.cards.length, app.model.board.lanes.length], [4, 1]);
+});
+
+test("duplicate with only lanes selected does nothing", () => {
+  const app = board(1);
+  app.select(["l"]);
+  const undos = app.model.undos.length;
+  assert.deepEqual(app.duplicateSelection(), []);
+  assert.equal(app.model.undos.length, undos);
+  assert.equal(of(app, "transition").length, 0);
+});
+
+test("duplicate during a drag does nothing", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  app.model.begin();
+  assert.deepEqual(app.duplicateSelection(), []);
+  assert.equal(app.model.board.cards.length, 1);
+});
+
+test("duplicate during an edit ends it and copies the card with its new text", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  app.beginEdit("c0");
+  (app.view.editorOf("c0", false) as FakeField).type("!");
+  app.duplicateSelection();
+  assert.equal(app.state.editing, null);
+  assert.deepEqual(app.model.board.cards.map((c) => c.text), ["card 0!", "card 0!"]);
+});
+
+test("duplicate turns a turned card back", () => {
+  const app = board(1);
+  app.select(["c0"]);
+  app.turn("c0");
+  app.duplicateSelection();
+  assert.equal(app.state.turned, null);
+  assert.equal(app.model.board.cards.length, 2);
+});
+
 test("cut during a drag does nothing", () => {
   const app = board(1);
   app.select(["c0"]);
