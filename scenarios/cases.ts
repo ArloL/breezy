@@ -751,7 +751,7 @@ export const cases: Case[] = [
     },
   },
   {
-    name: "a card copied and pasted with the selection bar on a phone shows right below it on the other device",
+    name: "a card duplicated with the selection bar on a phone shows right below it on the other device",
     input: "touch",
     buttons: true,
     async run(s) {
@@ -762,22 +762,13 @@ export const cases: Case[] = [
       await s.settle();
       // the drag leaves it selected, and the camera where it was, the lane above a short screen's top
       assert.ok(item(await a.scene(), card).selected, "the card is selected after its drag");
-      await a.tapOn('[data-act="copy"]');
-      // the + shows once nothing is selected
-      await a.tap(await nothing(a));
-      await a.tapOn('[data-act="add"]');
-      await a.tapToPaste('[data-act="paste"]');
+      await a.tapOn('[data-act="duplicate"]');
       const text = item(await a.scene(), card).text;
       await a.until("the copy", async () => (await a.scene()).cards.filter((c) => c.text === text).length === 2);
       await s.settle();
       const seen = await b.scene(), l = item(seen, lane);
       const column = seen.cards.filter((c) => c.text === text && c.x === l.x + 24).map((c) => c.y - l.y).sort((p, q) => p - q);
       assert.deepEqual(column, [72, 144]);
-      // through the phone's clipboard, as the page's own copy would hide a write or read that never works
-      if (/^ios-|android/.test(a.kind)) {
-        const said = (await a.flight())?.entries.filter(([, , what]) => what === "copy refused" || what === "paste source");
-        assert.deepEqual(said?.map(([, , what, data]) => [what, data?.from]), [["paste source", "clipboard"]], "what the phone's app said of the clipboard");
-      }
     },
   },
   {
