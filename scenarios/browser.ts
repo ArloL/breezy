@@ -974,14 +974,19 @@ export class BrowserDevice extends Device {
     if (!this.touchscreen) return;
     let last = "", since = Date.now();
     await until(what, async () => {
-      const [size, told] = await this.page.evaluate(() => {
-        const was = (window as unknown as { breezyHeight?: number }).breezyHeight;
-        return [[innerHeight, visualViewport!.height, visualViewport!.offsetTop], was == null || was === Math.round(visualViewport!.height)] as const;
-      });
+      const size = await this.page.evaluate(() => [innerHeight, visualViewport!.height, visualViewport!.offsetTop]);
       const now = JSON.stringify([size, (await this.scene()).camera]);
-      if (now !== last || !told) [last, since] = [now, Date.now()];
+      if (now !== last || !(await this.told())) [last, since] = [now, Date.now()];
       return Date.now() - since >= 500;
     }, 5000);
+  }
+
+  override async told() {
+    if (!this.touchscreen) return true;
+    return this.page.evaluate(() => {
+      const was = (window as unknown as { breezyHeight?: number }).breezyHeight;
+      return was == null || was === Math.round(visualViewport!.height);
+    });
   }
 
   /** As a person makes one: a double-click, a title, and Esc. */
