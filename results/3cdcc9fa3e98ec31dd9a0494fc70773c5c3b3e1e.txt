@@ -1,0 +1,16 @@
+## Enter pressed once
+
+| Driver | Busy added | Load | Presses | Repeated (95 % CI) | Not heard | down→up heard p50 / p99 / max |
+|---|---|---|---|---|---|---|
+| idb | 150 | 272 | 120 | 0, 0.00–3.03 % | 0 | 13 / 44 / 63 |
+| sim-finger | 150 | 272 | 120 | 0, 0.00–3.03 % | 0 | 15 / 25 / 29 |
+
+sim-finger, 10 ms apart, typed "Hi you, 42!\nok the quick brown fox": the field gained "Hi you, 42!\nok the quick brown f".
+
+idb typed "Hi you, 42!\nok the quick brown fox": the field gained "oxHi you, 42!\nok the quick brown fox".
+
+Control, Enter held 900 ms through sim-finger: 6 keydowns, 5 marked repeat.
+
+getpwuid_r did not find a match for uid 501
+
+exit 0 after 277 s, load { 254.64 201.05 182.50 }, 2026-11-01T13:19:05Z
