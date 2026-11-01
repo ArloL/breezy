@@ -11,6 +11,11 @@
 //   -> {"ok": true, "stamped": [ms...], "sent": [ms...]}     each event's stamp and when it went, on the wall clock
 //   {"senders": true} -> {"ok": true, "senders": [...]}       the touchscreens, as which a touch may come
 //   {"sender": "ID"}                                         touch as that one from now on
+//   {"keys": [[ms, "down" | "up", usage], ...]}              keys by HID usage, each after its wait, as the keyboard
+//   -> {"ok": true, "stamped": [ms...], "sent": [ms...]}     dtuhidd adds once idb connects
+//
+// A key's down and up go from here one after the other, as idb sends them over a busy runner as two, and iOS repeated an
+// Enter whose up came 913 ms after its down.
 //
 // Which touchscreen Safari hears is told by trying them: once idb connects, dtuhidd adds its own, one per display, and
 // only the main display's is heard; the simulator's own then go.
@@ -26,6 +31,7 @@ typedef void *Client;
 static Client (*ClientCreateWithType)(CFAllocatorRef, int, CFDictionaryRef);
 static void (*Dispatch)(Client, Ev);
 static Ev (*Digitizer)(CFAllocatorRef, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, double, double, double, double, double, Boolean, Boolean, uint32_t);
+static Ev (*Keyboard)(CFAllocatorRef, uint64_t, uint32_t, uint32_t, Boolean, uint32_t);
 static Ev (*Finger)(CFAllocatorRef, uint64_t, uint32_t, uint32_t, uint32_t, double, double, double, double, double, Boolean, Boolean, uint32_t);
 static void (*Append)(Ev, Ev, uint32_t);
 static void (*SetInt)(Ev, uint32_t, long);
@@ -34,7 +40,7 @@ static CFArrayRef (*CopyServices)(Client);
 static CFTypeRef (*CopyProperty)(void *, CFStringRef);
 static CFTypeRef (*RegistryID)(void *);
 
-enum { RANGE = 0x1, TOUCH = 0x2, POSITION = 0x4, HAND = 3, DISPLAY_INTEGRATED = (11 << 16) + 25 };
+enum { KEYBOARD_PAGE = 7, RANGE = 0x1, TOUCH = 0x2, POSITION = 0x4, HAND = 3, DISPLAY_INTEGRATED = (11 << 16) + 25 };
 
 static double wall(void) {
   struct timespec t;
@@ -75,6 +81,21 @@ static NSArray *touchscreens(void) {
   return found;
 }
 
+/** dtuhidd's keyboard, as for its touchscreens by a client made for it; 0 before idb has connected. */
+static uint64_t keyboard(void) {
+  uint64_t found = 0;
+  Client client = ClientCreateWithType(NULL, 1, NULL);
+  CFArrayRef services = CopyServices(client);
+  for (CFIndex i = 0; services && i < CFArrayGetCount(services); i++) {
+    void *s = (void *)CFArrayGetValueAtIndex(services, i);
+    NSString *product = (__bridge_transfer NSString *)CopyProperty(s, CFSTR("Product"));
+    if ([product isEqualToString:@"CoreDevice keyboard"]) found = [(__bridge NSNumber *)RegistryID(s) unsignedLongLongValue];
+  }
+  if (services) CFRelease(services);
+  CFRelease(client);
+  return found;
+}
+
 static void answer(NSDictionary *d) {
   NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
   fwrite(json.bytes, 1, json.length, stdout);
@@ -94,6 +115,7 @@ int main(int argc, char **argv) {
     Dispatch = dlsym(io, "IOHIDEventSystemClientDispatchEvent");
     Digitizer = dlsym(io, "IOHIDEventCreateDigitizerEvent");
     Finger = dlsym(io, "IOHIDEventCreateDigitizerFingerEvent");
+    Keyboard = dlsym(io, "IOHIDEventCreateKeyboardEvent");
     Append = dlsym(io, "IOHIDEventAppendEvent");
     SetInt = dlsym(io, "IOHIDEventSetIntegerValue");
     SetSender = dlsym(io, "IOHIDEventSetSenderID");
@@ -127,8 +149,13 @@ int main(int argc, char **argv) {
           answer(@{@"ok": @YES});
           continue;
         }
-        NSArray *touches = c[@"touches"];
-        if (![touches isKindOfClass:NSArray.class]) {
+        NSArray *touches = c[@"touches"], *keys = c[@"keys"];
+        uint64_t keys_from = 0;
+        if ([keys isKindOfClass:NSArray.class] && !(keys_from = keyboard())) {
+          answer(@{@"error": @"no keyboard: idb has not connected"});
+          continue;
+        }
+        if (![touches isKindOfClass:NSArray.class] && !keys_from) {
           answer(@{@"error": [NSString stringWithFormat:@"unknown command %s", line]});
           continue;
         }
@@ -137,13 +164,19 @@ int main(int argc, char **argv) {
         double startWall = wall();
         double at = 0;
         NSMutableArray *stamped = [NSMutableArray array], *sent = [NSMutableArray array];
-        for (NSArray *t in touches) {
+        for (NSArray *t in keys_from ? keys : touches) {
           at += [t[0] doubleValue];
           uint64_t due = start + (uint64_t)(at * ticksPerMs);
           // on time where the runner allows, and stamped on time where it does not
           uint64_t now = mach_absolute_time();
           if (now < due) usleep((useconds_t)((due - now) / ticksPerMs * 1000));
-          Ev e = event(due, [t[2] doubleValue] / width, [t[3] doubleValue] / height, t[1], sender);
+          Ev e;
+          if (keys_from) {
+            e = Keyboard(NULL, due, KEYBOARD_PAGE, [t[2] unsignedIntValue], [t[1] isEqualToString:@"down"], 0);
+            SetSender(e, keys_from);
+          } else {
+            e = event(due, [t[2] doubleValue] / width, [t[3] doubleValue] / height, t[1], sender);
+          }
           Dispatch(client, e);
           CFRelease(e);
           [sent addObject:@(wall())];

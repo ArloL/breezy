@@ -2,6 +2,7 @@
 // Where a tap's time goes on the booted iPhone, for when the nightly's taps reach its page too long or too far apart:
 //
 //   node scripts/touch-probe.ts taps [--taps N] [--stress 0,60,150]   taps through idb and through scripts/sim-finger.m
+//   node scripts/touch-probe.ts keys [--keys N] [--stress 0,60,150]   Enter pressed through each, and how often iOS repeated it
 //   node scripts/touch-probe.ts log LABEL                              what of the iPhone's log composes, and why not
 //   node scripts/touch-probe.ts boot [--minutes 5]                     what runs here, and the log composing after the boot
 //
@@ -16,7 +17,7 @@ import { createServer } from "node:http";
 import { loadavg } from "node:os";
 import { createInterface } from "node:readline";
 import { setTimeout as sleep } from "node:timers/promises";
-import { bootedIphone, SimFinger, SimHid, simctl } from "../scenarios/ios.ts";
+import { bootedIphone, keyEvents, keystrokes, SimFinger, SimHid, simctl } from "../scenarios/ios.ts";
 import { Gestures, type GestureHandler } from "../web/gestures.ts";
 
 const out = "build/touch-probe";
@@ -150,6 +151,117 @@ async function taps(n: number, stresses: number[]) {
     companion(all);
     const summary = `${all.length ? summarise(all) + split(all) : ""}${notes.join("\n\n")}\n\n`;
     writeFileSync(`${out}/summary.md`, summary);
+    process.stdout.write(summary);
+    logs(started);
+  }
+}
+
+type Key = { type: string; key: string; repeat: boolean; ev: number; heard: number; value?: string };
+type Press = { driver: string; stress: number; load: number; sent: number; downs: number; repeats: number; apart?: number; held?: number };
+
+/** The page for keys: a field over the screen, each key event's own time and when it was heard, and what the field holds. */
+const KEY_PAGE = `<!DOCTYPE html><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>html,body{margin:0;height:100%}textarea{box-sizing:border-box;width:100%;height:100%;font:16px system-ui}</style>
+<textarea id="t" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+<script>
+const q = [], o = performance.timeOrigin;
+for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => q.push({ type, key: e.key, repeat: e.repeat, ev: o + e.timeStamp, heard: o + performance.now() }), { capture: true });
+t.addEventListener("focus", () => q.push({ type: "focus", key: "", repeat: false, ev: 0, heard: o + performance.now() }));
+t.addEventListener("input", () => q.push({ type: "input", key: "", repeat: false, ev: 0, heard: o + performance.now(), value: t.value }));
+const post = (b) => fetch("/events", { method: "POST", body: JSON.stringify(b) });
+post([{ type: "ready", screen: [screen.width, screen.height] }]);
+setInterval(() => q.length && post(q.splice(0)), 20);
+</script>`;
+
+/** Enter pressed N times through idb and through sim-finger under each load, after a check that sim-finger types text
+ * as idb does and a control that the page tells a repeated key: one held 900 ms. */
+async function keys(n: number, stresses: number[]) {
+  const started = new Date();
+  const events: Key[] = [];
+  let screen: [number, number] | null = null;
+  const server = createServer((req, res) => {
+    if (req.method !== "POST") return void res.setHeader("content-type", "text/html").end(KEY_PAGE);
+    let body = "";
+    req.on("data", (c) => (body += c)).on("end", () => {
+      for (const e of JSON.parse(body) as (Key & { screen?: [number, number] })[]) {
+        if (e.type === "ready") screen = e.screen!;
+        else events.push(e);
+      }
+      res.end();
+    });
+  }).listen(0);
+  await new Promise((r) => server.once("listening", r));
+  const port = (server.address() as { port: number }).port;
+  for (let tries = 1; !screen; tries++) {
+    if (tries > 4) throw new Error("Safari never showed the probe page");
+    simctl(["openurl", udid!, `http://localhost:${port}/`], { timeout: 60_000 });
+    for (const end = Date.now() + 20_000; !screen && Date.now() < end; await sleep(200));
+  }
+  const [w, h] = screen as [number, number];
+  const notes: string[] = [];
+  const all: Press[] = [];
+  const hid = await SimHid.start(udid!);
+  const finger = await SimFinger.start(udid!, w, h);
+  const value = () => events.findLast((e) => e.type === "input")?.value ?? "";
+  try {
+    // focus the field by idb's tap, which also has dtuhidd add the keyboard sim-finger sends as
+    for (let tries = 0; !events.some((e) => e.type === "focus"); tries++) {
+      if (tries > 3) throw new Error("the field never took the focus");
+      await hid.touches([[0, "down", w / 2, h / 3], [50, "up", w / 2, h / 3]]);
+      for (const end = Date.now() + 5000; !events.some((e) => e.type === "focus") && Date.now() < end; await sleep(50));
+    }
+    await sleep(1000);
+    // how far apart sim-finger's key events must go for each to land, against idb's
+    const text = "Hi you, 42!\nok the quick brown fox";
+    for (const gap of [...arg("gaps", "10,20,30,50").split(",").map(Number), -1]) {
+      const before = value();
+      if (gap < 0) await hid.text(text);
+      else await finger.keys(keyEvents(keystrokes(text), gap));
+      for (const end = Date.now() + 5000; value() !== before + text && Date.now() < end; await sleep(50));
+      const got = value().slice(before.length);
+      notes.push(`${gap < 0 ? "idb" : `sim-finger, ${gap} ms apart,`} typed ${JSON.stringify(text)}: ${got === text ? "all of it" : `the field gained ${JSON.stringify(got)}`}.`);
+    }
+
+    const press = async (driver: string, stress: number, send: () => Promise<unknown>, held?: number) => {
+      const seen = events.length, sent = Date.now();
+      await send();
+      // past iOS's first repeat, some 400 ms after the down
+      for (const end = Date.now() + 3000; !events.slice(seen).some((e) => e.type === "keyup") && Date.now() < end; await sleep(10));
+      await sleep(600);
+      const mine = events.slice(seen).filter((e) => e.key === "Enter");
+      const down = mine.find((e) => e.type === "keydown"), up = mine.find((e) => e.type === "keyup");
+      const p: Press = { driver, stress, load: Math.round(loadavg()[0]! * 10) / 10, sent, downs: mine.filter((e) => e.type === "keydown").length, repeats: mine.filter((e) => e.repeat).length, apart: down && up && Math.round(up.heard - down.heard), held };
+      all.push(p);
+      appendFileSync(`${out}/keys.jsonl`, `${JSON.stringify({ ...p, events: mine })}\n`);
+      return p;
+    };
+    writeFileSync(`${out}/keys.jsonl`, "");
+    const control = await press("sim-finger held 900 ms", 0, () => finger.keys([[0, "down", 40], [900, "up", 40]]), 900);
+    notes.push(`Control, Enter held 900 ms through sim-finger: ${control.downs} keydowns, ${control.repeats} marked repeat.`);
+    for (const stress of stresses) {
+      const busy: ChildProcess[] = Array.from({ length: stress }, () => spawn("yes", { stdio: "ignore" }));
+      try {
+        await sleep(stress ? 5000 : 0);
+        for (let i = 0; i < 2 * n; i++) {
+          if (i % 2) await press("sim-finger", stress, () => finger.keys(keyEvents([[40, false]])));
+          else await press("idb", stress, () => hid.key(40));
+        }
+      } finally {
+        for (const b of busy) b.kill();
+      }
+    }
+  } finally {
+    hid.stop();
+    finger.stop();
+    server.close();
+    const rows = ["| Driver | Busy added | Load | Presses | Repeated (95 % CI) | Not heard | down→up heard p50 / p99 / max |", "|---|---|---|---|---|---|---|"];
+    for (const ps of Map.groupBy(all.filter((p) => !p.held), (p) => `${p.driver} ${p.stress}`).values()) {
+      const rep = ps.filter((p) => p.downs > 1).length;
+      const apart = ps.flatMap((p) => p.apart ?? []);
+      rows.push(`| ${ps[0]!.driver} | ${ps[0]!.stress} | ${r(q(ps.map((p) => p.load), 0.5))} | ${ps.length} | ${rep}, ${ci(rep, ps.length)} | ${ps.filter((p) => !p.downs).length} | ${r(q(apart, 0.5))} / ${r(q(apart, 0.99))} / ${r(Math.max(...apart))} |`);
+    }
+    const summary = `## Enter pressed once\n\n${rows.join("\n")}\n\n${notes.join("\n\n")}\n\n`;
+    writeFileSync(`${out}/keys.md`, summary);
     process.stdout.write(summary);
     logs(started);
   }
@@ -409,5 +521,6 @@ async function logCheck(label: string) {
 
 if (process.argv[2] === "log") await logCheck(process.argv[3] ?? "now");
 else if (process.argv[2] === "boot") await bootFacts();
+else if (process.argv[2] === "keys") await keys(Number(arg("keys", "100")), arg("stress", "0,60,150").split(",").map(Number));
 else if (process.argv[2] === "taps") await taps(Number(arg("taps", "300")), arg("stress", "0,60,150").split(",").map(Number));
 else throw new Error("usage: node scripts/touch-probe.ts taps [--taps N] [--stress 0,60,150] | log LABEL | boot");
