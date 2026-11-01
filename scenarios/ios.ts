@@ -18,6 +18,26 @@ const root = new URL("..", import.meta.url).pathname;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** HID usages of the keys cases press. */
 const KEYS: Record<string, number> = { Enter: 40, Escape: 41, Backspace: 42, Tab: 43, " ": 44 };
+const SHIFT = 225;
+
+/** The keys that type `text` on a US keyboard, as idb's KEY_MAP has them: each a HID usage, and whether with Shift. */
+export function keystrokes(text: string): [number, boolean][] {
+  // from usage 4 on, \0 where the key types no character
+  const plain = "abcdefghijklmnopqrstuvwxyz1234567890\n\0\0\0 -=[]\\\0;'`,./";
+  const shifted = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()\0\0\0\0\0_+{}|\0:\"~<>?";
+  return [...text].map((c) => {
+    const i = c === "\0" ? -1 : plain.indexOf(c), j = c === "\0" ? -1 : shifted.indexOf(c);
+    if (i < 0 && j < 0) throw new Error(`no key types ${JSON.stringify(c)} on the iPhone`);
+    return i >= 0 ? [4 + i, false] : [4 + j, true];
+  });
+}
+
+/** sim-finger's events for `keys`, `ms` apart: iOS repeats a key whose up comes late. */
+export function keyEvents(keys: [number, boolean][], ms = 10): [number, "down" | "up", number][] {
+  return keys.flatMap(([usage, shift]): [number, "down" | "up", number][] => shift
+    ? [[ms, "down", SHIFT], [ms, "down", usage], [ms, "up", usage], [ms, "up", SHIFT]]
+    : [[ms, "down", usage], [ms, "up", usage]]);
+}
 
 /** Each simctl call this process made, for a case's timeline: when, what, how long, and how it failed. */
 export const simctlLog: Line[] = [];
@@ -312,6 +332,11 @@ export class SimFinger {
     return this.send({ touches: t });
   }
 
+  /** Keys by HID usage, each after its wait in ms, as the keyboard dtuhidd adds once idb connects. */
+  keys(k: [number, "down" | "up", number][]) {
+    return this.send({ keys: k });
+  }
+
   stop() {
     this.child.kill();
   }
@@ -580,10 +605,7 @@ export class IosDevice extends Device {
       return (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement ? e.value : e?.textContent ?? "").replace(/​/g, "").replace(/\n$/, "");
     });
     const before = await held();
-    for (const part of text.split(/(\n)/)) {
-      if (part === "\n") await this.hid.key(KEYS.Enter!);
-      else if (part) await this.hid.text(part);
-    }
+    await this.keys(keystrokes(text));
     for (const end = Date.now() + 5000; ; await sleep(50)) {
       const now = await held();
       if (now.length >= before.length + text.replace(/\n/g, "").length) break;
@@ -595,11 +617,17 @@ export class IosDevice extends Device {
     await this.still("the keyboard to open and the board to stand still");
   }
 
+  /** Through sim-finger, as its touches, which needs idb to have connected for the keyboard it sends as. */
+  private async keys(k: [number, boolean][]) {
+    if (!this.finger) throw new Error("the iPhone was not calibrated");
+    await this.finger.keys(keyEvents(k));
+  }
+
   async key(key: string, mods: { meta?: boolean; shift?: boolean } = {}) {
     if (mods.meta) throw new Error("Safari on the iOS Simulator has no ⌘ here");
     const usage = KEYS[key];
-    if (usage !== undefined) await this.hid.key(usage);
-    else if ([...key].length === 1) await this.hid.text(key);
+    if (usage !== undefined) await this.keys([[usage, false]]);
+    else if ([...key].length === 1) await this.keys(keystrokes(key));
     else throw new Error(`no key ${key} on the iPhone`);
   }
 
