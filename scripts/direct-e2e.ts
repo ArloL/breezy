@@ -95,7 +95,7 @@ await waitFor("server", () => fetch("http://127.0.0.1:58566/sync.php").then(() =
 async function browser(name: string) {
   const dir = mkdtempSync(join(tmpdir(), `breezy-e2e-${name}-`));
   dirs.push(dir);
-  children.push(spawnGroup(`chromium-${name}`, chromium(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], {}));
+  children.push(spawnGroup(`chromium-${name}`, chromium(), ["--headless=new", "--use-mock-keychain", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], {}));
   // a macOS runner checks a browser it has not run before for a while first
   await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")), 60_000);
   const port = readFileSync(join(dir, "DevToolsActivePort"), "utf8").split("\n")[0];
