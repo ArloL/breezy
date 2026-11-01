@@ -61,7 +61,7 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Install PHP
       run: command -v php || brew install php
     - name: Install the web toolchain and the relay
@@ -147,7 +147,7 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Install zsh, PHP's SQLite and KVM access
       run: |
         # a mirror mid-sync fails a download now and then
@@ -374,7 +374,7 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Install PHP
       run: command -v php || brew install php
     - name: Install the web toolchain and the relay
@@ -430,7 +430,7 @@ jobs:
     - name: Turn Spotlight off
       # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
       run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Build this commit and the reference
       run: |
         git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
@@ -535,7 +535,7 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Install PHP
       run: command -v php || brew install php
     - name: Install the relay
