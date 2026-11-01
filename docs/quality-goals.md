@@ -32,7 +32,7 @@ The partner judges Breezy on the first sessions; one confusing moment costs trus
 | 2a | Drag a card on a 100-card board, mid-range Android | Card stays under the finger; p95 frame ≤ 16.7 ms |
 | 2b | Type into a card, mid-range Android | p95 key to glyph ≤ 50 ms |
 | 2c | Launch from the Home Screen | ≤ 1.5 s to an interactive board |
-| 2d | Any change, on the Mac and in the browsers | No `bench.sh` or `feel.ts` measure worse than its baselines (`scripts/gate.ts`) |
+| 2d | Any change, on the Mac and in the browsers | No `bench.sh` or `feel.ts` measure worse than the reference build's, measured in turns on the same runner (`scripts/gate.ts`) |
 
 ### 3. Convergence
 

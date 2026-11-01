@@ -3,7 +3,8 @@
 // worst baseline's by over 10 % and 1 ms or MB, as a sub-millisecond p95 0.05 ms longer once failed a night. Baselines are
 // runs on the same machine, as of a reference build, or on the same kind of machine, whose spread from one machine to the
 // next the envelope takes in. Every measure is lower-is-better.
-// Takes feel.ts's output, whose last line holds its samples, or bench.sh's build/bench.jsonl, as the run and baselines.
+// Takes feel.ts's output, each line of which that holds samples counting, as from runs in turns appended to one file, or
+// bench.sh's build/bench.jsonl, as the run and baselines.
 //   node scripts/gate.ts RUN BASELINE...
 import { readFileSync } from "node:fs";
 
@@ -23,7 +24,10 @@ function samples(path: string): Record<string, number[]> {
       }
     return out;
   }
-  return JSON.parse(lines.at(-1)!).results;
+  const out: Record<string, number[]> = {};
+  for (const line of lines.filter((l) => l.startsWith('{"opt"')))
+    for (const [k, xs] of Object.entries(JSON.parse(line).results as Record<string, number[]>)) (out[k] ??= []).push(...xs);
+  return out;
 }
 
 const T = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 2.18, 2.16, 2.14, 2.13, 2.12, 2.11, 2.10, 2.09, 2.09];
