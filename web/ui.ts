@@ -71,6 +71,7 @@ export class UI {
       this.step(1);
     });
     visualViewport!.addEventListener("resize", () => {
+      this.seen = this.viewport();
       this.place();
       this.app.revealEditing();
       // the keyboard coming or going moves the middle of what is visible
@@ -78,6 +79,7 @@ export class UI {
     });
     // iOS moves the visual viewport as the keyboard comes, at times with no resize after: what shows changed
     visualViewport!.addEventListener("scroll", () => {
+      this.seen = this.viewport();
       this.place();
       this.app.revealEditing();
     });
@@ -164,6 +166,34 @@ export class UI {
     this.$('[data-act="duplicate"]').hidden = !cards.length;
     this.$("#keys").hidden = !s.editing;
     this.place();
+    if (s.editing && !this.watching) this.watchViewport();
+  }
+
+  /** The visual viewport's size and place, as the page reads it. */
+  private viewport() {
+    const vv = visualViewport!;
+    return `${vv.width} ${vv.height} ${vv.offsetTop}`;
+  }
+
+  private seen = "";
+  private watching = false;
+
+  /** While an edit is open, each frame, keeps what it edits in sight of a visual viewport that changed with no event:
+   * Chrome on CI's Android emulator read the keyboard's height a second before its resize (#217). */
+  private watchViewport() {
+    this.watching = true;
+    this.seen = this.viewport();
+    const frame = () => {
+      if (!this.app.state.editing) return void (this.watching = false);
+      const now = this.viewport();
+      if (now !== this.seen) {
+        this.seen = now;
+        this.place();
+        this.app.revealEditing();
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
   }
 
   /** While the zoom changes, a small capsule shows it, fading a second after it stops, as in Freeform. */
