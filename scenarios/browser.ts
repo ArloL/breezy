@@ -1563,8 +1563,9 @@ export class RealWorld {
     const answer = <T>(p: Promise<T>) => Promise.race([p.catch((e: Error) => `none: ${e.message.split("\n")[0]}`), sleep(5000).then(() => "none in 5 s")]);
     const failing = error ? this.steps.failed() : undefined;
     await this.steps.read();
-    // and each simctl call since this world started: how long it took, and how it failed
-    const lines: Line[] = [...this.host, ...this.steps.lines(), ...simctlLog.filter(([at]) => at >= this.started)];
+    // and each simctl call since this world started: how long it took, and how it failed; and each function the agent
+    // sent the iPhone's page again
+    const lines: Line[] = [...this.host, ...this.steps.lines(), ...simctlLog.filter(([at]) => at >= this.started), ...this.agent.log.filter(([at]) => at >= this.started)];
     let phoneLog = false;
     const parts = await Promise.all(this.devices.map(async (d, i) => {
       const who = `d${i} ${d.kind}`, summary: string[] = [];

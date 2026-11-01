@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { simctl } from "./ios.ts";
+import type { Line } from "./record.ts";
 
 /** How long a poll waits for a function before the page asks again. */
 const POLL_MS = 10_000;
@@ -14,6 +15,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Runs in the page: asks for the next function, runs it with its argument, and posts its value or its error. */
 function pageAgent() {
   const page = Math.random().toString(36).slice(2);
+  let last = 0;
   const loop = async () => {
     for (;;) {
       try {
@@ -22,9 +24,11 @@ function pageAgent() {
           await new Promise((r) => setTimeout(r, 250));
           continue;
         }
-        const r = await fetch(`/agent/next?page=${page}&visible=${document.visibilityState === "visible"}`, { cache: "no-store" });
+        const r = await fetch(`/agent/next?page=${page}&visible=${document.visibilityState === "visible"}&last=${last}`, { cache: "no-store" });
         if (r.status !== 200) continue;
         const { seq, src, arg } = await r.json();
+        if (seq <= last) continue;
+        last = seq;
         // not awaited: one that never settles keeps no other from running
         (async () => {
           let out;
@@ -56,6 +60,8 @@ interface Job {
   seq: number;
   src: string;
   arg: unknown;
+  /** The page it was sent to. */
+  to?: string;
   resolve(v: unknown): void;
   reject(e: Error): void;
 }
@@ -71,6 +77,8 @@ export class Agent {
   private readonly queue: Job[] = [];
   private readonly sent = new Map<number, Job>();
   private polls: { page: string; res: ServerResponse; timer: ReturnType<typeof setTimeout> }[] = [];
+  /** Each function sent again, for a case's timeline. */
+  readonly log: Line[] = [];
 
   constructor() {
     this.page = new AgentPage(this);
@@ -85,6 +93,15 @@ export class Agent {
       if (u.searchParams.get("visible") !== "true") return res.writeHead(204).end(), true;
       this.current = page;
       this.heard = Date.now();
+      // the page asks once at a time: a poll it asked before is one it never read, as a busy runner's iPhone lost one
+      for (const p of this.polls.filter((p) => p.page === page)) this.drop(p.res);
+      const last = Number(u.searchParams.get("last") ?? 0);
+      const lost = [...this.sent.values()].filter((j) => j.to === page && j.seq > last);
+      for (const j of lost) {
+        this.sent.delete(j.seq);
+        this.log.push([Date.now(), "agent", `function ${j.seq} sent again: the page's last was ${last}`]);
+      }
+      this.queue.unshift(...lost);
       const timer = setTimeout(() => this.drop(res), POLL_MS);
       this.polls.push({ page, res, timer });
       // a page that went away, as on a reload, takes no more
@@ -155,8 +172,9 @@ export class Agent {
     // a page navigated away from polls no more; its open poll is dropped
     for (const p of this.polls.filter((p) => p.page !== this.current)) this.drop(p.res);
     while (this.queue.length && this.polls.length) {
-      const { res } = this.polls[0]!, job = this.queue.shift()!;
+      const { res, page } = this.polls[0]!, job = this.queue.shift()!;
       this.take(res);
+      job.to = page;
       this.sent.set(job.seq, job);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ seq: job.seq, src: job.src, arg: job.arg }));
     }
