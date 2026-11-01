@@ -1,7 +1,7 @@
 // Safari on the iOS Simulator as a scenario device: it loads the app from this Mac's localhost, keeps a service worker
-// and IndexedDB as an iPhone does, and shows the board. Its page's touches go through scripts/sim-finger.m, each event
-// stamped for when it was meant, so a gesture's times hold however late a busy runner sends it; its keys, the Home Screen
-// and Safari's own touches go through idb (scripts/sim-hid.py). The page is read through the agent the scenarios' server
+// and IndexedDB as an iPhone does, and shows the board. Its page's touches and keys go through scripts/sim-finger.m, each
+// event stamped for when it was meant, so a gesture's times hold however late a busy runner sends it; the Home Screen and
+// Safari's own touches go through idb (scripts/sim-hid.py). The page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only. scripts/ios.ts boots the simulator.
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
