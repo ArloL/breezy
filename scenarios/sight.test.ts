@@ -50,15 +50,21 @@ test("a failure names the focus, the caret and what shows", () => {
     "the edited card at 20,520 240×48, its caret at 32,532 0×24, the board showing 0,120 402×374");
 });
 
-/** A device whose edited card, from a tap on, is at `y(ms since the tap)`. */
+/** A device whose edited card, from a tap on, is at `y(ms since the tap)`, and whose page has been told the size it
+ * reads unless `untold(ms since the tap)`. */
 class Moving extends Device {
   readonly kind = "test";
   now = 0;
   tapped = -1;
   y: (t: number) => number;
-  constructor(y: (t: number) => number) {
+  untold: (t: number) => boolean;
+  constructor(y: (t: number) => number, untold = (_t: number) => false) {
     super();
     this.y = y;
+    this.untold = untold;
+  }
+  override async told() {
+    return this.tapped < 0 || !this.untold(this.now - this.tapped);
   }
   async pointer() {}
   async key(_key: string) {}
@@ -92,6 +98,15 @@ test("a card at rest out of sight for good says so", async () => {
 
 test("a card that stands out of sight, then comes into sight, fails, saying when it came", async () => {
   await assert.rejects(watchSight(new Moving((t) => t < 1500 ? 520 : 200)).tap({ x: 1, y: 2 }), /, in sight only 1500 ms after the step$/);
+});
+
+test("a card under a keyboard the page reads but has yet to be told of passes once told and moved into sight", async () => {
+  // the nightly's Chrome on the Android emulator: the keyboard read, drawn over the card, and its resize a second later
+  await watchSight(new Moving((t) => t < 1000 ? 520 : 200, (t) => t < 1000)).tap({ x: 1, y: 2 });
+});
+
+test("a card out of sight once the page has been told fails, though it was untold first", async () => {
+  await assert.rejects(watchSight(new Moving(() => 520, (t) => t < 1000)).tap({ x: 1, y: 2 }), /out of sight on test after tap/);
 });
 
 test("a card that comes to rest in sight passes, though it moved out of sight on the way", async () => {

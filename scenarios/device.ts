@@ -299,6 +299,12 @@ export abstract class Device {
   /** Until the board stands still, as a person waits to aim: on a phone, it moves as the keyboard comes and goes. */
   async still(_what: string): Promise<void> {}
 
+  /** Whether the page has had the resize event for the visual viewport it reads, which is all the app moves the board
+   * by: Chrome on CI's Android emulator read the keyboard's height a second before it told, and drew no frame between. */
+  async told(): Promise<boolean> {
+    return true;
+  }
+
   /** Until `test` holds, checked every 50 ms on this device's clock for at most `ms`. */
   async until(what: string, test: () => Promise<boolean>, ms = 5000) {
     for (let t = 0; !(await test()); t += 50) {

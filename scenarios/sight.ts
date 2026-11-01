@@ -34,11 +34,16 @@ export function watchSight<T extends Device>(d: T): T {
         // on iOS held still for a moment after a double tap before its zoom began
         if (!KEYS.has(prop)) await target.still(`the board to stand still after ${prop}`).catch(() => {});
         const ended = Date.now();
-        let s = await target.sight(), seen = [still(s)], t = 0;
+        // a reading the page has yet to be told the size of is none alike: the app cannot have moved the board for it
+        let s: Sight | null = null, t = 0;
+        const read = async () => {
+          s = await target.sight();
+          return (await target.told()) ? still(s) : `untold ${t}`;
+        };
+        const seen = [await read()];
         for (; t < MS && (seen.length < n || new Set(seen.slice(-n)).size > 1); t += gap) {
           await target.wait(gap);
-          s = await target.sight();
-          seen.push(still(s));
+          seen.push(await read());
         }
         const problem = s && outOfSight(s);
         if (!problem) return r;
