@@ -7,11 +7,10 @@ name: Nightly
 # naming the one part wanted, as a whole night's five macOS jobs keep the gate's waiting for runners; a branch's run
 # tells the issue nothing.
 #
-# The measured network feel against baselines in scripts/baselines/feel that runners recorded, and the Mac's performance
-# journal against a reference build measured on the same runner: a run fails when a measure's 95 % CI lies wholly above
-# every baseline's. One runner can measure 40 % slower than the next, so the feel's baselines are several runs'
-# artifacts; one that fails on such a runner joins them. A deliberate change in the Mac's performance moves
-# scripts/baselines/bench-ref to the commit that made it.
+# The measured network feel and the Mac's performance journal, each against the reference build in
+# scripts/baselines/bench-ref measured on the same runner in turns: a run fails when a measure's 95 % CI lies wholly
+# above the reference's. One runner can measure 40 % slower than the next, which no baseline from other runners could
+# allow for. A deliberate change in feel or performance moves bench-ref to the commit that made it.
 on:
   schedule:
   # GitHub starts it ~5.5 h late, 07:40–08:05 UTC
@@ -356,13 +355,15 @@ jobs:
   feel:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     permissions:
       contents: read
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+        # the reference too
+        fetch-depth: 0
     # a connection whose own port is a server's keeps that server from starting
     # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
     - name: Turn Spotlight off
@@ -377,10 +378,13 @@ jobs:
     - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Install PHP
       run: command -v php || brew install php
-    - name: Install the web toolchain and the relay
+    - name: Install the web toolchain and the relay, this commit's and the reference's
       run: |
-        npm ci
-        npm ci --prefix relay
+        git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
+        for dir in . "$RUNNER_TEMP/ref"; do
+          npm ci --prefix "$dir"
+          npm ci --prefix "$dir/relay"
+        done
     # Playwright's CDN drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -388,30 +392,27 @@ jobs:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
-    # over the relay only: GitHub's macOS runners open no WebRTC channel
-    - name: Measure
+    # over the relay only: GitHub's macOS runners open no WebRTC channel; in turns, so that what slows the runner for a
+    # while slows both alike
+    - name: Measure this commit and the reference
       run: |
         set -o pipefail
         mkdir -p build
-        node scripts/feel.ts | tee build/feel.txt
-        tail -n 1 build/feel.txt > build/feel.json
+        for _ in $(seq 10); do
+          node scripts/feel.ts --runs 1 --app "$RUNNER_TEMP/ref" | tee -a build/feel-ref.txt
+          node scripts/feel.ts --runs 1 | tee -a build/feel.txt
+        done
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
         name: feel
         # and what the relay, the server and the browsers said
         path: |
-          build/feel.json
+          build/feel.txt
+          build/feel-ref.txt
           build/feel-*.log
-    - name: Compare with the baseline
-      run: |
-        shopt -s nullglob
-        baselines=(scripts/baselines/feel/*.json)
-        if [ ${#baselines[@]} -eq 0 ]; then
-          echo "::notice::No baselines in scripts/baselines/feel/: this run's artifact can be one"
-          exit 0
-        fi
-        node scripts/gate.ts build/feel.json "${baselines[@]}"
+    - name: Compare with the reference
+      run: node scripts/gate.ts build/feel.txt build/feel-ref.txt
   # this commit's Release build against the reference's in scripts/baselines/bench-ref, on the same runner and in turns:
   # one runner measured zoom 4 times slower than the next, which no baseline from other runners could allow for
   bench:

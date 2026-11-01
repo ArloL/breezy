@@ -2,19 +2,19 @@
 // How collaborating feels between two headless Chromiums on this Mac, against server/dev.sh and the relay under wrangler
 // dev, each behind a proxy that delays every chunk: how far a cursor and a dragged card trail, how long a recolour takes
 // to show on the other screen, and how long both take again after the network drops. Needs what direct-e2e.ts needs.
-//   node scripts/feel.ts [--direct] [--relay-ms 25] [--server-ms 40] [--runs 10] [--only cursor,drag,colour,outage]
-import { spawn } from "node:child_process";
+// With --app, the web app, relay and server of that checkout, as the nightly measures its reference in turns with this one.
+//   node scripts/feel.ts [--direct] [--relay-ms 25] [--server-ms 40] [--runs 10] [--only cursor,drag,colour,outage] [--app DIR]
+import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { createServer as createHttp } from "node:http";
 import { createServer, connect } from "node:net";
 import type { Server, Socket } from "node:net";
 import { tmpdir, homedir } from "node:os";
-import { join, extname } from "node:path";
+import { join, extname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 import { inviteLink } from "../web/sync/crypto.ts";
-import { buildWeb } from "./build-web.ts";
 
 type Message = {
   id?: number;
@@ -35,6 +35,7 @@ const { values: opt } = parseArgs({ options: {
   "jitter-ms": { type: "string", default: "0" },
   "stall-ms": { type: "string", default: "0" },
   runs: { type: "string", default: "10" },
+  app: { type: "string" },
   only: { type: "string", default: "cursor,drag,colour,type,create,delete,open,launch,resume,outage,silent,passive" },
 } });
 const JITTER = Number(opt["jitter-ms"]);
@@ -42,10 +43,10 @@ const JITTER = Number(opt["jitter-ms"]);
 let stallUntil = 0;
 if (Number(opt["stall-ms"])) setInterval(() => (stallUntil = Date.now() + Number(opt["stall-ms"])), 2000).unref();
 const RUNS = Number(opt.runs), only = new Set(opt.only.split(","));
-const root = new URL("..", import.meta.url).pathname;
-// the web app as browsers load it, built afresh
-const site = join(root, "build", "web-e2e");
-buildWeb(site);
+const root = new URL("..", import.meta.url).pathname, app = opt.app ? resolve(opt.app) : root;
+// the web app as browsers load it, built afresh by its own checkout
+const site = join(app, "build", "web-e2e");
+execFileSync("node", [join(app, "scripts/build-web.ts"), site], { cwd: app, stdio: ["ignore", "ignore", "inherit"] });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const b64 = (n: number) => randomBytes(n).toString("base64url");
 const children: ChildProcess[] = [], dirs: string[] = [];
@@ -57,11 +58,13 @@ process.on("exit", () => {
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 process.on("uncaughtException", (e) => { console.error(e); process.exit(1); });
 process.on("unhandledRejection", (e) => { console.error(e); process.exit(1); });
-/** What `name`, a server this starts, says: in build/feel-NAME.log, its end told when it fails. */
-const said = (name: string) => readFileSync(join(root, "build", `feel-${name}.log`), "utf8").split("\n").slice(-30).join("\n");
+/** Where `name`, a server or browser this starts, logs: the reference's apart from this one's. */
+const logOf = (name: string) => join(root, "build", `feel-${opt.app ? "ref-" : ""}${name}.log`);
+/** What `name` says, its end told when it fails. */
+const said = (name: string) => readFileSync(logOf(name), "utf8").split("\n").slice(-30).join("\n");
 const spawnGroup = (name: string, cmd: string, args: string[], opts: SpawnOptions) => {
   mkdirSync(join(root, "build"), { recursive: true });
-  const log = openSync(join(root, "build", `feel-${name}.log`), "w");
+  const log = openSync(logOf(name), "w");
   const c = spawn(cmd, args, { ...opts, stdio: ["ignore", log, log], detached: true });
   c.on("exit", (code, signal) => { if (!done) { console.error(`${name} exited early (${code ?? signal}):\n${said(name)}`); process.exit(1); } });
   return c;
@@ -133,8 +136,8 @@ createHttp((req, res) => {
 
 const relayState = mkdtempSync(join(tmpdir(), "breezy-feel-relay-"));
 dirs.push(relayState);
-children.push(spawnGroup("relay", "npx", ["--prefix", join(root, "relay"), "wrangler", "dev", "--port", "58568", "--persist-to", relayState], { cwd: join(root, "relay") }));
-children.push(spawnGroup("server", join(root, "server/dev.sh"), [], { env: { ...process.env, BREEZY_DEV_RELAY: "ws://127.0.0.1:58569/" } }));
+children.push(spawnGroup("relay", "npx", ["--prefix", join(app, "relay"), "wrangler", "dev", "--port", "58568", "--persist-to", relayState], { cwd: join(app, "relay") }));
+children.push(spawnGroup("server", join(app, "server/dev.sh"), [], { env: { ...process.env, BREEZY_DEV_RELAY: "ws://127.0.0.1:58569/" } }));
 // a's own way to the relay and the server, so that its network can go alone: its page rewrites the relay's port
 const proxies = {
   a: { relay: delayProxy(58570, 58568, Number(opt["relay-ms"])), server: delayProxy(58571, 58566, Number(opt["server-ms"])) },
