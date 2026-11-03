@@ -202,6 +202,25 @@ let env: Promise<Record<string, unknown>> | undefined;
 
 /** What ran the scenarios: the runner, node and Playwright, and the emulator, its renderer and its browsers when adb
  * sees one. Read once, and kept in build/scenarios/environment.json too. */
+/** The disk and, on a Mac, Xcode and iOS's runtimes: each what it says, or left out if it does not answer. */
+export async function tools(exec: (file: string, args: string[]) => Promise<string>, os: string = platform()): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const read = async (key: string, file: string, args: string[], pick: (said: string) => string) => {
+    try {
+      const said = pick(await exec(file, args));
+      if (said) out[key] = said;
+    } catch {}
+  };
+  await read("disk", "df", ["-k", "."], (said) => {
+    const [, total, , free] = said.trim().split("\n").at(-1)!.split(/\s+/);
+    return `${Math.round(Number(free) / 2 ** 20)} GB free of ${Math.round(Number(total) / 2 ** 20)} GB`;
+  });
+  if (os !== "darwin") return out;
+  await read("xcode", "xcodebuild", ["-version"], (said) => said.trim().split("\n").join(", "));
+  await read("iosRuntime", "xcrun", ["simctl", "list", "runtimes"], (said) => said.split("\n").filter((l) => l.startsWith("iOS ")).map((l) => l.split(" - com.")[0]).join("; "));
+  return out;
+}
+
 export function environment(): Promise<Record<string, unknown>> {
   return env ??= (async () => {
     const e: Record<string, unknown> = {
@@ -214,6 +233,7 @@ export function environment(): Promise<Record<string, unknown>> {
       runner: process.env.RUNNER_NAME && `${process.env.RUNNER_NAME}, ${process.env.ImageOS} ${process.env.ImageVersion}`,
       run: process.env.GITHUB_RUN_ID && `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}/attempts/${process.env.GITHUB_RUN_ATTEMPT}`,
       commit: process.env.GITHUB_SHA,
+      ...await tools(async (file, args) => (await run(file, args, { encoding: "utf8", timeout: 30_000 })).stdout),
     };
     try {
       const serial = /^(emulator-\d+)\tdevice$/m.exec((await run("adb", ["devices"], { encoding: "utf8", timeout: 10_000 })).stdout)?.[1];
