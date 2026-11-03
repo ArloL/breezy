@@ -34,6 +34,7 @@ Where to look for the next fact, by platform and layer, from the application dow
 | Device | how `scripts/sim-hid.py`'s start went: uv and Python, idb's imports, its companion's `--list` and start | `sim-hid` lines in `timeline.txt` | yes |
 | Device | what is busiest on the runner, every 10 s | `runner` lines in `timeline.txt` | yes |
 | Device | the Mac's side of the simulator: `CoreSimulatorService` and idb's companion | `iPhone CoreSimulator log.txt`, `iPhone idb companion log.txt` | on failure, or a failed `simctl` call |
+| Device | a stack sample of what spins on the runner, up to three processes over 50 % | `iPhone hot processes.txt` | on failure, or a failed `simctl` call |
 | Device | the model and iOS version | `context page`'s `ua`; `IPHONE` and the runtime `scripts/ios.ts` boots | yes |
 
 ## The Mac app

@@ -1,7 +1,7 @@
 // A device's recording, read into a case's timeline on the wall clock beside the harness's own lines.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { busiest, flightLines, logcatLines } from "./record.ts";
+import { busiest, flightLines, hottest, logcatLines } from "./record.ts";
 
 test("a recording's entries become timeline lines on the wall clock", () => {
   const r = { schema: 1 as const, origin: 1000, dropped: 0, context: null, entries: [[5, "decision", "reveal", { path: "card" }], [7, "life", "hidden"]] as never };
@@ -43,4 +43,17 @@ test("the busiest processes by name, added up, as a load says nothing of whose i
   ].join("\n");
   assert.equal(busiest(ps), "MercuryPosterExtension 186 %, mds_stores 46 %, Code Helper (Renderer) 7 %");
   assert.equal(busiest(ps, 1), "MercuryPosterExtension 186 %");
+});
+
+test("what spins, each process apart, hottest first, for a sample of it", () => {
+  const ps = [
+    "  PID  %CPU COMM",
+    "  101 103.4 /Library/Developer/CoreSimulator/Volumes/iOS/SpringBoard.app/SpringBoard",
+    "  102 159.1 /usr/libexec/diagnosticd",
+    "  103  60.0 /usr/sbin/a process",
+    "  104  90.0 /usr/sbin/fourth",
+    "  105  12.0 /usr/sbin/idle",
+  ].join("\n");
+  assert.deepEqual(hottest(ps), [{ pid: 102, name: "diagnosticd", cpu: 159 }, { pid: 101, name: "SpringBoard", cpu: 103 }, { pid: 104, name: "fourth", cpu: 90 }]);
+  assert.deepEqual(hottest("  1 12.0 /sbin/idle"), []);
 });

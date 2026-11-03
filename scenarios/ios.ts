@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Device, item, readFlight, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
-import type { Line } from "./record.ts";
+import { hottest, type Line } from "./record.ts";
 import type { Point } from "../web/types.ts";
 import { DOUBLE_MS } from "../web/gestures.ts";
 
@@ -91,6 +91,17 @@ export function iosState(udid: string, dir: string, who = "iPhone"): Line[] {
       writeFileSync(join(dir, `${who} ${name}`), `none: ${(e as Error).message.split("\n")[0]}\n`);
     }
   };
+  // first, while it still spins: a wedged runner's SpringBoard and diagnosticd took all its CPUs, and every read below
+  // timed out
+  keep("hot processes.txt", () => hottest(execFileSync("ps", ["-Ao", "pid,pcpu,comm"], { encoding: "utf8", timeout: 20_000 })).map(({ pid, name, cpu }) => {
+    let sample: string;
+    try {
+      sample = execFileSync("sample", [String(pid), "3", "-mayDie"], { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 2 ** 20 });
+    } catch (e) {
+      sample = `none: ${(e as Error).message.split("\n")[0]}`;
+    }
+    return `== ${name} ${pid} at ${cpu} %\n${sample}`;
+  }).join("\n") || "none over 50 %\n");
   try {
     simctl(["io", udid, "screenshot", "--type=png", join(dir, `${who} screen.png`)], { timeout: 30_000 });
   } catch (e) {
