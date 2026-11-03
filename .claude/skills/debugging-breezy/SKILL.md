@@ -12,10 +12,12 @@ The tooling fails like the app does. A tap's 317 ms was idb's companion overrunn
 ## Facts
 
 - **The owner's and partner's devices:** the owner uses an iPhone 13 mini on iOS 27 with the Home Screen app, and the Mac app; the partner uses Chrome on a mid-range Android. Their phone and build are in the recording's `context`. A caret bug on CI's iOS 26.5 was no bug of theirs.
+- **CI's runner, from 5,700 cases over 30 runs in the week to 2026-11-03:** a job's first case always runs at a load over 100 on 3 CPUs, falling to 65–80 by its sixth, and fails about 12 times as often as its later ones: 3.9 % (95 % CI 1.5–9.7) against 0.3 % (0.2–0.6). On one image, the same code took 0.89 to 1.28 times as long as another run's, job by job, so compare two versions in turns on one runner (`probe-session.yaml`), not across runs.
 - **The recordings:**
   - a run's `build/scenarios/<when> <case>/`: `timeline.txt`, `case.json`, and `<who> flight.json` per device;
   - a failing hub case's `build/hub/<test>/`;
   - a nightly's artifacts: `gh run download`, a failing case's `<who> video` among them when the night filmed;
+  - a night's `night-report` artifact: its summary as Markdown, and `runner-facts.json`, what ran under its cases job by job (`scripts/runner-facts.ts`);
   - what the owner's or partner's phone sent, on "Report a Problem", an error, or a card out of sight (its `decision sight broken` entry holds the card, caret and board as the app's own sight check read them): `BREEZY_INVITE='<invite link>' node scripts/diag.ts` lists them, and with an id saves and draws one under build/diag. Ask the owner for an invite link once a session, and never keep it in a file or a memory.
 - **The next layer:** `docs/layers.md`.
 - **Where to probe:** the local simulator for what reproduces there, `.github/workflows/probe-session.yaml` for what only CI's runner shows. Keep each measurement in the job's log or artifact, not only its step summary, which no API returns.
