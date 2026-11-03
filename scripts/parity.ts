@@ -4,7 +4,7 @@
 // device's harness makes a card by editing it, the hub's by an op). A fake that decides what its real device never did
 // lies, as the fake that drew a turned card at its front's size did before #129. Differences known and explained are in
 // scripts/parity-known.json. As Markdown for the nightly summary, a report while it proves itself:
-// node scripts/parity.ts REAL_DIR HUB_DIR >> "$GITHUB_STEP_SUMMARY"
+// node scripts/parity.ts REAL_DIR HUB_DIR
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { recording, runs, sign } from "./controls.ts";

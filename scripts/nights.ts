@@ -3,7 +3,7 @@
 // decision, went through each transition and took each gesture. A case's input is the same each night, so a count that
 // changed is behaviour that moved before anything failed; geometry and timing move with the runner and are left out.
 // As Markdown for the nightly summary, a report while it proves itself:
-//   node scripts/nights.ts LAST_NIGHT_DIR THIS_NIGHT_DIR >> "$GITHUB_STEP_SUMMARY"
+//   node scripts/nights.ts LAST_NIGHT_DIR THIS_NIGHT_DIR
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { recording, runs, sign, type Run } from "./controls.ts";

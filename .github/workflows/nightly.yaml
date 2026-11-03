@@ -86,7 +86,7 @@ jobs:
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Count the cases
       if: ${{ always() }}
-      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     # passing too, as a failure is read against a pass
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
@@ -248,7 +248,7 @@ jobs:
       run: mise exec -- node --test --test-force-exit scenarios/platform/android.e2e.ts
     - name: Count the cases
       if: ${{ always() }}
-      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
       # bounded, as the upload after it runs only once this step ends
@@ -345,7 +345,7 @@ jobs:
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Count the cases
       if: ${{ always() }}
-      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
       with:
@@ -620,19 +620,25 @@ jobs:
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         GH_TOKEN: ${{ github.token }}
       run: |
-        if [ -d build/nightly ]; then node scripts/scenario-stats.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
-        # each failure beside a run of its case that passed: where their recordings part
-        if [ -d build/nightly ]; then node scripts/controls.ts build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
-        # the hub's fakes against the real devices they stand for, a report while it proves itself
-        if [ -d build/hub-nightly ]; then node scripts/parity.ts build/nightly build/hub-nightly >> "$GITHUB_STEP_SUMMARY"; fi
-        # what each device did a different number of times than the night before, a report while it proves itself
-        if [ -d build/night-before ]; then node scripts/nights.ts build/night-before build/nightly >> "$GITHUB_STEP_SUMMARY"; fi
+        if [ -d build/night-before ]; then NIGHT_BEFORE=build/night-before; fi
+        # in the log and the night-report artifact too, as no API returns a step summary
+        mkdir -p build/night-report
         {
+          if [ -d build/nightly ]; then node scripts/scenario-stats.ts build/nightly; fi
+          # what ran under the cases, against the night before when there is one
+          if [ -d build/nightly ]; then node scripts/runner-facts.ts build/nightly --json build/night-report/runner-facts.json ${NIGHT_BEFORE:+--against "$NIGHT_BEFORE"}; fi
+          # each failure beside a run of its case that passed: where their recordings part
+          if [ -d build/nightly ]; then node scripts/controls.ts build/nightly; fi
+          # the hub's fakes against the real devices they stand for, a report while it proves itself
+          if [ -d build/hub-nightly ]; then node scripts/parity.ts build/nightly build/hub-nightly; fi
+          # what each device did a different number of times than the night before, a report while it proves itself
+          if [ -d build/night-before ]; then node scripts/nights.ts build/night-before build/nightly; fi
           echo
           echo "| Job | Result |"
           echo "|---|---|"
           jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$RESULTS"
-        } >> "$GITHUB_STEP_SUMMARY"
+        } | tee build/night-report/report.md >> "$GITHUB_STEP_SUMMARY"
+        cat build/night-report/report.md
         red=$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$RESULTS")
         if [ "$GITHUB_REF" = "refs/heads/main" ]; then
           open=$(gh issue list --label nightly --state open --limit 1 --json number --jq '.[0].number // empty')
@@ -650,3 +656,8 @@ jobs:
           echo "red: $red"
           exit 1
         fi
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: night-report
+        path: build/night-report

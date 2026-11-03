@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Failure rates and timings of the scenario runs recorded under DIRS (each run's build/scenarios/*/case.json, as soaks
-// and Main upload them), as Markdown: node scripts/scenario-stats.ts DIR... >> "$GITHUB_STEP_SUMMARY"
+// and Main upload them), as Markdown: node scripts/scenario-stats.ts DIR...
 // What fails, on which pair and at which step, and which cases and steps run close to their time limits.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";

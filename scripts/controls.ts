@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Each failed run of a night beside its control, a run of the same case that passed on another pair, device by device:
 // where their recordings part, and what only the failure has, which is where to look; what both have is noise. As
-// Markdown, for the nightly summary: node scripts/controls.ts DIR... >> "$GITHUB_STEP_SUMMARY"
+// Markdown, for the nightly summary: node scripts/controls.ts DIR...
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,9 @@ export interface Run {
   pair: string[];
   verdict: string;
   error?: string;
+  test: string;
+  ms: number;
+  started: string;
 }
 
 /** An entry as what it says happened, not when or where: a kind, what, and the branch a decision took. */

@@ -255,7 +255,7 @@ jobs:
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Count the cases
       if: ${{ always() }}
-      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     # passing too, as a failure is read against a pass
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ always() }}
@@ -393,7 +393,7 @@ jobs:
         mise exec -- node --test --test-force-exit scenarios/browsers.e2e.ts
     - name: Count the cases
       if: ${{ always() }}
-      run: node scripts/scenario-stats.ts build/scenarios >> "$GITHUB_STEP_SUMMARY"
+      run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Capture the emulator's screen, and the runner's state
       if: ${{ failure() }}
       # bounded, as the upload after it runs only once this step ends
