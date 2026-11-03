@@ -16,7 +16,7 @@ import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
 import { readSight } from "../web/sight.ts";
 import { Device, readFlight, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
-import { bootedIphone, clearHomeApp, hidLog, HOME_ICON, homeIcon, IosDevice, iosState, openUntilAsked, SimHid, simctl, simctlFailures, simctlLog } from "./ios.ts";
+import { bootedIphone, bootedIphoneAsync, clearHomeApp, hidLog, HOME_ICON, homeIcon, IosDevice, iosState, openUntilAsked, SimHid, simctlAsync, simctlFailures, simctlLog } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
@@ -1267,28 +1267,28 @@ export class RealWorld {
       if (kind === "ios-safari") {
         const page = this.agent.page;
         const ios = await step("launch", async () => {
-          const udid = bootedIphone();
+          const udid = await bootedIphoneAsync();
           if (!udid) throw new Error("no booted iPhone: run node scripts/ios.ts");
           // each URL anew: a tab the simulator opens the URL it shows again sees no touch again either
           let opened = 0;
           page.open = async (url) => {
             const u = new URL(url);
             u.searchParams.set("opened", String(++opened));
-            simctl(["openurl", udid, u.href], { timeout: 90_000 });
+            await simctlAsync(["openurl", udid, u.href], { timeout: 90_000 });
           };
           // Safari afresh, so that no tab of a world before holds the boards' lock; a URL opened while it starts goes
           // nowhere, so it is opened again until a page asks
           try {
-            simctl(["terminate", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
+            await simctlAsync(["terminate", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
           } catch {}
           // and no tabs: a tab restored in the background kept the site's database open, and clearing it waited on that
           const state = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/Safari");
           for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(state, f + x), { force: true });
           // nor any site's data: a world's service worker served the next world's first page from its snapshot, which
           // has no agent in it
-          const safari = simctl(["get_app_container", udid, "com.apple.mobilesafari", "data"], { timeout: 90_000 }).trim();
+          const safari = (await simctlAsync(["get_app_container", udid, "com.apple.mobilesafari", "data"], { timeout: 90_000 })).trim();
           rmSync(join(safari, "Library/WebKit/com.apple.mobilesafari/WebsiteData"), { recursive: true, force: true });
-          simctl(["launch", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
+          await simctlAsync(["launch", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
           await openUntilAsked(() => page.open(`http://localhost:${WEB}/scenarios-clear`), () => page.connected(10_000), 4);
           this.filmIphone(udid, page);
           return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });
@@ -1308,7 +1308,7 @@ export class RealWorld {
       if (kind === "ios-home") {
         const page = this.agent.page;
         const ios = await step("launch", async () => {
-          const udid = bootedIphone();
+          const udid = await bootedIphoneAsync();
           if (!udid) throw new Error("no booted iPhone: run node scripts/ios.ts");
           const hid = await SimHid.start(udid);
           /** The app from its icon, once: a page it loaded again would see no touch again, as in a Safari tab. */
@@ -1334,13 +1334,13 @@ export class RealWorld {
               } catch (e) {
                 if (tries === 3) throw e;
                 try {
-                  simctl(["terminate", udid, "com.apple.webapp"], { timeout: 30_000 });
+                  await simctlAsync(["terminate", udid, "com.apple.webapp"], { timeout: 30_000 });
                 } catch {}
               }
             }
           };
           try {
-            simctl(["terminate", udid, "com.apple.webapp"], { timeout: 30_000 });
+            await simctlAsync(["terminate", udid, "com.apple.webapp"], { timeout: 30_000 });
           } catch {}
           clearHomeApp(udid);
           await launch();

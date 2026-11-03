@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { simctl } from "./ios.ts";
+import { simctlAsync } from "./ios.ts";
 import type { Line } from "./record.ts";
 
 /** How long a poll waits for a function before the page asks again. */
@@ -237,7 +237,7 @@ export class AgentPage {
   async screenshot(): Promise<Buffer> {
     const dir = mkdtempSync(join(tmpdir(), "breezy-shot-")), file = join(dir, "screen.png");
     try {
-      simctl(["io", "booted", "screenshot", "--type=png", file], { timeout: 30_000 });
+      await simctlAsync(["io", "booted", "screenshot", "--type=png", file], { timeout: 30_000 });
       return readFileSync(file);
     } finally {
       rmSync(dir, { recursive: true, force: true });
