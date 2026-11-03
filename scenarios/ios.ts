@@ -99,6 +99,10 @@ export function iosState(udid: string, dir: string, who = "iPhone"): Line[] {
   let log = "";
   keep("log.txt", () => log = simctl(["spawn", udid, "log", "show", "--last", "5m", "--style", "compact", "--predicate",
     'process == "SpringBoard" OR process CONTAINS[c] "safari" OR process CONTAINS[c] "webkit" OR process CONTAINS[c] "webapp" OR process == "launchd"'], { timeout: 60_000 }));
+  // and the Mac's side: simctl's calls and idb's companion both go through CoreSimulatorService
+  keep("idb companion log.txt", () => readFileSync(join("/tmp/idb/logs", udid), "utf8"));
+  keep("CoreSimulator log.txt", () => execFileSync("log", ["show", "--last", "5m", "--style", "compact", "--predicate", 'process == "CoreSimulatorService" OR process == "idb_companion"'],
+    { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 2 ** 20 }));
   keep("state.txt", () => [simctl(["list", "devices", "booted"], { timeout: 30_000 }),
     simctl(["spawn", udid, "launchctl", "list"], { timeout: 30_000 }).split("\n").filter((l) => /safari|webkit|webapp|springboard/i.test(l)).join("\n")].join("\n"));
   return iosLogLines(log, who);
@@ -187,6 +191,16 @@ export function homeClips(udid: string) {
 /** Where the page saw a touch come down, and the screen's top left then, in the board's frame. */
 type Down = Point & { vx: number; vy: number };
 
+/** What scripts/sim-hid.py says as it starts, and that it started and ended, for a case's timeline: its first start on
+ * a job takes 14 to 39 s on CI's runner, nearly all of it in idb's companion, and once took over 60. */
+export const hidLog: Line[] = [];
+
+const noteHid = (what: string) => {
+  // a long run's starts, not without end
+  if (hidLog.length > 2000) hidLog.splice(0, 1000);
+  hidLog.push([Date.now(), "sim-hid", what.length > 300 ? `${what.slice(0, 299)}…` : what]);
+};
+
 /** scripts/sim-hid.py on the booted iPhone: a line of JSON per command, answered in turn. */
 export class SimHid {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -198,19 +212,28 @@ export class SimHid {
     this.child = child;
     createInterface({ input: child.stdout }).on("line", (l) => this.replies.shift()?.(l));
     let err = "";
-    child.stderr.on("data", (d: Buffer) => (err = (err + d.toString()).slice(-2000)));
+    createInterface({ input: child.stderr }).on("line", (l) => {
+      err = l;
+      noteHid(l);
+    });
     // a write after it ended fails in answer() instead, naming why it ended
     child.stdin.on("error", () => {});
-    child.on("exit", (code) => {
-      this.ended = `scripts/sim-hid.py exited with ${code}: ${err.trim().split("\n").at(-1) ?? ""}`;
+    child.on("exit", (code, signal) => {
+      noteHid(`exited with ${signal ?? code}`);
+      this.ended = `scripts/sim-hid.py exited with ${code}: ${err}`;
       for (const r of this.replies.splice(0)) r(JSON.stringify({ error: this.ended }));
     });
   }
 
-  static async start(udid: string): Promise<SimHid> {
-    const h = new SimHid(spawn(`${root}scripts/sim-hid.py`, [udid], { stdio: ["pipe", "pipe", "pipe"] }));
+  /** It holds the connection, or an error `ms` on, which the world's own limit of 180 s leaves room for. */
+  static async start(udid: string, { ms = 120_000, command = [`${root}scripts/sim-hid.py`, [udid]] }: { ms?: number; command?: [string, string[]] } = {}): Promise<SimHid> {
+    noteHid("started");
+    const h = new SimHid(spawn(command[0], command[1], { stdio: ["pipe", "pipe", "pipe"] }));
     // its first line says it holds the connection
-    await h.answer(60_000);
+    await h.answer(ms).catch((e) => {
+      h.stop();
+      throw e;
+    });
     return h;
   }
 

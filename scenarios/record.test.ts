@@ -1,7 +1,7 @@
 // A device's recording, read into a case's timeline on the wall clock beside the harness's own lines.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { flightLines, logcatLines } from "./record.ts";
+import { busiest, flightLines, logcatLines } from "./record.ts";
 
 test("a recording's entries become timeline lines on the wall clock", () => {
   const r = { schema: 1 as const, origin: 1000, dropped: 0, context: null, entries: [[5, "decision", "reveal", { path: "card" }], [7, "life", "hidden"]] as never };
@@ -30,4 +30,17 @@ test("the emulator's log keeps when a process starts, dies or is killed: a panic
   assert.deepEqual(logcatLines(log, "emulator logcat").map(([at, , what]) => [at, what.split(":")[0]]), [
     [1761628730120, "I am_proc_start"], [1761628731500, "I am_proc_died"], [1761628731600, "I am_kill"],
   ]);
+});
+
+test("the busiest processes by name, added up, as a load says nothing of whose it is", () => {
+  const ps = [
+    "%CPU COMM",
+    " 92.8 /System/Library/Mercury/MercuryPosterExtension",
+    " 93.4 /System/Library/Mercury/MercuryPosterExtension",
+    " 45.7 /System/Library/mds_stores",
+    "  7.2 /Applications/Code.app/Code Helper (Renderer)",
+    "  0.4 /usr/sbin/idle",
+  ].join("\n");
+  assert.equal(busiest(ps), "MercuryPosterExtension 186 %, mds_stores 46 %, Code Helper (Renderer) 7 %");
+  assert.equal(busiest(ps, 1), "MercuryPosterExtension 186 %");
 });
