@@ -20,8 +20,7 @@ Where to look for the next fact, by platform and layer, from the application dow
 | Engine | layout, paint, compositing | Playwright's `page.screenshot()`; Chromium's tracing by hand | on failure |
 | Device, Android | the keyboard, windows, the input method, SurfaceFlinger, memory | `logcat` lines in `timeline.txt`; `<who> windows.txt`, `ime.txt`, `screen.png`; `scripts/android-capture.sh` on CI | partly; on failure |
 | Device, Android | processes starting, dying and killed, read as they came, so that a kernel panic's reboot does not lose them; the kernel's console | android-logcat-stream.txt (`scripts/android-trace.sh`), its lines in a failing case's timeline where no phone's logcat was; the kernel's lines in android-emulator.log, placed on the wall clock by the emulator's uptime in android-load.txt | yes |
-| Device, runner | load, free memory, Node's timers running late | the `runner` lines | yes |
-| Device, runner | load, free memory, Node's timers running late |  the `runner` lines; `scripts/runner-facts.ts DIR...` sums them job by job, in the `night-report` artifact each night | yes |
+| Device, runner | load, free memory, Node's timers running late | the `runner` lines; `scripts/runner-facts.ts DIR...` sums them job by job, in the `night-report` artifact each night | yes |
 | Device, runner | CPUs, memory, disk, image, Node, Playwright, and on a Mac Xcode and iOS's runtimes | `environment.json` | yes |
 
 ## Safari on the iPhone, in a tab and as the Home Screen app

@@ -124,3 +124,12 @@ test("the report holds a job to the other run's by the cases that passed on both
   assert.match(text, /\| scenarios-ios \| none \| 2 \| 1\.00 \(1\.00–1\.00\) \|/);
   assert.equal(report([]), "");
 });
+
+test("a job downloaded alone, without its artifact's name, is held to the job that ran its cases", (t) => {
+  const alone = job(t, "nightly"), other = job(t, "scenarios-other"), desktop = job(t, "scenarios-desktop");
+  for (const j of [alone, desktop]) j.add("1", "passed", 0);
+  for (const j of [alone, desktop]) j.add("2", "passed", 0);
+  other.add("3", "passed", 0);
+  assert.match(report([jobFacts(alone.dir)], [jobFacts(other.dir), jobFacts(desktop.dir)]), /\| nightly \| none \| 2 \| 1\.00/);
+  assert.match(report([jobFacts(other.dir)], [jobFacts(desktop.dir)]), /\| scenarios-other \| not in the other run/);
+});

@@ -188,7 +188,9 @@ export function report(jobs: JobFacts[], against: JobFacts[] = []): string {
     out.push("", "### Against the other run", "", "| job | environment that changed | cases on both | this run's time / the other's (95 % CI over cases) |", "|---|---|---|---|");
     const pairs: [number, number][] = [];
     for (const j of jobs) {
-      const o = against.find((a) => a.job === j.job);
+      // a download of one artifact holds its files without its name
+      const shared = (a: JobFacts) => Object.keys(j.ms).filter((t) => a.ms[t]).length;
+      const o = against.find((a) => a.job === j.job) ?? [...against].sort((a, b) => shared(b) - shared(a)).find((a) => shared(a) > 0);
       if (!o) {
         out.push(`| ${j.job} | not in the other run | | |`);
         continue;
