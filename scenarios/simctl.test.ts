@@ -2,7 +2,7 @@
 // read from the call that timed out and the slow ones before it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { iosLogLines, simctl, simctlFailures, simctlLog } from "./ios.ts";
+import { iosLogLines, simctl, simctlFailures, simctlLog, stopPush } from "./ios.ts";
 
 test("the simulator's errors and faults join the timeline on the wall clock, the rest stays in its file", () => {
   const log = [
@@ -54,4 +54,27 @@ test("a call that failed since a case began is found, though the case went on pa
     [5, "simctl", "simctl openurl U http://x: 1200 ms"],
     [9, "simctl", "simctl openurl U http://y: failed after 33000 ms, exit 60: Operation timed out"]);
   assert.deepEqual(simctlFailures(5), ["simctl openurl U http://y: failed after 33000 ms, exit 60: Operation timed out"]);
+});
+
+test("iOS's push daemon is disabled for good, then stopped, as it loops on a server CI cannot reach and starves the runner", () => {
+  const calls: string[] = [];
+  stopPush("U", (args) => {
+    calls.push(args.join(" "));
+    return "";
+  });
+  assert.deepEqual(calls, ["spawn U launchctl disable system/com.apple.apsd", "spawn U launchctl bootout system/com.apple.apsd"]);
+});
+
+test("a push daemon already stopped is no failure, and an iPhone not yet answering costs only a warning", () => {
+  const said: string[] = [];
+  stopPush("U", (args) => {
+    if (args.includes("bootout")) throw new Error("Boot-out failed: 3: No such process");
+    return "";
+  }, (m) => said.push(m));
+  assert.equal(said.length, 0);
+  stopPush("U", () => {
+    throw new Error("Unable to lookup in current state: Shutdown");
+  }, (m) => said.push(m));
+  assert.equal(said.length, 1);
+  assert.match(said[0]!, /push daemon stays on: Unable to lookup/);
 });
