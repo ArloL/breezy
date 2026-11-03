@@ -3,11 +3,12 @@
 // event stamped for when it was meant, so a gesture's times hold however late a busy runner sends it; the Home Screen and
 // Safari's own touches go through idb (scripts/sim-hid.py). The page is read through the agent the scenarios' server
 // puts in it (agent.ts). One finger only. scripts/ios.ts boots the simulator.
-import { execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { promisify } from "node:util";
 import { Device, item, readFlight, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
 import type { AgentPage } from "./agent.ts";
 import { hottest, type Line } from "./record.ts";
@@ -42,22 +43,49 @@ export function keyEvents(keys: [number, boolean][], ms = 10): [number, "down" |
 /** Each simctl call this process made, for a case's timeline: when, what, how long, and how it failed. */
 export const simctlLog: Line[] = [];
 
-/** `xcrun simctl ...args`, its output, noted in simctlLog: a call slow before one that times out is the signal, and its
- * failure says why only in what it wrote to stderr. */
-export function simctl(args: string[], { timeout }: { timeout: number }, run: (file: string, args: string[], o: ExecFileSyncOptionsWithStringEncoding) => string = execFileSync): string {
+const execFileAsync = promisify(execFile);
+
+// a busy iPhone's log show of 5 minutes passes Node's 1 MiB
+const SIMCTL_OUTPUT = 256 * 2 ** 20;
+
+/** A call's note in simctlLog: a call slow before one that times out is the signal, and its failure says why only in what
+ * it wrote to stderr. */
+function simctlNote(args: string[]) {
   const t0 = Date.now(), what = `simctl ${args.map((a) => a.length > 80 ? `${a.slice(0, 79)}…` : a).join(" ")}`;
   // a long run's calls, not without end
   if (simctlLog.length > 2000) simctlLog.splice(0, 1000);
+  return {
+    done(out: unknown) {
+      simctlLog.push([t0, "simctl", `${what}: ${Date.now() - t0} ms`]);
+      return String(out ?? "");
+    },
+    failed(e: unknown) {
+      const { status, code, signal, stderr } = e as { status?: number | null; code?: number | string; signal?: string | null; stderr?: string };
+      const said = String(stderr ?? "").trim().replace(/\s+/g, " ").slice(0, 400);
+      simctlLog.push([t0, "simctl", `${what}: failed after ${Date.now() - t0} ms, ${signal ? `killed by ${signal}` : `exit ${status ?? code}`}${said ? `: ${said}` : ""}`]);
+      return e;
+    },
+  };
+}
+
+/** `xcrun simctl ...args`, its output, noted in simctlLog. It holds up this whole process, whose servers the iPhone's page
+ * and the other device depend on: only for where nothing of a case is running. */
+export function simctl(args: string[], { timeout }: { timeout: number }, run: (file: string, args: string[], o: ExecFileSyncOptionsWithStringEncoding) => string = execFileSync): string {
+  const note = simctlNote(args);
   try {
-    // a busy iPhone's log show of 5 minutes passes Node's 1 MiB
-    const out = run("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 2 ** 20 });
-    simctlLog.push([t0, "simctl", `${what}: ${Date.now() - t0} ms`]);
-    return String(out ?? "");
+    return note.done(run("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], maxBuffer: SIMCTL_OUTPUT }));
   } catch (e) {
-    const { status, signal, stderr } = e as { status?: number | null; signal?: string | null; stderr?: string };
-    const said = String(stderr ?? "").trim().replace(/\s+/g, " ").slice(0, 400);
-    simctlLog.push([t0, "simctl", `${what}: failed after ${Date.now() - t0} ms, ${signal ? `killed by ${signal}` : `exit ${status}`}${said ? `: ${said}` : ""}`]);
-    throw e;
+    throw note.failed(e);
+  }
+}
+
+/** simctl, for within a case. */
+export async function simctlAsync(args: string[], { timeout }: { timeout: number }): Promise<string> {
+  const note = simctlNote(args);
+  try {
+    return note.done((await execFileAsync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, maxBuffer: SIMCTL_OUTPUT })).stdout);
+  } catch (e) {
+    throw note.failed(e);
   }
 }
 
@@ -139,8 +167,18 @@ export function stopPush(udid: string, exec: (args: string[], o: { timeout: numb
 
 /** The booted iPhone's id, or null. */
 export function bootedIphone(): string | null {
-  const { devices } = JSON.parse(simctl(["list", "devices", "booted", "--json"], { timeout: 90_000 })) as
-    { devices: Record<string, { udid: string; name: string }[]> };
+  return iphoneIn(simctl(BOOTED, { timeout: 90_000 }));
+}
+
+/** bootedIphone, for within a case. */
+export async function bootedIphoneAsync(): Promise<string | null> {
+  return iphoneIn(await simctlAsync(BOOTED, { timeout: 90_000 }));
+}
+
+const BOOTED = ["list", "devices", "booted", "--json"];
+
+function iphoneIn(list: string): string | null {
+  const { devices } = JSON.parse(list) as { devices: Record<string, { udid: string; name: string }[]> };
   return Object.values(devices).flat().find((d) => d.name.startsWith("iPhone"))?.udid ?? null;
 }
 
@@ -462,7 +500,7 @@ export class IosDevice extends Device {
     // and the touchscreen of dtuhidd's Safari hears, now that idb's tap has started it: only the main display's is, and
     // which that is shows only by trying
     if (!this.finger) {
-      const finger = await SimFinger.start(bootedIphone()!, s.w, s.h);
+      const finger = await SimFinger.start((await bootedIphoneAsync())!, s.w, s.h);
       const tried: string[] = [];
       for (const t of await finger.touchscreens()) {
         await finger.use(t.id);

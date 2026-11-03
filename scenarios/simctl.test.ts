@@ -2,7 +2,26 @@
 // read from the call that timed out and the slow ones before it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { iosLogLines, simctl, simctlFailures, simctlLog, stopPush } from "./ios.ts";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { iosLogLines, simctl, simctlAsync, simctlFailures, simctlLog, stopPush } from "./ios.ts";
+
+setTimeout(() => process.exit(1), 60_000).unref();
+
+/** Runs body with `xcrun` on PATH being this shell script. */
+async function withXcrun(script: string, body: () => Promise<void>) {
+  const dir = mkdtempSync(join(tmpdir(), "breezy-xcrun-")), path = process.env.PATH;
+  writeFileSync(join(dir, "xcrun"), `#!/bin/sh\n${script}\n`);
+  chmodSync(join(dir, "xcrun"), 0o755);
+  process.env.PATH = `${dir}${delimiter}${path}`;
+  try {
+    await body();
+  } finally {
+    process.env.PATH = path;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 test("the simulator's errors and faults join the timeline on the wall clock, the rest stays in its file", () => {
   const log = [
@@ -45,6 +64,37 @@ test("a busy iPhone's log of 5 minutes, past Node's 1 MiB, is kept", () => {
     return out;
   };
   assert.equal(simctl(["spawn", "U", "log", "show"], { timeout: 1000 }, run).length, 8 * 2 ** 20);
+});
+
+test("an awaited call leaves this process free, as the iPhone's page loads from this process's server", { timeout: 30_000 }, async () => {
+  await withXcrun("sleep 0.3; echo out", async () => {
+    simctlLog.length = 0;
+    let ticks = 0;
+    const ticking = setInterval(() => ticks++, 10);
+    try {
+      assert.equal(await simctlAsync(["openurl", "U", "http://x"], { timeout: 20_000 }), "out\n");
+    } finally {
+      clearInterval(ticking);
+    }
+    assert.ok(ticks > 0);
+    assert.match(simctlLog[0]![2], /^simctl openurl U http:\/\/x: \d+ ms$/);
+  });
+});
+
+test("an awaited call that fails is noted with its exit and what it said, and still throws", { timeout: 30_000 }, async () => {
+  await withXcrun("echo 'Operation timed out' >&2; exit 60", async () => {
+    simctlLog.length = 0;
+    await assert.rejects(simctlAsync(["openurl", "U", "http://x"], { timeout: 20_000 }));
+    assert.match(simctlLog[0]![2], /^simctl openurl U http:\/\/x: failed after \d+ ms, exit 60: Operation timed out$/);
+  });
+});
+
+test("an awaited call past its limit is killed and noted so", { timeout: 30_000 }, async () => {
+  await withXcrun("exec sleep 20", async () => {
+    simctlLog.length = 0;
+    await assert.rejects(simctlAsync(["openurl", "U", "http://x"], { timeout: 100 }));
+    assert.match(simctlLog[0]![2], /^simctl openurl U http:\/\/x: failed after \d+ ms, killed by SIGTERM$/);
+  });
 });
 
 test("a call that failed since a case began is found, though the case went on past it", () => {
