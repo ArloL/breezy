@@ -428,17 +428,18 @@ export class IosDevice extends Device {
     });
     const s = await this.page.evaluate(() => ({ w: screen.width, h: screen.height }));
     const at = { x: Math.round(s.w / 2), y: Math.round(s.h / 2) };
-    // again, while it goes unseen: an app just launched from the Home Screen takes no touch for a moment
-    let tapped: Point | null = null;
-    for (let tries = 0, end = Date.now() + 8000; !(tapped = await this.page.evaluate(() => (window as { tapped?: Point }).tapped ?? null)); await sleep(100)) {
-      if (Date.now() > end - 8000 + tries * 2000 && tries < 3) {
-        tries++;
-        await this.hid.touches([[0, "down", at.x, at.y], [50, "up", at.x, at.y]]);
-      }
-      if (Date.now() > end) {
-        const page = await this.page.evaluate(() => `${location.href}, ${document.visibilityState}, saw ${(window as { calibrated?: string[] }).calibrated?.join(" ") || "nothing"}`);
-        throw new Error(`the iPhone's page never saw the calibrating tap at ${at.x},${at.y}: ${page}`);
-      }
+    // again, while it goes unseen: an app just launched from the Home Screen takes no touch for a moment. Each wait starts
+    // once its tap has returned, as idb's first can take 9 s on CI's runner
+    const seen = () => this.page.evaluate(() => (window as { tapped?: Point }).tapped ?? null);
+    let tapped = await seen();
+    for (const wait of [2000, 2000, 4000]) {
+      if (tapped) break;
+      await this.hid.touches([[0, "down", at.x, at.y], [50, "up", at.x, at.y]]);
+      for (const end = Date.now() + wait; !(tapped = await seen()) && Date.now() < end; await sleep(100));
+    }
+    if (!tapped) {
+      const page = await this.page.evaluate(() => `${location.href}, ${document.visibilityState}, saw ${(window as { calibrated?: string[] }).calibrated?.join(" ") || "nothing"}`);
+      throw new Error(`the iPhone's page never saw the calibrating tap at ${at.x},${at.y}: ${page}`);
     }
     // and the touchscreen of dtuhidd's Safari hears, now that idb's tap has started it: only the main display's is, and
     // which that is shows only by trying
