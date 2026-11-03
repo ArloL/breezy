@@ -112,6 +112,12 @@ export function busiest(ps: string, top = 6): string {
   return [...cpu].filter(([, c]) => c >= 1).sort((a, b) => b[1] - a[1]).slice(0, top).map(([name, c]) => `${name} ${Math.round(c)} %`).join(", ");
 }
 
+/** `ps -Ao pid,pcpu,comm`'s `top` processes over `over` %, hottest first. */
+export function hottest(ps: string, over = 50, top = 3): { pid: number; name: string; cpu: number }[] {
+  return [...ps.matchAll(/^\s*(\d+)\s+([\d.]+)\s+(.+)$/gm)].map((m) => ({ pid: Number(m[1]), name: m[3]!.split("/").at(-1)!, cpu: Math.round(Number(m[2])) }))
+    .filter((p) => p.cpu >= over).sort((a, b) => b.cpu - a.cpu).slice(0, top);
+}
+
 /** The runner's load every `ms`, how late node's own timers ran, as a starved runner makes a flake, and every fifth time
  * what is busiest. */
 export function sampleRunner(lines: Line[], ms = 2000) {
