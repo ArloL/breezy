@@ -31,6 +31,9 @@ Where to look for the next fact, by platform and layer, from the application dow
 | Engine | what is painted | `<who> screen.png` | on failure |
 | Device | the simulator's own log of the last 5 minutes, from SpringBoard, Safari, WebKit and the Home Screen app, and what of them runs | `iPhone log.txt`, `iPhone state.txt`, `iPhone screen.png` (`iosState` in `scenarios/ios.ts`); its errors and faults as `iPhone log` lines in `timeline.txt` | on failure, a world that never started too, and in a case a simctl call failed in, listed in the night's summary |
 | Device | each `simctl` call, how long it took and how it failed | `simctl` lines in `timeline.txt` | yes |
+| Device | how `scripts/sim-hid.py`'s start went: uv and Python, idb's imports, its companion's `--list` and start | `sim-hid` lines in `timeline.txt` | yes |
+| Device | what is busiest on the runner, every 10 s | `runner` lines in `timeline.txt` | yes |
+| Device | the Mac's side of the simulator: `CoreSimulatorService` and idb's companion | `iPhone CoreSimulator log.txt`, `iPhone idb companion log.txt` | on failure, or a failed `simctl` call |
 | Device | the model and iOS version | `context page`'s `ua`; `IPHONE` and the runtime `scripts/ios.ts` boots | yes |
 
 ## The Mac app

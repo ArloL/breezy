@@ -102,11 +102,28 @@ export class Steps {
   }
 }
 
-/** The runner's load every `ms`, and how late node's own timers ran, as a starved runner makes a flake. */
+/** `ps -Ao pcpu,comm`'s `top` busiest by name, added up, as a load says nothing of whose it is. */
+export function busiest(ps: string, top = 6): string {
+  const cpu = new Map<string, number>();
+  for (const m of ps.matchAll(/^\s*([\d.]+)\s+(.+)$/gm)) {
+    const name = m[2]!.split("/").at(-1)!;
+    cpu.set(name, (cpu.get(name) ?? 0) + Number(m[1]));
+  }
+  return [...cpu].filter(([, c]) => c >= 1).sort((a, b) => b[1] - a[1]).slice(0, top).map(([name, c]) => `${name} ${Math.round(c)} %`).join(", ");
+}
+
+/** The runner's load every `ms`, how late node's own timers ran, as a starved runner makes a flake, and every fifth time
+ * what is busiest. */
 export function sampleRunner(lines: Line[], ms = 2000) {
   const delay = monitorEventLoopDelay({ resolution: 20 });
   delay.enable();
+  let samples = 0;
   const timer = setInterval(() => {
+    if (++samples % 5 === 0) {
+      execFile("ps", ["-Ao", "pcpu,comm"], { timeout: 5000 }, (e, out) => {
+        if (!e) lines.push([Date.now(), "runner", `busiest: ${busiest(out)}`]);
+      });
+    }
     const [one] = loadavg();
     lines.push([Date.now(), "runner", `load ${one!.toFixed(2)} of ${cpus().length} CPUs, ${Math.round(freemem() / 2 ** 20)} MB free, node's timers up to ${Math.round(delay.max / 1e6)} ms late`]);
     delay.reset();

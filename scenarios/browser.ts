@@ -16,7 +16,7 @@ import { onMac } from "../web/keys.ts";
 import { chord } from "./chord.ts";
 import { readSight } from "../web/sight.ts";
 import { Device, readFlight, type Box, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type SceneItem, type Sight } from "./device.ts";
-import { bootedIphone, clearHomeApp, HOME_ICON, homeIcon, IosDevice, iosState, openUntilAsked, SimHid, simctl, simctlFailures, simctlLog } from "./ios.ts";
+import { bootedIphone, clearHomeApp, hidLog, HOME_ICON, homeIcon, IosDevice, iosState, openUntilAsked, SimHid, simctl, simctlFailures, simctlLog } from "./ios.ts";
 import { MacDevice } from "./mac.ts";
 import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRunner, Steps, timeline, type Line, type Step } from "./record.ts";
 import { watchSight } from "./sight.ts";
@@ -1563,9 +1563,9 @@ export class RealWorld {
     const answer = <T>(p: Promise<T>) => Promise.race([p.catch((e: Error) => `none: ${e.message.split("\n")[0]}`), sleep(5000).then(() => "none in 5 s")]);
     const failing = error ? this.steps.failed() : undefined;
     await this.steps.read();
-    // and each simctl call since this world started: how long it took, and how it failed; and each function the agent
-    // sent the iPhone's page again
-    const lines: Line[] = [...this.host, ...this.steps.lines(), ...simctlLog.filter(([at]) => at >= this.started), ...this.agent.log.filter(([at]) => at >= this.started)];
+    // and each simctl call since this world started: how long it took, and how it failed; what sim-hid said as it started;
+    // and each function the agent sent the iPhone's page again
+    const lines: Line[] = [...this.host, ...this.steps.lines(), ...simctlLog.filter(([at]) => at >= this.started), ...hidLog.filter(([at]) => at >= this.started), ...this.agent.log.filter(([at]) => at >= this.started)];
     let phoneLog = false;
     const parts = await Promise.all(this.devices.map(async (d, i) => {
       const who = `d${i} ${d.kind}`, summary: string[] = [];

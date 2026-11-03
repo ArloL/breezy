@@ -17,18 +17,23 @@ Reads a JSON line per command on stdin and answers each with a JSON line:
 
   -> {"ok": true, "ms": how long it took} or {"error": "..."}
 
-Needs `brew install facebook/fb/idb-companion`.
+Says how its start goes on stderr, for a case's timeline. Needs `brew install facebook/fb/idb-companion`.
 """
+import sys
+
+print("python started", file=sys.stderr, flush=True)
+
 import asyncio
 import json
 import logging
 import os
 import shutil
-import sys
 import time
 
 from idb.common.types import HIDButtonType, HIDDelay, HIDDirection, HIDPress, HIDTouch, Point
 from idb.grpc.management import ClientManager
+
+print("idb imported", file=sys.stderr, flush=True)
 
 
 def stream(touches):
@@ -63,8 +68,13 @@ def drop_ended_companions(state="/tmp/idb/state"):
 
 async def main():
     drop_ended_companions()
-    manager = ClientManager(companion_path=shutil.which("idb_companion"), logger=logging.getLogger("sim-hid"))
+    log = logging.getLogger("sim-hid")
+    log.propagate = False
+    log.addHandler(logging.StreamHandler())
+    log.setLevel(logging.DEBUG)
+    manager = ClientManager(companion_path=shutil.which("idb_companion"), logger=log)
     async with manager.from_udid(udid=sys.argv[1]) as client:
+        log.setLevel(logging.WARNING)
         print(json.dumps({"ok": True, "ms": 0}), flush=True)
         loop = asyncio.get_running_loop()
         while line := await loop.run_in_executor(None, sys.stdin.readline):
