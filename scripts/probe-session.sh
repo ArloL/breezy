@@ -1,15 +1,18 @@
 #!/bin/bash
 # Runs FILE on the probe session's iPhone (.github/workflows/probe-session.yaml) and prints what it printed, waiting at
-# most 12 minutes: scripts/probe-session.sh FILE. With --ready it only waits, at most 20 minutes, for the session to be up.
+# most 12 minutes: scripts/probe-session.sh FILE. With --ready it only waits, at most 30 minutes, for the latest session to be up.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 result() { git fetch --quiet origin probe-results 2> /dev/null && git show "FETCH_HEAD:results/$1" 2> /dev/null; }
 if [ "${1:-}" = "--ready" ]; then
-  end=$(( SECONDS + 1200 ))
-  until result ready.txt; do
-    [ $SECONDS -lt $end ] || { echo "the probe session was not up in 20 minutes" >&2; exit 1; }
+  # the last session's stays there: this one's names its run
+  run=$(gh run list --workflow probe-session.yaml --limit 1 --json databaseId --jq '.[0].databaseId')
+  end=$(( SECONDS + 1800 ))
+  until out=$(result ready.txt) && grep --quiet "/runs/$run\$" <<< "$out"; do
+    [ $SECONDS -lt $end ] || { echo "the probe session of run $run was not up in 30 minutes" >&2; exit 1; }
     sleep 10
   done
+  echo "$out"
   exit
 fi
 dir=$(mktemp -d)

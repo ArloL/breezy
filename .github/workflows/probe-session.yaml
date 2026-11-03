@@ -4,9 +4,20 @@ name: Probe session
 # pushing what it printed to probe-results, for a fact in a minute where a run takes 25: scripts/probe-session.sh FILE
 # sends one and prints its result. A probe runs in this checkout with UDID set, for at most 10 minutes; one holding only
 # `exit-session` ends the session. It runs what anyone who may push to this repository pushes there, as any workflow
-# does; dispatch it only while probing.
+# does; dispatch it only while probing. With world on, it has what a real case needs, for one case in a minute or two on
+# the nightly's runner where a run of them takes an hour; with home on, the Home Screen app too:
+#   SCENARIO_PAIRS=chromium:ios-home node --test --test-force-exit --test-name-pattern='lines that wrap' scenarios/browsers.e2e.ts
 on:
   workflow_dispatch:
+    inputs:
+      world:
+        description: "Install what a real case needs"
+        type: boolean
+        default: false
+      home:
+        description: "Put the Home Screen app on the iPhone"
+        type: boolean
+        default: false
 permissions: {}
 defaults:
   run:
@@ -16,7 +27,7 @@ jobs:
   session:
     # the nightly's iOS runner: macOS 27 with Xcode 27 and iOS 27.0
     runs-on: xcode-27
-    timeout-minutes: 75
+    timeout-minutes: 90
     env:
       IPHONE: iPhone 13 mini
     permissions:
@@ -26,23 +37,51 @@ jobs:
       with:
         # it pushes its results
         persist-credentials: true
+    # as the nightly does
+    - name: Keep the servers' ports free
+      if: ${{ inputs.world }}
+      run: scripts/reserve-ports.sh
+    - name: Turn Spotlight off
+      if: ${{ inputs.world }}
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
         package-manager-cache: false
     - name: Install the toolchain
       run: npm ci
+    - name: Install the relay
+      if: ${{ inputs.world }}
+      run: npm ci --prefix relay
     # as the nightly does: CoreSimulator's own cache folders keep the iPhone's log from composing
     - name: Leave the iPhone its runtime's own shared cache
       run: xcrun simctl runtime dyld_shared_cache remove --all
     - name: Start booting an iPhone
-      run: node scripts/ios.ts --start
+      run: node scripts/ios.ts --start ${{ inputs.home && '--home' || '' }}
+    - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      if: ${{ inputs.world }}
+      with:
+        php-version: "8.4"
+        extensions: pdo_sqlite
+        tools: none
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: ${{ inputs.world }}
+      with:
+        path: ~/Library/Caches/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium
+      if: ${{ inputs.world }}
+      run: npx playwright-core install chromium
     - name: Install idb
       env:
         HOMEBREW_NO_AUTO_UPDATE: "1"
       run: brew install facebook/fb/idb-companion
     - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
     # booted, not settled: a probe sees the load as it is, and notes it
+    - name: Settle the iPhone, as the nightly does
+      if: ${{ inputs.world }}
+      timeout-minutes: 15
+      run: node scripts/ios.ts ${{ inputs.home && '--home' || '' }}
     - name: Boot the iPhone
       timeout-minutes: 15
       run: |
