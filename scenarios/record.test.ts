@@ -1,7 +1,7 @@
 // A device's recording, read into a case's timeline on the wall clock beside the harness's own lines.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { busiest, flightLines, hottest, logcatLines } from "./record.ts";
+import { busiest, flightLines, hottest, logcatLines, tools } from "./record.ts";
 
 test("a recording's entries become timeline lines on the wall clock", () => {
   const r = { schema: 1 as const, origin: 1000, dropped: 0, context: null, entries: [[5, "decision", "reveal", { path: "card" }], [7, "life", "hidden"]] as never };
@@ -56,4 +56,28 @@ test("what spins, each process apart, hottest first, for a sample of it", () => 
   ].join("\n");
   assert.deepEqual(hottest(ps), [{ pid: 102, name: "diagnosticd", cpu: 159 }, { pid: 101, name: "SpringBoard", cpu: 103 }, { pid: 104, name: "fourth", cpu: 90 }]);
   assert.deepEqual(hottest("  1 12.0 /sbin/idle"), []);
+});
+
+test("the tools under a run, as a new image changes them unasked", async () => {
+  const said: Record<string, string> = {
+    df: "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3s1 262144000 104857600 157286400 40% /\n",
+    xcodebuild: "Xcode 27.0\nBuild version 18A100\n",
+    xcrun: "== Runtimes ==\niOS 26.5 (26.5 - 23F77) - com.apple.CoreSimulator.SimRuntime.iOS-26-5\niOS 27.0 (27.0 - 24A434) - com.apple.CoreSimulator.SimRuntime.iOS-27-0\n",
+  };
+  assert.deepEqual(await tools(async (file) => said[file]!, "darwin"), {
+    disk: "150 GB free of 250 GB",
+    xcode: "Xcode 27.0, Build version 18A100",
+    iosRuntime: "iOS 26.5 (26.5 - 23F77); iOS 27.0 (27.0 - 24A434)",
+  });
+});
+
+test("a tool that does not answer leaves out only itself, and Linux has no Xcode to ask", async () => {
+  const asked: string[] = [];
+  const out = await tools(async (file) => {
+    asked.push(file);
+    if (file === "df") throw new Error("timed out");
+    return "";
+  }, "linux");
+  assert.deepEqual(out, {});
+  assert.deepEqual(asked, ["df"]);
 });
