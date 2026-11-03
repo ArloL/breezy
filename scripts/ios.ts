@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { cpus, homedir, loadavg } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { HOME_ICON, iosUnfit } from "../scenarios/ios.ts";
+import { HOME_ICON, iosUnfit, stopPush } from "../scenarios/ios.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
 // an iPhone already booted, as the devices take the first one booted, else the model IPHONE names: an iPhone 17 by
@@ -88,11 +88,14 @@ if (process.argv.includes("--home") && !(existsSync(clips) && readdirSync(clips)
   console.log(`"${HOME_ICON}" written to the Home Screen`);
 }
 if (phone.state !== "Booted") run("boot", phone.udid);
+stopPush(phone.udid);
 if (process.argv.includes("--start")) {
   console.log(`booting ${phone.name} on ${runtime!.split(".").at(-1)}`);
   process.exit(0);
 }
 run("bootstatus", phone.udid, "-b");
+// again, should the iPhone not have answered just after its boot
+stopPush(phone.udid);
 run("launch", phone.udid, "com.apple.mobilesafari");
 console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, touched through idb and read through the scenarios' agent`);
 // a fresh iPhone keeps the runner busy for minutes after its boot, at a load of 500 to 600 on 3 CPUs, and the first

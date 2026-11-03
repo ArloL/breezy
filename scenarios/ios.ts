@@ -119,6 +119,24 @@ export function iosState(udid: string, dir: string, who = "iPhone"): Line[] {
   return iosLogLines(log, who);
 }
 
+/** Disables iOS's push daemon on iPhone `udid`, for good, and stops it. Nothing here uses push, and on CI's runner it loops
+ * on sandbox.push.apple.com, writing 2,500 of the iPhone's 3,900 log lines a second: with it and the two diagnosticds that
+ * carry them gone, cases there took half as long. A nicety, not a condition: an iPhone not yet answering costs a warning. */
+export function stopPush(udid: string, exec: (args: string[], o: { timeout: number }) => string = simctl, warn: (m: string) => void = console.warn) {
+  const launchctl = (verb: string) => exec(["spawn", udid, "launchctl", verb, "system/com.apple.apsd"], { timeout: 60_000 });
+  try {
+    launchctl("disable");
+  } catch (e) {
+    warn(`iOS's push daemon stays on: ${(e as Error).message.split("\n")[0]}`);
+    return;
+  }
+  try {
+    launchctl("bootout");
+  } catch {
+    // not running, as once disabled before this boot
+  }
+}
+
 /** The booted iPhone's id, or null. */
 export function bootedIphone(): string | null {
   const { devices } = JSON.parse(simctl(["list", "devices", "booted", "--json"], { timeout: 90_000 })) as
