@@ -37,6 +37,9 @@ function where(s: Scene, at: At): Point {
 export function run(step: Step): Steps {
   return async (d: Device) => {
     const s = await d.scene();
+    // `inside` keeps a point off the edge zone on the board, which is the screen only at this camera
+    const { x, y, zoom } = s.camera;
+    if (x || y || zoom !== 1) throw new Error(`a step drawn at camera ${x},${y} ×${zoom}`);
     if (step.do === "drag") return d.drag(where(s, step.from), where(s, step.to), { shift: step.shift, option: step.option });
     if (step.do === "click") return d.click(where(s, step.at), { shift: step.shift });
     await d.key(step.key, { meta: step.meta, shift: step.shift });

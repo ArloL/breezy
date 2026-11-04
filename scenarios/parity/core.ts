@@ -87,8 +87,11 @@ export async function play(kind: "swift" | "web", setUp: Steps, steps: Steps[]):
   const w = await World.start([kind]);
   try {
     const [d] = w.devices as [SimDevice];
-    // a browser opens a board at ×0.75; the Swift core's camera stays where it starts
-    if (kind === "web") await w.hub.command(d.d, { cmd: "camera", cam: { x: 0, y: 0, zoom: 1 } });
+    // a browser opens a board at ×0.75 and pans to reveal; the Swift core's camera stays where it starts
+    const home = async () => {
+      if (kind === "web") await w.hub.command(d.d, { cmd: "camera", cam: { x: 0, y: 0, zoom: 1 } });
+    };
+    await home();
     const names = new Names(), made: string[] = [];
     await setUp(d, made);
     await w.settle();
@@ -97,6 +100,7 @@ export async function play(kind: "swift" | "web", setUp: Steps, steps: Steps[]):
     let since = from + all.length;
     const seen: Observed[] = [];
     for (const step of steps) {
+      await home();
       await step(d, made);
       await w.settle();
       const s = await d.scene();
