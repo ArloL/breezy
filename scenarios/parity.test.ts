@@ -18,6 +18,16 @@ async function shrink(setUp: Parameters<typeof differ>[0], steps: Step[]) {
   return kept;
 }
 
+test("a drag after a card's back panned the web's camera presses on screen, as the Swift core's", async () => {
+  const { setUp } = draw(380925, 0);
+  const steps: Step[] = [
+    { do: "drag", from: { card: 6, fx: 0.45, fy: 0.86 }, to: { x: 593, y: 764 } },
+    { do: "key", key: " " },
+    { do: "drag", from: { card: 2, fx: 0.11, fy: 0.79 }, to: { x: 659, y: 77 } },
+  ];
+  assert.equal(await differ(setUp, steps.map(run)), null);
+});
+
 for (let seed = from; seed < from + count; seed++) {
   test(`the cores agree on drawn steps: seed ${seed}`, async () => {
     const { setUp, steps } = draw(seed, STEPS);
