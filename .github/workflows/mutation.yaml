@@ -53,3 +53,31 @@ jobs:
         name: mutation-breezykit
         path: build/mutation
         if-no-files-found: ignore
+  # a red week told no one: the run of 2026-11-03 stood for two days before a look at CI found it
+  report:
+    needs: [web, breezykit]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+    - name: Keep an issue open while it is red
+      env:
+        RESULTS: ${{ toJSON(needs) }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        red=$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$RESULTS")
+        open=$(gh issue list --label mutation --state open --limit 1 --json number --jq '.[0].number // empty')
+        if [ -n "$red" ]; then
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "Red again on $(date -u +%F): $red — $RUN_URL"
+          else
+            gh label create mutation --force
+            gh issue create --label mutation --title "Mutation red since $(date -u +%F)" --body "Red: $red — $RUN_URL"
+          fi
+        elif [ -n "$open" ]; then
+          gh issue close "$open" --comment "Green on $(date -u +%F): $RUN_URL"
+        fi
