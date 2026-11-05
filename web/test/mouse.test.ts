@@ -11,6 +11,7 @@ function fakeApp(hits: Record<string, Hit> = {}) {
   const calls: unknown[][] = [];
   const app = {
     calls,
+    fingers: [] as (boolean | undefined)[],
     state: { selection: new Set<string>(), turned: null as string | null },
     model: { board: { cards: [card("a", 0, 0), card("b", 0, 72)], lanes: [] } },
     heightOf: () => 48,
@@ -23,7 +24,7 @@ function fakeApp(hits: Record<string, Hit> = {}) {
     input: {
       drag: null as { action: DragAction } | null,
       stopCoast: () => {},
-      hit: (p: Point): Hit => hits[`${p.x},${p.y}`] ?? { kind: "empty" },
+      hit: (p: Point, touch?: boolean): Hit => { app.fingers.push(touch); return hits[`${p.x},${p.y}`] ?? { kind: "empty" }; },
       beginDrag: (action: DragAction, h: Hit) => { app.input.drag = { action }; calls.push(["drag", action, h.id]); },
       dragMove: () => calls.push(["move"]),
       endDrag: () => { app.input.drag = null; calls.push(["end"]); },
@@ -79,6 +80,15 @@ test("a second press soon and near is a double-click, which replaces the press",
   assert.deepEqual(names(app), ["select", "select", "double"]);
 });
 
+test("a second press at its limits of time and distance is a double-click still, however late in the session", () => {
+  const app = fakeApp();
+  const m = new Mouse(app);
+  m.down(at(10, 10), 5000);
+  m.up({ x: 10, y: 10 });
+  m.down(at(14, 10), 5000 + DOUBLE_MS);
+  assert.equal(names(app).at(-1), "double");
+});
+
 test("presses slow or far apart are two clicks", () => {
   const app = fakeApp({ "10,10": { kind: "card", id: "a" }, "40,10": { kind: "card", id: "a" } });
   const m = new Mouse(app);
@@ -123,12 +133,33 @@ test("the system taking the pointer cancels the drag", () => {
 });
 
 test("the hovered card is under the last pointer position", () => {
-  const app = fakeApp({ "10,10": { kind: "fold", id: "a" } });
+  const app = fakeApp({ "10,10": { kind: "fold", id: "a" }, "20,20": { kind: "card", id: "b" } });
   const m = new Mouse(app);
   m.move({ x: 10, y: 10 });
   assert.equal(m.hoveredCard(), "a");
+  m.move({ x: 20, y: 20 });
+  assert.equal(m.hoveredCard(), "b");
+  m.move({ x: 30, y: 30 });
+  assert.equal(m.hoveredCard(), null);
   m.leave();
   assert.equal(m.hoveredCard(), null);
+});
+
+test("a mouse asks what is under it as a mouse, not as a finger", () => {
+  const app = fakeApp();
+  const m = new Mouse(app);
+  m.down(at(10, 10), 0);
+  m.hoveredCard();
+  assert.deepEqual(app.fingers, [false, false]);
+});
+
+test("a move or a release exactly 3 pt from its press is no drag", () => {
+  const app = fakeApp({ "10,10": { kind: "card", id: "a" } });
+  const m = new Mouse(app);
+  m.down(at(10, 10), 0);
+  m.move({ x: 13, y: 10 });
+  m.up({ x: 13, y: 10 });
+  assert.ok(!names(app).includes("drag"));
 });
 
 test("a move with the button up ends a drag whose release never came", () => {
