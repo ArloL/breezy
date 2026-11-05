@@ -7,12 +7,12 @@
 // the scenarios' app on the Home Screen as "Breezy Scenarios", for the ios-home device, on any iPhone: given with --start,
 // before the one boot, as a clip written to a booted iPhone costs it a second.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { cpus, homedir, loadavg } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { HOME_ICON, iosUnfit, stopPush } from "../scenarios/ios.ts";
+import { bootsWithout, bootWithout, HOME_ICON, iosUnfit, stopPush } from "../scenarios/ios.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
 // an iPhone already booted, as the devices take the first one booted, else the model IPHONE names: an iPhone 17 by
@@ -87,15 +87,23 @@ if (process.argv.includes("--home") && !(existsSync(clips) && readdirSync(clips)
   plutil("-insert", "TrustedClientBundleIdentifiers.0", "-string", "com.apple.mobilesafari", info);
   console.log(`"${HOME_ICON}" written to the Home Screen`);
 }
-if (phone.state !== "Booted") run("boot", phone.udid);
-stopPush(phone.udid);
+const PUSH = "com.apple.apsd";
+if (phone.state !== "Booted") {
+  // IOS_SLIM: without what the nightly's cases do not touch, which leaves its 3 CPUs at a load of 35–52 at the first case
+  // rather than some 160: scripts/ios-services-off.txt
+  const slim = process.env.IOS_SLIM ? readFileSync(new URL("ios-services-off.txt", import.meta.url), "utf8").split("\n").filter((l) => l && !l.startsWith("#")) : [];
+  bootWithout(phone.udid, [PUSH, ...slim]);
+  run("boot", phone.udid);
+}
+// an iPhone booted before this
+if (!bootsWithout(phone.udid, PUSH)) stopPush(phone.udid);
 if (process.argv.includes("--start")) {
   console.log(`booting ${phone.name} on ${runtime!.split(".").at(-1)}`);
   process.exit(0);
 }
 run("bootstatus", phone.udid, "-b");
 // again, should the iPhone not have answered just after its boot
-stopPush(phone.udid);
+if (!bootsWithout(phone.udid, PUSH)) stopPush(phone.udid);
 run("launch", phone.udid, "com.apple.mobilesafari");
 console.log(`${phone.name} on ${runtime!.split(".").at(-1)}, touched through idb and read through the scenarios' agent`);
 // a fresh iPhone keeps the runner busy for minutes after its boot, at a load of 500 to 600 on 3 CPUs, and the first

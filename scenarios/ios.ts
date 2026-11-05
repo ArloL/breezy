@@ -147,6 +147,29 @@ export function iosState(udid: string, dir: string, who = "iPhone"): Line[] {
   return iosLogLines(log, who);
 }
 
+const disabledStore = (udid: string, root: string) => join(root, `com.apple.CoreSimulator.SimDevice.${udid}`, "disabled.plist");
+const disabledIn = (udid: string, root: string) => {
+  const store = disabledStore(udid, root);
+  if (!existsSync(store)) return new Map<string, boolean>();
+  return new Map([...readFileSync(store, "utf8").matchAll(/<key>([^<]+)<\/key>\s*<(true|false)\/>/g)].map((m) => [m[1]!, m[2] === "true"] as const));
+};
+
+/** Turns `labels` off on the iPhone `udid`, which must be down, in the store launchd_sim reads as it starts and keeps
+ * through an erase: on CI's busy runner `launchctl disable` on a booted iPhone timed out in every job of a night. */
+export function bootWithout(udid: string, labels: string[], root = "/private/var/tmp") {
+  const entries = disabledIn(udid, root);
+  for (const l of labels) entries.set(l, true);
+  const store = disabledStore(udid, root);
+  mkdirSync(join(store, ".."), { recursive: true, mode: 0o700 });
+  const body = [...entries].sort(([a], [b]) => (a < b ? -1 : 1)).map(([l, off]) => `\t<key>${l}</key>\n\t<${off}/>\n`).join("");
+  writeFileSync(store, `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${body}</dict>\n</plist>\n`);
+}
+
+/** Whether the iPhone `udid` boots without `label`. */
+export function bootsWithout(udid: string, label: string, root = "/private/var/tmp") {
+  return disabledIn(udid, root).get(label) === true;
+}
+
 /** Disables iOS's push daemon on iPhone `udid`, for good, and stops it. Nothing here uses push, and on CI's runner it loops
  * on sandbox.push.apple.com, writing 2,500 of the iPhone's 3,900 log lines a second: with it and the two diagnosticds that
  * carry them gone, cases there took half as long. A nicety, not a condition: an iPhone not yet answering costs a warning. */
