@@ -3,7 +3,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
-import { SightWatch, type Sight } from "../sight.ts";
+import { SightWatch, toldOf, type Sight } from "../sight.ts";
 import { App } from "../app.ts";
 import { fakePorts, FakeView, PHONE } from "./fakes.ts";
 
@@ -62,6 +62,22 @@ test("a board its user moved away from the card is no fault, until they edit aga
   t.mock.timers.tick(700);
   assert.equal(found.length, 0);
   w.edited();
+  t.mock.timers.tick(700);
+  assert.equal(found.length, 1);
+});
+
+test("a keyboard read before the page is told of it is no fault, and a card it covers once told is", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const v = Object.assign(new EventTarget(), { height: 812 });
+  const told = toldOf(v);
+  const found: string[] = [];
+  const w = new SightWatch({ read: () => hidden, moving: () => !told(), broken: (p) => found.push(p) });
+  w.poke();
+  v.height = 476;
+  t.mock.timers.tick(700);
+  t.mock.timers.tick(700);
+  assert.deepEqual(found, []);
+  v.dispatchEvent(new Event("resize"));
   t.mock.timers.tick(700);
   assert.equal(found.length, 1);
 });

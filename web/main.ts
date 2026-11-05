@@ -1,6 +1,6 @@
 import { App } from "./app.ts";
 import { box, thrown } from "./flight.ts";
-import { readSight, SightWatch } from "./sight.ts";
+import { readSight, SightWatch, toldOf } from "./sight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
 import { sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
@@ -69,9 +69,10 @@ function record(app: App) {
     void app.library?.reporter.report("error");
   });
   // the scenarios' own check of B1, once the board stands still: what the owner would otherwise see and have to tell
+  const told = visualViewport ? toldOf(visualViewport) : () => true;
   const sight = new SightWatch({
     read: readSight,
-    moving: () => app.view.camera.moving,
+    moving: () => app.view.camera.moving || !told(),
     broken: (problem, s) => {
       f.note("decision", "sight broken", { focus: box(s.focus), caret: box(s.caret), visible: box(s.visible), bar: box(s.bar), screen: box(s.screen) });
       void app.library?.reporter.report("sight");
