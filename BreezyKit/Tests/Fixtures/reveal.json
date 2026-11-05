@@ -13,6 +13,9 @@
     { "name": "too tall shows its bottom when that is preferred", "area": [0, 120, 402, 538], "rect": [16, 300, 370, 600], "pad": 48, "prefer": "bottom", "shift": [0, -378] },
     { "name": "too wide shows its left edge 16 in", "area": [40, 100, 440, 500], "rect": [100, 200, 500, 40], "pad": 16, "prefer": "top", "shift": [-44, 0] },
     { "name": "16 in by default, as an edited card is", "area": [0, 0, 1200, 800], "rect": [1300, 100, 240, 48], "pad": 16, "prefer": "top", "shift": [-356, 0] },
-    { "name": "at the edge, inside a 16 pad", "area": [0, 100, 400, 500], "rect": [4, 200, 100, 40], "pad": 16, "prefer": "top", "shift": [12, 0] }
+    { "name": "at the edge, inside a 16 pad", "area": [0, 100, 400, 500], "rect": [4, 200, 100, 40], "pad": 16, "prefer": "top", "shift": [12, 0] },
+    { "name": "a little too wide for its pads shows its left edge, not its right", "area": [0, 0, 402, 874], "rect": [100, 100, 390, 40], "pad": 16, "prefer": "top", "shift": [-84, 0] },
+    { "name": "a little too tall for its pads shows its top, not its bottom", "area": [0, 0, 402, 500], "rect": [16, 100, 240, 480], "pad": 16, "prefer": "top", "shift": [0, -84] },
+    { "name": "inside but within 48 of the bottom", "area": [0, 0, 1200, 800], "rect": [100, 500, 480, 288], "pad": 48, "prefer": "top", "shift": [0, -36] }
   ]
 }
