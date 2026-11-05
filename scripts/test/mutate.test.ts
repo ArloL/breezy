@@ -1,10 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mutants, run } from "../mutate.ts";
+import { mutants, run, TREE } from "../mutate.ts";
+
+test("what BreezyKit's tests read from the repo is in the copy they run in", () => {
+  const root = new URL("../../", import.meta.url).pathname;
+  const read = globSync("BreezyKit/Tests/**/*.swift", { cwd: root })
+    .flatMap((f) => [...readFileSync(join(root, f), "utf8").matchAll(/\broot\.appendingPathComponent\("([^"]+)"\)/g)].map((m) => m[1]!));
+  assert.ok(read.length > 0);
+  for (const path of read) assert.ok(TREE.swift.some((t) => path === t || path.startsWith(`${t}/`)), `${path} is not copied`);
+});
 
 test("each operator gives one mutant per place, with its line", () => {
   const ms = mutants("if (a === b && c < d) return true;\n");
