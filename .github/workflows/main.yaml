@@ -186,7 +186,7 @@ jobs:
       run: npm ci
     - name: Check types
       run: npm run check
-    - name: Test the touch prototype
+    - name: Test the web core and the scripts
       run: npm test
     - name: Test the relay's hold rules
       run: node --test relay/test/holds.test.mjs
