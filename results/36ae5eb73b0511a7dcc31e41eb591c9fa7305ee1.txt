@@ -1,0 +1,4 @@
+TURN_RUNNING
+iPhone 13 mini on iOS-27-2, touched through idb and read through the scenarios' agent
+
+exit 0 after 2 s, load { 392.23 342.48 285.13 }, 2026-11-05T15:38:49Z
