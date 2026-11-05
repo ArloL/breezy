@@ -1,0 +1,3 @@
+started t1 stock ios-home load { 70.84 222.19 186.94 }
+
+exit 0 after 0 s, load { 70.84 222.19 186.94 }, 2026-11-05T15:25:54Z
