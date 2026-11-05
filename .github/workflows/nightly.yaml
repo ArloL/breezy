@@ -13,8 +13,9 @@ name: Nightly
 # allow for. A deliberate change in feel or performance moves bench-ref to the commit that made it.
 on:
   schedule:
-  # GitHub starts it ~5.5 h late, 07:40–08:05 UTC
-  - cron: "23 2 * * *"
+  # GitHub starts it hours late, 09:25–09:45 UTC when set for 02:23, when its nine macOS jobs took the runners pull requests
+  # wait for
+  - cron: "23 20 * * *"
   workflow_dispatch:
     inputs:
       only:
