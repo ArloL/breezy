@@ -69,7 +69,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
       run: |
-        red=$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$RESULTS")
+        red=$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")' <<< "$RESULTS")
         open=$(gh issue list --label mutation --state open --limit 1 --json number --jq '.[0].number // empty')
         if [ -n "$red" ]; then
           if [ -n "$open" ]; then
