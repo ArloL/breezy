@@ -96,11 +96,12 @@ jobs:
         res="$RUNNER_TEMP/results"
         if git fetch --quiet origin probe-results 2>/dev/null; then git worktree add --quiet -B probe-results "$res" FETCH_HEAD; else git worktree add --quiet --orphan -b probe-results "$res"; fi
         mkdir -p "$res/results"
-        # results/NAME on probe-results, pushed: the session is its only writer
-        publish() { cp "$1" "$res/results/$2"; git -C "$res" add results; git -C "$res" commit --quiet --message "$2"; git -C "$res" push --quiet --force origin HEAD:probe-results; }
+        # results/NAME on probe-results, pushed: the session is its only writer. A push GitHub refuses, as it once did with
+        # "fatal error in commit_refs_rules", must not end the session and its iPhone
+        publish() { cp "$1" "$res/results/$2"; git -C "$res" add results; git -C "$res" commit --quiet --message "$2"; for wait in 5 15 45; do git -C "$res" push --quiet --force origin HEAD:probe-results && return; sleep "$wait"; done; echo "::warning::$2 stays unpushed, until a later result's push"; }
         { echo "udid $UDID"; echo "load $(sysctl -n vm.loadavg)"; echo "at $(date -u +%FT%TZ)"; echo "run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; } > "$RUNNER_TEMP/ready.txt"
-        publish "$RUNNER_TEMP/ready.txt" ready.txt
         last=$(git ls-remote origin refs/heads/probe-commands | cut -f1)
+        publish "$RUNNER_TEMP/ready.txt" ready.txt
         end=$(( SECONDS + 3600 ))
         while [ $SECONDS -lt $end ]; do
           sleep 10
