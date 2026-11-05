@@ -1,0 +1,4 @@
+TURN_RUNNING
+315 bootstatus exit 0 load={ 499.92 341.08 245.39 }
+
+exit 0 after 0 s, load { 388.64 371.80 271.93 }, 2026-11-05T15:33:23Z
