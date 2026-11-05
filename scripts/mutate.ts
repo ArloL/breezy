@@ -107,7 +107,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const KIT = "BreezyKit/Sources/BreezyKit";
 /** What each side's tests read: the web's beside web/, and package.json, whose "type": "module" has the vendored Motion
  * set its global; BreezyKit's package, built in each copy once. */
-const TREE = { web: ["package.json", "web", "relay/src", "BreezyKit/Tests/Fixtures"], swift: ["BreezyKit/Package.swift", "BreezyKit/Sources", "BreezyKit/Tests"] };
+export const TREE = { web: ["package.json", "web", "relay/src", "BreezyKit/Tests/Fixtures"], swift: ["BreezyKit/Package.swift", "BreezyKit/Sources", "BreezyKit/Tests", "web/test/clip-fixture.html"] };
 /** The modules whose tests are held to a floor: the web core's pure rules, the camera, the input, and the sync, each
  * with a test of its own; and all of BreezyKit's. */
 export const MODULES = [
