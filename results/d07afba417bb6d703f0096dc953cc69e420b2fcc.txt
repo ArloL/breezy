@@ -1,0 +1,3 @@
+TURN_RUNNING
+
+exit 0 after 0 s, load { 391.71 295.48 191.14 }, 2026-11-05T17:21:50Z
