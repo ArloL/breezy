@@ -284,10 +284,13 @@ jobs:
         include:
         - iphone: iPhone 17
           slug: "17"
+        # the iPhone whose first cases failed under the boot's load (#231), slim; the iPhone 17 stays stock, as its control
         - iphone: iPhone 13 mini
           slug: 13-mini
+          slim: "1"
     env:
       IPHONE: ${{ matrix.iphone }}
+      IOS_SLIM: ${{ matrix.slim }}
     permissions:
       contents: read
     steps:

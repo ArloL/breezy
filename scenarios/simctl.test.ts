@@ -2,10 +2,11 @@
 // read from the call that timed out and the slow ones before it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { iosLogLines, simctl, simctlAsync, simctlFailures, simctlLog, stopPush } from "./ios.ts";
+import { bootsWithout, bootWithout, iosLogLines, simctl, simctlAsync, simctlFailures, simctlLog, stopPush } from "./ios.ts";
 
 setTimeout(() => process.exit(1), 60_000).unref();
 
@@ -127,4 +128,23 @@ test("a push daemon already stopped is no failure, and an iPhone not yet answeri
   }, (m) => said.push(m));
   assert.equal(said.length, 1);
   assert.match(said[0]!, /push daemon stays on: Unable to lookup/);
+});
+
+test("an iPhone boots without the services written to launchd_sim's store, in a plist, what the store held kept", () => {
+  const root = mkdtempSync(join(tmpdir(), "ios-store-"));
+  try {
+    assert.equal(bootsWithout("U", "com.apple.apsd", root), false);
+    mkdirSync(join(root, "com.apple.CoreSimulator.SimDevice.U"));
+    writeFileSync(join(root, "com.apple.CoreSimulator.SimDevice.U/disabled.plist"), "<plist version=\"1.0\"><dict><key>com.apple.own</key><false/></dict></plist>");
+    bootWithout("U", ["com.apple.apsd", "com.apple.PosterBoard"], root);
+    assert.equal(bootsWithout("U", "com.apple.apsd", root), true);
+    assert.equal(bootsWithout("U", "com.apple.own", root), false);
+    const plist = join(root, "com.apple.CoreSimulator.SimDevice.U/disabled.plist");
+    assert.ok(readFileSync(plist, "utf8").startsWith("<?xml"));
+    assert.deepEqual(JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", plist], { encoding: "utf8", timeout: 10_000 })), {
+      "com.apple.PosterBoard": true, "com.apple.apsd": true, "com.apple.own": false,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

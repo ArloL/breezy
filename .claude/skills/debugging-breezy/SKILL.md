@@ -13,6 +13,7 @@ The tooling fails like the app does. A tap's 317 ms was idb's companion overrunn
 
 - **The owner's and partner's devices:** the owner uses an iPhone 13 mini on iOS 27 with the Home Screen app, and the Mac app; the partner uses Chrome on a mid-range Android. Their phone and build are in the recording's `context`. A caret bug on CI's iOS 26.5 was no bug of theirs.
 - **CI's runner, from 5,700 cases over 30 runs in the week to 2026-11-03:** a job's first case always runs at a load over 100 on 3 CPUs, falling to 65–80 by its sixth, and fails about 12 times as often as its later ones: 3.9 % (95 % CI 1.5–9.7) against 0.3 % (0.2–0.6). On one image, the same code took 0.89 to 1.28 times as long as another run's, job by job, so compare two versions in turns on one runner (`probe-session.yaml`), not across runs.
+- **CI's iPhones since 2026-11-05:** the iPhone 13 mini boots slim, without `scripts/ios-services-off.txt`, and the iPhone 17 stock, as its control: a case failing only on the first may be slim's doing. The figures above are from before it.
 - **The recordings:**
   - a run's `build/scenarios/<when> <case>/`: `timeline.txt`, `case.json`, and `<who> flight.json` per device;
   - a failing hub case's `build/hub/<test>/`;
