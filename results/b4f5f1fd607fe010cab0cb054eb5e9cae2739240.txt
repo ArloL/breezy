@@ -1,0 +1,4 @@
+TURN_DONE
+1214 done
+
+exit 0 after 0 s, load { 61.15 153.53 213.95 }, 2026-11-05T15:46:27Z
