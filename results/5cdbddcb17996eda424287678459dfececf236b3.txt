@@ -1,0 +1,3 @@
+started t2 slim ios-home load { 37.88 139.05 206.60 }
+
+exit 0 after 0 s, load { 37.88 139.05 206.60 }, 2026-11-05T15:46:55Z
