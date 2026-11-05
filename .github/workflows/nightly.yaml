@@ -639,7 +639,7 @@ jobs:
           jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$RESULTS"
         } | tee build/night-report/report.md >> "$GITHUB_STEP_SUMMARY"
         cat build/night-report/report.md
-        red=$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$RESULTS")
+        red=$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")' <<< "$RESULTS")
         if [ "$GITHUB_REF" = "refs/heads/main" ]; then
           open=$(gh issue list --label nightly --state open --limit 1 --json number --jq '.[0].number // empty')
           if [ -n "$red" ]; then
