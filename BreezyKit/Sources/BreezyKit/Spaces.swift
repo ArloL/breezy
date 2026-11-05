@@ -239,7 +239,7 @@ import Foundation
   /// between cycles: its relay announces what others push. `now` is on the engines' clock.
   public func syncAll(polling: Bool = false, now: Date? = nil) {
     for g in spaces {
-      if polling, g.live?.connected == true, let last = g.engine.lastSynced, (now ?? g.engine.clock()).timeIntervalSince(last) < 30 { continue }
+      if polling, g.live?.connected == true, let last = g.engine.lastSynced, (now ?? g.engine.clock()) < last.addingTimeInterval(30) { continue }
       Task { await g.engine.sync() }
     }
   }

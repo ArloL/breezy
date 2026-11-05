@@ -287,6 +287,26 @@ final class Servers {
   try await eventually { g.engine.lastSynced! > before }
 }
 
+@MainActor @Test func aPollThirtySecondsOnGoesWhateverTheUptime() async throws {
+  // just under a power of two, as a runner's uptime can be: adding 30 s there rounds, and the difference fell short of 30
+  for i in 0..<30 {
+    var ms = 486_000 + Double(i) * 11.37
+    let servers = Servers(), relay = FakeRelay()
+    let spaces = try Spaces(
+      directory: tempDirectory(), me: Person(device: newID(), name: "Ana"), transport: servers.transport,
+      socket: { relay.connect($0) }, uptime: { ms += 1; return ms })
+    let g = spaces.newSpace(server: testServer, name: "Work")
+    servers.server(g.space!).relay = "wss://relay.example/"
+    await g.engine.sync()
+    g.live!.connect()
+    relay.run()
+    await g.engine.sync()
+    let before = g.engine.lastSynced!
+    spaces.syncAll(polling: true, now: before.addingTimeInterval(30))
+    try await eventually { g.engine.lastSynced! > before }
+  }
+}
+
 @MainActor @Test func aPushIsAnnouncedAndAnnouncedPushesArePulledAtOnce() async throws {
   let servers = Servers(), relay = FakeRelay()
   let a = try liveSpaces(servers, relay), b = try liveSpaces(servers, relay)
