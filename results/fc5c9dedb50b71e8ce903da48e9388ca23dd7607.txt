@@ -1,0 +1,4 @@
+TURN_RUNNING
+607 case on ios-safari starts load={ 20.90 36.99 112.18 }
+
+exit 0 after 0 s, load { 19.28 35.19 109.35 }, 2026-11-05T15:57:44Z
