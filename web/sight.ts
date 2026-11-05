@@ -97,6 +97,15 @@ export function readSight(): Sight | null {
 }
 
 
+/** Whether the page has had the resize event for the visual viewport it reads, which is all the app moves the board by:
+ * Chrome on CI's Android emulator read the keyboard's height up to 1.7 s before it told, and the app's check judged in
+ * between. As `told` in scenarios/device.ts. */
+export function toldOf(v: EventTarget & { height: number }) {
+  let told = Math.round(v.height);
+  v.addEventListener("resize", () => { told = Math.round(v.height); });
+  return () => told === Math.round(v.height);
+}
+
 /** Checks that the card being edited is in sight once nothing has moved what shows for `quietMs`, as a person sees it
  * once the board stops: each change `poke`s it, and a camera still moving puts the check off. What it finds wrong is
  * `broken`, once until the card was in sight again. */
