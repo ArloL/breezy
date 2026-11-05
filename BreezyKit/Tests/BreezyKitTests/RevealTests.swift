@@ -2,6 +2,12 @@ import Foundation
 import Testing
 @testable import BreezyKit
 
+@Test func aRectTooTallShowsItsTopUnlessAskedForItsBottom() {
+  let tall = Rect(x: 16, y: 300, w: 370, h: 600), area = Rect(x: 0, y: 120, w: 402, h: 418)
+  #expect(tall.revealShift(in: area).dy == tall.revealShift(in: area, bottom: false).dy)
+  #expect(tall.revealShift(in: area).dy != tall.revealShift(in: area, bottom: true).dy)
+}
+
 @Test func revealShiftsAsTheWebDoes() throws {
   let cases = try #require(try JSONSerialization.jsonObject(with: fixture("reveal.json")) as? [String: Any])["cases"] as! [[String: Any]]
   for c in cases {

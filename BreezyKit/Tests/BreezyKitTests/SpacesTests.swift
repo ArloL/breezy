@@ -82,7 +82,9 @@ final class Servers {
   let spaces = try Spaces(directory: tempDirectory())
   let zed = spaces.newSpace(server: testServer, name: "Zed")
   let abe = spaces.newSpace(server: testServer, name: "Abe")
-  #expect(spaces.groups.map(\.name) == ["On this device", "Abe", "Zed"])
+  // enough that their ids, which are random, cannot put them in this order by chance
+  for name in ["Yan", "Bob", "Xia", "Cid", "Wes", "Dee"] { _ = spaces.newSpace(server: testServer, name: name) }
+  #expect(spaces.groups.map(\.name) == ["On this device", "Abe", "Bob", "Cid", "Dee", "Wes", "Xia", "Yan", "Zed"])
   let id = zed.store.createBoard(title: "Plans")
   #expect(spaces.group(of: id) === zed)
   #expect(spaces.group(space: abe.space!) === abe)
@@ -281,7 +283,7 @@ final class Servers {
   spaces.syncAll(polling: true, now: before.addingTimeInterval(10))
   try await Task.sleep(for: .milliseconds(100))
   #expect(g.engine.lastSynced == before)
-  spaces.syncAll(polling: true, now: before.addingTimeInterval(31))
+  spaces.syncAll(polling: true, now: before.addingTimeInterval(30))
   try await eventually { g.engine.lastSynced! > before }
 }
 

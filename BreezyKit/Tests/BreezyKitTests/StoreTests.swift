@@ -198,6 +198,41 @@ func settle(_ s: Store, version: Int = 1) {
   #expect(s.state.records[id]!.base == fresh && s.state.records[id]!.version == 7)
 }
 
+@Test func aResyncTakesAStaleRecordOfTheVersionThisDeviceHadAsBase() {
+  let s = Store()
+  _ = s.createBoard(title: "Plans", contents: board([card("c", 0, 0, "mine")]))
+  settle(s, version: 4)
+  _ = s.note(epoch: "e1")
+  _ = s.note(epoch: "e2")
+  var backup = s.state.records["c"]!.current
+  backup["text"] = .string("backup")
+  s.merge([Incoming(id: "c", version: 4, record: backup, stale: true)])
+  #expect(s.state.records["c"]!.base == backup)
+  #expect(s.state.records["c"]!.current["text"] == .string("mine"))
+}
+
+@Test func aResyncMergesARecordNotStaleOfAVersionThisDeviceHad() {
+  let s = Store()
+  _ = s.createBoard(title: "Plans", contents: board([card("c", 0, 0, "mine")]))
+  settle(s, version: 4)
+  _ = s.note(epoch: "e1")
+  _ = s.note(epoch: "e2")
+  var other = s.state.records["c"]!.current
+  other["text"] = .string("other")
+  s.merge([Incoming(id: "c", version: 4, record: other)])
+  #expect(s.state.records["c"]!.current["text"] == .string("other"))
+}
+
+@Test func aRecordOfTheVersionThisDeviceHasIsLeftAlone() {
+  let s = Store()
+  _ = s.createBoard(title: "Plans", contents: board([card("c", 0, 0, "mine")]))
+  settle(s, version: 4)
+  var other = s.state.records["c"]!.current
+  other["text"] = .string("other")
+  s.merge([Incoming(id: "c", version: 4, record: other)])
+  #expect(s.state.records["c"]!.current["text"] == .string("mine"))
+}
+
 @Test func aResyncMergesABackupNewerThanThisDevice() {
   let s = Store()
   _ = s.createBoard(title: "Plans", contents: board([card("c", 0, 0, "old")]))

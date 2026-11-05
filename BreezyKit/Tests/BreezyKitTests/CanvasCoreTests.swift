@@ -82,6 +82,8 @@ import Testing
   #expect(c.hitsFold(a, Point(x: 210, y: 20)))
   #expect(!c.hitsFold(a, Point(x: 200, y: 40)))
   #expect(!c.hitsFold(a, Point(x: 210, y: 10)))
+  #expect(!c.hitsFold(a, Point(x: 208, y: 40)))
+  #expect(!c.hitsFold(a, Point(x: 230, y: 16)))
   c.press(at: Point(x: 230, y: 40))
   c.release()
   #expect(c.turned == nil)
@@ -183,6 +185,13 @@ import Testing
 
 @MainActor @Test func belowItsHeaderALaneIsNoHandle() {
   let c = canvas(board([], [lane("l", 0, 0, 288)]))
+  c.press(at: Point(x: 100, y: 48))
+  #expect(c.drag?.kind == .marquee)
+}
+
+@MainActor @Test func belowItsHeaderALaneTakenElsewhereStopsNoPress() {
+  let c = canvas(board([], [lane("l", 0, 0, 288)]))
+  c.taken = { ["l"] }
   c.press(at: Point(x: 100, y: 48))
   #expect(c.drag?.kind == .marquee)
 }
