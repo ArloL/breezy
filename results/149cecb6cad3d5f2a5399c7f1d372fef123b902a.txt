@@ -1,0 +1,4 @@
+TURN_RUNNING
+902 case on ios-home starts load={ 158.86 282.98 270.76 }
+
+exit 0 after 0 s, load { 105.83 230.06 251.35 }, 2026-11-05T15:42:38Z
