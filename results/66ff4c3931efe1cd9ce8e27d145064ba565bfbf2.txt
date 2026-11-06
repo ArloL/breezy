@@ -1,0 +1,26 @@
+== main (82c925a): exit 0, 1 passed, 0 failed
+  33 samples, worst 1941 ms late, 2 over 1.5 s: 1831 1941
+  ◀ launch 2188 ms
+  ◀ join 1126 ms
+  ◀ launch 20541 ms
+  ◀ join 8341 ms
+== fix (cf7f60c): exit 0, 1 passed, 0 failed
+  23 samples, worst 1432 ms late, 0 over 1.5 s:
+  ◀ launch 599 ms
+  ◀ join 688 ms
+  ◀ launch 19215 ms
+  ◀ join 7677 ms
+== main2 (82c925a): exit 0, 1 passed, 0 failed
+  24 samples, worst 1134 ms late, 0 over 1.5 s:
+  ◀ launch 495 ms
+  ◀ join 667 ms
+  ◀ launch 16146 ms
+  ◀ join 8295 ms
+== fix2 (cf7f60c): exit 0, 1 passed, 0 failed
+  26 samples, worst 878 ms late, 0 over 1.5 s:
+  ◀ launch 520 ms
+  ◀ join 577 ms
+  ◀ launch 17381 ms
+  ◀ join 8899 ms
+
+exit 0 after 161 s, load { 8.75 48.27 85.21 }, 2026-11-06T17:15:38Z
