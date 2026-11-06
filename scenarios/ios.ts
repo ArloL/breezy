@@ -6,7 +6,7 @@
 import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import { Device, item, readFlight, type Editor, type Frame, type PointerExtra, type PointerPhase, type Scene, type Sight } from "./device.ts";
@@ -223,8 +223,6 @@ export async function iosUnfit(): Promise<string | false> {
 /** The name the scenarios' app has on the iPhone's Home Screen. */
 export const HOME_ICON = "Breezy Scenarios";
 
-/** Where the Home Screen shows icon `label`, in screen points, or null; SpringBoard's own icons are what its
- * accessibility lists while it is in front. */
 /** Forgets the idb companions its record names that have ended, as scripts/sim-hid.py does: idb connects to the one the
  * record names, and its command failed on a record a companion that ended left behind. */
 function dropEndedCompanions(state = "/tmp/idb/state") {
@@ -245,18 +243,21 @@ function dropEndedCompanions(state = "/tmp/idb/state") {
   if (!companions.every(alive)) writeFileSync(state, JSON.stringify(companions.filter(alive)));
 }
 
-export function homeIcon(udid: string, label = HOME_ICON): { x: number; y: number } | null {
-  // again, a moment later, when idb answers nothing: on CI's runner its command failed once in a run of 38 cases
+/** Where the Home Screen shows icon `label`, in screen points, or null; SpringBoard's own icons are what its
+ * accessibility lists while it is in front. */
+export async function homeIcon(udid: string, label = HOME_ICON): Promise<Point | null> {
+  // again, a moment later, when idb answers nothing: on CI's runner its command failed once in a run of 38 cases. Not
+  // synchronous: idb took 0.5 to 16 s there, and the harness serves the pages meanwhile
   let out = "";
   for (let tries = 1; ; tries++) {
     dropEndedCompanions();
     try {
-      out = execFileSync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
-        { encoding: "utf8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+      out = (await execFileAsync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
+        { encoding: "utf8", timeout: 120_000 })).stdout;
       break;
     } catch (e) {
       if (tries === 3) throw new Error(`idb found no Home Screen: ${(e as { stderr?: string }).stderr?.trim().split("\n").at(-1) ?? (e as Error).message}`);
-      execFileSync("sleep", ["2"]);
+      await sleep(2000);
     }
   }
   return labelled(out, label, ["Button"]);
@@ -382,6 +383,16 @@ export class SimHid {
 /** scripts/sim-finger.m in the booted iPhone, built first: touches stamped with the times they were meant for, as idb's
  * companion overran a tap's 50 ms wait by 90–200 ms on CI's runner, and the board read a tap as a hold. A line of JSON per
  * command, answered in turn. It touches as one of the touchscreens dtuhidd adds once idb has touched, the one `use` names. */
+/** `src` compiled for the simulator into `bin`, unless `bin` is newer. Not synchronous: on CI's runner a job's first
+ * compile took 12.9 s, and the harness serves the pages meanwhile. */
+export async function built(src: string, bin: string): Promise<string> {
+  if (existsSync(bin) && statSync(bin).mtimeMs >= statSync(src).mtimeMs) return bin;
+  mkdirSync(dirname(bin), { recursive: true });
+  await execFileAsync("xcrun", ["--sdk", "iphonesimulator", "clang", "-fobjc-arc", "-arch", "arm64", "-mios-simulator-version-min=17.0",
+    "-framework", "Foundation", "-o", bin, src], { timeout: 120_000 });
+  return bin;
+}
+
 export class SimFinger {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly replies: ((line: string) => void)[] = [];
@@ -402,12 +413,7 @@ export class SimFinger {
 
   /** On the booted iPhone `udid`, whose screen is `w` × `h` points. */
   static async start(udid: string, w: number, h: number): Promise<SimFinger> {
-    const src = `${root}scripts/sim-finger.m`, bin = `${root}build/sim-finger`;
-    if (!existsSync(bin) || statSync(bin).mtimeMs < statSync(src).mtimeMs) {
-      mkdirSync(`${root}build`, { recursive: true });
-      execFileSync("xcrun", ["--sdk", "iphonesimulator", "clang", "-fobjc-arc", "-arch", "arm64", "-mios-simulator-version-min=17.0",
-        "-framework", "Foundation", "-o", bin, src], { stdio: ["ignore", "ignore", "pipe"], timeout: 120_000 });
-    }
+    const bin = await built(`${root}scripts/sim-finger.m`, `${root}build/sim-finger`);
     const f = new SimFinger(spawn("xcrun", ["simctl", "spawn", udid, bin, String(w), String(h)], { stdio: ["pipe", "pipe", "pipe"] }));
     await f.answer(60_000);
     return f;
