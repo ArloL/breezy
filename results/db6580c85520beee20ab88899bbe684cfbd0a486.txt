@@ -1,0 +1,75 @@
+== memory: 7.0 GB, total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)
+== 1. idb describe-all, as homeIcon calls it
+idb failed
+run 1: 15.95 s wall, 35 MB max RSS, 2620 faults, 
+run 2: 1.83 s wall, 35 MB max RSS, 61 faults, 
+run 3: 0.53 s wall, 35 MB max RSS, 4 faults, 
+== 2. memory each second through one case, 3. its harness under --cpu-prof
+case exit 0 after 121 s
+/Users/runner/work/_temp/run.sh: line 23: 33228 Terminated: 15          ( while :; do
+    echo "$(now) $(vm_stat | awk -F: '/Pages free|Pageins|Pageouts|Swapins|Swapouts|Compressions|Decompressions|occupied by compressor/{gsub(/[ .]/,"",$2); k=$1; gsub(/Pages |"/,"",k); gsub(/ /,"_",k); printf "%s=%s ", k, $2}') swap=$(sysctl -n vm.swapusage | awk '{print $6}')"; sleep 1;
+done ) > "$out/mem.txt"
+✔ a card's title and lines typed, deleted and typed again show the caret after the last key, the title semibold (chromium → ios-home) (117418.561666ms)
+== stalls over 1.5 s in 2026-11-06T17-07-43-301Z chromium→ios-home a cards title and lines typed deleted and typed again show the caret after the last key the title se
+17:08:10.655  +27354  runner            load 71.92 of 3 CPUs, 176 MB free, node's timers up to 3653 ms late
+17:08:17.281  +33980  runner            load 80.90 of 3 CPUs, 191 MB free, node's timers up to 2590 ms late
+17:09:26.782 +103481  runner            load 56.19 of 3 CPUs, 167 MB free, node's timers up to 12868 ms late
+== memory counters' change per second, where any paging or swapping happened
+1793984869.2 free=9476 compressor=95292 swap=0.00M Decompressions+1341 Compressions+4548 Pageins+1249 Pageouts+1 
+1793984871.5 free=2886 compressor=96450 swap=0.00M Decompressions+954 Compressions+7100 Pageins+1718 Pageouts+1 
+1793984872.5 free=4315 compressor=98840 swap=0.00M Decompressions+1320 Compressions+9345 Pageins+858 Pageouts+2 
+1793984873.6 free=4028 compressor=100891 swap=0.00M Decompressions+1409 Compressions+9247 Pageins+1143 Pageouts+1 
+1793984874.7 free=4437 compressor=103043 swap=0.00M Decompressions+1912 Compressions+8816 Pageins+2374 Pageouts+6 
+1793984875.7 free=4164 compressor=104125 swap=0.00M Decompressions+2798 Compressions+5388 Pageins+2596 Pageouts+7 
+1793984876.9 free=4168 compressor=105648 swap=0.00M Decompressions+2442 Compressions+5439 Pageins+4283 Pageouts+3 
+1793984880.5 free=4327 compressor=107577 swap=0.00M Decompressions+5083 Compressions+3639 Pageins+2425 Pageouts+1 
+1793984888.7 free=5723 compressor=109147 swap=0.00M Decompressions+12691 Compressions+16380 Pageins+10300 Pageouts+2 
+1793984899.4 free=5010 compressor=111012 swap=0.00M Decompressions+1205 Compressions+1272 Pageins+1774 Pageouts+2 
+1793984903.1 free=4077 compressor=111415 swap=0.00M Decompressions+5018 Compressions+5297 Pageins+1637 Pageouts+1 
+1793984904.3 free=4309 compressor=113509 swap=0.00M Decompressions+4172 Compressions+9593 Pageins+8876 Pageouts+2 
+1793984907.7 free=4116 compressor=114879 swap=0.00M Decompressions+4625 Compressions+3440 Pageins+352 Pageouts+12 
+1793984908.9 free=4094 compressor=114643 swap=0.00M Decompressions+2338 Compressions+1543 Pageins+633 Pageouts+1 
+1793984910.0 free=4020 compressor=114725 swap=0.00M Decompressions+2618 Compressions+2543 Pageins+1126 Pageouts+19 
+1793984911.2 free=3874 compressor=114850 swap=0.00M Decompressions+3943 Compressions+4314 Pageins+2263 Pageouts+21 
+1793984912.3 free=4079 compressor=116752 swap=0.00M Decompressions+4457 Compressions+10179 Pageins+6613 Pageouts+10 
+1793984919.1 free=4343 compressor=116620 swap=0.00M Decompressions+5375 Compressions+7106 Pageins+5710 Pageouts+9 
+1793984929.0 free=4214 compressor=114648 swap=0.00M Decompressions+1214 Pageins+420 Pageouts+1 
+1793984935.9 free=4523 compressor=115709 swap=0.00M Decompressions+406 Compressions+1674 Pageins+586 Pageouts+5 
+1793984939.2 free=4384 compressor=116572 swap=0.00M Decompressions+1131 Compressions+3756 Pageins+932 Pageouts+7 
+1793984943.1 free=4339 compressor=119733 swap=0.00M Decompressions+1849 Compressions+8698 Pageins+4002 Pageouts+1 
+1793984957.2 free=4528 compressor=124428 swap=0.00M Decompressions+7573 Compressions+8576 Pageins+4589 Pageouts+3 
+1793984958.9 free=4247 compressor=126081 swap=0.00M Decompressions+4187 Compressions+10806 Pageins+5390 Pageouts+2 
+1793984963.6 free=6962 compressor=128370 swap=0.00M Decompressions+2447 Compressions+1489 Pageins+1515 Pageouts+2 
+1793984964.7 free=4697 compressor=127757 swap=0.00M Decompressions+3241 Compressions+932 Pageins+1430 Pageouts+1 
+1793984969.4 free=4425 compressor=129543 swap=0.00M Decompressions+1087 Compressions+1044 Pageins+634 Pageouts+17 
+1793984971.9 free=4109 compressor=131442 swap=0.00M Decompressions+4684 Compressions+7046 Pageins+919 Pageouts+3 
+1793984973.2 free=4148 compressor=131982 swap=0.00M Decompressions+2622 Compressions+3848 Pageins+2043 Pageouts+14 
+1793984974.4 free=4273 compressor=132972 swap=0.00M Decompressions+4343 Compressions+5646 Pageins+2302 Pageouts+4 
+1793984976.7 free=4529 compressor=133655 swap=0.00M Decompressions+2378 Compressions+2902 Pageins+1606 Pageouts+7 
+1793984979.1 free=7138 compressor=129433 swap=0.00M Decompressions+7267 Compressions+2686 Pageins+527 Pageouts+3 
+(samples:       90; free pages min 2886, 16 KB each)
+== the harness's CPU profiles: runs of busy samples over 1.5 s (a synchronous call), and gaps over 1.5 s (the process stopped)
+CPU.20261106.170740.33343.0.001.cpuprofile (1 MB, 120 s):
+  busy 8360 ms from +5 ms:
+    5879 ms in spawnSync child_process:1176 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < buildSite browser.ts:1154 < serve browser.ts:1486 < runMicrotasks < processTicksAndRejections task_queues:72
+    763 ms in spawnSync child_process:1176 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < simctl ios.ts:78 < bootedIphone ios.ts:197 < iosUnfit ios.ts:214 < (anon) browsers.e2e.ts:1
+  gap 1579 ms at +26928 ms, before it: runNextTicks task_queues:63 < listOnTimeout timers:623 < processTimers timers:603
+  busy 3057 ms from +23872 ms:
+    1579 ms in processTimers timers:603
+    1393 ms in close < closeSocketHandle node:net:358 < Socket._destroy node:net:1159 < _destroy destroy:90 < destroy destroy:49 < Writable.destroy writable:1116 < socketOnTimeout node:_http_server:900
+  busy 2253 ms from +27793 ms:
+    1679 ms in spawnSync child_process:1176 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < homeIcon ios.ts:248 < launch browser.ts:1308 < runMicrotasks < runNextTicks task_queues:63
+    298 ms in normalizeSpawnArguments node:child_process:584 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < homeIcon ios.ts:248 < launch browser.ts:1308 < runMicrotasks < runNextTicks task_queues:63
+  busy 2564 ms from +33836 ms:
+    2564 ms in spawnSync child_process:1176 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < homeIcon ios.ts:248 < launch browser.ts:1308
+  gap 1506 ms at +81142 ms, before it: (program)
+  busy 12915 ms from +93043 ms:
+    12836 ms in spawnSync child_process:1176 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < start ios.ts:404 < calibrate ios.ts:502
+    13 ms in addChunk readable:558 < readableAddChunkPushByteMode readable:471 < Readable.push readable:395 < onStreamRead stream_base_commons:171
+CPU.20261106.170743.33766.0.001.cpuprofile (0 MB, 6 s):
+  busy 5470 ms from +6 ms:
+    4845 ms in spawnSync child_process:1176 < spawnSync node:child_process:884 < execFileSync node:child_process:968 < buildWeb build-web.ts:19 < (anon) build-web.ts:1 < evaluate < run module_job:550
+    473 ms in copyFile < copyFileSync node:fs:3209 < copyFile cp-sync:100 < onFile cp-sync:82 < getStats cp-sync:61 < copyDir cp-sync:149 < onDir cp-sync:135
+5 profiles read
+
+exit 0 after 140 s, load { 48.52 138.95 125.15 }, 2026-11-06T17:09:41Z
