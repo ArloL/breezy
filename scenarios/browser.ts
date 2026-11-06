@@ -8,7 +8,6 @@ import { homedir, tmpdir, totalmem } from "node:os";
 import { connect, type Socket } from "node:net";
 import { extname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { inflateRawSync } from "node:zlib";
 import { _android, chromium, firefox, webkit, type AndroidDevice, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { FENIX_VERSION } from "../scripts/android-sdk.ts";
 import { inviteLink } from "../web/sync/crypto.ts";
@@ -22,6 +21,7 @@ import { adb, adbBytes, environment, flightLines, logcatLines, RECORDS, sampleRu
 import { watchSight } from "./sight.ts";
 import { Agent, AGENT_SCRIPT, fromIphone, type AgentPage } from "./agent.ts";
 import { dismissal } from "./prompts.ts";
+import { answerNote, isReport, sentNote } from "./sync-log.ts";
 import type { Point } from "../web/types.ts";
 
 export * from "./device.ts";
@@ -225,11 +225,10 @@ function readWeights(id: string): number[] | null {
  * change stopped. Ids are the records' and the relay's first 8 characters. */
 export type SyncLog = [ms: number, what: string][];
 
-/** Notes in `log` each request to sync.php and its answer, each file the page loads, its navigations, each frame on the
+/** Notes in `log` each request to sync.php and its answer, each report the app sends, each file the page loads, its navigations, each frame on the
  * relay, and the page's errors and console. */
 function logSync(page: Page, log: SyncLog, t0: number) {
   const note = (what: string) => log.push([Math.round(performance.now() - t0), what]);
-  const id = (r: { id: string }) => r.id.slice(0, 8);
   const ours = (url: string) => url.includes(`:${SERVER}/`);
   const site = (url: string) => url.includes(`:${WEB}/`);
   page.on("framenavigated", (f) => f === page.mainFrame() && note(`navigates to ${f.url().slice(0, 40)}`));
@@ -245,20 +244,14 @@ function logSync(page: Page, log: SyncLog, t0: number) {
     if (!ours(r.url())) return;
     const body = r.postDataBuffer();
     if (!body) return note(`pull since ${new URL(r.url()).searchParams.get("since")}`);
-    try {
-      const { writes, since, epoch } = JSON.parse((r.headers()["content-encoding"] === "deflate" ? inflateRawSync(body) : body).toString());
-      note(`push since ${since} epoch ${epoch} writes ${writes.map((w: { id: string; base: number }) => `${id(w)}@${w.base}`).join(" ")}`);
-    } catch (e) {
-      note(`push, its body unread: ${e}`);
-    }
+    note(sentNote(r.url(), body, r.headers()["content-encoding"]));
   });
   page.on("response", async (res) => {
     if (!ours(res.url())) return;
     const at = Math.round(performance.now() - t0);
-    const list = (rs?: { id: string; version: number }[]) => (rs ?? []).map((r) => `${id(r)}@${r.version}`).join(" ");
+    if (isReport(res.url())) return log.push([at, `  ${res.status()} report`]);
     try {
-      const j = await res.json();
-      log.push([at, `  ${res.status()} accepted ${list(j.accepted)} refused ${list(j.refused)} records ${list(j.records)} cursor ${j.cursor} epoch ${j.epoch}`]);
+      log.push([at, answerNote(res.status(), await res.json())]);
     } catch (e) {
       log.push([at, `  ${res.status()}, its body unread: ${e}`]);
     }
