@@ -59,11 +59,16 @@ function simctlNote(args: string[]) {
       simctlLog.push([t0, "simctl", `${what}: ${Date.now() - t0} ms`]);
       return String(out ?? "");
     },
-    failed(e: unknown) {
+    /** Throws `e`, but for a terminate that found nothing running, which did what it was asked. */
+    failed(e: unknown): string {
       const { status, code, signal, stderr } = e as { status?: number | null; code?: number | string; signal?: string | null; stderr?: string };
       const said = String(stderr ?? "").trim().replace(/\s+/g, " ").slice(0, 400);
+      if (args[0] === "terminate" && said.includes("found nothing to terminate")) {
+        simctlLog.push([t0, "simctl", `${what}: ${Date.now() - t0} ms, nothing to terminate`]);
+        return "";
+      }
       simctlLog.push([t0, "simctl", `${what}: failed after ${Date.now() - t0} ms, ${signal ? `killed by ${signal}` : `exit ${status ?? code}`}${said ? `: ${said}` : ""}`]);
-      return e;
+      throw e;
     },
   };
 }
@@ -75,7 +80,7 @@ export function simctl(args: string[], { timeout }: { timeout: number }, run: (f
   try {
     return note.done(run("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], maxBuffer: SIMCTL_OUTPUT }));
   } catch (e) {
-    throw note.failed(e);
+    return note.failed(e);
   }
 }
 
@@ -85,7 +90,7 @@ export async function simctlAsync(args: string[], { timeout }: { timeout: number
   try {
     return note.done((await execFileAsync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout, maxBuffer: SIMCTL_OUTPUT })).stdout);
   } catch (e) {
-    throw note.failed(e);
+    return note.failed(e);
   }
 }
 
