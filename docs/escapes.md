@@ -90,6 +90,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-11-05 | mac | B3 | survey | L1 | `scripts/test/rerun-unstarted.test.ts` | five Main runs red on a `macos-latest` job with no step, each annotated `not acquired by Runner of type hosted` (harness) | 0 | yes | #243 |
 | 2026-11-05 | mac | B3 | pull request | L1 | `BreezyKit/Tests/BreezyKitTests/SpacesTests.swift` | `Expectation failed: done()` on a poll 30 s on, and `(b + 30) - b < 30` in 24 % of readings just under a power of two, on an uptime clock; 6 of 30 from 486 s (app) | 0 | yes | #245 |
 | 2026-11-05 | ios | B3 | survey | L1 | `scenarios/simctl.test.ts` | `iOS's push daemon stays on: spawnSync xcrun ETIMEDOUT` in all four iPhone jobs of the night, seven times (harness) | 0 | yes | #246 |
+| 2026-11-06 | ios | B3 | survey | L1 | `scenarios/simctl.test.ts` | `simctl terminate … com.apple.webapp` under the night report's simctl calls that failed, exit 3 `found nothing to terminate`, in passing cases, two a night on each job's first launch (harness) | 0 | yes | #248 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
