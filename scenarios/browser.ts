@@ -1313,11 +1313,11 @@ export class RealWorld {
               await hid.button("HOME");
               await sleep(1500);
               // Home shows the first page; the icon is on a later one
-              let icon = homeIcon(udid);
+              let icon = await homeIcon(udid);
               for (let page = 1; !icon && page < 6; page++) {
                 await hid.touches([[0, "down", 360, 450], [16, "move", 280, 450], [16, "move", 160, 450], [16, "move", 60, 450], [16, "up", 40, 450]]);
                 await sleep(1000);
-                icon = homeIcon(udid);
+                icon = await homeIcon(udid);
               }
               if (!icon) throw new Error(`no "${HOME_ICON}" on the iPhone's Home Screen: run node scripts/ios.ts --home`);
               await hid.touches([[0, "down", icon.x, icon.y], [50, "up", icon.x, icon.y]]);
