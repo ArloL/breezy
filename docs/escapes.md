@@ -92,6 +92,7 @@ Since 2026-10-28 a row also says what pinned the cause and the layer it came fro
 | 2026-11-05 | ios | B3 | survey | L1 | `scenarios/simctl.test.ts` | `iOS's push daemon stays on: spawnSync xcrun ETIMEDOUT` in all four iPhone jobs of the night, seven times (harness) | 0 | yes | #246 |
 | 2026-11-06 | ios | B3 | survey | L1 | `scenarios/simctl.test.ts` | `simctl terminate … com.apple.webapp` under the night report's simctl calls that failed, exit 3 `found nothing to terminate`, in passing cases, two a night on each job's first launch (harness) | 0 | yes | #248 |
 | 2026-11-06 | android | B3 | survey | L1 | `scenarios/sync-log.test.ts` | `push, its body unread: TypeError: Cannot read properties of undefined (reading 'map')` right after each `decision sight broken`, 5 of 5 on the 2026-11-05 night, the app's `diag.php` report read as a push (harness) | 0 | yes | #249 |
+| 2026-11-06 | ios | B3 | probe session | L1 | `scenarios/blocking.test.ts` | a probe's case under `--cpu-prof`: 12.9 s in `spawnSync < execFileSync < SimFinger.start < calibrate`, clang's first compile, and 1.7–2.6 s in `homeIcon`'s idb, beside `node's timers up to 12868 ms late`; swap 0 and page-outs 1–21 a second (harness) | 0 | no | #251 |
 
 2026-10-25: in the Home Screen app, a double tap on the board at 25 % zoom made a card and zoomed to 100 %, but the caret stayed off screen until the first key brought it into view: the reveal measured from the camera as it was, not where its zoom was going.
 
