@@ -57,6 +57,16 @@ test("a call that fails is noted with its exit and what it said, and still throw
   assert.match(simctlLog[0]![2], /^simctl openurl U http:\/\/x: failed after \d+ ms, exit 60: Simulator device failed to open http:\/\/x\. Operation timed out$/);
 });
 
+test("a terminate that found nothing running is done, not failed", () => {
+  simctlLog.length = 0;
+  const fail = () => {
+    throw Object.assign(new Error("Command failed"), { status: 3, stderr: "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=3):\nSimulator device failed to terminate com.apple.webapp.\nfound nothing to terminate\n" });
+  };
+  assert.equal(simctl(["terminate", "U", "com.apple.webapp"], { timeout: 1000 }, fail), "");
+  assert.match(simctlLog[0]![2], /^simctl terminate U com\.apple\.webapp: \d+ ms, nothing to terminate$/);
+  assert.deepEqual(simctlFailures(0), []);
+});
+
 test("a busy iPhone's log of 5 minutes, past Node's 1 MiB, is kept", () => {
   // as execFileSync fails a call whose output passes its maxBuffer: a failing case's `log show` did, with ENOBUFS
   const run = (_f: string, _a: string[], o: { maxBuffer?: number }) => {
