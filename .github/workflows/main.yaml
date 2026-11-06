@@ -108,21 +108,18 @@ jobs:
           "${VERSION_SETTINGS[@]}" \
           build
     # ditto rather than zip: it keeps the bundle's symlinks and extended
-    # attributes, which the ad-hoc code signature depends on.
+    # attributes, which the ad-hoc code signature depends on. Sparkle's
+    # generate_appcast skipped an app failing the signature's checks; the
+    # appcast job, on Linux, cannot check it
     - name: Package
       run: |
+        codesign --verify --deep --strict build/Build/Products/Release/Breezy.app
         mkdir artifacts
         ditto -c -k --keepParent build/Build/Products/Release/Breezy.app "artifacts/${ARTIFACT}-macos.zip"
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ env.ARTIFACT }}-${{ github.job }}
         path: artifacts
-    # for the appcast job: this one runs on pull requests too, so it must not hold the signing key
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ needs.version.outputs.new_version != '' }}
-      with:
-        name: sparkle-tools
-        path: build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast
     - name: Make sure build did not change anything
       run: git diff --exit-code
   # the server and the relay under their tests, then web and Swift devices fuzzed against both: fixed seeds, so a failure
@@ -412,37 +409,37 @@ jobs:
           build/adb.*.log
           build/scenarios
   # Sparkle reads the feed from the latest release, so each release carries its own; only main
-  # can read the update-signing environment's key
+  # can read the update-signing environment's key. On Linux: GitHub's macOS runners went short,
+  # and this job, asking for one more after the build, lost its runner most often
   appcast:
     needs:
     - version
     - macos
     if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: update-signing
     steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        package-manager-cache: false
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: ${{ env.ARTIFACT }}-macos
         path: archives
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-      with:
-        name: sparkle-tools
-        path: sparkle
-    # artifacts lose the executable bit
     - name: Sign the update feed
       env:
         NEW_VERSION: ${{ needs.version.outputs.new_version }}
         SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
       run: |
-        chmod +x sparkle/generate_appcast
-        sparkle/generate_appcast \
-          --ed-key-file - \
-          --download-url-prefix "https://github.com/ArloL/breezy/releases/download/v${NEW_VERSION}/" \
-          archives <<< "${SPARKLE_PRIVATE_KEY}"
         mkdir feed
-        mv archives/appcast.xml feed/
+        node scripts/appcast.ts "archives/${ARTIFACT}-macos.zip" \
+          "https://github.com/ArloL/breezy/releases/download/v${NEW_VERSION}/" \
+          <<< "${SPARKLE_PRIVATE_KEY}" > feed/appcast.xml
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ env.ARTIFACT }}-${{ github.job }}
