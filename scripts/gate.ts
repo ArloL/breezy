@@ -7,12 +7,13 @@
 // bench.sh's build/bench.jsonl, as the run and baselines.
 //   node scripts/gate.ts RUN BASELINE...
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // as bench-summary.py
 const BENCH = ["launch_ms", "idle.mb", "hidden.mb", "peak_mb", "zoom.p95_ms", "zoom.max_ms", "pan.p95_ms", "pan.max_ms", "drag.p95_ms", "drag.max_ms", "type.p95_ms", "type.max_ms", "zoom.cpu_ms"];
 
 /** Measure → samples. */
-function samples(path: string): Record<string, number[]> {
+export function samples(path: string): Record<string, number[]> {
   const lines = readFileSync(path, "utf8").trim().split("\n");
   if (path.endsWith(".jsonl")) {
     const out: Record<string, number[]> = {};
@@ -37,18 +38,27 @@ function ci(xs: number[]) {
   return { m, lo: m - h, hi: m + h, text: `${m.toFixed(1)} ± ${h.toFixed(1)}` };
 }
 
-const [run, ...baselines] = process.argv.slice(2).map(samples);
-let worse = 0;
-for (const k of new Set(baselines.flatMap(Object.keys))) {
-  if (!run[k]) {
-    console.log(`${k}: not measured`);
-    worse++;
-    continue;
+/** Each measure's line, and those this run did worse on or did not measure. */
+export function judge(run: Record<string, number[]>, baselines: Record<string, number[]>[]) {
+  const lines: string[] = [], worse: string[] = [], missing: string[] = [];
+  for (const k of new Set(baselines.flatMap(Object.keys))) {
+    if (!run[k]) {
+      lines.push(`${k}: not measured`);
+      missing.push(k);
+      continue;
+    }
+    const bs = baselines.filter((b) => b[k]).map((b) => ci(b[k])), r = ci(run[k]);
+    const lo = Math.min(...bs.map((b) => b.lo)), hi = Math.max(...bs.map((b) => b.hi)), worst = Math.max(...bs.map((b) => b.m));
+    const verdict = r.lo > hi && r.m > worst * 1.1 && r.m > worst + 1 ? "WORSE" : r.hi < lo ? "better: record new baselines" : "ok";
+    if (verdict === "WORSE") worse.push(k);
+    lines.push(`${k.padEnd(48)} ${r.text.padStart(16)} against ${`${lo.toFixed(1)} to ${hi.toFixed(1)}`.padEnd(18)} ${verdict}`);
   }
-  const bs = baselines.filter((b) => b[k]).map((b) => ci(b[k])), r = ci(run[k]);
-  const lo = Math.min(...bs.map((b) => b.lo)), hi = Math.max(...bs.map((b) => b.hi)), worst = Math.max(...bs.map((b) => b.m));
-  const verdict = r.lo > hi && r.m > worst * 1.1 && r.m > worst + 1 ? "WORSE" : r.hi < lo ? "better: record new baselines" : "ok";
-  if (verdict === "WORSE") worse++;
-  console.log(`${k.padEnd(48)} ${r.text.padStart(16)} against ${`${lo.toFixed(1)} to ${hi.toFixed(1)}`.padEnd(18)} ${verdict}`);
+  return { lines, worse, missing };
 }
-process.exit(worse ? 1 : 0);
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const [run, ...baselines] = process.argv.slice(2).map(samples);
+  const { lines, worse, missing } = judge(run!, baselines);
+  for (const l of lines) console.log(l);
+  process.exit(worse.length + missing.length ? 1 : 0);
+}

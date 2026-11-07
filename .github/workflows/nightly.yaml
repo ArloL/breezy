@@ -401,6 +401,11 @@ jobs:
           node scripts/feel.ts --runs 1 --app "$RUNNER_TEMP/ref" | tee -a build/feel-ref.txt
           node scripts/feel.ts --runs 1 | tee -a build/feel.txt
         done
+    # a measure worse by the night's ten turns is measured again, its group alone, for ten more, before both are judged:
+    # a frame's wait of 0 to 16.7 ms once read as a recolour worse on a commit whose app was the reference's
+    - name: Compare with the reference
+      timeout-minutes: 30
+      run: node scripts/feel-gate.ts build/feel.txt build/feel-ref.txt --app "$RUNNER_TEMP/ref"
     - if: ${{ always() }}
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
@@ -410,8 +415,6 @@ jobs:
           build/feel.txt
           build/feel-ref.txt
           build/feel-*.log
-    - name: Compare with the reference
-      run: node scripts/gate.ts build/feel.txt build/feel-ref.txt
   # this commit's Release build against the reference's in scripts/baselines/bench-ref, on the same runner and in turns:
   # one runner measured zoom 4 times slower than the next, which no baseline from other runners could allow for
   bench:

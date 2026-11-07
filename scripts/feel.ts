@@ -271,8 +271,12 @@ function ci(xs: number[]) {
   return `${m.toFixed(0)} ± ${((T[n - 2] ?? 1.96) * sd / Math.sqrt(n)).toFixed(0)}`;
 }
 const results: Record<string, number[]> = {};
+/** Each measure's group, the --only that measures it again; the group being measured. */
+const groups: Record<string, string> = {};
+let group = "";
 const report = (k: string, xs: number[], unit = "ms") => {
   results[k] = xs;
+  groups[k] = group;
   console.log(`${k.padEnd(34)} ${ci(xs).padStart(12)} ${unit}   (n=${xs.length}, min ${Math.min(...xs).toFixed(0)}, max ${Math.max(...xs).toFixed(0)})`);
 };
 
@@ -310,6 +314,7 @@ async function sweep(x0: number, x1: number, y: number, buttons = 0, speed = 600
 }
 
 if (only.has("cursor")) {
+  group = "cursor";
   const med = [], p95 = [], still = [], back = [];
   for (let r = 0; r < RUNS; r++) {
     await sweep(300, 300, 450);
@@ -330,6 +335,7 @@ if (only.has("cursor")) {
 const cardAt = (br: Browser) => br.run<Point & { left: number }>(`(() => { const r = document.querySelector(".card").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 20, left: r.x }; })()`);
 
 if (only.has("drag")) {
+  group = "drag";
   const med = [], p95 = [], still = [], settle = [];
   for (let r = 0; r < RUNS; r++) {
     const c = await cardAt(a);
@@ -361,6 +367,7 @@ if (only.has("drag")) {
 }
 
 if (only.has("colour")) {
+  group = "colour";
   const shown = [], back = [];
   for (let r = 0; r < RUNS; r++) {
     const c = await cardAt(a);
@@ -383,6 +390,7 @@ if (only.has("colour")) {
 }
 
 if (only.has("type")) {
+  group = "type";
   const lags = [];
   for (let r = 0; r < RUNS; r++) {
     const c = await cardAt(a);
@@ -414,6 +422,7 @@ if (only.has("type")) {
 }
 
 if (only.has("create")) {
+  group = "create";
   const shown = [];
   for (let r = 0; r < RUNS; r++) {
     const x = 450 + (r % 3) * 220, y = 150 + Math.floor(r / 3) * 150;
@@ -436,6 +445,7 @@ if (only.has("create")) {
 }
 
 if (only.has("delete")) {
+  group = "delete";
   const gone = [];
   for (let r = 0; r < RUNS; r++) {
     const x = 450 + (r % 3) * 220, y = 520;
@@ -465,6 +475,7 @@ if (only.has("delete")) {
 }
 
 if (only.has("open")) {
+  group = "open";
   const seesA = [], seenByB = [];
   for (let r = 0; r < RUNS; r++) {
     const back = await b.run<Point>(`(() => { const r = document.querySelector('[data-act="boards"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
@@ -492,6 +503,7 @@ if (only.has("open")) {
 }
 
 if (only.has("launch")) {
+  group = "launch";
   const known = [];
   for (let r = 0; r < RUNS; r++) {
     // b starts again, as a phone does after the system ended it, on the board list
@@ -514,6 +526,7 @@ if (only.has("launch")) {
 }
 
 if (only.has("resume")) {
+  group = "resume";
   const cursorBack = [], colourBack = [];
   const hide = (hidden: boolean) => b.run(`Object.defineProperty(document, "hidden", { configurable: true, get: () => ${hidden} }); Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "${hidden ? "hidden" : "visible"}" }); document.dispatchEvent(new Event("visibilitychange"))`);
   for (let r = 0; r < RUNS; r++) {
@@ -547,7 +560,8 @@ if (only.has("resume")) {
 }
 
 for (const [silent, who] of [[false, "a"], [true, "a"], [true, "b"]] as const) {
-  if (!only.has(silent ? (who === "a" ? "silent" : "passive") : "outage")) continue;
+  group = silent ? (who === "a" ? "silent" : "passive") : "outage";
+  if (!only.has(group)) continue;
   const gone = who === "a" ? a : b;
   const cursorBack = [], colourBack = [];
   for (let r = 0; r < Math.min(RUNS, 5); r++) {
@@ -589,6 +603,7 @@ for (const [silent, who] of [[false, "a"], [true, "a"], [true, "b"]] as const) {
 
 // last, as it leaves the board full of cards
 if (only.has("converge")) {
+  group = "converge";
   // both edit at random at once, then must show the same board
   // where the cards are against each other, as edge scrolling during a drag moves one screen's camera
   const shownOf = (br: Browser) => br.run<string[]>(`(() => {
@@ -636,6 +651,6 @@ if (only.has("converge")) {
   console.log(`converge: ${same} of ${RUNS} runs end the same on both screens`);
 }
 
-console.log(JSON.stringify({ opt, results }));
+console.log(JSON.stringify({ opt, results, groups }));
 done = true;
 process.exit(0);
