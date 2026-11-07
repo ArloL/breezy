@@ -146,10 +146,7 @@ jobs:
     # a connection whose own port is a server's keeps that server from starting
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: 24
-        package-manager-cache: false
+    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     # the runner links swift and swiftc alone; scenarios/simctl.test.ts reads a plist back with the toolchain's plutil
     - name: Put the Swift toolchain on PATH
       run: |
@@ -188,10 +185,7 @@ jobs:
         # the escape log's test finds each row's commit
         fetch-depth: 0
         persist-credentials: false
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: 24
-        package-manager-cache: false
+    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     - name: Install the web toolchain
       run: npm ci
     - name: Check types
@@ -235,10 +229,6 @@ jobs:
     - name: Turn Spotlight off
       # a nicety, not a condition: mdutil once exited non-zero after saying it had done it
       run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: 24
-        package-manager-cache: false
     - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     - name: Install PHP
       run: command -v php || brew install php
@@ -295,10 +285,6 @@ jobs:
     # a connection whose own port is a server's keeps that server from starting
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: 24
-        package-manager-cache: false
     - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     - name: Install PHP's SQLite and KVM access
       run: |
@@ -438,10 +424,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: 24
-        package-manager-cache: false
+    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: ${{ env.ARTIFACT }}-macos
@@ -550,10 +533,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: 24
-        package-manager-cache: false
+    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     - name: Deploy the relay
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

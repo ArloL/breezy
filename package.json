@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "check": "tsc -p web && tsc -p web/tsconfig.sw.json && tsc -p web/test && tsc -p scripts && tsc -p scenarios",
@@ -11,7 +11,7 @@
     "scenarios": "node --test scenarios/*.test.ts"
   },
   "devDependencies": {
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "playwright-core": "1.64.1",
     "typescript": "7.0.2"
   }

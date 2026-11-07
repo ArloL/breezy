@@ -43,21 +43,21 @@ const plain = (v: unknown): unknown => {
 const bytes = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
-const exact = cases.filter((c) => c.hex !== undefined);
-const sized = cases.filter((c) => c.hexPrefix !== undefined);
+const exact = cases.filter((c): c is typeof c & { hex: string } => c.hex !== undefined);
+const sized = cases.filter((c): c is typeof c & { hexPrefix: string } => c.hexPrefix !== undefined);
 
 test("pack matches the shared hex", () => {
   for (const c of exact) assert.equal(hex(pack(fromJSON(c.value))), c.hex, c.hex);
   for (const c of sized) {
     const b = pack(fromJSON(c.value));
     assert.equal(b.length, c.bytes, c.hexPrefix);
-    assert.equal(hex(b.subarray(0, c.hexPrefix!.length / 2)), c.hexPrefix);
+    assert.equal(hex(b.subarray(0, c.hexPrefix.length / 2)), c.hexPrefix);
   }
 });
 
 test("unpack matches the shared values", () => {
   for (const c of exact) {
-    assert.deepEqual(toJSON(unpack(bytes(c.hex!))), toJSON(plain(fromJSON(c.value))), c.hex);
+    assert.deepEqual(toJSON(unpack(bytes(c.hex))), toJSON(plain(fromJSON(c.value))), c.hex);
   }
   for (const c of sized) assert.deepEqual(unpack(pack(fromJSON(c.value))), fromJSON(c.value), c.hexPrefix);
 });
