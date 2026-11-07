@@ -21,12 +21,20 @@ on:
       only:
         description: "The part to run: all, desktop, android, ios, or the measures (feel, bench, launch, fuzz)"
         type: choice
-        options: [all, desktop, android, ios, measures]
+        options:
+        - all
+        - desktop
+        - android
+        - ios
+        - measures
         default: all
       video:
-        description: "Film the devices' screens, keeping a failing case's films, or every case's"
+        description: Film the devices' screens, keeping a failing case's films, or every case's
         type: choice
-        options: [none, failures, all]
+        options:
+        - none
+        - failures
+        - all
         default: none
 permissions: {}
 # scenarios/browser.ts's SCENARIO_VIDEO: 1 keeps a failing case's films, all every case's
@@ -71,8 +79,8 @@ jobs:
     # Playwright's CDN drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/Library/Caches/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
     - name: Build the Mac app
@@ -89,12 +97,12 @@ jobs:
       if: ${{ always() }}
       run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     # passing too, as a failure is read against a pass
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: scenarios-desktop
         path: build/scenarios
-        if-no-files-found: ignore
     # every case on the hub's fakes, each run's recordings kept, for the summary to hold the fakes to the real devices
     - name: The hub's cases, recorded
       if: ${{ !cancelled() }}
@@ -104,24 +112,24 @@ jobs:
       run: |
         swift build --package-path BreezyKit --product breezy-sim
         node --test --test-force-exit scenarios/cases.test.ts
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: hub-fakes
         path: build/hub
-        if-no-files-found: ignore
     # the real devices' plants, whatever the cases before did: a board that cannot open offline, in Chromium; their
     # records under build/plants, apart from the cases'
     - name: Plants
       if: ${{ !cancelled() }}
       timeout-minutes: 10
       run: node scripts/plants.ts --level L6
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: plants-L6
         path: build/plants
-        if-no-files-found: ignore
   # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
   # cannot run one: Apple Silicon has no nested virtualization (the emulator segfaulted booting in software), and the
   # Intel one, which has it, had not booted after 14 min (probed 2026-10-28, run 40655831748)
@@ -163,19 +171,19 @@ jobs:
     # Playwright's CDN drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/.cache/ms-playwright
     # the packages WebKit needs, 119 MB, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
     # the runner's image, which only its shell has, not the workflow's env
     - id: image
-      run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+      run: echo "os=$ImageOS" >> "${GITHUB_OUTPUT}"
     # by the runner's image, newest first: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were
     # never saved, and each run took 35 to 48 minutes downloading them from a slow mirror
     - id: apt-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/apt-archives
         key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ~/apt-archives
         restore-keys: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-
     # the browsers the Android devices pair with
     - name: Install Chromium and WebKit
@@ -197,27 +205,27 @@ jobs:
         count() { find ~/apt-archives -name '*.deb' | wc -l; }
         before=$(count)
         for f in /var/cache/apt/archives/*.deb; do [ -e "$f" ] && [ ! -e ~/apt-archives/"${f##*/}" ] && cp "$f" ~/apt-archives/; done
-        echo "new=$(( $(count) - before ))" >> "$GITHUB_OUTPUT"
+        echo "new=$(( $(count) - before ))" >> "${GITHUB_OUTPUT}"
     - if: ${{ !cancelled() && steps.apt-new.outputs.new != '0' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/apt-archives
         key: ${{ steps.apt-cache.outputs.cache-primary-key }}
+        path: ~/apt-archives
     # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then;
     # keyed on its list of them alone, as each change to the script saved another 3 GB
     - id: sdk-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.local/share/mise/installs/android-sdk
         key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android-sdk.ts') }}
+        path: ~/.local/share/mise/installs/android-sdk
         # a changed list starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
     # the emulator booted, set up and snapshotted, which loads in seconds where a cold boot took 2.6 minutes
     - id: avd-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/avd.tar.zst
         key: avd-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android-sdk.ts', 'scripts/android.ts', 'scripts/android-snapshot.sh') }}
+        path: ~/avd.tar.zst
     - name: Unpack the emulator's snapshot
       if: ${{ steps.avd-cache.outputs.cache-hit == 'true' }}
       run: mise exec -- scripts/android-snapshot.sh unpack ~/avd.tar.zst
@@ -231,8 +239,8 @@ jobs:
     - if: ${{ github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.local/share/mise/installs/android-sdk
         key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+        path: ~/.local/share/mise/installs/android-sdk
     # each of the emulator's browsers acting once and watching once, as the two never share its screen
     - name: Scenarios on Android
       timeout-minutes: 50
@@ -256,8 +264,8 @@ jobs:
       timeout-minutes: 5
       run: mise exec -- scripts/android-capture.sh build
     # passing too, as a failure is read against a pass
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: scenarios-android
         path: |
@@ -271,28 +279,32 @@ jobs:
   # iPhone's Safari, and in the app on its Home Screen
   ios:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'ios' }}
-    # macOS 27 with Xcode 27 and iOS 27.0, the owner's iOS; macos-latest has iOS 26 alone
-    runs-on: xcode-27
-    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         # the size the cases are written for, and the owner's, whose board shows less above its keyboard
-        iphone: [iPhone 17, iPhone 13 mini]
+        iphone:
+        - iPhone 17
+        - iPhone 13 mini
         # in a Safari tab, and as the owner runs it, from the Home Screen
-        kind: [ios-safari, ios-home]
+        kind:
+        - ios-safari
+        - ios-home
         include:
         - iphone: iPhone 17
-          slug: "17"
+          slug: '17'
         # the iPhone whose first cases failed under the boot's load (#231), slim; the iPhone 17 stays stock, as its control
         - iphone: iPhone 13 mini
           slug: 13-mini
-          slim: "1"
+          slim: '1'
+    # macOS 27 with Xcode 27 and iOS 27.0, the owner's iOS; macos-latest has iOS 26 alone
+    runs-on: xcode-27
+    timeout-minutes: 90
+    permissions:
+      contents: read
     env:
       IPHONE: ${{ matrix.iphone }}
       IOS_SLIM: ${{ matrix.slim }}
-    permissions:
-      contents: read
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -324,19 +336,19 @@ jobs:
     # brew's php drags 17 bottles behind it after minutes updating its taps on the preview image: 9 of the job's minutes
     - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
       with:
-        php-version: "8.4"
         extensions: pdo_sqlite
+        php-version: '8.4'
         tools: none
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/Library/Caches/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
     - name: Install Chromium
       run: npx playwright-core install chromium
     # what touches the iPhone: idb's companion, and uv for scripts/sim-hid.py's fb-idb
     - name: Install idb
       env:
-        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_AUTO_UPDATE: '1'
       run: brew install facebook/fb/idb-companion
     - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
     - name: Boot an iPhone
@@ -350,12 +362,12 @@ jobs:
     - name: Count the cases
       if: ${{ always() }}
       run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: scenarios-${{ matrix.kind }}-${{ matrix.slug }}
         path: build/scenarios
-        if-no-files-found: ignore
   feel:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: macos-latest
@@ -365,9 +377,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        persist-credentials: false
         # the reference too
         fetch-depth: 0
+        persist-credentials: false
     # a connection whose own port is a server's keeps that server from starting
     # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
     - name: Turn Spotlight off
@@ -392,8 +404,8 @@ jobs:
     # Playwright's CDN drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/Library/Caches/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
     # over the relay only: GitHub's macOS runners open no WebRTC channel; in turns, so that what slows the runner for a
@@ -406,8 +418,8 @@ jobs:
           node scripts/feel.ts --runs 1 --app "$RUNNER_TEMP/ref" | tee -a build/feel-ref.txt
           node scripts/feel.ts --runs 1 | tee -a build/feel.txt
         done
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: feel
         # and what the relay, the server and the browsers said
@@ -428,9 +440,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        persist-credentials: false
         # the reference too
         fetch-depth: 0
+        persist-credentials: false
     # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
     - name: Turn Spotlight off
       # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
@@ -481,9 +493,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        persist-credentials: false
         # the reference too
         fetch-depth: 0
+        persist-credentials: false
     - name: Turn Spotlight off
       # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
       run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
@@ -497,8 +509,8 @@ jobs:
       run: npm ci
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/Library/Caches/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
     - name: Install Chromium
       run: npx playwright-core install chromium
     - name: Build the reference
@@ -517,12 +529,12 @@ jobs:
       if: ${{ !cancelled() }}
       timeout-minutes: 15
       run: node scripts/plants.ts --level L7
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: plants-L7
         path: build/plants
-        if-no-files-found: ignore
   # New seeds every night, with the network profile and the mix of web and Swift devices in turn: Main fuzzes seeds 1–10
   # of one mix only. A failing seed's trace and the smallest one that still fails are in the fuzz artifact; replay one
   # with node scripts/fuzz.ts --replay FILE.
@@ -566,8 +578,8 @@ jobs:
         first=$(( 21 + day % 10000 * 500 ))
         echo "::notice::parity seeds $first-$(( first + 499 ))"
         PARITY_SEEDS="$first:500" node --test scenarios/parity.test.ts
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ failure() }}
+    - if: ${{ failure() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: fuzz
         path: build/fuzz
@@ -601,13 +613,13 @@ jobs:
         package-manager-cache: false
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
-        pattern: scenarios-*
         path: build/nightly
+        pattern: scenarios-*
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      continue-on-error: true
       with:
         name: hub-fakes
         path: build/hub-nightly
-      continue-on-error: true
     # the scheduled night before this one, whatever its colour: only cases that passed on both are held together
     - name: The night before's runs
       continue-on-error: true
@@ -660,8 +672,8 @@ jobs:
           echo "red: $red"
           exit 1
         fi
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: night-report
         path: build/night-report

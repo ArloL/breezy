@@ -50,7 +50,8 @@ jobs:
     permissions:
       contents: write
     outputs:
-      new_version: ${{ steps.tag.outputs.new_version }}
+      new_version: ${{ steps.output.outputs.new_version }}
+      build_timestamp: ${{ steps.output.outputs.build_timestamp }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -59,6 +60,12 @@ jobs:
       id: tag
       if: ${{ github.ref == 'refs/heads/main' }}
       uses: ArloL/calver-tag-action@5b7bec3f9f521a306f19c205a94353f427c7b9f0 # v2610.0.107
+    - id: output
+      env:
+        NEW_VERSION: ${{ steps.tag.outputs.new_version }}
+      run: |
+        echo "new_version=${NEW_VERSION:-$GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+        echo "build_timestamp=$(date --iso-8601=seconds)" >> "${GITHUB_OUTPUT}"
     - name: Make sure build did not change anything
       run: git diff --exit-code
   macos:
@@ -158,8 +165,8 @@ jobs:
       run: node --test scenarios/*.test.ts
     - name: Fuzz convergence
       run: node scripts/fuzz.ts --seeds 1-10 --steps 200
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ failure() }}
+    - if: ${{ failure() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: fuzz
         path: build/fuzz
@@ -172,9 +179,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        persist-credentials: false
         # the escape log's test finds each row's commit
         fetch-depth: 0
+        persist-credentials: false
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
@@ -194,9 +201,9 @@ jobs:
       run: scripts/build-site.sh _site "$NEW_VERSION"
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        include-hidden-files: true
         name: site
         path: _site
-        include-hidden-files: true
     - name: Make sure build did not change anything
       run: git diff --exit-code
   # The platform replays in Chromium, WebKit and Firefox, and the smoke cases (scenarios/smoke.ts) on real devices against
@@ -233,8 +240,8 @@ jobs:
     # Playwright's CDN drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/Library/Caches/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
     - name: Platform rows and trace replays
@@ -246,7 +253,7 @@ jobs:
     - name: Smoke cases on real devices
       timeout-minutes: 8
       env:
-        SCENARIO_SMOKE: "1"
+        SCENARIO_SMOKE: '1'
         SCENARIO_PAIRS: chromium:mac
       # a handle left open once kept node from exiting after the last case, until the job timed out
       run: node --test --test-force-exit scenarios/browsers.e2e.ts
@@ -254,12 +261,12 @@ jobs:
       if: ${{ always() }}
       run: node scripts/scenario-stats.ts build/scenarios | tee -a "$GITHUB_STEP_SUMMARY"
     # passing too, as a failure is read against a pass
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: scenarios
         path: build/scenarios
-        if-no-files-found: ignore
   # The smoke cases with Chrome on an Android emulator acting and Chromium watching: GitHub's Linux runners have KVM, its
   # macOS runners cannot run one. Every Android pair, and Firefox on the emulator, run nightly
   android:
@@ -300,19 +307,19 @@ jobs:
     # Playwright's CDN drops a download now and then
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/.cache/ms-playwright
     # the packages Chromium needs, which Azure's Ubuntu mirror served in 9 s to one runner and in 21 min to another
     # the runner's image, which only its shell has, not the workflow's env
     - id: image
-      run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+      run: echo "os=$ImageOS" >> "${GITHUB_OUTPUT}"
     # by the runner's image, newest first: a cache saved on Ubuntu 24 matched on Ubuntu 26, so the Ubuntu 26 packages were
     # never saved, and each run took 35 to 48 minutes downloading them from a slow mirror
     - id: apt-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/apt-archives
         key: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ~/apt-archives
         restore-keys: apt-playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-
     # the browser the Android device pairs with
     - name: Install Chromium
@@ -334,27 +341,27 @@ jobs:
         count() { find ~/apt-archives -name '*.deb' | wc -l; }
         before=$(count)
         for f in /var/cache/apt/archives/*.deb; do [ -e "$f" ] && [ ! -e ~/apt-archives/"${f##*/}" ] && cp "$f" ~/apt-archives/; done
-        echo "new=$(( $(count) - before ))" >> "$GITHUB_OUTPUT"
+        echo "new=$(( $(count) - before ))" >> "${GITHUB_OUTPUT}"
     - if: ${{ !cancelled() && steps.apt-new.outputs.new != '0' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/apt-archives
         key: ${{ steps.apt-cache.outputs.cache-primary-key }}
+        path: ~/apt-archives
     # the emulator and its system image, which scripts/android.ts installs: Google's server drops a download now and then;
     # keyed on its list of them alone, as each change to the script saved another 3 GB
     - id: sdk-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.local/share/mise/installs/android-sdk
         key: android-sdk-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android-sdk.ts') }}
+        path: ~/.local/share/mise/installs/android-sdk
         # a changed list starts from the SDK before it and downloads only what is new
         restore-keys: android-sdk-${{ runner.os }}-
     # the emulator booted, set up and snapshotted, which loads in seconds where a cold boot took 2.6 minutes
     - id: avd-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/avd.tar.zst
         key: avd-${{ runner.os }}-${{ hashFiles('mise.android.toml', 'scripts/android-sdk.ts', 'scripts/android.ts', 'scripts/android-snapshot.sh') }}
+        path: ~/avd.tar.zst
     - name: Unpack the emulator's snapshot
       if: ${{ steps.avd-cache.outputs.cache-hit == 'true' }}
       run: mise exec -- scripts/android-snapshot.sh unpack ~/avd.tar.zst
@@ -367,8 +374,8 @@ jobs:
     - if: ${{ github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.local/share/mise/installs/android-sdk
         key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+        path: ~/.local/share/mise/installs/android-sdk
     # and the AVD its boot snapshotted, by main alone too, packed with the emulator stopped and booted again from it
     - name: Pack the emulator's snapshot
       if: ${{ github.ref == 'refs/heads/main' && steps.avd-cache.outputs.cache-hit != 'true' }}
@@ -377,12 +384,12 @@ jobs:
     - if: ${{ github.ref == 'refs/heads/main' && steps.avd-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/avd.tar.zst
         key: ${{ steps.avd-cache.outputs.cache-primary-key }}
+        path: ~/avd.tar.zst
     - name: Smoke cases on Android
       timeout-minutes: 8
       env:
-        SCENARIO_SMOKE: "1"
+        SCENARIO_SMOKE: '1'
         SCENARIO_PAIRS: android:chromium
       run: |
         mise exec -- scripts/android-load.sh build/android-load.txt &
@@ -397,8 +404,8 @@ jobs:
       timeout-minutes: 5
       run: mise exec -- scripts/android-capture.sh build
     # passing too, as a failure is read against a pass
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: android-emulator
         path: |
@@ -417,8 +424,8 @@ jobs:
     - macos
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     environment: update-signing
+    timeout-minutes: 5
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -464,9 +471,9 @@ jobs:
     - name: Download the release artifacts
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
+        merge-multiple: true
         path: ./target
         pattern: ${{ env.ARTIFACT }}-*
-        merge-multiple: true
     - name: Attest the release assets
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
       with:
@@ -489,12 +496,13 @@ jobs:
     - web
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-slim
-    timeout-minutes: 15
-    permissions:
-      contents: read
     environment:
       name: production
       url: https://breezy.k5d.de/
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
     # one deployment at a time, and never cut short
     concurrency:
       group: deploy
@@ -523,10 +531,10 @@ jobs:
     - web
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-slim
+    environment: production
     timeout-minutes: 10
     permissions:
       contents: read
-    environment: production
     concurrency:
       group: relay
       cancel-in-progress: false

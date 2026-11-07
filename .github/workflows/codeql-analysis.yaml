@@ -49,6 +49,7 @@ jobs:
       matrix:
         language:
         - actions
+        - javascript-typescript
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
