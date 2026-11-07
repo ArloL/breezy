@@ -6,13 +6,14 @@
 //   node scripts/feel.ts [--direct] [--relay-ms 25] [--server-ms 40] [--runs 10] [--only cursor,drag,colour,outage] [--app DIR]
 import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { createServer as createHttp } from "node:http";
 import { createServer, connect } from "node:net";
 import type { Server, Socket } from "node:net";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, extname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { chromium as playwright } from "playwright-core";
 import { parseArgs } from "node:util";
 import { inviteLink } from "../web/sync/crypto.ts";
 
@@ -71,10 +72,9 @@ const spawnGroup = (name: string, cmd: string, args: string[], opts: SpawnOption
 };
 
 function chromium() {
-  if (process.env.BREEZY_CHROMIUM) return process.env.BREEZY_CHROMIUM;
-  const cache = join(homedir(), "Library/Caches/ms-playwright");
-  const dir = readdirSync(cache).filter((d) => /^chromium-\d+$/.test(d)).sort((x, y) => Number(x.slice(9)) - Number(y.slice(9))).at(-1);
-  return join(cache, dir!, "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing");
+  const app = process.env.BREEZY_CHROMIUM ?? playwright.executablePath();
+  if (!existsSync(app)) throw new Error(`no Chromium at ${app}: npx playwright-core install chromium, or set BREEZY_CHROMIUM`);
+  return app;
 }
 
 async function waitFor(what: string, test: () => unknown, ms = 15_000) {

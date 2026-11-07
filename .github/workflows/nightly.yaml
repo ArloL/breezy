@@ -370,7 +370,7 @@ jobs:
         path: build/scenarios
   feel:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     permissions:
       contents: read
@@ -381,19 +381,15 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     # a connection whose own port is a server's keeps that server from starting
-    # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
-    - name: Turn Spotlight off
-      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
-      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
-    - name: Install PHP
-      run: command -v php || brew install php
+    # the reference's server/dev.sh is zsh's, from before #260; the runner has PHP
+    - name: Install zsh
+      run: sudo apt-get install --yes --no-install-recommends zsh
     - name: Install the web toolchain and the relay, this commit's and the reference's
       run: |
         git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
@@ -405,10 +401,15 @@ jobs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-        path: ~/Library/Caches/ms-playwright
-    - name: Install Chromium, WebKit and Firefox
-      run: npx playwright-core install chromium webkit firefox
-    # over the relay only: GitHub's macOS runners open no WebRTC channel; in turns, so that what slows the runner for a
+        path: ~/.cache/ms-playwright
+    - name: Install Chromium
+      run: npx playwright-core install chromium
+    # PROBE, not for merging: does a Linux runner open a direct channel, as GitHub's macOS runners do not?
+    - name: Probe the direct channel
+      continue-on-error: true
+      timeout-minutes: 5
+      run: node scripts/direct-e2e.ts
+    # over the relay only, as feel.ts takes RTCPeerConnection away without --direct; in turns, so that what slows the runner for a
     # while slows both alike
     - name: Measure this commit and the reference
       run: |
