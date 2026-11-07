@@ -11,7 +11,7 @@ permissions: {}
 
 jobs:
   plants:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
@@ -26,9 +26,6 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
-    - name: Install PHP
-      run: command -v php || brew install php
     # the deploy check builds the site, with tsc
     - name: Install the web toolchain and the relay
       run: |
