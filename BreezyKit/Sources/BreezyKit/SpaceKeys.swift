@@ -1,4 +1,8 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 /// What a space's secret gives: the key that seals records, the token the server checks, and one for the relay, so

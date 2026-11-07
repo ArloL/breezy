@@ -1,5 +1,8 @@
 import BreezyKit
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// `HTTPTransport`'s sending, through the hub: the request goes out as an `http` event and waits for the hub's `http`
 /// command. As URLSession does, it gives up after the request's `timeoutInterval`, on the device's clock, with

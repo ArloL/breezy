@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public struct Pulled: Codable, Equatable, Sendable {
   public var id: String
@@ -109,7 +112,7 @@ public struct HTTPTransport: Transport {
     if var body {
       r.httpMethod = "POST"
       r.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      if body.count > Self.deflateAbove, let deflated = try? (body as NSData).compressed(using: .zlib) as Data {
+      if body.count > Self.deflateAbove, let deflated = deflateRaw(body) {
         body = deflated
         r.setValue("deflate", forHTTPHeaderField: "Content-Encoding")
       }

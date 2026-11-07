@@ -26,7 +26,7 @@ private func play(_ send: (String) async -> String) async -> [String] {
         var body: [String: Any] = ["epoch": "e1", "relay": "ws://127.0.0.1:8787/"]
         if e["method"]?.string == "POST" {
           var data = Base64URL.decode(e["body"]!.string!)!
-          if e["headers"]?["Content-Encoding"]?.string == "deflate" { data = try! (data as NSData).decompressed(using: .zlib) as Data }
+          if e["headers"]?["Content-Encoding"]?.string == "deflate" { data = inflateRaw(data)! }
           let writes = (try! JSONDecoder().decode(JSONValue.self, from: data))["writes"]!.array!
           body["accepted"] = writes.map { w -> [String: Any] in
             version += 1

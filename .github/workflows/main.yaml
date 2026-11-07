@@ -130,10 +130,12 @@ jobs:
     - name: Make sure build did not change anything
       run: git diff --exit-code
   # the server and the relay under their tests, then web and Swift devices fuzzed against both: fixed seeds, so a failure
-  # replays with the same command. direct-e2e.ts stays local: GitHub's macOS runners open no WebRTC channel
+  # replays with the same command. direct-e2e.ts stays local: GitHub's macOS runners open no WebRTC channel. On Linux, as
+  # the macOS runners run short: the runner's Swift, swift-crypto for CryptoKit, and BreezyKit's UndoManager for
+  # Foundation's; the macos job still tests BreezyKit on Apple's
   sync:
     needs: version
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: read
@@ -148,11 +150,13 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
-    - name: Install PHP
-      run: command -v php || brew install php
+    # the runner has PHP, not zsh, which the test scripts run in
+    - name: Install zsh
+      run: sudo apt-get install --yes --no-install-recommends zsh
     - name: Test the server
-      run: server/test.sh
+      run: |
+        swift --version
+        server/test.sh
     - name: Test the relay
       run: |
         npm ci --prefix relay

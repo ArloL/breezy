@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Testing
 @testable import BreezyKit
 
@@ -625,8 +628,9 @@ private final class RecordingProtocol: URLProtocol, @unchecked Sendable {
   override func stopLoading() {}
 
   override func startLoading() {
-    var body = Data()
-    if let s = request.httpBodyStream {
+    // Apple's URLSession hands the protocol a stream; Linux's, the body
+    var body = request.httpBody ?? Data()
+    if body.isEmpty, let s = request.httpBodyStream {
       s.open()
       var buffer = [UInt8](repeating: 0, count: 65_536)
       while s.hasBytesAvailable {
@@ -654,7 +658,7 @@ private final class RecordingProtocol: URLProtocol, @unchecked Sendable {
   _ = try await t.push(small, since: nil, epoch: nil)
   let (first, second) = (RecordingProtocol.requests[0], RecordingProtocol.requests[1])
   #expect(first.encoding == "deflate")
-  let plain = try (first.body as NSData).decompressed(using: .zlib) as Data
+  let plain = try #require(inflateRaw(first.body))
   #expect(try JSONDecoder().decode([String: JSONValue].self, from: plain) == [
     "writes": .array([.object(["id": .string("a"), "base": .number(0), "blob": .string(big[0].blob)])]),
     "since": .number(7), "epoch": .string("e"),
