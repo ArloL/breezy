@@ -30,7 +30,9 @@ jobs:
         name: mutation-web
         path: build/mutation
   breezykit:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENV: linux
     timeout-minutes: 180
     permissions:
       contents: read
@@ -38,7 +40,6 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    # the Xcode the other jobs build with
     - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
     - name: Mutation
       run: node scripts/mutate.ts --module BreezyKit/
