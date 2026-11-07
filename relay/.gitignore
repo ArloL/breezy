@@ -1,2 +1,4 @@
-node_modules/
+/node_modules/
+
+# Add custom entries after this line to be preserved during automated updates
 .wrangler/

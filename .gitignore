@@ -1,6 +1,8 @@
+/node_modules/
+
+# Add custom entries after this line to be preserved during automated updates
 Breezy.xcodeproj/
 build/
 server/config.php
-/node_modules/
 tools/oskeys/.build/
 .superpowers/
