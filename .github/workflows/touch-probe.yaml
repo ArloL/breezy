@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       taps:
-        description: "Taps per driver under each load"
-        default: "200"
+        description: Taps per driver under each load
+        default: '200'
       stress:
-        description: "Busy processes added for each load, comma-separated"
-        default: "0"
+        description: Busy processes added for each load, comma-separated
+        default: '0'
 permissions: {}
 # each step's summary lines go to its log too, which the API reads and a summary it does not
 defaults:
@@ -23,10 +23,10 @@ jobs:
     # the nightly's iOS runner: macOS 27 with Xcode 27 and iOS 27.0
     runs-on: xcode-27
     timeout-minutes: 60
-    env:
-      IPHONE: iPhone 13 mini
     permissions:
       contents: read
+    env:
+      IPHONE: iPhone 13 mini
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -46,7 +46,7 @@ jobs:
       run: node scripts/ios.ts --start
     - name: Install idb
       env:
-        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_AUTO_UPDATE: '1'
       run: brew install facebook/fb/idb-companion
     - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
     - name: Boot an iPhone
@@ -68,9 +68,9 @@ jobs:
       if: ${{ always() }}
       timeout-minutes: 15
       run: node scripts/touch-probe.ts log after | tee -a "$GITHUB_STEP_SUMMARY"
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: ${{ always() }}
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
+        if-no-files-found: ignore
         name: touch-probe
         path: build/touch-probe
-        if-no-files-found: ignore

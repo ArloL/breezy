@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       world:
-        description: "Install what a real case needs"
+        description: Install what a real case needs
         type: boolean
         default: false
       home:
-        description: "Put the Home Screen app on the iPhone"
+        description: Put the Home Screen app on the iPhone
         type: boolean
         default: false
 permissions: {}
@@ -28,10 +28,10 @@ jobs:
     # the nightly's iOS runner: macOS 27 with Xcode 27 and iOS 27.0
     runs-on: xcode-27
     timeout-minutes: 90
-    env:
-      IPHONE: iPhone 13 mini
     permissions:
       contents: write
+    env:
+      IPHONE: iPhone 13 mini
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -58,23 +58,23 @@ jobs:
       run: xcrun simctl runtime dyld_shared_cache remove --all
     - name: Start booting an iPhone
       run: node scripts/ios.ts --start ${{ inputs.home && '--home' || '' }}
-    - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
-      if: ${{ inputs.world }}
+    - if: ${{ inputs.world }}
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
       with:
-        php-version: "8.4"
         extensions: pdo_sqlite
+        php-version: '8.4'
         tools: none
-    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: ${{ inputs.world }}
+    - if: ${{ inputs.world }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/Library/Caches/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
     - name: Install Chromium
       if: ${{ inputs.world }}
       run: npx playwright-core install chromium
     - name: Install idb
       env:
-        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_AUTO_UPDATE: '1'
       run: brew install facebook/fb/idb-companion
     - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
     # booted, not settled: a probe sees the load as it is, and notes it
@@ -87,7 +87,7 @@ jobs:
       run: |
         udid=$(xcrun simctl list devices booted --json | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
         xcrun simctl bootstatus "$udid" -b > /dev/null
-        echo "UDID=$udid" >> "$GITHUB_ENV"
+        echo "UDID=$udid" >> "${GITHUB_ENV}"
     - name: Probes
       timeout-minutes: 62
       run: |

@@ -6,8 +6,13 @@ name: Re-run jobs that never started
 on:
   # zizmor: ignore[dangerous-triggers] checks nothing out: only reads the run's jobs and asks for them again
   workflow_run:
-    workflows: [Main, Nightly, Mutation, Plants]
-    types: [completed]
+    workflows:
+    - Main
+    - Nightly
+    - Mutation
+    - Plants
+    types:
+    - completed
 permissions: {}
 
 jobs:
