@@ -150,9 +150,6 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    # the runner has PHP, not zsh, which the test scripts run in
-    - name: Install zsh
-      run: sudo apt-get install --yes --no-install-recommends zsh
     # the runner links swift and swiftc alone; scenarios/simctl.test.ts reads a plist back with the toolchain's plutil
     - name: Put the Swift toolchain on PATH
       run: |
