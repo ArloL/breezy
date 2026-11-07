@@ -21,7 +21,7 @@ public struct SearchIndex: Sendable {
       (c.x, c.y, [(c.id, .front, c.text)] + (c.notes.map { [(c.id, .back, $0)] } ?? []))
     }
     items.sort { ($0.y, $0.x) < ($1.y, $1.x) }
-    let s = NSMutableString()
+    let s = NSMutableString(string: "")
     var entries: [Entry] = []
     for item in items {
       for part in item.parts {

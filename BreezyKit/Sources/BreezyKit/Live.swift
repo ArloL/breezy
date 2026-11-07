@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Someone in a space: a device, the name its person goes by, and the colour that device shows in.
 public struct Person: Equatable, Sendable {

@@ -9,7 +9,16 @@ public func afterOnMain(_ delay: TimeInterval, _ work: @escaping @MainActor () -
 
 /// Milliseconds since boot, which only go forward.
 /// ms since boot, sleep included, as CLOCK_MONOTONIC counts on Darwin: timeouts see the time a Mac slept.
-public func systemUptime() -> Double { Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000 }
+public func systemUptime() -> Double {
+  #if canImport(Darwin)
+  Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000
+  #else
+  // CLOCK_BOOTTIME counts suspend, as Darwin's CLOCK_MONOTONIC does
+  var t = timespec()
+  clock_gettime(CLOCK_BOOTTIME, &t)
+  return Double(t.tv_sec) * 1000 + Double(t.tv_nsec) / 1_000_000
+  #endif
+}
 
 /// A `Date` that only moves forward, from `uptime` in ms: for timeouts, which a wall clock set back would stall.
 public func steady(_ uptime: @escaping () -> Double = systemUptime) -> () -> Date {
