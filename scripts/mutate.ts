@@ -213,6 +213,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       });
       // each copy's first build, and the suite unchanged
       if (s !== "swift") continue;
+      // each copy's packages resolved in turn: on Linux two resolving swift-crypto at once into SwiftPM's shared cache
+      // left one seeing no versions of it, 4 times in 4
+      for (const dir of workers[s]) {
+        mkdirSync(join(dir, "tmp"), { recursive: true });
+        await run(join(dir, "BreezyKit"), ["swift", "package", "resolve"], 300_000, { TMPDIR: join(dir, "tmp") });
+      }
       const first = await Promise.all(workers[s].map((dir) => verdict(dir, modules.find((m) => side(m) === s)!)));
       const failed = first.findIndex((v) => v !== "survived");
       if (failed >= 0) {
