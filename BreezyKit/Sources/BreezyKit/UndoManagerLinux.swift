@@ -10,7 +10,11 @@ public final class UndoManager {
   private var undos: [Group] = [], redos: [Group] = [], open: Group?
   private var depth = 0
   public private(set) var isUndoing = false, isRedoing = false
-  public var groupsByEvent = true
+  /// Only false, as BoardModel sets it: grouping by the run loop's events is not modelled, and Foundation's would undo
+  /// several groups of one event as one.
+  public var groupsByEvent = true {
+    didSet { precondition(!groupsByEvent, "this UndoManager does not group by event") }
+  }
   public var levelsOfUndo = 0
 
   public init() {}
