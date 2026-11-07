@@ -10,6 +10,7 @@ rm -rf "$out" && mkdir -p "$out/classes"
 "$bt/aapt2" compile --dir "$src/res" -o "$out/res.zip"
 "$bt/aapt2" link "$out/res.zip" -I "$jar" --manifest "$src/AndroidManifest.xml" -o "$out/unsigned.apk" --min-sdk-version 33 --target-sdk-version 35
 javac --release 17 -classpath "$jar" -d "$out/classes" "$src/src/de/k5d/breezy/ime/Ime.java"
+# shellcheck disable=SC2046 # one d8 run for every class, whose paths hold no spaces
 "$bt/d8" --lib "$jar" --min-api 33 --output "$out" $(find "$out/classes" -name '*.class')
 (cd "$out" && zip -q unsigned.apk classes.dex)
 "$bt/zipalign" -f 4 "$out/unsigned.apk" "$out/aligned.apk"
