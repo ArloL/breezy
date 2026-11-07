@@ -45,6 +45,30 @@ test("Swift's strings are left alone but the code they interpolate is not", () =
   assert.deepEqual(ms.map((m) => `${m.line} ${m.what}`), ["1 == → !=", "1 + → -"]);
 });
 
+// one platform's code is not built on the other, where its mutants would survive: Clock.swift scored 50 %, its floor 98
+test("Swift's code for one platform is left alone, its every branch, and what is around it is not", () => {
+  const src = [
+    "let a = b + c",
+    "#if canImport(Darwin)",
+    "let d = e + f",
+    "#if os(Linux)",
+    "let g = h + i",
+    "#endif",
+    "#else",
+    "let j = k + l",
+    "#endif",
+    "  #if !canImport(Darwin)",
+    "  let m = n + o",
+    "  #endif",
+    "#if DEBUG",
+    "let p = q + r",
+    "#endif",
+    "let s = t + u",
+    "",
+  ].join("\n");
+  assert.deepEqual(mutants(src, true).map((m) => m.line), [1, 14, 16]);
+});
+
 test("an apostrophe is no string in Swift", () => {
   assert.deepEqual(mutants("// the Mac's\nlet a = b < c\n", true).map((m) => m.what), ["< → <="]);
 });

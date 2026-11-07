@@ -91,9 +91,21 @@ function swiftCodeOnly(s: string) {
   return out.join("");
 }
 
+/** `code` with each `#if canImport(…)` or `#if os(…)` blanked to its `#endif`, every branch: one platform's code is not
+ * built on the other, where its mutants would survive, and blanking both keeps a score the same on either. */
+function onePlatformBlanked(code: string) {
+  let depth = 0;
+  return code.split("\n").map((line) => {
+    if (depth === 0 && !/^\s*#if\s+!?(canImport|os)\(/.test(line)) return line;
+    if (/^\s*#if\b/.test(line)) depth++;
+    else if (/^\s*#endif\b/.test(line)) depth--;
+    return line.replace(/[^\n]/g, "\0");
+  }).join("\n");
+}
+
 /** Every mutant of `source`, in the order its changes come in it; Swift's when `swift`. */
 export function mutants(source: string, swift = false): Mutant[] {
-  const code = swift ? swiftCodeOnly(source) : codeOnly(source), found: (Mutant & { at: number })[] = [];
+  const code = swift ? onePlatformBlanked(swiftCodeOnly(source)) : codeOnly(source), found: (Mutant & { at: number })[] = [];
   for (const [re, to] of swift ? SWIFT_OPS : OPS) {
     for (const m of code.matchAll(re)) {
       const from = m[0], into = to(from), at = m.index!;
