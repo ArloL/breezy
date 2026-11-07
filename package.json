@@ -11,7 +11,7 @@
     "scenarios": "node --test scenarios/*.test.ts"
   },
   "devDependencies": {
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "playwright-core": "1.64.0",
     "typescript": "7.0.2"
   }
