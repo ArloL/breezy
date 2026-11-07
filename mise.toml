@@ -1,4 +1,5 @@
 [tools]
+node = "26.12.1"
 xcodegen = "2.46.0"
 
 # GitHub's runner path; locally: xcodes install 26.6, then ln -s /Applications/Xcode-26.6.0.app /Applications/Xcode_26.6.app

@@ -152,7 +152,7 @@ function drawn(e: Editor | null, want: Want, card: Box) {
   const title = want.text.includes("\n") ? want.text.indexOf("\n") : want.text.length;
   for (let i = 0; i < want.text.length; i++) {
     if (want.text[i] === "\n") continue;
-    const w = e.weights[i]!, ok = i < title ? w >= 600 : w <= 500;
+    const w: number = e.weights[i]!, ok: boolean = i < title ? w >= 600 : w <= 500;
     assert.ok(ok, `${JSON.stringify(want.text[i])} at ${i}, in the ${i < title ? "title" : "rest"}, weighs ${w}`);
   }
   const c = e.caret;
