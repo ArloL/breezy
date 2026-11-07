@@ -4,7 +4,7 @@ name: Nightly
 # the measures against their baselines, the sync fuzzed on seeds no run tried before, and the real devices' plants. One
 # summary of all of it, and an issue labelled nightly for as long as a night is red; a red is a bug, fixed before new
 # features. Never on a pull request, whose checks are Main's alone: dispatch it on a branch to try one on real devices,
-# naming the one part wanted, as a whole night's five macOS jobs keep the gate's waiting for runners; a branch's run
+# naming the one part wanted, as a whole night's three macOS jobs keep the gate's waiting for runners; a branch's run
 # tells the issue nothing.
 #
 # The measured network feel and the Mac's performance journal, each against the reference build in
@@ -370,7 +370,7 @@ jobs:
         path: build/scenarios
   feel:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     permissions:
       contents: read
@@ -381,19 +381,12 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     # a connection whose own port is a server's keeps that server from starting
-    # Spotlight indexes the fresh runner and every build for its first half hour, which would count in what is measured
-    - name: Turn Spotlight off
-      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
-      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
-    - name: Install PHP
-      run: command -v php || brew install php
     - name: Install the web toolchain and the relay, this commit's and the reference's
       run: |
         git worktree add "$RUNNER_TEMP/ref" "$(cat scripts/baselines/bench-ref)"
@@ -405,11 +398,11 @@ jobs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-        path: ~/Library/Caches/ms-playwright
-    - name: Install Chromium, WebKit and Firefox
-      run: npx playwright-core install chromium webkit firefox
-    # over the relay only: GitHub's macOS runners open no WebRTC channel; in turns, so that what slows the runner for a
-    # while slows both alike
+        path: ~/.cache/ms-playwright
+    - name: Install Chromium
+      run: npx playwright-core install chromium
+    # over the relay only, as feel.ts takes RTCPeerConnection away without --direct; in turns, so that what slows the
+    # runner for a while slows both alike
     - name: Measure this commit and the reference
       run: |
         set -o pipefail
@@ -486,7 +479,7 @@ jobs:
   # most 1.5 s from a launch to a drawn board; then the measure's plant, a launch that must come out worse
   launch:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
@@ -496,9 +489,6 @@ jobs:
         # the reference too
         fetch-depth: 0
         persist-credentials: false
-    - name: Turn Spotlight off
-      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
-      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -510,7 +500,7 @@ jobs:
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-        path: ~/Library/Caches/ms-playwright
+        path: ~/.cache/ms-playwright
     - name: Install Chromium
       run: npx playwright-core install chromium
     - name: Build the reference
@@ -540,7 +530,7 @@ jobs:
   # with node scripts/fuzz.ts --replay FILE.
   fuzz:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
       contents: read
@@ -552,9 +542,6 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
-    - name: Install PHP
-      run: command -v php || brew install php
     - name: Install the relay
       run: npm ci --prefix relay
     - name: Build breezy-sim

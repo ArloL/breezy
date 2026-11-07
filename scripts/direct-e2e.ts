@@ -5,12 +5,13 @@
 // ungoogled-chromium); BREEZY_CHROMIUM names one, else Playwright's is used: node scripts/direct-e2e.ts
 import { spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, extname } from "node:path";
 import { randomBytes } from "node:crypto";
+import { chromium as playwright } from "playwright-core";
 import { inviteLink } from "../web/sync/crypto.ts";
 import { buildWeb } from "./build-web.ts";
 import { unpack, type Unpacked } from "../web/sync/msgpack.ts";
@@ -54,14 +55,12 @@ const spawnGroup = (name: string, cmd: string, args: string[], opts: SpawnOption
 };
 let done = false;
 
+// Ubuntu's AppArmor takes away the user namespaces Chromium's sandbox needs, so Playwright passes this on Linux too
+const LINUX_NO_SANDBOX = process.platform === "linux" ? ["--no-sandbox"] : [];
+
 function chromium() {
-  if (process.env.BREEZY_CHROMIUM) return process.env.BREEZY_CHROMIUM;
-  const cache = join(homedir(), "Library/Caches/ms-playwright");
-  if (!existsSync(cache)) throw new Error(`no Playwright cache at ${cache}: set BREEZY_CHROMIUM`);
-  const dir = readdirSync(cache).filter((d) => /^chromium-\d+$/.test(d)).sort((x, y) => Number(x.slice(9)) - Number(y.slice(9))).at(-1);
-  if (!dir) throw new Error("no chromium-N in the Playwright cache: set BREEZY_CHROMIUM");
-  const app = join(cache, dir, "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing");
-  if (!existsSync(app)) throw new Error("no Chromium: set BREEZY_CHROMIUM");
+  const app = process.env.BREEZY_CHROMIUM ?? playwright.executablePath();
+  if (!existsSync(app)) throw new Error(`no Chromium at ${app}: npx playwright-core install chromium, or set BREEZY_CHROMIUM`);
   return app;
 }
 
@@ -95,7 +94,7 @@ await waitFor("server", () => fetch("http://127.0.0.1:58566/sync.php").then(() =
 async function browser(name: string) {
   const dir = mkdtempSync(join(tmpdir(), `breezy-e2e-${name}-`));
   dirs.push(dir);
-  children.push(spawnGroup(`chromium-${name}`, chromium(), ["--headless=new", "--use-mock-keychain", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], {}));
+  children.push(spawnGroup(`chromium-${name}`, chromium(), ["--headless=new", "--use-mock-keychain", ...LINUX_NO_SANDBOX, "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--webrtc-ip-handling-policy=default", "--window-size=1200,800", "about:blank"], {}));
   // a macOS runner checks a browser it has not run before for a while first
   await waitFor(`${name} DevTools`, () => existsSync(join(dir, "DevToolsActivePort")), 60_000);
   const port = readFileSync(join(dir, "DevToolsActivePort"), "utf8").split("\n")[0];
