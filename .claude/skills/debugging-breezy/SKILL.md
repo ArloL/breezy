@@ -40,7 +40,7 @@ The tooling fails like the app does. A tap's 317 ms was idb's companion overrunn
 
 ## Decisions
 
-Record the owner's answer in `CLAUDE.md` for any change, `TESTING.md` or this skill for testing and debugging, or a comment beside the code it constrains.
+Record the owner's answer in `AGENTS.md` for any change, `TESTING.md` or this skill for testing and debugging, or a comment beside the code it constrains.
 
 ## Log the escape
 
