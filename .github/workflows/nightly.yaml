@@ -4,7 +4,7 @@ name: Nightly
 # the measures against their baselines, the sync fuzzed on seeds no run tried before, and the real devices' plants. One
 # summary of all of it, and an issue labelled nightly for as long as a night is red; a red is a bug, fixed before new
 # features. Never on a pull request, whose checks are Main's alone: dispatch it on a branch to try one on real devices,
-# naming the one part wanted, as a whole night's five macOS jobs keep the gate's waiting for runners; a branch's run
+# naming the one part wanted, as a whole night's three macOS jobs keep the gate's waiting for runners; a branch's run
 # tells the issue nothing.
 #
 # The measured network feel and the Mac's performance journal, each against the reference build in
@@ -486,7 +486,7 @@ jobs:
   # most 1.5 s from a launch to a drawn board; then the measure's plant, a launch that must come out worse
   launch:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
@@ -496,9 +496,6 @@ jobs:
         # the reference too
         fetch-depth: 0
         persist-credentials: false
-    - name: Turn Spotlight off
-      # a nicety, not a condition: mdutil once exited non-zero after saying it had done it, and took the job with it
-      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
     - name: Keep the servers' ports free
       run: scripts/reserve-ports.sh
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -510,7 +507,7 @@ jobs:
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-        path: ~/Library/Caches/ms-playwright
+        path: ~/.cache/ms-playwright
     - name: Install Chromium
       run: npx playwright-core install chromium
     - name: Build the reference
@@ -540,7 +537,7 @@ jobs:
   # with node scripts/fuzz.ts --replay FILE.
   fuzz:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
       contents: read
@@ -552,9 +549,6 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
-    - name: Install PHP
-      run: command -v php || brew install php
     - name: Install the relay
       run: npm ci --prefix relay
     - name: Build breezy-sim
