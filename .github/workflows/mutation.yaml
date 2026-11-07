@@ -31,7 +31,7 @@ jobs:
         name: mutation-web
         path: build/mutation
   breezykit:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
       contents: read
@@ -43,8 +43,6 @@ jobs:
       with:
         node-version: 24
         package-manager-cache: false
-    # the Xcode the other jobs build with
-    - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
     - name: Mutation
       run: node scripts/mutate.ts --module BreezyKit/
     - if: ${{ always() }}
