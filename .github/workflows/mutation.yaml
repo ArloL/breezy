@@ -11,6 +11,8 @@ permissions: {}
 jobs:
   web:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: linux
     timeout-minutes: 60
     permissions:
       contents: read

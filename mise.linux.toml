@@ -1,0 +1,3 @@
+# MISE_ENV=linux: no Xcode, and the runner's Swift fails to load toolchains from mise.toml's DEVELOPER_DIR
+[env]
+DEVELOPER_DIR = false

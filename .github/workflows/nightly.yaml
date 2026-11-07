@@ -137,7 +137,7 @@ jobs:
     permissions:
       contents: read
     env:
-      MISE_ENV: android
+      MISE_ENV: android,linux
       # no Linux build
       MISE_DISABLE_TOOLS: xcodegen
     steps:
@@ -362,6 +362,8 @@ jobs:
   feel:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: linux
     timeout-minutes: 75
     permissions:
       contents: read
@@ -468,6 +470,8 @@ jobs:
   launch:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: linux
     timeout-minutes: 45
     permissions:
       contents: read
@@ -516,6 +520,8 @@ jobs:
   fuzz:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'measures' }}
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: linux
     timeout-minutes: 90
     permissions:
       contents: read
@@ -566,6 +572,8 @@ jobs:
     - fuzz
     if: ${{ always() }}
     runs-on: ubuntu-slim
+    env:
+      MISE_ENV: linux
     timeout-minutes: 10
     permissions:
       contents: read
