@@ -409,8 +409,8 @@ jobs:
       continue-on-error: true
       timeout-minutes: 5
       run: node scripts/direct-e2e.ts
-    # over the relay only, as feel.ts takes RTCPeerConnection away without --direct; in turns, so that what slows the runner for a
-    # while slows both alike
+    # over the relay only, as feel.ts takes RTCPeerConnection away without --direct; in turns, so that what slows the
+    # runner for a while slows both alike
     - name: Measure this commit and the reference
       run: |
         set -o pipefail
