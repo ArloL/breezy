@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Server } from "../server.ts";
+import { freePort, Server } from "../server.ts";
 
 test("a pull from a new space answers with the relay, and a restore gives a new epoch", async () => {
   const s = await Server.start("ws://127.0.0.1:9/");
@@ -23,4 +23,28 @@ test("a pull from a new space answers with the relay, and a restore gives a new 
   } finally {
     s.stop();
   }
+});
+
+test("a port another PHP took before this one bound is left for a free one, and this PHP answers", async () => {
+  const other = await Server.start("ws://127.0.0.1:9/");
+  let drawn = 0;
+  const s = await Server.start("ws://127.0.0.1:9/", () => (drawn++ ? freePort() : Promise.resolve(other.port)));
+  try {
+    assert.equal(drawn, 2);
+    assert.notEqual(s.port, other.port);
+    other.stop();
+    const answer = await s.send({ method: "GET", url: `${s.url}?space=${"A".repeat(22)}&since=0`, headers: { authorization: `Bearer ${"B".repeat(43)}` }, body: null });
+    assert.equal(answer.status, 200, answer.body.toString());
+  } finally {
+    other.stop();
+    s.stop();
+  }
+});
+
+test("a request PHP did not take says how PHP ended and what it logged", async () => {
+  const s = await Server.start("ws://127.0.0.1:9/");
+  const ended = new Promise((r) => s.php.once("exit", r));
+  s.stop();
+  await ended;
+  await assert.rejects(s.send({ method: "GET", url: s.url, headers: {}, body: null }), /ECONNREFUSED.*php ended by SIGTERM.*Development Server/s);
 });
