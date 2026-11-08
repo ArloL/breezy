@@ -2,7 +2,7 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request, type IncomingHttpHeaders, type OutgoingHttpHeaders } from "node:http";
-import { createServer, connect, type AddressInfo } from "node:net";
+import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import type { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
@@ -10,18 +10,12 @@ import { fileURLToPath } from "node:url";
 
 const dir = fileURLToPath(new URL("../../server/", import.meta.url));
 
-const freePort = () =>
+export const freePort = () =>
   new Promise<number>((resolve) => {
     const s = createServer().listen(0, "127.0.0.1", () => {
       const { port } = s.address() as AddressInfo;
       s.close(() => resolve(port));
     });
-  });
-
-const reachable = (port: number) =>
-  new Promise<boolean>((resolve) => {
-    const c = connect(port, "127.0.0.1", () => (c.end(), resolve(true)));
-    c.on("error", () => resolve(false));
   });
 
 export interface Request {
@@ -46,26 +40,52 @@ export class Server {
   declare url: string;
 
   /** Starts PHP; `relay` is the address sync.php names. */
-  static async start(relay: string) {
+  static async start(relay: string, port = freePort) {
     const s = new Server();
     s.tmp = mkdtempSync(`${tmpdir()}/breezy-fuzz-`);
     s.db = `${s.tmp}/test.db`;
     const db = new DatabaseSync(s.db);
     db.exec(readFileSync(`${dir}schema.sql`, "utf8"));
     db.close();
-    writeFileSync(`${s.tmp}/config.php`, `<?php return ['dsn' => 'sqlite:${s.db}', 'relay' => '${relay}'];`);
-    s.port = await freePort();
-    s.php = spawn("php", ["-d", "memory_limit=64M", "-S", `127.0.0.1:${s.port}`, "-t", dir], {
-      env: { ...process.env, BREEZY_CONFIG: `${s.tmp}/config.php` }, stdio: ["ignore", "ignore", "pipe"],
-    });
+    const config = `${s.tmp}/config.php`;
+    writeFileSync(config, `<?php return ['dsn' => 'sqlite:${s.db}', 'relay' => '${relay}'];`);
     s.log = "";
-    s.php.stderr.on("data", (d: Buffer) => (s.log = (s.log + d).slice(-20_000)));
-    for (let i = 0; !(await reachable(s.port)); i++) {
-      if (i > 200) throw new Error(`php -S did not start: ${s.log}`);
-      await new Promise((r) => setTimeout(r, 10));
+    // a port found free can go to another test file's PHP first; this one then exits and the other answers in its place
+    for (let tries = 1; !(await s.listen(await port(), config)); tries++) {
+      if (tries === 5) {
+        s.stop();
+        throw new Error(`php -S did not start: ${s.log}`);
+      }
     }
     s.url = `http://127.0.0.1:${s.port}/sync.php`;
     return s;
+  }
+
+  /** Whether this PHP says it took `port`, which a connection cannot tell: whichever PHP holds it would answer. */
+  private listen(port: number, config: string) {
+    this.port = port;
+    this.php = spawn("php", ["-d", "memory_limit=64M", "-S", `127.0.0.1:${port}`, "-t", dir], {
+      env: { ...process.env, BREEZY_CONFIG: config }, stdio: ["ignore", "ignore", "pipe"],
+    });
+    return new Promise<boolean>((resolve) => {
+      const done = (up: boolean) => {
+        clearTimeout(deadline);
+        if (!up) this.php.kill();
+        resolve(up);
+      };
+      const deadline = setTimeout(() => done(false), 10_000);
+      this.php.stderr.on("data", (d: Buffer) => {
+        this.log = (this.log + d).slice(-20_000);
+        if (this.log.includes(`(http://127.0.0.1:${port}) started`)) done(true);
+      });
+      this.php.once("exit", () => done(false));
+    });
+  }
+
+  /** How PHP stands, for a request it did not take. */
+  private state() {
+    const { exitCode, signalCode } = this.php;
+    return exitCode !== null ? `ended with ${exitCode}` : signalCode ? `ended by ${signalCode}` : "still running";
   }
 
   /** A device's request as sent: path and query from `url`, headers, and a body (Buffer) or null. */
@@ -78,7 +98,7 @@ export class Server {
         res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
         res.on("error", reject);
       });
-      r.on("error", reject);
+      r.on("error", (e) => reject(new Error(`${e.message}; php ${this.state()}; its log ends:\n${this.log.slice(-2000)}`, { cause: e })));
       r.end(body ?? undefined);
     });
   }
