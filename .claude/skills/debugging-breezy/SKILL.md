@@ -16,7 +16,7 @@ The tooling fails like the app does. A tap's 317 ms was idb's companion overrunn
 - **CI's iPhones since 2026-11-05:** the iPhone 13 mini boots slim, without `scripts/ios-services-off.txt`, and the iPhone 17 stock, as its control: a case failing only on the first may be slim's doing. The figures above are from before it.
 - **The recordings:**
   - a run's `build/scenarios/<when> <case>/`: `timeline.txt`, `case.json`, and `<who> flight.json` per device;
-  - a failing hub case's `build/hub/<test>/`;
+  - a failing hub case's `build/hub/<test>/`, on CI the failed run's `hub` artifact;
   - a nightly's artifacts: `gh run download`, a failing case's `<who> video` among them when the night filmed;
   - a page on the dev server (`npm run dev`): its flight recording, posted every 5 s to `build/flight/<browser> <page>.json`, a new page id on each reload; each wheel stream is one `wheel` entry, deltas and camera per event;
   - a night's `night-report` artifact: its summary as Markdown, and `runner-facts.json`, what ran under its cases job by job (`scripts/runner-facts.ts`);
