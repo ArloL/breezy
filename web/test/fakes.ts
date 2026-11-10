@@ -190,6 +190,24 @@ export class FakeView implements ViewPort {
     return !this.camera.moving && this.keyboardTimer === undefined;
   }
 
+  limits() {
+    return { x0: -Infinity, x1: Infinity, y0: -Infinity, y1: Infinity };
+  }
+
+  hold() {
+    return this.limits();
+  }
+
+  takeIn() {}
+
+  stage() {
+    return this.area();
+  }
+
+  wheelPan(by: Point) {
+    this.setCamera({ ...this.cam, x: this.cam.x + by.x, y: this.cam.y + by.y });
+  }
+
   zoomAround(c: Point, zoom: number, animate = false) {
     const z = clampZoom(zoom);
     const w = this.toWorld(c);

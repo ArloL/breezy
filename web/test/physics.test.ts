@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decay, coastOffset, projection, rubber, edgeSpeed, EDGE_ZONE } from "../physics.ts";
+import { decay, coastOffset, projection, rubber, unrubber, edgeSpeed, EDGE_ZONE } from "../physics.ts";
 
 const near = (a: number, b: number, e = 1e-6) => assert.ok(Math.abs(a - b) < e, `${a} ≉ ${b}`);
 
@@ -39,4 +39,9 @@ test("edge scrolling starts only inside the zone, crawls as Freeform's does, and
   near(scrolled(2000), 708, 10);
   near(edgeSpeed(1, 600) / edgeSpeed(1, 300), edgeSpeed(1, 900) / edgeSpeed(1, 600));
   near(edgeSpeed(1, 5000), 0.6);
+});
+
+test("unrubber undoes the rubber band, so a stretch picked up again does not jump", () => {
+  for (const x of [-500, -3, 0, 7, 120, 2000]) near(unrubber(rubber(x, 800, 0.5), 800, 0.5), x);
+  assert.ok(Number.isFinite(unrubber(800, 800)), "a stretch the band never reaches maps somewhere finite");
 });

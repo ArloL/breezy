@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dotLines } from "../grid.ts";
+import { dotLines, outside } from "../grid.ts";
 import { GRID } from "../rules.ts";
 
 test("dots sit on whole device pixels, within half of one of the grid's cell centres", () => {
@@ -31,4 +31,15 @@ test("dots cover the screen, one cell apart", () => {
 test("zoomed out past 0.4, as on the Mac, there are no dots", () => {
   assert.deepEqual(dotLines({ x: 0, y: 0, zoom: 0.39 }, 2, 800, 600), { xs: [], ys: [] });
   assert.ok(dotLines({ x: 0, y: 0, zoom: 0.4 }, 2, 800, 600).xs.length > 0);
+});
+
+test("past the board's edge is the outside, in up to four strips that cover it once", () => {
+  assert.deepEqual(outside({ x: -10, y: -10, w: 1000, h: 1000 }, 800, 600), []);
+  assert.deepEqual(outside({ x: 75, y: -10, w: 1000, h: 1000 }, 800, 600), [{ x: 0, y: 0, w: 75, h: 600 }]);
+  assert.deepEqual(outside({ x: 100, y: 50, w: 600, h: 500 }, 800, 600), [
+    { x: 0, y: 0, w: 800, h: 50 },
+    { x: 0, y: 550, w: 800, h: 50 },
+    { x: 0, y: 50, w: 100, h: 500 },
+    { x: 700, y: 50, w: 100, h: 500 },
+  ]);
 });

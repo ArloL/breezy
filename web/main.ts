@@ -100,7 +100,11 @@ if (params.has("record")) void import("./record.ts").then((m) => m.install());
 // ?stress and ?demo show boards that are not kept, as before
 const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : null;
 const app = new App(scratch ?? { cards: [], lanes: [] }, {
-  view: (app) => new View(document.getElementById("board")!, app.model, app.state),
+  view: (app) => {
+    const v = new View(document.getElementById("board")!, app.model, app.state);
+    v.wheel.onStream = (s) => app.flight.note("input", "wheel", s);
+    return v;
+  },
   presence: (view) => new Presence(view),
   ui: (app) => new UI(app),
 });
@@ -108,6 +112,19 @@ app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
 if (!(globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) record(app);
+// on the dev server (scripts/serve-web.ts), the flight recording goes to build/flight/ every few seconds
+const devFlight = (globalThis as { __breezyDevFlight?: string }).__breezyDevFlight;
+if (devFlight) {
+  const ua = navigator.userAgent;
+  const who = `${/Firefox/.test(ua) ? "firefox" : /Edg\//.test(ua) ? "edge" : /Chrome/.test(ua) ? "chrome" : /Safari/.test(ua) ? "safari" : "browser"} ${Math.random().toString(36).slice(2, 6)}`;
+  let sent = "";
+  setInterval(() => {
+    const r = app.flight.recording(), at = `${r.entries.length} ${r.entries.at(-1)?.[0]}`;
+    if (at === sent) return;
+    sent = at;
+    fetch(`${devFlight}?who=${encodeURIComponent(who)}`, { method: "POST", body: JSON.stringify(r) }).catch(() => {});
+  }, 5000);
+}
 
 const board = document.getElementById("board")!;
 const gestures = new Gestures(app.input);
@@ -156,6 +173,16 @@ board.addEventListener("contextmenu", (e) => editor(e) || e.preventDefault());
 // a tap between the keyboard bar's buttons would take focus from the editor, which ends the edit
 document.getElementById("keys")!.addEventListener("mousedown", (e) => e.preventDefault());
 
+// each burst of wheel events as it arrives, before anything acts on it: a slow drag in Firefox once left no stream
+let burst = 0;
+addEventListener("wheel", (e) => {
+  const now = performance.now();
+  if (now - burst > 300) {
+    const t = e.target as Element | null;
+    app.flight.note("input", "wheel arrives", { screen: document.body.dataset.screen ?? null, mode: e.deltaMode, ctrl: e.ctrlKey, target: t?.id || t?.className?.toString().slice(0, 40) || null });
+  }
+  burst = now;
+}, { capture: true, passive: true });
 addEventListener("wheel", (e) => {
   if (document.body.dataset.screen === "boards") return;
   e.preventDefault();
@@ -164,7 +191,7 @@ addEventListener("wheel", (e) => {
   const a = wheelAction(e);
   const view = app.view;
   if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
-  else view.setCamera({ ...view.cam, x: view.cam.x + a.pan!.x, y: view.cam.y + a.pan!.y });
+  else view.wheelPan(a.pan!);
   // what a held drag is over has moved
   if (app.input.drag) app.input.dragMove(app.input.drag.last);
 }, { passive: false });

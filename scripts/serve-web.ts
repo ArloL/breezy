@@ -1,9 +1,11 @@
 // Serves web/ on port 58565 to this Mac and the local network, rebuilt on every save, reloading the page after each build.
+// Each page posts its flight recording every few seconds, kept as build/flight/<browser> <page>.json: what a gesture did,
+// read without asking for it.
 //
 //   npm run dev
 import { spawn } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
-import { readFileSync, watch } from "node:fs";
+import { mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildWeb, copyStatics, isStatic } from "./build-web.ts";
@@ -11,7 +13,8 @@ import { buildWeb, copyStatics, isStatic } from "./build-web.ts";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = `${root}build/web-dev`;
 const PORT = 58565;
-const RELOAD = `<script>new EventSource("/reload").onmessage = () => location.reload();</script>`;
+const RELOAD = `<script>new EventSource("/reload").onmessage = () => location.reload(); globalThis.__breezyDevFlight = "/flight";</script>`;
+const flights = `${root}build/flight`;
 const types: Record<string, string> = {
   ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json",
 };
@@ -38,7 +41,18 @@ watch(`${root}web`, { recursive: true }, (_, file) => {
 watch(out, { recursive: true }, reload);
 
 createServer((req, res) => {
-  const path = new URL(req.url ?? "/", "http://x").pathname;
+  const url = new URL(req.url ?? "/", "http://x"), path = url.pathname;
+  if (path === "/flight" && req.method === "POST") {
+    const who = (url.searchParams.get("who") ?? "page").replace(/[^\w -]/g, "");
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      mkdirSync(flights, { recursive: true });
+      writeFileSync(`${flights}/${who}.json`, body);
+      res.writeHead(204).end();
+    });
+    return;
+  }
   if (path === "/reload") {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
     pages.add(res);

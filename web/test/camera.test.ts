@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Camera, MIN_ZOOM, MAX_ZOOM, revealing } from "../camera.ts";
+import { Camera, MARGIN, MIN_ZOOM, MAX_ZOOM, banded, boardOf, panLimits, revealing, seenFrom } from "../camera.ts";
 import { projection } from "../physics.ts";
 import type { Cam } from "../types.ts";
 import { fixture } from "./helpers/fixture.ts";
@@ -179,4 +179,94 @@ test("revealing measures an area that starts in from the screen's edge by its ow
   // 380 shown and 16 each side is wider than the 400 from 40 to 440: its left edge shows, though its right is past 424
   const to = revealing({ x: 0, y: 0, zoom: 2 }, { x: 50, y: 100, w: 190, h: 20 }, { top: 100, bottom: 500, left: 40, right: 440 });
   assert.deepEqual(to, { x: 56 - 100, y: 0, zoom: 2 });
+});
+
+// Freeform on an iPhone 13 mini, 320 × 693 pt, measured with scripts/wda.py from its canvas in the accessibility tree.
+const PHONE = { top: 0, bottom: 693, left: 0, right: 320 };
+
+test("the board reaches 1,194 pt past its content on every side, whatever the zoom, as Freeform's does", () => {
+  assert.equal(MARGIN, 1194);
+  // an empty board is 2,388 square; one text box, 202 × 37, made it 2,590 × 2,425
+  assert.deepEqual(boardOf({ x: 0, y: 0, w: 0, h: 0 }, null), { x: -1194, y: -1194, w: 2388, h: 2388 });
+  assert.deepEqual(boardOf({ x: 10, y: 20, w: 202, h: 37 }, null), { x: -1184, y: -1174, w: 2590, h: 2425 });
+});
+
+test("the board takes in what showed, so it never ends on screen at rest", () => {
+  const seen = { x: -5000, y: 0, w: 3200, h: 100 };
+  assert.deepEqual(boardOf({ x: 0, y: 0, w: 0, h: 0 }, seen), { x: -5000, y: -1194, w: 6194, h: 2388 });
+  assert.deepEqual(seenFrom({ x: 100, y: -50, zoom: 0.5 }, PHONE), { x: -200, y: 100, w: 640, h: 1386 });
+});
+
+test("a pan stops where the board's edge meets the screen's, at any zoom", () => {
+  const board = boardOf({ x: 0, y: 0, w: 202, h: 37 }, null);
+  for (const zoom of [1, 0.5]) {
+    const l = panLimits(board, zoom, PHONE);
+    near(board.x * zoom + l.x1, PHONE.left, 1e-9);
+    near((board.x + board.w) * zoom + l.x0, PHONE.right, 1e-9);
+    near(board.y * zoom + l.y1, PHONE.top, 1e-9);
+    near((board.y + board.h) * zoom + l.y0, PHONE.bottom, 1e-9);
+  }
+});
+
+test("a board smaller than the screen stays on it", () => {
+  const board = { x: 0, y: 0, w: 1000, h: 1000 };
+  const l = panLimits(board, 0.25, PHONE);
+  assert.deepEqual([l.x0, l.x1], [0, 320 - 250]);
+  assert.deepEqual([l.y0, l.y1], [0, 693 - 250]);
+});
+
+test("a pan pulled past the edge stretches as Freeform's: 40, 75 and 101 pt for 90, 190 and 290", () => {
+  const l = { x0: -1000, x1: 0, y0: -1000, y1: 0 };
+  for (const [pull, shown] of [[90, 40], [190, 75], [290, 101]]) {
+    near(banded({ x: pull, y: 0, zoom: 1 }, l, PHONE).x, shown, 2.5);
+  }
+  // vertically over the screen's height: 43 and 122 pt for 90 and 290
+  near(banded({ x: 0, y: 90, zoom: 1 }, l, PHONE).y, 43, 2.5);
+  near(banded({ x: 0, y: 290, zoom: 1 }, l, PHONE).y, 122, 2.5);
+});
+
+test("the camera says when it comes to rest, after a coast or when there was nothing to coast", () => {
+  const { c, tick } = setup();
+  let rests = 0;
+  c.onRest = () => rests++;
+  c.coast({ x: 0, y: 0 });
+  assert.equal(rests, 1);
+  c.coast({ x: 1, y: 0 });
+  tick(16, 10);
+  assert.equal(rests, 1);
+  tick(16, 400);
+  assert.equal(rests, 2);
+  c.springTo({ x: 0, y: 0, zoom: 1 });
+  tick(16, 200);
+  assert.equal(rests, 3);
+});
+
+// Chromium's Mac rubber band, after AppKit's: (x0 + 0.31·v·t)·e^(−12.5·t), t in seconds (content/renderer/input/
+// input_scroll_elasticity_controller.cc, BSD). It sets off at once, where a spring eases in.
+test("a stretch rebounds as a Mac's does: most of the way back in 100 ms, all of it by half a second", () => {
+  const { c, tick } = setup({ x: 300, y: 0, zoom: 1 });
+  c.rebound({ x: 0, y: 0, zoom: 1 });
+  tick(4, 25);
+  near(c.cam.x, 300 * Math.exp(-1.25), 3);
+  tick(4, 100);
+  assert.equal(c.cam.x, 0);
+  assert.ok(!c.moving);
+});
+
+test("a rebound carries the speed it starts with: momentum overshoots a little before it comes back", () => {
+  const { c, tick, applied } = setup({ x: 0, y: 0, zoom: 1 });
+  c.rebound({ x: 0, y: 0, zoom: 1 }, { x: 5, y: 0 });
+  tick(4, 200);
+  const peak = Math.max(...applied.map((a) => a.x));
+  near(peak, 0.31 * 5000 * 0.08 * Math.exp(-1), 2);
+  assert.equal(c.cam.x, 0);
+});
+
+test("a coast that runs past the edge rebounds from it", () => {
+  const { c, tick, applied } = setup({ x: -100, y: 0, zoom: 1 });
+  c.limits = () => ({ x0: -1000, x1: 0, y0: -1000, y1: 1000 });
+  c.coast({ x: 3, y: 0 });
+  tick(4, 300);
+  assert.ok(Math.max(...applied.map((a) => a.x)) > 0, "it went past");
+  assert.equal(c.cam.x, 0);
 });
