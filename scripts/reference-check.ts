@@ -18,8 +18,8 @@ export const measuresOf = (s: Stroke) => {
   return measure(fromClip(s.frames), l, liftOf(s));
 };
 
-// AppKit merges events that come close together, a few pt each: a replay of 539 events arrived as 495, its running
-// totals within 4 pt of the recording's
+// AppKit merges events that come close together: a push's 539 events arrived as 495, its running totals within 4 pt of
+// the recording's; a merge moves them by up to a whole event, which in a flick is 100 to 350 pt
 const DRIFT = 8;
 
 /** Whether `b`'s deltas add up as `a`'s did, over time and in all. */
@@ -30,9 +30,10 @@ function deltas(a: Stroke, b: Stroke): string[] {
     if (ta * tb < 0 && Math.abs(ta) > 1) return [`the sign differs on ${axis}: ${ta.toFixed(1)} recorded, ${tb.toFixed(1)} replayed`];
     if (Math.abs(ta - tb) > 1) return [`the deltas on ${axis} add up to ${ta.toFixed(1)} recorded, ${tb.toFixed(1)} replayed`];
     const end = Math.max(a.events.at(-1)?.[0] ?? 0, b.events.at(-1)?.[0] ?? 0);
+    const most = Math.max(DRIFT, ...a.events.map((e) => Math.abs(e[i])), ...b.events.map((e) => Math.abs(e[i])));
     for (let t = 0; t <= end; t += 8) {
       const d = Math.abs(sum(a, i, t) - sum(b, i, t));
-      if (d > DRIFT) return [`the deltas on ${axis} drift ${d.toFixed(1)} pt apart by ${t} ms`];
+      if (d > most) return [`the deltas on ${axis} drift ${d.toFixed(1)} pt apart by ${t} ms`];
     }
   }
   return [];
