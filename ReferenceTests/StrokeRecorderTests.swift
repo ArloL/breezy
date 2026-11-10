@@ -8,8 +8,8 @@ final class StrokeRecorderTests: XCTestCase {
 
   func testTimesFromFirstEvent() {
     var r = recorder()
-    r.event(t: 10.000, dx: 1, dy: 0, phase: 1, momentum: 0)
-    r.event(t: 10.008, dx: 2, dy: 0, phase: 4, momentum: 0)
+    _ = r.event(t: 10.000, dx: 1, dy: 0, phase: 1, momentum: 0)
+    _ = r.event(t: 10.008, dx: 2, dy: 0, phase: 4, momentum: 0)
     let s = finish(&r, from: 10.008)
     XCTAssertEqual(s.events.map { $0[0] }, [0, 8])
     XCTAssertEqual(s.events[1], [8, 2, 0, 4, 0])
@@ -18,14 +18,14 @@ final class StrokeRecorderTests: XCTestCase {
   func testFramesBeforeFirstEventDropped() {
     var r = recorder()
     _ = r.frame(t: 9.9, origin: CGPoint(x: 5, y: 5))
-    r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
+    _ = r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
     let s = finish(&r, from: 10)
     XCTAssertFalse(s.frames.contains { $0[0] < 0 })
   }
 
   func testEndsAfterRestAndStillOrigin() {
     var r = recorder()
-    r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
+    _ = r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
     for ms in stride(from: 0.0, through: 1499, by: 8) { XCTAssertNil(r.frame(t: 10 + ms / 1000, origin: .zero), "open at \(ms) ms") }
     var s: Stroke?
     for ms in stride(from: 1500.0, through: 1700, by: 8) where s == nil { s = r.frame(t: 10 + ms / 1000, origin: .zero) }
@@ -37,18 +37,36 @@ final class StrokeRecorderTests: XCTestCase {
 
   func testMomentumOnlyStrokeEnds() {
     var r = recorder()
-    r.event(t: 10, dx: 9, dy: 0, phase: 0, momentum: 1)
-    r.event(t: 10.008, dx: 6, dy: 0, phase: 0, momentum: 4)
-    r.event(t: 10.016, dx: 0, dy: 0, phase: 0, momentum: 8)
+    _ = r.event(t: 10, dx: 9, dy: 0, phase: 0, momentum: 1)
+    _ = r.event(t: 10.008, dx: 6, dy: 0, phase: 0, momentum: 4)
+    _ = r.event(t: 10.016, dx: 0, dy: 0, phase: 0, momentum: 8)
     XCTAssertEqual(finish(&r, from: 10.016).events.count, 3)
   }
 
   func testOriginStillMovingKeepsStrokeOpen() {
     var r = recorder()
-    r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
+    _ = r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
     for ms in stride(from: 0.0, through: 1700, by: 8) {
       XCTAssertNil(r.frame(t: 10 + ms / 1000, origin: CGPoint(x: -ms / 100, y: 0)), "a rebound under way at \(ms) ms")
     }
+  }
+
+  func testNewGestureOnAStillBoardStartsANewStroke() {
+    var r = recorder()
+    XCTAssertNil(r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0))
+    XCTAssertNil(r.event(t: 10.1, dx: 0, dy: 0, phase: 8, momentum: 0))
+    for ms in stride(from: 0.0, through: 600, by: 8) { XCTAssertNil(r.frame(t: 10.1 + ms / 1000, origin: .zero)) }
+    let first = r.event(t: 10.8, dx: 2, dy: 0, phase: 32, momentum: 0)
+    XCTAssertEqual(first?.events.count, 2)
+    XCTAssertEqual(finish(&r, from: 10.8).events, [[0, 2, 0, 32, 0]])
+  }
+
+  func testNewGestureDuringABounceStaysInTheStroke() {
+    var r = recorder()
+    _ = r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
+    _ = r.event(t: 10.1, dx: 0, dy: 0, phase: 8, momentum: 0)
+    for ms in stride(from: 0.0, through: 400, by: 8) { _ = r.frame(t: 10.1 + ms / 1000, origin: CGPoint(x: -40 + ms / 10, y: 0)) }
+    XCTAssertNil(r.event(t: 10.5, dx: 2, dy: 0, phase: 1, momentum: 0))
   }
 
   /// Feeds still frames from `from` until the stroke ends, failing after 3 s.
