@@ -1,36 +1,34 @@
-// The fixture appkit-edge.test.ts compares on: each stroke's AppKit curves and what Firefox made of the same events.
+// The fixture appkit-edge.test.ts compares on: each stroke's AppKit curve, how far AppKit's own replay of it landed,
+// and what Firefox made of the same events.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildFixture, median } from "../reference-fixture.ts";
-import type { Stroke } from "../replay.ts";
+import { buildFixture, isStray } from "../reference-fixture.ts";
+import type { Capture, Stroke } from "../replay.ts";
 
 /** A push `p` pt past the left edge, lifted at 200 ms. */
 const push = (name: string, p: number): Stroke => ({
-  name, stage: [1200, 762], start: [0, 813],
+  name, stage: [1158, 864], start: [0, 762],
   events: [[0, -2, 0, 1, 0], [200, -1, 0, 8, 0], [300, -1, 0, 0, 4]],
-  frames: [[0, 0, 813], [100, -p / 2, 813], [200, -p, 813], [400, 0, 813]],
+  frames: [[0, 0, 762], [100, -p / 2, 762], [200, -p, 762], [400, 0, 762]],
 });
-const capture = { stage: [1200, 762], from: [1194, 381, 1], events: [[0, -2, 0], [200, -1, 0]] as [number, number, number][] };
+const capture: Capture = { stage: [1158, 864], from: [1194, 432, 1], events: [[0, -2, 0], [200, -1, 0]] };
 
-test("the median repeat, by overshoot, is the one replayed", () => {
-  assert.equal(median([push("a", 30), push("a", 50), push("a", 40)]).frames[2][1], -40);
-});
-
-test("a fixture keeps each stroke's median curve, all its repeats and Firefox's events, without replays", () => {
-  const f = buildFixture([push("push-hold", 30), push("push-hold", 50), push("push-hold", 40), push("push-hold-replay", 40)], { "push-hold": capture });
-  assert.equal(f.strokes.length, 1);
-  const s = f.strokes[0];
-  assert.deepEqual([s.name, s.stage, s.from, s.lift], ["push-hold", { w: 1200, h: 762 }, { x: 1194, y: 381, zoom: 1 }, 200]);
-  assert.deepEqual(s.appkit[2], [200, 1234, 381]);
-  assert.equal(s.repeats.length, 3);
-  assert.deepEqual(s.firefox, capture.events);
+test("a case keeps its AppKit curve, how far AppKit's replay of it landed, and Firefox's events", () => {
+  const f = buildFixture([{ file: "push-hold-3.json", recorded: push("push-hold", 40), replayed: push("push-hold-replay", 43), firefox: capture }]);
+  assert.equal(f.cases.length, 1);
+  const c = f.cases[0];
+  assert.deepEqual([c.name, c.stage, c.from, c.lift], ["push-hold-3", { w: 1158, h: 864 }, { x: 1194, y: 432, zoom: 1 }, 200]);
+  assert.deepEqual(c.appkit[2], [200, 1234, 432]);
+  assert.deepEqual(c.noise, { stretch: 3, overshoot: 3, settle: 0, gap: 3 });
+  assert.deepEqual(c.firefox, capture.events);
 });
 
-test("a stroke with no Firefox capture is named", () => {
-  assert.throws(() => buildFixture([push("flick-fast", 30)], {}), /flick-fast/);
+test("Firefox's events start at AppKit's first event with a delta, as one without makes no wheel event", () => {
+  const r = push("push-hold", 40);
+  r.events = [[0, 0, 0, 32, 0], [30, 0, 0, 1, 0], ...r.events.map(([t, ...e]) => [t + 40, ...e])];
+  const c = buildFixture([{ file: "p.json", recorded: r, replayed: r, firefox: capture }]).cases[0];
+  assert.deepEqual(c.firefox.map(([t]) => t), [40, 240]);
 });
-
-import { isStray } from "../reference-fixture.ts";
 
 test("a touch or a momentum tail that moved nothing is a stray, not a stroke", () => {
   assert.equal(isStray(push("p", 30)), true, "3 events");
