@@ -103,3 +103,31 @@ If spike 2 or 3 fails on iOS, the iPhone keeps the camera mode, and native stays
 - The DOM shape of the scrolled content: a spacer and the transformed world, or the world sized directly.
 - How the native-mode camera is kept: derived from `scrollLeft`/`scrollTop` and the zoom on each `scroll` event, or read when needed.
 - How each mode's scores are reported: an extension of `scripts/appkit-score.ts`.
+
+## Spike findings
+
+Tried by the owner on 2026-11-10 in Firefox on the Mac and Firefox for iOS (WebKit) on the iPhone, with a throwaway `?pan=native` on branch `spike/native-pan`. Each step was debugged from the page's flight recording and, on the iPhone, a screen recording.
+
+**Each risk, settled**
+
+1. **The grid.** It moves with the scroll as a CSS pattern in the scrolled content. During a pinch it is the canvas again: iOS paints only near the window, and a scaled content showed grey where it had not painted.
+2. **Zoom on top of native scrolling.** On the Mac, ⌘-scroll and the trackpad pinch zoom in Breezy as before; a plain wheel goes to the browser. On iOS, a pinch:
+   - **Fresh,** both fingers down before the board moves: the browser's pan is stopped (`preventDefault` on `touchmove`), and the drawn content is scaled with a CSS transform around the board point first under the fingers, its scrolling stopped (`overflow: hidden`). It lays out once, when the fingers lift. Laid out on every step, it jumped and showed grey.
+   - **Begun on a pan iOS has already taken:** iOS goes on panning whatever the page does, `overflow: hidden` included. Moving the content into an overlay that doesn't scroll stops the pan; the pinch runs there, and the content goes back when it ends. The pinch's touch listeners must be on the document, as the touches' targets leave the board.
+   - **A finger left after a pinch:** iOS starts no new pan for a touch already down, so Breezy pans the board after that finger and coasts from its speed. Freeform doesn't pan and zoom in one touch; the owner tried it anyway and found it "feels good".
+   - **iOS's gesture events** (`gesturestart`/`gesturechange`) must not zoom in native mode on iOS: Breezy holds no pointers on a native pan, and they zoomed under it. On a Mac, Safari sends its trackpad pinch the same way, so the real build tells the two apart.
+   - **Its end:** a pinch on a taken pan may end in `touchcancel`; a pinch still for 400 ms ends.
+3. **Holds and gestures that aren't pans.** Each must stop the browser's pan on `touchmove`, before any scroll has begun:
+   - a card lifted by a hold (`state.lifted`), since the hold comes before any drag;
+   - a quick drag of a selected card;
+   - a double tap's second touch, the one-finger zoom.
+
+   The one-finger zoom zooms around the point first touched. Breezy's `touchstart` `preventDefault`, which kept iOS's magnifier off card text, stops all native panning, so native mode drops it; the magnifier then showed only where the owner expected it.
+4. **The board's growth.** It takes in what shows on `scrollend` after a pan of the user's, never after the app's own moves, which end on every frame, nor during a pinch. The content stays a point larger than the window, or Firefox won't rubber-band a board that fits it, as at 25 %.
+5. **The app's own moves** (find, reveal) write the scroll position frame by frame. A `scroll` event at the position just written is the app's own echo, not a pan; taken for a pan, it stopped the spring.
+
+**Also found**
+- **The board's size** comes from the scroll container; the hidden grid canvas measured 0 × 0.
+- **Editing.** While a card is being edited the board doesn't scroll, except for a touch begun outside the editor. iOS scrolled it to keep a dragged or spacebar-moved caret in view, taking the card out of sight.
+- **The Mac.** The owner found everything good: the rubber band at any zoom, find's glide, flicks, dragging cards.
+- **The iPhone.** Native mode's own pan, flick and edge haven't yet been scored against UIKit or felt against camera mode on their own.
