@@ -319,3 +319,12 @@ body[data-screen="board"] #boards { display: none; }
 }
 .boards-list .people { gap: 2px; }
 .boards-list .person { width: 22px; height: 22px; border-radius: 11px; font-size: 10px; line-height: 22px; }
+
+/* SPIKE, throwaway: ?pan=native */
+#board.native { overflow: scroll; touch-action: pan-x pan-y; scrollbar-width: none; overscroll-behavior: auto; background-color: color-mix(in srgb, var(--paper) 85%, var(--ink, #888)); }
+#board.native::-webkit-scrollbar { display: none; }
+#board.native .grid { visibility: hidden; position: fixed; }
+#board.native .native-content { position: relative; background-color: var(--paper); background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.5px); }
+#board.native.pinching { background-color: var(--paper); overflow: hidden; }
+#board.native.pinching .grid { visibility: visible; }
+#board.native.pinching .native-content { background-image: none; background-color: transparent; }

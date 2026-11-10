@@ -3,6 +3,8 @@ import { box, thrown } from "./flight.ts";
 import { readSight, SightWatch, toldOf } from "./sight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
 import { referenceStart, sampleBoard, stressBoard } from "./sample.ts";
+import { nativePan, nativeWanted } from "./native-pan.ts";
+import type { Input } from "./input.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
 import { wheelAction } from "./wheel.ts";
@@ -110,6 +112,7 @@ const app = new App(scratch ?? { cards: [], lanes: [] }, {
   ui: (app) => new UI(app),
 });
 app.view.setCamera(reference ?? { x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
+if (nativeWanted()) nativePan(app.view as unknown as View, document.getElementById("board")!, app.input as unknown as Input);
 app.view.render();
 startUpdates(app);
 if (!(globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) record(app);
@@ -129,6 +132,7 @@ if (devFlight) {
 }
 
 const board = document.getElementById("board")!;
+const native = nativeWanted();
 const gestures = new Gestures(app.input);
 const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
@@ -154,7 +158,8 @@ board.addEventListener("pointerdown", (e) => {
 // mousedown of a double-click that opened an editor would select the word under the pointer, which typing replaces.
 board.addEventListener("mousedown", (e) => (editor(e) && !boardClick) || e.preventDefault());
 // Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
-board.addEventListener("touchstart", (e) => editor(e) || e.preventDefault(), { passive: false });
+// SPIKE: in the native mode this would stop the browser's pan; whether the magnifier then shows is to be seen
+board.addEventListener("touchstart", (e) => editor(e) || native || e.preventDefault(), { passive: false });
 addEventListener("pointermove", (e) => {
   app.library?.pointerAt({ x: e.clientX, y: e.clientY });
   if (e.pointerType === "mouse") return mouse.move({ x: e.clientX, y: e.clientY, buttons: e.buttons });
@@ -187,6 +192,8 @@ addEventListener("wheel", (e) => {
 }, { capture: true, passive: true });
 addEventListener("wheel", (e) => {
   if (document.body.dataset.screen === "boards") return;
+  // SPIKE: a native board scrolls itself; Breezy keeps the zoom
+  if (native && !e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
   // should Safari also send the pinch as ⌃-wheel, it would zoom twice
   if (pinch !== null && e.ctrlKey) return;
