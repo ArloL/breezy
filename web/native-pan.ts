@@ -126,6 +126,14 @@ export function nativePan(view: View, board: HTMLElement, input: Input) {
     note("native pinch end", { how, zoom: pinchZoom, scroll: [r(board.scrollLeft), r(board.scrollTop)] });
   };
   // a pinch begun on a pan the browser had taken ends in touchcancel, not touchend: left on, its scaling froze the board
+  // While a card is edited, iOS scrolls the board to keep the caret in view, as the caret is dragged or moved with the
+  // spacebar held, taking the card away. The board does not scroll while editing, but for a touch begun outside the
+  // editor, which pans as at any time.
+  const editorOf = (t: EventTarget | null) => (t as Element | null)?.closest?.('[contenteditable="plaintext-only"]');
+  document.addEventListener("focusin", (e) => { if (editorOf(e.target)) board.classList.add("editing"); });
+  document.addEventListener("focusout", (e) => { if (editorOf(e.target)) board.classList.remove("editing"); });
+  board.addEventListener("touchstart", (e) => { if (!editorOf(e.target)) board.classList.add("pan-anyway"); }, { passive: true });
+  document.addEventListener("touchend", (e) => { if (e.touches.length === 0) board.classList.remove("pan-anyway"); });
   // whether the browser has panned since the first finger came down: from then on it pans on whatever the page does
   board.addEventListener("touchstart", (e) => { if (fingers === 0) panned = false; fingers = e.touches.length; }, { passive: true });
   board.addEventListener("scroll", () => { if (fingers > 0 && pinch === null && Math.abs(board.scrollLeft - put.x) + Math.abs(board.scrollTop - put.y) >= 1) panned = true; }, { passive: true });
