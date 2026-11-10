@@ -49,6 +49,7 @@ final class Reference: NSObject, NSApplicationDelegate {
   var recorder: StrokeRecorder
   var link: CADisplayLink?
   var count = 0
+  var saved = 0
 
   init(arguments: [String]) {
     func value(_ key: String) -> String? { arguments.firstIndex(of: key).map { arguments[$0 + 1] } }
@@ -78,7 +79,7 @@ final class Reference: NSObject, NSApplicationDelegate {
     NSApp.activate()
     reset()
     scroll.onScroll = { [unowned self] e in
-      recorder.event(t: e.timestamp, dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue)
+      if let s = recorder.event(t: e.timestamp, dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue) { save(s) }
     }
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
       switch e.charactersIgnoringModifiers {
@@ -103,6 +104,10 @@ final class Reference: NSObject, NSApplicationDelegate {
   @objc func tick(_ l: CADisplayLink) {
     guard let s = recorder.frame(t: l.timestamp, origin: scroll.contentView.bounds.origin) else { return }
     recorder = StrokeRecorder(name: name, stage: stage, start: start)
+    save(s)
+  }
+
+  func save(_ s: Stroke) {
     try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
     var url: URL
     repeat {
@@ -111,6 +116,8 @@ final class Reference: NSObject, NSApplicationDelegate {
     } while FileManager.default.fileExists(atPath: url.path)
     do {
       try JSONEncoder().encode(s).write(to: url)
+      saved += 1
+      window.title = "Breezy Reference — \(name): \(saved) saved"
       print(url.path)
       fflush(stdout)
     } catch {

@@ -30,11 +30,27 @@ struct StrokeRecorder {
     self.restAfter = restAfter
   }
 
-  mutating func event(t: Double, dx: Double, dy: Double, phase: UInt, momentum: UInt) {
+  /// A gesture beginning once the board has been still for 250 ms starts a new stroke, and gives the one it ends; one
+  /// beginning while the board still moves, as a push into a bounce, stays in it.
+  @discardableResult
+  mutating func event(t: Double, dx: Double, dy: Double, phase: UInt, momentum: UInt) -> Stroke? {
+    var ended: Stroke?
+    if let t0, phase == 1 || phase == 32, let s = still, ms(t, t0) - s.since >= 250 {
+      ended = stroke
+      self.t0 = nil
+      still = nil
+      events = []
+      frames = []
+    }
     let t0 = self.t0 ?? t
     self.t0 = t0
     lastEvent = ms(t, t0)
     events.append([lastEvent, dx, dy, Double(phase), Double(momentum)])
+    return ended
+  }
+
+  private var stroke: Stroke {
+    Stroke(name: name, stage: [stage.width, stage.height], start: [start.x, start.y], events: events, frames: frames)
   }
 
   mutating func frame(t: Double, origin: CGPoint) -> Stroke? {
@@ -43,7 +59,7 @@ struct StrokeRecorder {
     frames.append([now, origin.x, origin.y])
     if let s = still, abs(s.at.x - origin.x) <= 0.01, abs(s.at.y - origin.y) <= 0.01 {} else { still = (now, origin) }
     guard now - lastEvent >= restAfter, now - still!.since >= 100 else { return nil }
-    return Stroke(name: name, stage: [stage.width, stage.height], start: [start.x, start.y], events: events, frames: frames)
+    return stroke
   }
 
   private func ms(_ t: Double, _ t0: Double) -> Double { ((t - t0) * 1e4).rounded() / 10 }
