@@ -1,4 +1,4 @@
-import { banded, inside, unbanded } from "./camera.ts";
+import { APPKIT_REBOUND, TRACKPAD_BAND, banded, inside, unbanded } from "./camera.ts";
 import type { Camera, Limits } from "./camera.ts";
 import type { Area } from "./view.ts";
 import type { Cam, Point } from "./types.ts";
@@ -106,7 +106,7 @@ export class WheelPan {
     const s = this.stage(), cam = this.camera.cam;
     if (!this.raw) {
       this.limits = this.limitsAt(cam.zoom);
-      this.raw = unbanded(cam, this.limits, s);
+      this.raw = unbanded(cam, this.limits, s, TRACKPAD_BAND);
       this.last = t;
     }
     if (!this.stream) {
@@ -119,7 +119,7 @@ export class WheelPan {
     const l = this.limits!;
     this.raw = { ...this.raw, x: this.raw.x + by.x, y: this.raw.y + by.y };
     const gap = t - this.last;
-    const to = banded(this.raw, l, s), dt = Math.max(8, gap);
+    const to = banded(this.raw, l, s, TRACKPAD_BAND), dt = Math.max(8, gap);
     const v = { x: (to.x - cam.x) / dt, y: (to.y - cam.y) / dt, zoom: 0 };
     this.last = t;
     this.camera.set(to);
@@ -129,14 +129,17 @@ export class WheelPan {
     if ((back.x !== to.x || back.y !== to.y) && (momentum || stopped)) {
       this.bounced = mag;
       this.stream?.bounced.push(Math.round(t - this.t0));
-      this.camera.rebound(back, stopped ? { x: 0, y: 0 } : v);
+      this.camera.rebound(back, stopped ? { x: 0, y: 0 } : v, APPKIT_REBOUND);
     }
   }
 
   /** The stream has rested: a stretch springs back. */
   idle() {
     this.end();
-    if (!this.camera.moving) this.camera.coast({ x: 0, y: 0 });
+    if (this.camera.moving) return;
+    const cam = this.camera.cam, back = inside(cam, this.limitsAt(cam.zoom));
+    if (back.x !== cam.x || back.y !== cam.y) this.camera.rebound(back, { x: 0, y: 0 }, APPKIT_REBOUND);
+    else this.camera.coast({ x: 0, y: 0 });
   }
 
   /** Forgets the stream, as a zoom does. */

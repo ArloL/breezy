@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Camera, MARGIN, MIN_ZOOM, MAX_ZOOM, banded, boardOf, panLimits, revealing, seenFrom } from "../camera.ts";
+import { APPKIT_REBOUND, Camera, MARGIN, MIN_ZOOM, MAX_ZOOM, banded, boardOf, panLimits, revealing, seenFrom } from "../camera.ts";
 import { projection } from "../physics.ts";
 import type { Cam } from "../types.ts";
 import { fixture } from "./helpers/fixture.ts";
@@ -260,6 +260,32 @@ test("a rebound carries the speed it starts with: momentum overshoots a little b
   const peak = Math.max(...applied.map((a) => a.x));
   near(peak, 0.31 * 5000 * 0.08 * Math.exp(-1), 2);
   assert.equal(c.cam.x, 0);
+});
+
+// AppKit's scroll view, from the owner's held pushes lifted with no momentum (web/test/appkit-edge.json): a critically
+// damped spring at 19/s fits within 1.9 pt; it eases out of the stretch, half way back in 88 ms
+test("a trackpad's stretch springs back as AppKit's does: half way in 88 ms, a tenth left at 205", () => {
+  const { c, tick } = setup({ x: 300, y: 0, zoom: 1 });
+  c.rebound({ x: 0, y: 0, zoom: 1 }, { x: 0, y: 0 }, APPKIT_REBOUND);
+  tick(4, 22);
+  near(c.cam.x, 150, 4);
+  tick(4, 29);
+  near(c.cam.x, 30, 4);
+  tick(4, 100);
+  assert.equal(c.cam.x, 0);
+});
+
+test("a rebound from within a point of the edge still carries its speed out first", () => {
+  for (const w of [undefined, APPKIT_REBOUND]) {
+    const { c, tick, applied } = setup({ x: 0.6, y: 0, zoom: 1 });
+    c.rebound({ x: 0, y: 0, zoom: 1 }, { x: 2, y: 0 }, w);
+    tick(0, 1);
+    tick(4, 150);
+    // Chromium's curve peaks at 0.31·v/12.5/e, AppKit's spring at v/(ω·e)
+    const peak = Math.max(...applied.map((a) => a.x)), expected = w ? 2000 / (w * Math.E) : (0.31 * 2000) / (12.5 * Math.E);
+    assert.ok(Math.abs(peak - expected) < expected * 0.15, `${w ?? "Chromium's curve"}: peaked at ${peak.toFixed(1)}, ${expected.toFixed(1)} expected`);
+    assert.equal(c.cam.x, 0);
+  }
 });
 
 test("a coast that runs past the edge rebounds from it", () => {

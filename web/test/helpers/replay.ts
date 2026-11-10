@@ -18,7 +18,7 @@ export function replay(g: Gesture, limits: Limits, rest = 120, onStream?: WheelP
   cam.set(g.from);
   const springs: number[] = [];
   const rebound = cam.rebound.bind(cam);
-  cam.rebound = (to, v) => (springs.push(t), rebound(to, v));
+  cam.rebound = (...a) => (springs.push(t), rebound(...a));
   const size = g.stage ?? trace.stage, stage = { left: 0, top: 0, right: size.w, bottom: size.h };
   const w = new WheelPan(cam, () => limits, () => stage);
   if (onStream) w.onStream = onStream;
