@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>native scroll spike</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1c1c1e; overflow: hidden; }
+  #s { position: fixed; inset: 0; overflow: scroll; scrollbar-width: none; }
+  #b { width: 2388px; height: 2388px; background: #000 radial-gradient(circle, #595959 1px, transparent 1.5px) 0 0 / 25px 25px; border-left: 4px solid red; box-sizing: border-box; }
+</style>
+<div id="s"><div id="b"></div></div>
+<script>
+  new EventSource("/reload").onmessage = (e) => e.data.startsWith("goto ") ? location.replace(e.data.slice(5)) : location.reload();
+  const q = new URLSearchParams(location.search), s = document.getElementById("s");
+  s.scrollLeft = +q.get("x"); s.scrollTop = +q.get("y");
+  const frames = [], wheels = []; let t0 = null;
+  s.addEventListener("wheel", (e) => { const t = performance.now(); t0 ??= t; wheels.push([t - t0, e.deltaX, e.deltaY]); }, { passive: true });
+  const tick = (t) => { if (t0 !== null) frames.push([Math.round((t - t0) * 10) / 10, s.scrollLeft, s.scrollTop]); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  setInterval(() => t0 !== null && fetch(`/flight?who=${encodeURIComponent("spike " + q.get("who"))}`, { method: "POST", body: JSON.stringify({ stage: [innerWidth, innerHeight], start: [+q.get("x"), +q.get("y")], frames, wheels }) }), 2000);
+</script>
