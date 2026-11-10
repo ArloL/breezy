@@ -40,3 +40,9 @@ test("gap of a curve with itself is 0, and with one shifted 10 pt is 10", () => 
   assert.equal(gap(pull, pull, L), 0);
   assert.equal(gap(pull, pull.map(([t, x, y]) => [t, x + 10, y]), L), 10);
 });
+
+test("gap leaves out the travel more than 50 pt inside the edge, where a few ms is many points", () => {
+  const a: Curve = [[0, L.x1 - 300, 381], [8, L.x1 - 40, 381], [16, L.x1 + 10, 381], [24, L.x1, 381]];
+  const b: Curve = [[0, L.x1 - 200, 381], [8, L.x1 - 45, 381], [16, L.x1 + 10, 381], [24, L.x1, 381]];
+  assert.equal(gap(a, b, L), 5);
+});
