@@ -10,8 +10,8 @@ struct Stroke: Codable, Equatable {
   var frames: [[Double]]
 }
 
-/// Collects a stroke from its first event until the board has rested: `restAfter` ms without an event and the origin
-/// still for 100 ms. Times come in seconds, on `CACurrentMediaTime`'s clock.
+/// Collects a stroke from its first event until the board has rested: no finger down, no momentum, `restAfter` ms
+/// without an event and the origin still for 100 ms. Times come in seconds, on `CACurrentMediaTime`'s clock.
 struct StrokeRecorder {
   let name: String
   let stage: CGSize
@@ -19,6 +19,8 @@ struct StrokeRecorder {
   let restAfter: Double
   private var t0: Double?
   private var lastEvent = 0.0
+  /// A finger on the trackpad, which sends nothing while it holds still, and momentum under way.
+  private var touching = false, coasting = false
   private var still: (since: Double, at: CGPoint)?
   private var events: [[Double]] = []
   private var frames: [[Double]] = []
@@ -42,6 +44,8 @@ struct StrokeRecorder {
       events = []
       frames = []
     }
+    if phase != 0 { touching = phase != 8 && phase != 16 }
+    if momentum != 0 { coasting = momentum != 8 }
     let t0 = self.t0 ?? t
     self.t0 = t0
     lastEvent = ms(t, t0)
@@ -58,7 +62,7 @@ struct StrokeRecorder {
     let now = ms(t, t0)
     frames.append([now, origin.x, origin.y])
     if let s = still, abs(s.at.x - origin.x) <= 0.01, abs(s.at.y - origin.y) <= 0.01 {} else { still = (now, origin) }
-    guard now - lastEvent >= restAfter, now - still!.since >= 100 else { return nil }
+    guard !touching, !coasting, now - lastEvent >= restAfter, now - still!.since >= 100 else { return nil }
     return stroke
   }
 
