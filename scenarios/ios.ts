@@ -193,6 +193,15 @@ export function stopPush(udid: string, exec: (args: string[], o: { timeout: numb
   }
 }
 
+/** Unpairs every watch from its iPhone, the devices kept, and says how many: CI's image pairs six, the nightly's iPhone 17
+ * among them, and a simctl starting as CoreSimulator told it of a pair once aborted on `Invalid parameter not satisfying:
+ * devicePair`. Nothing here uses a watch. */
+export function unpairAll(exec: (args: string[], o: { timeout: number }) => string = simctl): number {
+  const ids = Object.keys((JSON.parse(exec(["list", "pairs", "--json"], { timeout: 90_000 })) as { pairs: object }).pairs);
+  for (const id of ids) exec(["unpair", id], { timeout: 60_000 });
+  return ids.length;
+}
+
 /** The booted iPhone's id, or null. */
 export function bootedIphone(): string | null {
   return iphoneIn(simctl(BOOTED, { timeout: 90_000 }));

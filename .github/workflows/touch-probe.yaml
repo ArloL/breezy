@@ -42,7 +42,7 @@ jobs:
     - name: Leave the iPhone its runtime's own shared cache
       run: xcrun simctl runtime dyld_shared_cache remove --all
     - name: Start booting an iPhone
-      run: node scripts/ios.ts --start
+      run: node scripts/ios.ts --start --unpair
     - name: Install idb
       env:
         HOMEBREW_NO_AUTO_UPDATE: '1'

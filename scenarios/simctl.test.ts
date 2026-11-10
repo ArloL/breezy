@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { bootsWithout, bootWithout, iosLogLines, simctl, simctlAsync, simctlFailures, simctlLog, stopPush } from "./ios.ts";
+import { bootsWithout, bootWithout, iosLogLines, simctl, simctlAsync, simctlFailures, simctlLog, stopPush, unpairAll } from "./ios.ts";
 
 setTimeout(() => process.exit(1), 60_000).unref();
 
@@ -157,4 +157,18 @@ test("an iPhone boots without the services written to launchd_sim's store, in a 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("every watch is unpaired from its iPhone, as a simctl told of CI's image's pairs once aborted on an empty one", () => {
+  const calls: string[] = [];
+  const pairs = { pairs: { "536F3375-5CD7-4958-AE12-7E9F9EC36BFB": { watch: {}, phone: {}, state: "(active, disconnected)" }, "93D58489-FC82-4860-9EDA-D5C5172D3936": {} } };
+  const exec = (listed: object) => (args: string[]) => {
+    calls.push(args.join(" "));
+    return args[0] === "list" ? JSON.stringify(listed) : "";
+  };
+  assert.equal(unpairAll(exec(pairs)), 2);
+  assert.deepEqual(calls, ["list pairs --json", "unpair 536F3375-5CD7-4958-AE12-7E9F9EC36BFB", "unpair 93D58489-FC82-4860-9EDA-D5C5172D3936"]);
+  calls.length = 0;
+  assert.equal(unpairAll(exec({ pairs: {} })), 0);
+  assert.deepEqual(calls, ["list pairs --json"]);
 });
