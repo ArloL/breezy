@@ -323,7 +323,7 @@ jobs:
     - name: Leave the iPhone its runtime's own shared cache
       run: xcrun simctl runtime dyld_shared_cache remove --all
     - name: Start booting an iPhone
-      run: node scripts/ios.ts --start ${{ matrix.kind == 'ios-home' && '--home' || '' }}
+      run: node scripts/ios.ts --start --unpair ${{ matrix.kind == 'ios-home' && '--home' || '' }}
     # brew's php drags 17 bottles behind it after minutes updating its taps on the preview image: 9 of the job's minutes
     - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
       with:

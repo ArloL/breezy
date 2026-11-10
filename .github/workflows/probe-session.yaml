@@ -56,7 +56,7 @@ jobs:
     - name: Leave the iPhone its runtime's own shared cache
       run: xcrun simctl runtime dyld_shared_cache remove --all
     - name: Start booting an iPhone
-      run: node scripts/ios.ts --start ${{ inputs.home && '--home' || '' }}
+      run: node scripts/ios.ts --start --unpair ${{ inputs.home && '--home' || '' }}
     - if: ${{ inputs.world }}
       uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
       with:

@@ -5,16 +5,18 @@
 // puts in it. Stop the iPhone with xcrun simctl shutdown all. With --start
 // it only starts the boot, which CI does first, for the iPhone to settle while the rest installs. With --home it also puts
 // the scenarios' app on the Home Screen as "Breezy Scenarios", for the ios-home device, on any iPhone: given with --start,
-// before the one boot, as a clip written to a booted iPhone costs it a second.
+// before the one boot, as a clip written to a booted iPhone costs it a second. With --unpair, as CI passes it, it first
+// unpairs every watch from its iPhone (scenarios/ios.ts unpairAll), which a person's own Mac keeps.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { cpus, homedir, loadavg } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { bootsWithout, bootWithout, HOME_ICON, iosUnfit, stopPush } from "../scenarios/ios.ts";
+import { bootsWithout, bootWithout, HOME_ICON, iosUnfit, stopPush, unpairAll } from "../scenarios/ios.ts";
 
 const run = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 300_000 });
+if (process.argv.includes("--unpair")) console.log(`unpaired ${unpairAll()} watches`);
 // an iPhone already booted, as the devices take the first one booted, else the model IPHONE names: an iPhone 17 by
 // default, or the owner's iPhone 13 mini, whose board shows less above its keyboard. On the newest runtime that has one
 // (CI's iOS 27.1 offers only the iPhone Duo), else made on the newest iOS runtime that can run it.
