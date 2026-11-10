@@ -13,6 +13,42 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-10-breezy-native-panning-design.md` (read "Spike findings" first; the spike's code is on branch `spike/native-pan`, `web/native-pan.ts`).
 
+## Before you start (state on 2026-11-10, when work paused)
+
+**Branches and PRs**
+- PR #271 (the bounded board and trackpad rubber band) has **merged**.
+- `try/bounded-canvas` holds, unpushed, on top of it:
+  1. **the measuring kit:** the reference app (`Reference/`), the replay helper and scripts (`scripts/replay*.{ts,swift}`, `scripts/reference-*.ts`, `scripts/dev-goto.ts`, `scripts/appkit-score.ts`), the fixture and test (`web/test/appkit-edge*`), and the owner's strokes (`scripts/reference-strokes/`);
+  2. **the tuned band and spring** (451de6e), which depends on 1;
+  3. **the specs and this plan.**
+- AGENTS.md wants small PRs off main, not stacked. So:
+  1. rebase the branch onto main;
+  2. open the measuring kit's PR first (1 and the specs);
+  3. once it merges, open the tuned band and spring's PR;
+  4. build this plan on a new branch off main after both.
+- The commits are ordered so 1 and 2 split cleanly at 451de6e, but check with `git log --oneline main..`.
+- **The spike** is on `spike/native-pan`: the native mode in `web/native-pan.ts`, the measuring tools in `spike-tools/` (the page, capture, scoring, tracker and window bounds). It's throwaway: read it, don't merge it.
+
+**Setup on the Mac**
+- **Permissions.** Accessibility and Screen Recording are granted to Visual Studio Code. Run the replay helper and `screencapture` from a session inside it, or grant them to the terminal you use.
+- **Replay helper:** `swift scripts/replay-helper.swift`. It answers only requests with the header `X-Breezy-Replay: 1`.
+- **Dev server:** `npm run dev`. Keep exactly one Breezy tab open in Firefox: every open page answers `/goto`.
+- **Reference app:** build it with `xcodegen generate && xcodebuild build -project Breezy.xcodeproj -scheme BreezyReference -destination 'platform=macOS' -derivedDataPath build/reference-dd`.
+- **The owner's strokes:** copy them into `build/reference/` (`cp scripts/reference-strokes/*.json build/reference/`) before running `scripts/reference-batch.ts`, or Task 7's capture. `build/` isn't kept.
+
+**Setup on the iPhone**
+- **Browser.** The owner's iPhone browser is **Firefox for iOS**: WebKit, user agent "FxiOS".
+- **Opening a board.** Open `http://<the Mac's LAN address>:58565/?demo&pan=native` (`ipconfig getifaddr en0`; it was 192.168.178.45).
+- **Its recording.** Each page posts its flight recording to `build/flight/browser <id>.json` every 5 s.
+- **Screen recording,** with the phone on USB: `swiftc -O -o /tmp/phone-record scripts/phone-record.swift`, then `/tmp/phone-record OUT.mov SECONDS`. Make a contact sheet with `ffmpeg -i OUT.mov -vf "fps=2,scale=120:-1,tile=15x8" -frames:v 1 sheet.png`.
+- **What's already known.** Memory notes `ios-native-scroll-quirks` and `appkit-edge-findings` hold what took rounds to find; read them first.
+
+**Decisions still open**
+- Firefox on the Mac with a trackpad: native by default after Task 7? The owner's call.
+- The iPhone: decided after the UIKit twin's plan.
+- Android keeps the camera.
+- The experimental coast (the spec's "My calls") isn't in the code. It's a third candidate on the Mac, scored in Task 7 beside native and the camera.
+
 ## Global Constraints
 
 - **Defaults.** Every platform's default stays the camera mode. Native mode is opt-in, by `?pan=native` or the menu. Changing a default is the owner's call, after a score and the owner's feel.
@@ -228,7 +264,9 @@
 - [ ] **Step 2: Run it.** `node --test scripts/test/screen-track.test.ts`. Expected: FAIL, no script.
 - [ ] **Step 3: Implement the tracker and the capture.** The capture holds the bar's last seen position between frames, and joins the page's scroll position inside the board with the bar past its edge, as the spike's `native-score.ts` did.
 - [ ] **Step 4: Check the tracker against AppKit again.** Replay `release-1` into the reference app while recording, and compare the bar with the app's own curve. Expected: on average within 0.5 pt, at most 6.
-- [ ] **Step 5: Capture all 35 cases, and score them.** Expected: a table like the spike's.
+- [ ] **Step 5: Capture all 35 cases, and score them.**
+  - Score three candidates: native; the camera as committed; and the camera with the experimental coast. That coast takes 0.55 of momentum deltas larger than 3 pt and none of those of 3 pt or less, and carries 0.25 of the momentum's speed into the bounce, behind a flag in `wheel.ts`, not shipped.
+  - Expected: a table like the spike's, one row per candidate.
 - [ ] **Step 6: Record the result in the spec** (a "Mac verdict" section with the table), and ask the owner whether Firefox on the Mac with a trackpad defaults to native. Changing the default in `panMode`'s caller is the owner's call, and a commit of its own.
 - [ ] **Step 7: Commit.**
 
