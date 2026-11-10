@@ -23,6 +23,11 @@ test("a case keeps its AppKit curve, how far AppKit's replay of it landed, and F
   assert.deepEqual(c.firefox, capture.events);
 });
 
+test("a case whose AppKit replay lost deltas is refused, as its noise would pass almost anything", () => {
+  const r = push("push-hold", 40), lost = { ...push("push-hold-replay", 40), events: r.events.slice(0, 1) };
+  assert.throws(() => buildFixture([{ file: "push-hold-3.json", recorded: r, replayed: lost, firefox: capture }]), /push-hold-3.*add up/);
+});
+
 test("Firefox's events start at AppKit's first event with a delta, as one without makes no wheel event", () => {
   const r = push("push-hold", 40);
   r.events = [[0, 0, 0, 32, 0], [30, 0, 0, 1, 0], ...r.events.map(([t, ...e]) => [t + 40, ...e])];

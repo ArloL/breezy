@@ -30,7 +30,7 @@ export function toCGPhases(phase: number, momentum: number) {
 }
 
 async function helper(path: string, body?: unknown, ms = 2000) {
-  const r = await fetch(`${HELPER}${path}`, { method: body ? "POST" : "GET", body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(ms) })
+  const r = await fetch(`${HELPER}${path}`, { method: body ? "POST" : "GET", headers: { "X-Breezy-Replay": "1" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(ms) })
     .catch((e: Error) => { throw path === "/ping" ? new Error("start the helper from Terminal.app: swift scripts/replay-helper.swift") : e; });
   if (!r.ok) throw new Error(`helper ${path}: ${r.status} ${await r.text()}`);
   return r.json();
@@ -89,7 +89,7 @@ export function captureOf(r: Recording, posted: Stroke): Capture {
 export async function intoFirefox(s: Stroke): Promise<string> {
   const who = Math.random().toString(36).slice(2, 8), flight = `${root}build/flight/firefox ${who}.json`;
   const url = `/?reference=${MARGIN - s.start[0]},${MARGIN - s.start[1]}&who=${who}`;
-  const goto = () => fetch(`${DEV}/goto?url=${encodeURIComponent(url)}`, { method: "POST", signal: AbortSignal.timeout(2000) })
+  const goto = () => fetch(`${DEV}/goto?url=${encodeURIComponent(url)}`, { method: "POST", headers: { "X-Breezy-Replay": "1" }, signal: AbortSignal.timeout(2000) })
     .then((r) => r.json() as Promise<{ pages: number }>)
     .catch(() => { throw new Error("start the dev server: npm run dev"); });
   let pages = (await goto()).pages;
