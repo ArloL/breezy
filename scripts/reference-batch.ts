@@ -5,10 +5,11 @@
 //   node scripts/reference-batch.ts
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { check } from "./reference-check.ts";
+import { check, deltas } from "./reference-check.ts";
 import { isStray } from "./reference-fixture.ts";
 import { intoFirefox, intoReference, type Stroke } from "./replay.ts";
 
+/** `faithful`: the replay's deltas add up to the recording's, which scripts/reference-fixture.ts requires. */
 export interface Case { recorded: string; replayed: string; firefox: string; faithful: boolean }
 
 const root = fileURLToPath(new URL("../", import.meta.url)), dir = `${root}build/reference`, out = `${dir}/cases.json`;
@@ -35,7 +36,7 @@ for (const [i, f] of todo.entries()) {
   const r = check(s, read(replayed), []);
   console.log(r.lines.map((l) => `  ${l}`).join("\n"));
   const firefox = await twice("firefox", () => intoFirefox(s));
-  cases.push({ recorded: f, replayed, firefox, faithful: r.ok });
+  cases.push({ recorded: f, replayed, firefox, faithful: deltas(s, read(replayed)).length === 0 });
   writeFileSync(out, JSON.stringify(cases, null, 1));
 }
 console.log(`${cases.length} cases, ${cases.filter((c) => !c.faithful).length} not faithful`);

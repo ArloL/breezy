@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { MARGIN } from "../web/camera.ts";
 import { fromClip, gap, referenceLimits, type Curve, type Measures } from "../web/test/helpers/measures.ts";
-import { liftOf, measuresOf } from "./reference-check.ts";
+import { deltas, liftOf, measuresOf } from "./reference-check.ts";
 import type { Capture, Stroke } from "./replay.ts";
 
 export interface Case {
@@ -38,6 +38,9 @@ export function buildFixture(cases: { file: string; recorded: Stroke; replayed: 
   return {
     about: "The owner's trackpad strokes at the board's edge in AppKit's NSScrollView (Reference/), as the camera every frame; how far AppKit's own replay of each landed; and the wheel events Firefox made of the same events, posted by scripts/replay.ts. Built by scripts/reference-fixture.ts from scripts/reference-batch.ts's cases.",
     cases: cases.map(({ file, recorded: r, replayed, firefox }) => {
+      // a replay that lost or turned its deltas would make its own noise the tolerance
+      const off = deltas(r, replayed);
+      if (off.length) throw new Error(`${file}: AppKit's replay is wrong, ${off.join("; ")}; replay it again`);
       const a = measuresOf(r), b = measuresOf(replayed), l = referenceLimits({ w: r.stage[0], h: r.stage[1] });
       return {
         name: file.replace(/\.json$/, ""), stage: { w: r.stage[0], h: r.stage[1] }, from: { x: MARGIN - r.start[0], y: MARGIN - r.start[1], zoom: 1 }, lift: liftOf(r),

@@ -13,7 +13,7 @@ export interface Measures {
   settle: number;
 }
 
-type Side = { axis: 1 | 2; limit: number; out: 1 | -1 };
+export type Side = { axis: 1 | 2; limit: number; out: 1 | -1 };
 
 /** An empty board's pan limits at zoom 1 on a stage of `w` × `h`, as the web board and the reference app have them. */
 export const referenceLimits = ({ w, h }: { w: number; h: number }): Limits =>
@@ -23,7 +23,7 @@ export const referenceLimits = ({ w, h }: { w: number; h: number }): Limits =>
 export const fromClip = (frames: number[][]): Curve => frames.map(([t, x, y]) => [t, MARGIN - x, MARGIN - y]);
 
 /** The side of the limits `c` goes furthest past. */
-function sideOf(c: Curve, l: Limits): Side {
+export function sideOf(c: Curve, l: Limits): Side {
   const sides: Side[] = [{ axis: 1, limit: l.x0, out: -1 }, { axis: 1, limit: l.x1, out: 1 }, { axis: 2, limit: l.y0, out: -1 }, { axis: 2, limit: l.y1, out: 1 }];
   const past = (s: Side) => Math.max(...c.map((p) => (p[s.axis] - s.limit) * s.out));
   return sides.reduce((a, b) => (past(b) > past(a) ? b : a));
@@ -34,8 +34,9 @@ const along = (c: Curve, s: Side): [number, number][] => c.map((p) => [p[0], (p[
 /** How far `c` is past the edge it goes furthest past, over time: positive outward, negative inside. */
 export const pastEdge = (c: Curve, l: Limits) => along(c, sideOf(c, l));
 
-export function measure(c: Curve, l: Limits, liftAt: number): Measures {
-  const p = pastEdge(c, l);
+/** `c`'s measures past `side`, by default the edge it goes furthest past; to compare two curves, pass the one side. */
+export function measure(c: Curve, l: Limits, liftAt: number, side = sideOf(c, l)): Measures {
+  const p = along(c, side);
   const stretch = p.findLast(([t]) => t <= liftAt)?.[1] ?? 0;
   const overshoot = Math.max(...p.map(([, v]) => v));
   const last = p.findLastIndex(([, v]) => v > 0.5);
