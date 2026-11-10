@@ -32,6 +32,12 @@ test("a capture short of the posted events refuses", () => {
   assert.throws(() => captureOf(page(), posted), /no wheel stream/);
 });
 
+test("a capture a few events short of a long stroke, which Firefox merged, is kept", () => {
+  const long: Stroke = { ...posted, events: Array.from({ length: 318 }, (_, i) => [i * 8, -1, 0, 4, 0]) };
+  const got = stream(1000, Array.from({ length: 314 }, (_, i) => [i * 8, 1, 0, 1194, 381]));
+  assert.equal(captureOf(page(got), long).events.length, 314);
+});
+
 test("a capture on a board of another size than the reference's refuses", () => {
   const small = { ...stream(1000, [[0, 2, 0, 1196, 381], [8, 3, 0, 1199, 381], [300, 1, 0, 1200, 381]]), stage: [994, 534] };
   assert.throws(() => captureOf(page(small), posted), /994 × 534.*1200 × 762/);

@@ -10,7 +10,7 @@ export const trace: { stage: { w: number; h: number }; gestures: Gesture[] } =
 
 /** Plays `g`'s wheel events through a WheelPan on a fake clock at 120 frames a second, resting the stream as View
  * does `rest` ms after its last event; gives the camera's x each frame, from the first event, and when momentum was
- * handed to the spring. */
+ * handed to the spring; `track` has the camera's y too. */
 export function replay(g: Gesture, limits: Limits, rest = 120, onStream?: WheelPan["onStream"]) {
   let t = 0, queue: ((t: number) => void)[] = [];
   const cam = new Camera(() => {}, { now: () => t, raf: (f) => queue.push(f), caf: () => (queue = []) });
@@ -22,7 +22,7 @@ export function replay(g: Gesture, limits: Limits, rest = 120, onStream?: WheelP
   const size = g.stage ?? trace.stage, stage = { left: 0, top: 0, right: size.w, bottom: size.h };
   const w = new WheelPan(cam, () => limits, () => stage);
   if (onStream) w.onStream = onStream;
-  const xs: [number, number][] = [];
+  const xs: [number, number][] = [], track: [number, number, number][] = [];
   const end = g.events.at(-1)![0] + rest + 1500;
   let i = 0, idleAt = Infinity;
   for (; t <= end; t += 1) {
@@ -36,7 +36,8 @@ export function replay(g: Gesture, limits: Limits, rest = 120, onStream?: WheelP
       const q = queue; queue = [];
       for (const f of q) f(t);
       xs.push([t, cam.cam.x]);
+      track.push([t, cam.cam.x, cam.cam.y]);
     }
   }
-  return Object.assign(xs, { springs });
+  return Object.assign(xs, { springs, track });
 }

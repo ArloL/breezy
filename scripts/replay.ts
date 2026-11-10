@@ -67,7 +67,7 @@ export async function intoReference(s: Stroke): Promise<string> {
 /** What Firefox made of a replay: its wheel events from the first, in the browser's deltas, as replay() takes them. */
 export interface Capture { stage: number[]; from: number[]; events: [t: number, dx: number, dy: number][] }
 
-/** The capture in a fresh page's recording, its streams joined; refused when it is more than 2 short of the posted events. */
+/** The capture in a fresh page's recording, its streams joined; refused when it is over 5 % short of the posted events, or 2 of a few. */
 export function captureOf(r: Recording, posted: Stroke): Capture {
   const streams = r.entries.filter((e) => e[1] === "input" && e[2] === "wheel").map((e) => e[3] as unknown as Stream);
   if (!streams.length) throw new Error("no wheel stream in the page's recording");
@@ -77,7 +77,8 @@ export function captureOf(r: Recording, posted: Stroke): Capture {
   // a stream keeps the pan it gave, against the delta
   const events = streams.flatMap((s) => s.events.map(([t, dx, dy]) => [Math.round((s.at + t - t0) * 10) / 10, -dx + 0, -dy + 0] as [number, number, number]));
   const sent = posted.events.filter(([, dx, dy]) => dx || dy).length;
-  if (events.length < sent - 2) throw new Error(`${events.length} wheel events for ${sent} posted: the page missed the start, or Firefox was not in front`);
+  // Firefox merges events too, a few in 300
+  if (events.length < Math.min(sent - 2, sent * 0.95)) throw new Error(`${events.length} wheel events for ${sent} posted: the page missed the start, or Firefox was not in front`);
   return { stage: streams[0].stage, from: streams[0].from, events };
 }
 
