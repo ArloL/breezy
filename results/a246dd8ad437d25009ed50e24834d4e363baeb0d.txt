@@ -1,0 +1,57 @@
+== now
+2026-11-10T20:12:23Z
+{ sec = 1794341041, usec = 0 } Tue Nov 10 20:04:01 2026
+== pairs
+== Device Pairs ==
+93D58489-FC82-4860-9EDA-D5C5172D3936 (active, disconnected)
+    Watch: Apple Watch Series 12 (46mm) (CD8A490F-5B2C-485E-8F11-CD8596FA4AAE) (Shutdown)
+    Phone: iPhone 18 Pro Max (0893739A-31DF-4ADD-AAD3-12D877638876) (Shutdown)
+D254ED48-D986-43FD-870A-D329D90F96C8 (active, disconnected)
+    Watch: Apple Watch Series 12 (42mm) (0F2F315B-5869-49D4-A5C9-42A5585869D7) (Shutdown)
+    Phone: iPhone Air (560C2889-F06A-4CE6-B330-A73499F3C513) (Shutdown)
+25443F37-AD6C-4D8C-8879-C2A63DC07038 (active, disconnected)
+    Watch: Apple Watch Ultra 4 (49mm) (BCB3C139-0F79-47D8-BCF2-5D39AA0D1C00) (Shutdown)
+    Phone: iPhone 17 (24E299B4-C77B-4426-AC2B-71243825F07C) (Shutdown)
+2AF11A42-8639-422F-B9BC-889C61250CEB (active, disconnected)
+    Watch: Apple Watch Series 12 (46mm) (BB504ECE-7BB3-43DB-A862-11699B1BC8B5) (Shutdown)
+    Phone: iPhone 18 Pro Max (CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA) (Shutdown)
+E898B9C4-2D5A-47F7-9998-71D0165CB0EB (active, disconnected)
+    Watch: Apple Watch Series 12 (42mm) (8836D111-0F55-471F-BF96-949729D6E6D4) (Shutdown)
+    Phone: iPhone Air (92FA1CA9-EA61-434B-AACA-0A76FE5ECBD4) (Shutdown)
+536F3375-5CD7-4958-AE12-7E9F9EC36BFB (active, disconnected)
+    Watch: Apple Watch Ultra 4 (49mm) (6BC93D36-0F39-4B2D-991D-DE2ECF09D68B) (Shutdown)
+    Phone: iPhone 17 (4AD2086B-7B8F-4608-A742-AA422A0B8D74) (Shutdown)
+== device_set.plist
+-rw-r--r--@ 1 runner  staff  7852 Nov 10 20:11 /Users/runner/Library/Developer/CoreSimulator/Devices/device_set.plist
+65:  "DevicePairs" => {
+66-    "2AF11A42-8639-422F-B9BC-889C61250CEB" => {
+67-      "active" => true
+68-      "companion" => "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA"
+69-      "gizmo" => "BB504ECE-7BB3-43DB-A862-11699B1BC8B5"
+70-    }
+71-    "93D58489-FC82-4860-9EDA-D5C5172D3936" => {
+== runtimes
+== Runtimes ==
+iOS 27.0 (27.0 - 24A434) - com.apple.CoreSimulator.SimRuntime.iOS-27-0
+iOS 27.1 (27.1 - 24A94425) - com.apple.CoreSimulator.SimRuntime.iOS-27-1
+iOS 27.2 (27.2 - 24B91016s) - com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4
+iOS 27.2 (27.2 - 24B8117) - com.apple.CoreSimulator.SimRuntime.iOS-27-2
+tvOS 27.2 (27.2 - 24K150) - com.apple.CoreSimulator.SimRuntime.tvOS-27-2
+watchOS 27.0 (27.0 - 24R362) - com.apple.CoreSimulator.SimRuntime.watchOS-27-0
+watchOS 27.2 (27.2 - 24S118) - com.apple.CoreSimulator.SimRuntime.watchOS-27-2
+visionOS 27.0 (27.0 - 24M362) - com.apple.CoreSimulator.SimRuntime.xrOS-27-0
+visionOS 27.2 (27.2 - 24N120) - com.apple.CoreSimulator.SimRuntime.xrOS-27-2
+== devices, unavailable included
+12
+-- Unavailable: com.apple.CoreSimulator.SimRuntime.tvOS-27-0 --
+    Apple TV 4K (3rd generation) (AA1A4436-9426-4301-8D39-5E909CAF9C42) (Shutdown) (unavailable, runtime profile not found using “System” match policy)
+    Apple TV 4K (3rd generation) (at 1080p) (B9E4D366-604B-4F2F-8C77-5D95AD648816) (Shutdown) (unavailable, runtime profile not found using “System” match policy)
+== CoreSimulator logs
+total 328
+drwxr-xr-x   4 runner  staff     128 Nov 10 20:06 .
+drwxr-xr-x@ 13 runner  staff     416 Nov 10 20:05 ..
+drwxr-xr-x   8 runner  staff     256 Nov 10 20:10 2E0C3783-F22A-45DA-9FDA-9A745B414F0D
+-rw-r--r--   1 runner  staff  144626 Nov 10 20:12 CoreSimulator.log
+     491 /Users/runner/Library/Logs/CoreSimulator/CoreSimulator.log
+
+exit 1 after 5 s, load { 416.13 279.94 137.68 }, 2026-11-10T20:12:28Z
