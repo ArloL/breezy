@@ -45,11 +45,18 @@ export function measure(c: Curve, l: Limits, liftAt: number): Measures {
 /** What `p` holds at `t`: its last value at or before. */
 const at = (p: [number, number][], t: number) => p.findLast(([u]) => u <= t)?.[1] ?? p[0][1];
 
-/** The largest difference past the edge between `a` and `b`, on `a`'s edge, every 8 ms over the time both cover. */
+// how far inside the edge the curves are compared: further in, a board coasting fast is many points off for a few ms
+const NEAR = 50;
+
+/** The largest difference past the edge between `a` and `b`, on `a`'s edge, every 8 ms over the time both cover,
+ * where either is within NEAR of the edge or past it. */
 export function gap(a: Curve, b: Curve, l: Limits): number {
   const s = sideOf(a, l), pa = along(a, s), pb = along(b, s);
   const from = Math.max(pa[0][0], pb[0][0]), to = Math.min(pa.at(-1)![0], pb.at(-1)![0]);
   let most = 0;
-  for (let t = from; t <= to; t += 8) most = Math.max(most, Math.abs(at(pa, t) - at(pb, t)));
+  for (let t = from; t <= to; t += 8) {
+    const u = at(pa, t), v = at(pb, t);
+    if (Math.max(u, v) >= -NEAR) most = Math.max(most, Math.abs(u - v));
+  }
   return Math.round(most * 10) / 10;
 }
