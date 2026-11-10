@@ -4,7 +4,7 @@
 //
 //   node scripts/replay.ts build/reference/push-hold-1.json --into reference|firefox
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { MARGIN } from "../web/camera.ts";
 import type { Recording } from "../web/flight.ts";
@@ -100,9 +100,11 @@ export async function intoFirefox(s: Stroke): Promise<string> {
   if (pages > 1) throw new Error(`${pages} pages on the dev server: close all Breezy tabs but one`);
   await new Promise((r) => setTimeout(r, 1500));
   await post(s, "org.mozilla.firefox");
-  // pages post their recording every 5 s
-  for (const until = Date.now() + 12_000; Date.now() < until; await new Promise((r) => setTimeout(r, 500))) {
-    if (!existsSync(flight)) continue;
+  // a stream is noted when it ends, 120 ms after its last event, and pages post every 5 s: a recording posted
+  // before then holds only the streams a pause in the stroke had already ended
+  const posted = Date.now();
+  for (const until = posted + 12_000; Date.now() < until; await new Promise((r) => setTimeout(r, 500))) {
+    if (!existsSync(flight) || statSync(flight).mtimeMs < posted + 300) continue;
     const r: Recording = JSON.parse(readFileSync(flight, "utf8"));
     if (!r.entries.some((e) => e[2] === "wheel")) continue;
     const c = captureOf(r, s), dir = `${root}build/reference/firefox`;
