@@ -2,7 +2,7 @@ import { App } from "./app.ts";
 import { box, thrown } from "./flight.ts";
 import { readSight, SightWatch, toldOf } from "./sight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
-import { sampleBoard, stressBoard } from "./sample.ts";
+import { referenceStart, sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
 import { wheelAction } from "./wheel.ts";
@@ -97,8 +97,9 @@ function record(app: App) {
 
 const params = new URLSearchParams(location.search);
 if (params.has("record")) void import("./record.ts").then((m) => m.install());
-// ?stress and ?demo show boards that are not kept, as before
-const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : null;
+// ?stress, ?demo and ?reference show boards that are not kept, as before
+const reference = referenceStart(location.search);
+const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : reference ? { cards: [], lanes: [] } : null;
 const app = new App(scratch ?? { cards: [], lanes: [] }, {
   view: (app) => {
     const v = new View(document.getElementById("board")!, app.model, app.state);
@@ -108,7 +109,7 @@ const app = new App(scratch ?? { cards: [], lanes: [] }, {
   presence: (view) => new Presence(view),
   ui: (app) => new UI(app),
 });
-app.view.setCamera({ x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
+app.view.setCamera(reference ?? { x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
 if (!(globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) record(app);
@@ -116,7 +117,8 @@ if (!(globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) record(app
 const devFlight = (globalThis as { __breezyDevFlight?: string }).__breezyDevFlight;
 if (devFlight) {
   const ua = navigator.userAgent;
-  const who = `${/Firefox/.test(ua) ? "firefox" : /Edg\//.test(ua) ? "edge" : /Chrome/.test(ua) ? "chrome" : /Safari/.test(ua) ? "safari" : "browser"} ${Math.random().toString(36).slice(2, 6)}`;
+  // ?who= names the page's file, for a replay to read its own (scripts/replay.ts)
+  const who = `${/Firefox/.test(ua) ? "firefox" : /Edg\//.test(ua) ? "edge" : /Chrome/.test(ua) ? "chrome" : /Safari/.test(ua) ? "safari" : "browser"} ${params.get("who")?.replace(/[^\w-]/g, "") || Math.random().toString(36).slice(2, 6)}`;
   let sent = "";
   setInterval(() => {
     const r = app.flight.recording(), at = `${r.entries.length} ${r.entries.at(-1)?.[0]}`;

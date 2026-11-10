@@ -37,6 +37,8 @@ const KEEP = 1500;
 /** A wheel stream as the flight recorder keeps it: times from its first event, in ms; deltas and cameras in points. */
 export interface Stream {
   [k: string]: Value;
+  /** When its first event came, on the page's clock. */
+  at: number;
   from: number[];
   limits: number[];
   stage: number[];
@@ -110,7 +112,7 @@ export class WheelPan {
     if (!this.stream) {
       const l = this.limits!;
       this.t0 = t;
-      this.stream = { from: [tenth(cam.x), tenth(cam.y), cam.zoom], limits: [l.x0, l.x1, l.y0, l.y1].map(tenth), stage: [s.right - s.left, s.bottom - s.top], events: [], bounced: [] };
+      this.stream = { at: tenth(t), from: [tenth(cam.x), tenth(cam.y), cam.zoom], limits: [l.x0, l.x1, l.y0, l.y1].map(tenth), stage: [s.right - s.left, s.bottom - s.top], events: [], bounced: [] };
     }
     // no cap past the edge: one stopped a slow drag dead at a third of the window, and momentum, which would wind the
     // band up, goes to the spring instead

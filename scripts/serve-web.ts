@@ -13,7 +13,8 @@ import { buildWeb, copyStatics, isStatic } from "./build-web.ts";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = `${root}build/web-dev`;
 const PORT = 58565;
-const RELOAD = `<script>new EventSource("/reload").onmessage = () => location.reload(); globalThis.__breezyDevFlight = "/flight";</script>`;
+// a page reloads after each build, or goes where a replay sends it (scripts/replay.ts)
+const RELOAD = `<script>new EventSource("/reload").onmessage = (e) => e.data.startsWith("goto ") ? location.replace(e.data.slice(5)) : location.reload(); globalThis.__breezyDevFlight = "/flight";</script>`;
 const flights = `${root}build/flight`;
 const types: Record<string, string> = {
   ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json",
@@ -52,6 +53,14 @@ createServer((req, res) => {
       res.writeHead(204).end();
     });
     return;
+  }
+  // from this Mac alone, and only to a page of this server
+  if (path === "/goto" && req.method === "POST") {
+    const to = url.searchParams.get("url") ?? "";
+    const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
+    if (!local || !/^\/[^/\\]/.test(to) || /[\r\n]/.test(to)) return void res.writeHead(403).end();
+    for (const p of pages) p.write(`data: goto ${to}\n\n`);
+    return void res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ pages: pages.size }));
   }
   if (path === "/reload") {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
