@@ -29,3 +29,12 @@ test("a fixture keeps each stroke's median curve, all its repeats and Firefox's 
 test("a stroke with no Firefox capture is named", () => {
   assert.throws(() => buildFixture([push("flick-fast", 30)], {}), /flick-fast/);
 });
+
+import { isStray } from "../reference-fixture.ts";
+
+test("a touch or a momentum tail that moved nothing is a stray, not a stroke", () => {
+  assert.equal(isStray(push("p", 30)), true, "3 events");
+  const many = (dx: number, moved: number): Stroke => ({ ...push("p", 0), events: Array.from({ length: 12 }, (_, i) => [i * 8, dx, 0, 0, 4]), frames: [[0, 615, 762], [100, 615 - moved, 762]] });
+  assert.equal(isStray(many(1, 0)), true, "nothing moved");
+  assert.equal(isStray(many(3, 20)), false);
+});
