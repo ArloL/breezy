@@ -27,11 +27,16 @@ struct StrokeRecorder {
   private var events: [[Double]] = []
   private var frames: [[Double]] = []
 
-  init(name: String, stage: CGSize, start: CGPoint, restAfter: Double = 1500) {
+  /// A stroke of a fixed length, in ms from its first event, for a stock scroll view, whose events past the first
+  /// go unseen.
+  let endAfter: Double?
+
+  init(name: String, stage: CGSize, start: CGPoint, restAfter: Double = 1500, endAfter: Double? = nil) {
     self.name = name
     self.stage = stage
     self.start = start
     self.restAfter = restAfter
+    self.endAfter = endAfter
   }
 
   /// A gesture beginning once the board has been still for 250 ms starts a new stroke, and gives the one it ends; one
@@ -66,6 +71,7 @@ struct StrokeRecorder {
     let now = ms(t, t0)
     frames.append([now, origin.x, origin.y])
     if from == nil { from = origin }
+    if let endAfter { return now >= endAfter ? stroke : nil }
     if let s = still, abs(s.at.x - origin.x) <= 0.01, abs(s.at.y - origin.y) <= 0.01 {} else { still = (now, origin) }
     guard !touching, !coasting, now - lastEvent >= restAfter, now - still!.since >= 100 else { return nil }
     return stroke

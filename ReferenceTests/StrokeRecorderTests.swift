@@ -99,6 +99,13 @@ final class StrokeRecorderTests: XCTestCase {
     XCTAssertEqual(finish(&r, from: 10.004).start, [172.5, 763])
   }
 
+  func testFixedLengthStrokeEndsOnTimeWhateverTheEvents() {
+    var r = StrokeRecorder(name: "stock", stage: CGSize(width: 1158, height: 864), start: CGPoint(x: 0, y: 762), endAfter: 1000)
+    _ = r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
+    XCTAssertNil(r.frame(t: 10.992, origin: CGPoint(x: -5, y: 762)))
+    XCTAssertEqual(r.frame(t: 11.0, origin: CGPoint(x: -5, y: 762))?.frames.count, 2)
+  }
+
   /// Feeds still frames from `from` until the stroke ends, failing after 3 s.
   func finish(_ r: inout StrokeRecorder, from: Double) -> Stroke {
     for ms in stride(from: 0.0, through: 3000, by: 8) {
