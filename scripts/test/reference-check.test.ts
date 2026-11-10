@@ -43,3 +43,10 @@ test("a replay that lost deltas fails", () => {
   lost.events = lost.events.slice(0, 10);
   assert.match(check(stroke(), lost, []).lines.join("\n"), /deltas/);
 });
+
+test("a fast flick whose events of 100 pt and more AppKit merged passes, as one merge moves the running total by a whole event", () => {
+  const fast = stroke();
+  fast.events = [[0, 2, 0, 1, 0], [8, 150, 0, 4, 0], [16, 160, 0, 4, 0], [24, 0, 0, 8, 0]];
+  const merged = { ...fast, events: [[0, 2, 0, 1, 0], [17, 310, 0, 4, 0], [24, 0, 0, 8, 0]] };
+  assert.equal(check(fast, merged, []).ok, true);
+});

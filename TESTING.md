@@ -9,7 +9,7 @@ Bugs used to reach the owner first, by hand, some long after they were made. Her
 | Goal | Measured by | Gap |
 |---|---|---|
 | 1a first use from the invite | — | everything: install, join and open are run by the scenarios' harness, not as she would |
-| 1b touch: drag, pan, pinch | the touch cases on the hub's phone, Chrome and Firefox on the Android emulator, and the iPhone; `lost-release` (L1) | whether a gesture surprises her |
+| 1b touch: drag, pan, pinch | the touch cases on the hub's phone, Chrome and Firefox on the Android emulator, and the iPhone; `lost-release` (L1); the trackpad at the board's edge against AppKit's NSScrollView, the owner's strokes replayed into both, `web/test/appkit-edge.test.ts` (L1), built by `scripts/reference-batch.ts` | whether a gesture surprises her; WheelPan matches AppKit on no case yet, its gaps todos |
 | 1c writing: the keyboard never covers the line | the sight check after every step (B1), on the hub's iPhones, as the Home Screen app and in a Safari tab, and Android, each held to its phone by `scenarios/phone-contract.e2e.ts`, and on the emulator and the iPhone; Android keyboards' platform rows (L5, L6) | her keyboard through DevTools in the cases, not Android's own |
 | 1d finding my new card ≤ 10 s | — | everything |
 | 1e updates never interrupt an edit | `web/test/update.test.ts`, `web/test/owner.test.ts` (L1) | no case on a device |
