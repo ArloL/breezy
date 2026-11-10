@@ -1,0 +1,9 @@
+== 17 booted:     iPhone 17 (4AD2086B-7B8F-4608-A742-AA422A0B8D74) (Booted) 
+536F3375-5CD7-4958-AE12-7E9F9EC36BFB (active, disconnected)
+    Watch: Apple Watch Ultra 4 (49mm) (6BC93D36-0F39-4B2D-991D-DE2ECF09D68B) (Shutdown)
+    Phone: iPhone 17 (4AD2086B-7B8F-4608-A742-AA422A0B8D74) (Booted)
+== the session's mini: 0 pairs
+shutdown 0
+536F3375-5CD7-4958-AE12-7E9F9EC36BFB (active, disconnected)
+
+exit 0 after 12 s, load { 452.84 825.36 545.72 }, 2026-11-10T20:24:31Z
