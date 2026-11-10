@@ -43,6 +43,34 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         BREEZY_UPDATE_FEED: ""
         BREEZY_UPDATE_KEY: MQp6FNCCHOb2mPuFpT8eF4xdSooNG5WHq0n9hwVVOQE=
+  BreezyReference:
+    type: application
+    platform: macOS
+    sources: [Reference]
+    info:
+      path: Reference/Info.plist
+      properties:
+        CFBundleDisplayName: Breezy Reference
+        NSPrincipalClass: NSApplication
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.breezy.reference
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        GENERATE_INFOPLIST_FILE: NO
+  BreezyReferenceTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [ReferenceTests]
+    dependencies:
+      - target: BreezyReference
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/BreezyReference.app/Contents/MacOS/BreezyReference
+        BUNDLE_LOADER: $(TEST_HOST)
   BreezyUITests:
     type: bundle.ui-testing
     platform: macOS
@@ -61,3 +89,9 @@ schemes:
         Breezy: all
     test:
       targets: [BreezyUITests]
+  BreezyReference:
+    build:
+      targets:
+        BreezyReference: all
+    test:
+      targets: [BreezyReferenceTests]
