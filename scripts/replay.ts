@@ -48,14 +48,17 @@ export async function intoReference(s: Stroke): Promise<string> {
   await helper("/ping");
   const app = spawn(REFERENCE_APP, ["--stage", s.stage.join("x"), "--start", s.start.join(","), "--name", `${s.name}-replay`], { stdio: ["ignore", "pipe", "inherit"] });
   try {
-    const recorded = new Promise<string>((ok, no) => {
-      app.stdout.on("data", (d: Buffer) => ok(d.toString().trim().split("\n")[0]));
-      app.on("exit", (code) => no(new Error(`the reference app exited (${code}) before recording`)));
-    });
-    await new Promise((r) => setTimeout(r, 1500));
+    const lines: string[] = [], waiting: ((l: string) => void)[] = [];
+    app.stdout.on("data", (d: Buffer) => { for (const l of d.toString().split("\n").filter(Boolean)) waiting.length ? waiting.shift()!(l) : lines.push(l); });
+    const exited = new Promise<never>((_, no) => app.on("exit", (code) => no(new Error(`the reference app exited (${code}) before recording`))));
+    const line = (ms: number, what: string) => Promise.race([
+      new Promise<string>((ok) => (lines.length ? ok(lines.shift()!) : waiting.push(ok))), exited,
+      new Promise<never>((_, no) => setTimeout(() => no(new Error(`the reference app ${what} in ${ms / 1000} s`)), ms).unref()),
+    ]);
+    // a first launch takes seconds to show its window
+    if ((await line(15_000, "showed no window")) !== "ready") throw new Error("the reference app said something before it was ready");
     await post(s, "local.breezy.reference");
-    const deadline = new Promise<never>((_, no) => setTimeout(() => no(new Error("the reference app recorded nothing in 20 s")), 20_000).unref());
-    return await Promise.race([recorded, deadline]);
+    return await line(20_000, "recorded nothing");
   } finally {
     app.kill();
   }

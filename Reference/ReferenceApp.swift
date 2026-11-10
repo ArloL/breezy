@@ -31,10 +31,21 @@ final class Board: NSView {
   }
 }
 
+/// Sees each scroll event. Overriding scrollWheel also turns off responsive scrolling, which took a gesture's events
+/// after the first on a background thread, past local monitors and NSApplication alike: they saw 1 of a replayed
+/// push's 41. Breezy's BoardScrollView overrides it too.
+final class RecordingScrollView: NSScrollView {
+  var onScroll: ((NSEvent) -> Void)?
+  override func scrollWheel(with e: NSEvent) {
+    onScroll?(e)
+    super.scrollWheel(with: e)
+  }
+}
+
 final class Reference: NSObject, NSApplicationDelegate {
   let stage: CGSize, start: CGPoint, name: String, out: URL
   var window: NSWindow!
-  let scroll = NSScrollView()
+  let scroll = RecordingScrollView()
   var recorder: StrokeRecorder
   var link: CADisplayLink?
   var count = 0
@@ -66,9 +77,8 @@ final class Reference: NSObject, NSApplicationDelegate {
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
     reset()
-    NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [unowned self] e in
+    scroll.onScroll = { [unowned self] e in
       recorder.event(t: e.timestamp, dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue)
-      return e
     }
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
       switch e.charactersIgnoringModifiers {
@@ -80,6 +90,8 @@ final class Reference: NSObject, NSApplicationDelegate {
     let l = scroll.displayLink(target: self, selector: #selector(tick(_:)))
     l.add(to: .main, forMode: .common)
     link = l
+    print("ready")
+    fflush(stdout)
   }
 
   func reset() {
