@@ -28,9 +28,10 @@ final class StrokeRecorderTests: XCTestCase {
     var r = recorder()
     _ = r.event(t: 10, dx: 1, dy: 0, phase: 1, momentum: 0)
     _ = r.event(t: 10, dx: 0, dy: 0, phase: 8, momentum: 0)
-    for ms in stride(from: 0.0, through: 1499, by: 8) { XCTAssertNil(r.frame(t: 10 + ms / 1000, origin: .zero), "open at \(ms) ms") }
+    let at = CGPoint(x: 0, y: 813)
+    for ms in stride(from: 0.0, through: 1499, by: 8) { XCTAssertNil(r.frame(t: 10 + ms / 1000, origin: at), "open at \(ms) ms") }
     var s: Stroke?
-    for ms in stride(from: 1500.0, through: 1700, by: 8) where s == nil { s = r.frame(t: 10 + ms / 1000, origin: .zero) }
+    for ms in stride(from: 1500.0, through: 1700, by: 8) where s == nil { s = r.frame(t: 10 + ms / 1000, origin: at) }
     XCTAssertNotNil(s)
     XCTAssertEqual(s?.name, "push")
     XCTAssertEqual(s?.stage, [1200, 762])
@@ -89,6 +90,13 @@ final class StrokeRecorderTests: XCTestCase {
     for ms in stride(from: 0.0, through: 2000, by: 8) { XCTAssertNil(r.frame(t: 10 + ms / 1000, origin: .zero), "momentum at \(ms) ms") }
     r.event(t: 12.1, dx: 0, dy: 0, phase: 0, momentum: 8)
     XCTAssertEqual(finish(&r, from: 12.1).events.count, 2)
+  }
+
+  func testStartIsWhereTheBoardWasAtTheFirstEvent() {
+    var r = recorder()
+    _ = r.event(t: 10, dx: 1, dy: 0, phase: 8, momentum: 0)
+    _ = r.frame(t: 10.004, origin: CGPoint(x: 172.5, y: 763))
+    XCTAssertEqual(finish(&r, from: 10.004).start, [172.5, 763])
   }
 
   /// Feeds still frames from `from` until the stroke ends, failing after 3 s.
