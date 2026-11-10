@@ -1,0 +1,10 @@
+== unified log, last hour, pair
+Timestamp               Ty Process[PID:TID]
+2026-11-10 20:13:47.242 Df log[7259:6c5a] [com.apple.log:] log run noninteractively, parent: 7255 (bash), args: 'log' 'show' '--last' '1h' '--style' 'compact' '--predicate' 'eventMessage CONTAINS[c] "devicepair" OR eventMessage CONTAINS[c] "device pair"'
+== before
+536F3375-5CD7-4958-AE12-7E9F9EC36BFB (active, disconnected)
+    Watch: Apple Watch Ultra 4 (49mm) (6BC93D36-0F39-4B2D-991D-DE2ECF09D68B) (Shutdown)
+    Phone: iPhone 17 (4AD2086B-7B8F-4608-A742-AA422A0B8D74) (Shutdown)
+boot 0 at 20:15:19
+
+exit 143 after 603 s, load { 469.68 893.26 551.23 }, 2026-11-10T20:23:42Z
