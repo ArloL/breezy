@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { wheelAction, LINE } from "../wheel.ts";
 import type { WheelPan } from "../wheel.ts";
 import { replay, trace } from "./helpers/replay.ts";
+import { rubber } from "../physics.ts";
+import { TRACKPAD_BAND } from "../camera.ts";
 
 const wheel = (e: Partial<Parameters<typeof wheelAction>[0]>) => wheelAction({ deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, metaKey: false, ...e });
 
@@ -28,6 +30,8 @@ test("a mouse wheel's large notch zooms one step, not to a limit", () => {
 // frozen at its cap while the momentum ran out, 1 to 1.25 s, and sprang back only 140 ms after its last event.
 const EDGES = { x0: -631.5, x1: 895.5, y0: -1e5, y1: 1e5 };
 const [slow, held, flick, slowing, lifted, firefox, pushOn] = trace.gestures;
+/** How far `g`'s deltas pushed the board on between `t0` and `t1`, in pt. */
+const pulled = (g: (typeof trace.gestures)[number], t0: number, t1: number) => -g.events.filter(([t]) => t >= t0 && t <= t1).reduce((n, e) => n + e[1], 0);
 const past = (x: number) => x > EDGES.x1 + 1 || x < EDGES.x0 - 1;
 const lastPast = (xs: [number, number][]) => xs.findLast(([, x]) => past(x))?.[0] ?? 0;
 
@@ -60,7 +64,8 @@ test("a slow drag past the edge stays stretched under the finger, however it slo
     assert.ok(lastPast(xs) - pushing <= 700, `${g.name}: back ${lastPast(xs) - pushing} ms after the finger's last push`);
     assert.equal(xs.at(-1)![1], EDGES.x1);
   }
-  assert.ok(replay(held, EDGES).find(([t]) => t >= 1900)![1] - EDGES.x1 > 150, "stretched while the finger pushes");
+  const held1900 = replay(held, EDGES).find(([t]) => t >= 1900)![1] - EDGES.x1, band = rubber(pulled(held, 0, 1900), trace.stage.w, TRACKPAD_BAND);
+  assert.ok(Math.abs(held1900 - band) < 3, `stretched ${held1900.toFixed(1)} pt while the finger pushes, the band giving ${band.toFixed(1)}`);
 });
 
 test("a wheel stream is kept as one flight entry: each delta, the camera it gave, and where momentum went to the spring", () => {
@@ -87,5 +92,14 @@ test("a drag begun as momentum dies away is a drag, even slower than the momentu
   const xs = replay(pushOn, EDGES);
   assert.equal(xs.springs.length >= 1, true);
   const stretched = xs.filter(([t]) => t >= 1800 && t <= 3300).map(([, x]) => x - EDGES.x1);
-  assert.ok(Math.max(...stretched) > 100, `the slow drag stretched only ${Math.max(...stretched).toFixed(0)} pt`);
+  const band = rubber(pulled(pushOn, 1600, 3300), (pushOn.stage ?? trace.stage).w, TRACKPAD_BAND);
+  assert.ok(Math.abs(Math.max(...stretched) - band) < 3, `the slow drag stretched ${Math.max(...stretched).toFixed(1)} pt, the band giving ${band.toFixed(1)}`);
+});
+
+test("a trackpad stretches past the edge as AppKit does, far stiffer than a finger on glass: 1,200 pt pushed stretches 78 on a 1,158 pt board", () => {
+  const limits = { x0: -36, x1: 1194, y0: -330, y1: 1194 };
+  const push = { name: "push", stage: { w: 1158, h: 864 }, from: { x: 1194, y: 432, zoom: 1 }, restsAt: { x: 1194, y: 432 }, events: Array.from({ length: 300 }, (_, i) => [i * 8, -4, 0] as [number, number, number]) };
+  const xs = replay(push, limits);
+  const at = xs.find(([t]) => t >= 2392)![1] - limits.x1;
+  assert.ok(Math.abs(at - 78.3) < 1.5, `stretched ${at.toFixed(1)} pt`);
 });

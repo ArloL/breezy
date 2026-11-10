@@ -18,6 +18,9 @@ const STOP_V = 0.02; // pt/ms, where UIKit lets a coast end
 // (content/renderer/input/input_scroll_elasticity_controller.cc, BSD). It sets off at once, where a spring eases in.
 const REBOUND_AMPLITUDE = 0.31;
 const REBOUND_RATE = 20 / 1.6;
+// AppKit's scroll view springs back critically damped, easing out of the stretch: (x0 + (v + ω·x0)·t)·e^(−ω·t) at 19/s
+// fits the owner's held pushes lifted with no momentum within 1.9 pt, Chromium's curve above within 3.8
+export const APPKIT_REBOUND = 19;
 // How far past a zoom limit the rubber band can reach, in natural-log units: at most about 1.5×.
 const ZOOM_STRETCH = 0.4;
 
@@ -25,6 +28,9 @@ const ZOOM_STRETCH = 0.4;
 export const MARGIN = 1194;
 // Freeform's pan stretches a little softer than UIKit's 0.55: past an edge, 0.5 fits its stretch on either axis.
 const PAN_BAND = 0.5;
+// AppKit's scroll view stretches by the same formula, far stiffer: 0.07 fits 4,238 frames of the owner's trackpad
+// pushes within 3 pt (web/test/appkit-edge.json), 1,200 pt pushed stretching 78 on a 1,158 pt board.
+export const TRACKPAD_BAND = 0.07;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -76,15 +82,15 @@ export const inside = (c: Cam, l: Limits): Cam => ({ ...c, x: clamp(c.x, l.x0, l
 /** `l` stretched to take in `c`, so that a gesture begun outside the limits does not jump. */
 export const widened = (l: Limits, c: Cam): Limits => ({ x0: Math.min(l.x0, c.x), x1: Math.max(l.x1, c.x), y0: Math.min(l.y0, c.y), y1: Math.max(l.y1, c.y) });
 
-/** Camera `c`, rubber-banded where it is past `l`, over the size of screen `s`. */
-export function banded(c: Cam, l: Limits, s: Area): Cam {
-  const band = (v: number, lo: number, hi: number, d: number) => clamp(v, lo, hi) + rubber(v - clamp(v, lo, hi), d, PAN_BAND);
+/** Camera `c`, rubber-banded where it is past `l`, over the size of screen `s`, as stiff as `k`. */
+export function banded(c: Cam, l: Limits, s: Area, k = PAN_BAND): Cam {
+  const band = (v: number, lo: number, hi: number, d: number) => clamp(v, lo, hi) + rubber(v - clamp(v, lo, hi), d, k);
   return { ...c, x: band(c.x, l.x0, l.x1, s.right - s.left), y: band(c.y, l.y0, l.y1, s.bottom - s.top) };
 }
 
 /** The camera that `banded` would draw as `c`: a stretch picked up again does not jump. */
-export function unbanded(c: Cam, l: Limits, s: Area): Cam {
-  const band = (v: number, lo: number, hi: number, d: number) => clamp(v, lo, hi) + unrubber(v - clamp(v, lo, hi), d, PAN_BAND);
+export function unbanded(c: Cam, l: Limits, s: Area, k = PAN_BAND): Cam {
+  const band = (v: number, lo: number, hi: number, d: number) => clamp(v, lo, hi) + unrubber(v - clamp(v, lo, hi), d, k);
   return { ...c, x: band(c.x, l.x0, l.x1, s.right - s.left), y: band(c.y, l.y0, l.y1, s.bottom - s.top) };
 }
 
@@ -93,7 +99,8 @@ type AxisKey = "x" | "y" | "z";
 interface Axis {
   coast?: { from: number; v: number; t0: number };
   spring?: { value: number; v: number; to: number };
-  rebound?: { from: number; v: number; to: number; t0: number };
+  /** `w`: AppKit's critically damped spring at that rate, 1/s; Chromium's curve without. */
+  rebound?: { from: number; v: number; to: number; t0: number; w?: number };
 }
 
 type Axes = Partial<Record<AxisKey, Axis>>;
@@ -187,12 +194,12 @@ export class Camera {
     });
   }
 
-  /** Back from past the board's edge to `target`, from velocity `v` in pt/ms. */
-  rebound(target: Cam, v: Point = { x: 0, y: 0 }) {
+  /** Back from past the board's edge to `target`, from velocity `v` in pt/ms; with `w`, as AppKit's spring at that rate. */
+  rebound(target: Cam, v: Point = { x: 0, y: 0 }, w?: number) {
     const t0 = this.now();
     this.run({
-      x: { rebound: { from: this.cam.x, v: v.x, to: target.x, t0 } },
-      y: { rebound: { from: this.cam.y, v: v.y, to: target.y, t0 } },
+      x: { rebound: { from: this.cam.x, v: v.x, to: target.x, t0, w } },
+      y: { rebound: { from: this.cam.y, v: v.y, to: target.y, t0, w } },
     });
   }
 
@@ -246,8 +253,11 @@ export class Camera {
         } else if (Math.abs(decay(c.v, elapsed)) >= STOP_V) busy = true;
       } else if (a.rebound) {
         const r = a.rebound, sec = Math.max(0, t - r.t0) / 1000;
-        const off = (r.from - r.to + REBOUND_AMPLITUDE * r.v * 1000 * sec) * Math.exp(-REBOUND_RATE * sec);
-        if (Math.abs(off) < 1) this.put(k, r.to);
+        const x0 = r.from - r.to, v = r.v * 1000;
+        const at = (s: number) => (r.w ? (x0 + (v + r.w * x0) * s) * Math.exp(-r.w * s) : (x0 + REBOUND_AMPLITUDE * v * s) * Math.exp(-REBOUND_RATE * s));
+        const off = at(sec);
+        // done within a point of the edge, unless its speed is still carrying it out, as from right at the edge
+        if (Math.abs(off) < 1 && Math.abs(at(sec + 0.008)) <= Math.abs(off)) this.put(k, r.to);
         else {
           this.put(k, r.to + off);
           busy = true;
