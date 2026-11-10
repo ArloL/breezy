@@ -1,4 +1,4 @@
-udid 5B958FA8-9174-4B0B-9EB7-264E1724311E
-load { 165.57 221.18 145.29 }
-at 2026-11-06T17:06:35Z
-run https://github.com/ArloL/breezy/actions/runs/42256904662
+udid 2E0C3783-F22A-45DA-9FDA-9A745B414F0D
+load { 454.16 269.62 128.26 }
+at 2026-11-10T20:11:56Z
+run https://github.com/ArloL/breezy/actions/runs/42891919019
