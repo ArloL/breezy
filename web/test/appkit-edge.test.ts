@@ -6,27 +6,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { gap, measure, referenceLimits, sideOf } from "./helpers/measures.ts";
-import type { Curve } from "./helpers/measures.ts";
-import { replay } from "./helpers/replay.ts";
-import type { Case, Fixture } from "../../scripts/reference-fixture.ts";
+import { compare } from "./helpers/appkit.ts";
+import type { Fixture } from "../../scripts/reference-fixture.ts";
 
 const fixture: Fixture = JSON.parse(readFileSync(new URL("./appkit-edge.json", import.meta.url), "utf8"));
-const FLOOR = { stretch: 2, overshoot: 2, settle: 16, gap: 2 };
 // Where WheelPan moves otherwise than AppKit today, "<case> <measure>" to how far off it is: a ratchet. Such a gap may
 // not grow beyond that and the case's noise; once it closes, its entry goes. A gap found anywhere else fails.
 const KNOWN: Record<string, number> = JSON.parse(readFileSync(new URL("./appkit-edge-known.json", import.meta.url), "utf8"));
-const KEYS = ["stretch", "overshoot", "settle", "gap"] as const;
-
-/** What WheelPan, given Firefox's events, and AppKit did with a case, on each measure. */
-export function compare(c: Case) {
-  const l = referenceLimits(c.stage);
-  const web: Curve = replay({ name: c.name, stage: c.stage, from: c.from, restsAt: { x: 0, y: 0 }, events: c.firefox }, l).track;
-  // both on the edge AppKit went furthest past, as a curve crossing both edges may go further past the other
-  const side = sideOf(c.appkit, l);
-  const a = { ...measure(c.appkit, l, c.lift, side), gap: 0 }, w = { ...measure(web, l, c.lift, side), gap: gap(c.appkit, web, l) };
-  return KEYS.map((k) => ({ k, appkit: a[k], wheelpan: w[k], within: Math.max(FLOOR[k], c.noise[k]), off: Math.abs(a[k] - w[k]) }));
-}
 
 test("the fixture has pushes held and released, flicks from rest and from the middle, a push into a bounce, a pull back and a diagonal", () => {
   const kinds = new Set(fixture.cases.map((c) => c.name.replace(/-\d+$/, "")));
