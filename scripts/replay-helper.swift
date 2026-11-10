@@ -3,7 +3,8 @@
 //
 //   swift scripts/replay-helper.swift
 //
-// It listens on 127.0.0.1:58569 alone, posts nothing but scroll events, and exits after an hour without a request.
+// It listens on 127.0.0.1:58569 alone, hears only requests with the header X-Breezy-Replay: 1 and no Origin, which no
+// web page can make, posts nothing but scroll events, and exits after an hour without a request.
 //   GET /ping                                  200
 //   POST /replay {app, events: [[t, dx, dy, cgPhase, cgMomentum]]}   {"posted": n}, once the last is posted
 import AppKit
@@ -57,19 +58,34 @@ func post(_ events: [[Double]], at p: CGPoint) -> Int {
   return events.count
 }
 
+let replays = DispatchQueue(label: "replays", qos: .userInteractive)
+let scrollPhases: Set<Int64> = [0, 1, 2, 4, 8, 128], momentumPhases: Set<Int64> = [0, 1, 2, 3]
+
+/// Events posted as given: five finite numbers each, times from 0 in order within 2 minutes, deltas a scroll's size.
+func valid(_ events: [[Double]]) -> Bool {
+  var last = 0.0
+  for e in events {
+    guard e.count == 5, e.allSatisfy(\.isFinite), e[0] >= last, e[0] <= 120_000, abs(e[1]) < 10_000, abs(e[2]) < 10_000,
+      scrollPhases.contains(Int64(e[3])), momentumPhases.contains(Int64(e[4])) else { return false }
+    last = e[0]
+  }
+  return true
+}
+
 func handle(_ c: NWConnection, _ request: Data) {
-  lastRequest = Date()
   let text = String(decoding: request, as: UTF8.self)
-  let line = text.prefix { $0 != "\r" }
-  if line.hasPrefix("GET /ping ") { return respond(c, 200, "{}") }
-  guard line.hasPrefix("POST /replay "), let split = request.range(of: Data("\r\n\r\n".utf8)) else { return respond(c, 404, "{}") }
-  guard let r = try? JSONDecoder().decode(Replay.self, from: request[split.upperBound...]) else { return respond(c, 400, #"{"error":"bad replay"}"#) }
-  DispatchQueue.main.async {
-    guard let p = front(r.app) else { return respond(c, 404, #"{"error":"no window of \#(r.app)"}"#) }
-    DispatchQueue.global(qos: .userInteractive).async {
-      let n = post(r.events, at: p)
-      respond(c, 200, #"{"posted":\#(n)}"#)
-    }
+  let head = text.components(separatedBy: "\r\n\r\n")[0].lowercased().components(separatedBy: "\r\n")
+  let line = head[0]
+  // a request no web page can make: the replay header, which a browser asks leave for first, and no Origin
+  guard head.contains("x-breezy-replay: 1"), !head.contains(where: { $0.hasPrefix("origin:") }) else { return respond(c, 403, "{}") }
+  lastRequest = Date()
+  if line.hasPrefix("get /ping ") { return respond(c, 200, "{}") }
+  guard line.hasPrefix("post /replay "), let split = request.range(of: Data("\r\n\r\n".utf8)) else { return respond(c, 404, "{}") }
+  guard let r = try? JSONDecoder().decode(Replay.self, from: request[split.upperBound...]), valid(r.events) else { return respond(c, 400, #"{"error":"bad replay"}"#) }
+  // one at a time, so that two replays never interleave
+  replays.async {
+    guard let p = DispatchQueue.main.sync(execute: { front(r.app) }) else { return respond(c, 404, #"{"error":"no window of \#(r.app)"}"#) }
+    respond(c, 200, #"{"posted":\#(post(r.events, at: p))}"#)
   }
 }
 
@@ -78,6 +94,7 @@ func receive(_ c: NWConnection, _ got: Data = Data()) {
   c.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { data, _, done, error in
     var all = got
     if let data { all.append(data) }
+    if all.count > 8 << 20 { return respond(c, 413, "{}") }
     if let split = all.range(of: Data("\r\n\r\n".utf8)) {
       let head = String(decoding: all[..<split.lowerBound], as: UTF8.self).lowercased()
       let length = head.split(separator: "\r\n").first { $0.hasPrefix("content-length:") }.flatMap { Int($0.dropFirst(15).trimmingCharacters(in: .whitespaces)) } ?? 0

@@ -1,7 +1,7 @@
 // The measures a stroke at the board's edge is compared on, against AppKit's (appkit-edge.test.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fromClip, gap, measure, pastEdge, referenceLimits } from "./helpers/measures.ts";
+import { fromClip, gap, measure, pastEdge, referenceLimits, sideOf } from "./helpers/measures.ts";
 import type { Curve } from "./helpers/measures.ts";
 
 const L = referenceLimits({ w: 1200, h: 762 });
@@ -45,4 +45,10 @@ test("gap leaves out the travel more than 50 pt inside the edge, where a few ms 
   const a: Curve = [[0, L.x1 - 300, 381], [8, L.x1 - 40, 381], [16, L.x1 + 10, 381], [24, L.x1, 381]];
   const b: Curve = [[0, L.x1 - 200, 381], [8, L.x1 - 45, 381], [16, L.x1 + 10, 381], [24, L.x1, 381]];
   assert.equal(gap(a, b, L), 5);
+});
+
+test("a curve measured on another's edge: WheelPan on AppKit's, though it goes further past the other", () => {
+  const appkit: Curve = [[0, L.x0 - 45, 381], [8, L.x1 + 39, 381], [16, L.x1, 381]];
+  const web: Curve = [[0, L.x0 - 40, 381], [8, L.x1 + 227, 381], [16, L.x1, 381]];
+  assert.equal(measure(web, L, 0, sideOf(appkit, L)).stretch, 40);
 });

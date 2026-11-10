@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildWeb, copyStatics, isStatic } from "./build-web.ts";
+import { gotoTarget } from "./dev-goto.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = `${root}build/web-dev`;
@@ -54,11 +55,11 @@ createServer((req, res) => {
     });
     return;
   }
-  // from this Mac alone, and only to a page of this server
+  // from this Mac alone, from no web page, and only to a page of this server
   if (path === "/goto" && req.method === "POST") {
-    const to = url.searchParams.get("url") ?? "";
     const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
-    if (!local || !/^\/[^/\\]/.test(to) || /[\r\n]/.test(to)) return void res.writeHead(403).end();
+    const to = local ? gotoTarget(url.searchParams.get("url") ?? "", req.headers) : null;
+    if (to === null) return void res.writeHead(403).end();
     for (const p of pages) p.write(`data: goto ${to}\n\n`);
     return void res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ pages: pages.size }));
   }

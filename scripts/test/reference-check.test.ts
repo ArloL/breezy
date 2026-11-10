@@ -50,3 +50,10 @@ test("a fast flick whose events of 100 pt and more AppKit merged passes, as one 
   const merged = { ...fast, events: [[0, 2, 0, 1, 0], [17, 310, 0, 4, 0], [24, 0, 0, 8, 0]] };
   assert.equal(check(fast, merged, []).ok, true);
 });
+
+test("a replay whose momentum began 24 ms late passes, as that is jitter, not deltas lost", () => {
+  const rec = stroke();
+  rec.events = [[0, 2, 0, 1, 0], [8, 10, 0, 8, 0], ...Array.from({ length: 12 }, (_, i) => [16 + i * 8, 20, 0, 0, i ? 4 : 1])];
+  const late = { ...rec, events: rec.events.map(([t, ...e], i) => [i > 1 ? t + 24 : t, ...e]) };
+  assert.equal(check(rec, late, []).ok, true);
+});
