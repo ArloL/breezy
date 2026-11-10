@@ -18,12 +18,22 @@ export const measuresOf = (s: Stroke) => {
   return measure(fromClip(s.frames), l, liftOf(s));
 };
 
+// AppKit merges events that come close together, a few pt each: a replay of 539 events arrived as 495, its running
+// totals within 4 pt of the recording's
+const DRIFT = 8;
+
+/** Whether `b`'s deltas add up as `a`'s did, over time and in all. */
 function deltas(a: Stroke, b: Stroke): string[] {
-  if (Math.abs(a.events.length - b.events.length) > 2) return [`${b.events.length} events replayed against ${a.events.length} recorded`];
-  for (let i = 0; i < Math.min(a.events.length, b.events.length); i++) {
-    const [, ax, ay] = a.events[i], [, bx, by] = b.events[i];
-    if (ax * bx < 0 || ay * by < 0) return [`event ${i}: the sign differs, (${ax}, ${ay}) recorded, (${bx}, ${by}) replayed`];
-    if (Math.abs(ax - bx) > 0.5 || Math.abs(ay - by) > 0.5) return [`event ${i}: deltas differ, (${ax}, ${ay}) recorded, (${bx}, ${by}) replayed`];
+  const sum = (s: Stroke, i: 1 | 2, t = Infinity) => s.events.reduce((n, e) => (e[0] <= t ? n + e[i] : n), 0);
+  for (const i of [1, 2] as const) {
+    const ta = sum(a, i), tb = sum(b, i), axis = i === 1 ? "x" : "y";
+    if (ta * tb < 0 && Math.abs(ta) > 1) return [`the sign differs on ${axis}: ${ta.toFixed(1)} recorded, ${tb.toFixed(1)} replayed`];
+    if (Math.abs(ta - tb) > 1) return [`the deltas on ${axis} add up to ${ta.toFixed(1)} recorded, ${tb.toFixed(1)} replayed`];
+    const end = Math.max(a.events.at(-1)?.[0] ?? 0, b.events.at(-1)?.[0] ?? 0);
+    for (let t = 0; t <= end; t += 8) {
+      const d = Math.abs(sum(a, i, t) - sum(b, i, t));
+      if (d > DRIFT) return [`the deltas on ${axis} drift ${d.toFixed(1)} pt apart by ${t} ms`];
+    }
   }
   return [];
 }
