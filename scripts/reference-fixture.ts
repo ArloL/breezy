@@ -26,6 +26,13 @@ export interface Fixture { about: string; strokes: FixtureStroke[] }
 const tenth = (n: number) => Math.round(n * 10) / 10;
 const curve = (s: Stroke): Curve => fromClip(s.frames).map(([t, x, y]) => [tenth(t), tenth(x), tenth(y)]);
 
+/** A touch, or the tail of momentum after a reset: under 10 events, or the board never moved a point. */
+export function isStray(s: Stroke) {
+  if (s.events.length < 10 || !s.frames.length) return true;
+  const [, x0, y0] = s.frames[0];
+  return !s.frames.some(([, x, y]) => Math.abs(x - x0) >= 1 || Math.abs(y - y0) >= 1);
+}
+
 /** The repeat whose overshoot is the median of the repeats'. */
 export function median(repeats: Stroke[]): Stroke {
   const sorted = [...repeats].sort((a, b) => measuresOf(a).overshoot - measuresOf(b).overshoot);
