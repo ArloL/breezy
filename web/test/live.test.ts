@@ -346,6 +346,48 @@ test("a reconnect asks for its holds again", async () => {
   assert.deepEqual([...refused!], [C1]);
 });
 
+test("the recorder keeps what the relay said and what changes it carried, an item's live bodies once, never a cursor", async () => {
+  const clock = new Clock(), relay = new FakeRelay({ now: clock.now });
+  const a = live(relay, clock, { name: "Ana" }), b = live(relay, clock, { name: "Bo" });
+  const notes = { a: [] as [string, object?][], b: [] as [string, object?][] };
+  a.note = (what, data) => notes.a.push([what, data]);
+  b.note = (what, data) => notes.b.push([what, data]);
+  const of = (n: [string, object?][], what: string) => n.filter(([w]) => w === what).map(([, d]) => d);
+  a.connect();
+  await relay.run();
+  a.hold([C1]);
+  a.sendLive(B1, moved, null);
+  b.connect();
+  await relay.run();
+  a.setPresence({ board: B1, selection: [] });
+  b.setPresence({ board: B1, selection: [] });
+  a.sendCursor(B1, 1, 1);
+  await relay.run();
+  a.sendLive(B1, moved, null);
+  await relay.run();
+  a.sendLive(B1, { [C1]: { pos: [60, 0] } }, null);
+  clock.advance(100);
+  await relay.run();
+  assert.deepEqual(Object.fromEntries(b.overlay(B1)), { [C1]: { pos: [60, 0] } });
+  a.sendPushed({ version: 7 });
+  await relay.run();
+  const [aId, bId] = [a.id, b.id];
+  relay.kick(relay.sockets[1], 1006);
+  await relay.run();
+
+  assert.deepEqual(of(notes.a, "relay welcome"), [{ id: aId, peers: 0 }]);
+  assert.deepEqual(of(notes.b, "relay welcome").map((d) => (d as { peers: number }).peers), [1]);
+  assert.deepEqual(of(notes.a, "relay join"), [{ id: bId }]);
+  // the first went to nobody, as b had not come
+  assert.deepEqual(of(notes.a, "relay live out"), [{ board: B1, items: C1, peers: 0, edit: false }]);
+  assert.deepEqual(of(notes.b, "relay live in"), [{ from: aId, board: B1, items: C1 }]);
+  assert.deepEqual(of(notes.a, "relay pushed out"), [{ version: 7, records: "none", peers: 1 }]);
+  assert.deepEqual(of(notes.b, "relay pushed in"), [{ from: aId, version: 7, records: "none" }]);
+  assert.deepEqual(of(notes.b, "relay dropped"), [{ code: 1006, wanted: true }]);
+  assert.deepEqual(of(notes.b, "relay again").length, 1);
+  assert.ok(![...notes.a, ...notes.b].some(([w]) => /cursor|presence/.test(w)));
+});
+
 test("reconnects back off and stop for a wrong token", async () => {
   const relay = new FakeRelay(), clock = new Clock();
   const a = live(relay, clock);

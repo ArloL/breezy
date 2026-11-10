@@ -18,6 +18,7 @@ The tooling fails like the app does. A tap's 317 ms was idb's companion overrunn
   - a run's `build/scenarios/<when> <case>/`: `timeline.txt`, `case.json`, and `<who> flight.json` per device;
   - a failing hub case's `build/hub/<test>/`, on CI the failed run's `hub` artifact;
   - a nightly's artifacts: `gh run download`, a failing case's `<who> video` among them when the night filmed;
+  - a feel turn's wait that timed out: the `feel` artifact's `feel-failure/` (the reference's `feel-ref-failure/`), each page's `flight.json`, `state.json` (focus, each card's classes and editor) and `screen.png`;
   - a page on the dev server (`npm run dev`): its flight recording, posted every 5 s to `build/flight/<browser> <page>.json`, a new page id on each reload; each wheel stream is one `wheel` entry, deltas and camera per event;
   - a night's `night-report` artifact: its summary as Markdown, and `runner-facts.json`, what ran under its cases job by job (`scripts/runner-facts.ts`);
   - what the owner's or partner's phone sent, on "Report a Problem", an error, or a card out of sight (its `decision sight broken` entry holds the card, caret and board as the app's own sight check read them): `BREEZY_INVITE='<invite link>' node scripts/diag.ts` lists them, and with an id saves and draws one under build/diag. Ask the owner for an invite link once a session, and never keep it in a file or a memory.

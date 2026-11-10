@@ -71,6 +71,9 @@ export function command(e: KeyEvent, { mac, typing }: { mac: boolean; typing: Ty
   return null;
 }
 
+/** A key as the recorder keeps it: its name, or "char" for a key that types, as what is typed into a card is its words. */
+export const keyName = (key: string) => (/^[A-Z][A-Za-z0-9]+$/.test(key) ? key : "char");
+
 function modified(k: string, shift: boolean): Command | null {
   if (k === "z") return shift ? "redo" : "undo";
   if (k === "g") return shift ? "find-previous" : "find-next";

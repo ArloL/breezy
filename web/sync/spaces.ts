@@ -185,6 +185,7 @@ export class Spaces {
         if (!(extra && (await g.engine.receivePushed(extra)))) g.engine.sync();
       };
       live.onWelcome = () => g.engine.retryNow(false);
+      live.note = (what, data) => this.onSyncNote(g, what, data);
       live.onChange = () => this.onLive(g);
       live.onRefused = (ids) => this.onRefused(g, ids);
       // a refused token is the server's to report: its 401 shows "Not in this space any more"
