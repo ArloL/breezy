@@ -6,7 +6,7 @@
 
 **Architecture:**
 - **Surfaces.** The view stops applying the camera itself and hands it to a surface: `CameraSurface`, today's transformed world and canvas grid, or `NativeSurface`, a scroll container whose position is the camera.
-- **Pure decisions.** Every decision native mode makes is a pure function in `web/native/`, tested in Node. The DOM wiring follows the spike (`spike/native-pan`, commits 399c23b..f5c…), tested in desktop browser cases.
+- **Pure decisions.** Every decision native mode makes is a pure function in `web/native/`, tested in Node. The DOM wiring follows the spike (`spike/native-pan`, commits 399c23b..5121480), tested in desktop browser cases.
 - **Opt-in.** The mode is chosen when the board opens (`?pan=`, remembered, plus a temporary menu item). The default stays the camera everywhere in this plan.
 
 **Tech Stack:** TypeScript (Node 26 type stripping, `node --test`), the DOM, Playwright-driven browser cases in `scenarios/`, Python for screen tracking (`ffmpeg`), the replay helper and reference app from the native reference work.
@@ -15,7 +15,7 @@
 
 ## Global Constraints
 
-- **Defaults.** Every platform's default stays the camera mode. Native mode is opt-in, by `?pan=native` or the menu. Changing a default is the owner's call, after a score and his feel.
+- **Defaults.** Every platform's default stays the camera mode. Native mode is opt-in, by `?pan=native` or the menu. Changing a default is the owner's call, after a score and the owner's feel.
 - **Localhost only.** Test against localhost (`npm run dev`), never breezy.k5d.de. Small PRs off main, merged green; this work goes after the measuring kit's PR.
 - **Constants.** The board reaches `MARGIN` = 1,194 pt past its outermost card or lane. Zoom stays within 0.25–2 (`clampZoom`). The one-finger zoom divides by `ZOOM_DRAG` = 150. Native content is the board at the zoom, and at least one point larger than the window on each axis.
 - **Comments and options.** Comments only where something isn't obvious. Long CLI options where macOS supports them.
@@ -206,7 +206,7 @@
 - [ ] **Step 2: Run them.** `node --test scenarios/native-ios.e2e.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement the wiring.**
 - [ ] **Step 4: Run the cases, then the suite.** Expected: PASS.
-- [ ] **Step 5: Ask the owner to feel it on his iPhone.** In the Home Screen app, switch "Panning: Native" in the menu, then try a pan, a flick, a pull past an edge, a pinch fresh and mid-pan, a hold-drag, a double tap and drag, and editing with the spacebar. Expected: he finds nothing broken. Anything he finds is debugged from his flight recording first (`.claude/skills/debugging-breezy`), with a test at the lowest level that shows it.
+- [ ] **Step 5: Ask the owner to feel it on their iPhone.** In the Home Screen app, switch "Panning: Native" in the menu, then try a pan, a flick, a pull past an edge, a pinch fresh and mid-pan, a hold-drag, a double tap and drag, and editing with the spacebar. Expected: nothing broken. Anything the owner finds is debugged from the phone's flight recording first (`.claude/skills/debugging-breezy`), with a test at the lowest level that shows it.
 - [ ] **Step 6: Commit.**
 
 ### Task 7: The Mac scored — native mode against AppKit
@@ -229,7 +229,7 @@
 - [ ] **Step 3: Implement the tracker and the capture.** The capture holds the bar's last seen position between frames, and joins the page's scroll position inside the board with the bar past its edge, as the spike's `native-score.ts` did.
 - [ ] **Step 4: Check the tracker against AppKit again.** Replay `release-1` into the reference app while recording, and compare the bar with the app's own curve. Expected: on average within 0.5 pt, at most 6.
 - [ ] **Step 5: Capture all 35 cases, and score them.** Expected: a table like the spike's.
-- [ ] **Step 6: Record the result in the spec** (a "Mac verdict" section with the table), and ask the owner whether Firefox on the Mac with a trackpad defaults to native. Changing the default in `panMode`'s caller is his call, and a commit of its own.
+- [ ] **Step 6: Record the result in the spec** (a "Mac verdict" section with the table), and ask the owner whether Firefox on the Mac with a trackpad defaults to native. Changing the default in `panMode`'s caller is the owner's call, and a commit of its own.
 - [ ] **Step 7: Commit.**
 
 ---
