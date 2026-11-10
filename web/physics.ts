@@ -26,3 +26,9 @@ export const rubber = (x: number, d: number, c = 0.55) => Math.sign(x) * (1 - 1 
 export function edgeSpeed(depth: number, heldMs: number) {
   return depth > EDGE_ZONE ? 0 : Math.min(EDGE_MAX, EDGE_MIN * Math.exp(heldMs / EDGE_TAU));
 }
+
+/** The pull that `rubber` stretches to `y`; a `y` the band never reaches, as far as just short of it. */
+export function unrubber(y: number, d: number, c = 0.55) {
+  const a = Math.min(Math.abs(y), d * 0.999);
+  return Math.sign(y) * ((a * d) / ((d - a) * c));
+}

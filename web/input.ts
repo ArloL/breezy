@@ -1,7 +1,9 @@
 import * as R from "./rules.ts";
 import { hitTest, dragAction } from "./policy.ts";
 import { MIN_ZOOM, MAX_ZOOM } from "./view.ts";
+import { banded, inside, unbanded, widened } from "./camera.ts";
 import { EDGE_ZONE, edgeSpeed } from "./physics.ts";
+import type { Limits } from "./camera.ts";
 import type { DragAction, Hit } from "./policy.ts";
 import type { Origin, Room } from "./rules.ts";
 import type { App } from "./app.ts";
@@ -26,6 +28,9 @@ interface Drag {
   laneOrigin?: Origin;
   size?: { w: number; h: number };
   base?: string[];
+  limits?: Limits;
+  /** Where the pan asks the camera to be when it begins, before the band: a bounce it catches goes on from there. */
+  raw0?: Cam;
 }
 
 /** Where a pinch or one-finger zoom began, and where it is now. */
@@ -169,6 +174,10 @@ export class Input {
       if (s.turned && h.id !== s.turned) app.turn(null);
     }
     const d: Drag = { action, id: h.id, p0, w0: app.view.toWorld(p0), cam0: { ...app.view.cam }, sel0: [...s.selection], last: p };
+    if (action === "pan") {
+      d.limits = app.view.hold();
+      d.raw0 = unbanded(d.cam0, d.limits, app.view.stage());
+    }
     this.edgeSince = 0;
     this.drag = d;
     app.flight.note("transition", "drag", { action, ids: s.selection.size });
@@ -214,7 +223,7 @@ export class Input {
     d.last = p;
     const app = this.app;
     if (d.action === "pan") {
-      app.view.setCamera({ ...d.cam0, x: d.cam0.x + p.x - d.p0.x, y: d.cam0.y + p.y - d.p0.y });
+      app.view.setCamera(banded({ ...d.raw0!, x: d.raw0!.x + p.x - d.p0.x, y: d.raw0!.y + p.y - d.p0.y }, d.limits!, app.view.stage()));
       return;
     }
     const w = app.view.toWorld(p);
@@ -313,7 +322,10 @@ export class Input {
     const wx = (c0.x - cam.x) / cam.zoom;
     const wy = (c0.y - cam.y) / cam.zoom;
     this.pinchBase!.last = c;
-    this.app.view.setCamera({ zoom, x: c.x - wx * zoom, y: c.y - wy * zoom });
+    const { view } = this.app;
+    // a pinch takes the board with it, as Freeform's does: its edge never shows
+    view.setCamera({ zoom, x: c.x - wx * zoom, y: c.y - wy * zoom });
+    view.takeIn();
   }
 
   /** A zoom past a limit springs back around the fingers; otherwise the pan coasts on. */
@@ -372,7 +384,7 @@ export class Input {
       this.edgeLast = t;
       const d = edgeSpeed(0, t - this.edgeSince) * dt;
       const c = this.app.view.cam;
-      this.app.view.setCamera({ ...c, x: c.x + dx * d, y: c.y + dy * d });
+      this.app.view.setCamera(inside({ ...c, x: c.x + dx * d, y: c.y + dy * d }, widened(this.app.view.limits(c.zoom), c)));
       this.dragMove(this.drag.last);
     });
   }

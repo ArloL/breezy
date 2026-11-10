@@ -31,7 +31,7 @@ export interface Field {
 /** What the app uses of what draws the board: the DOM in a browser, a fake in tests. */
 export type ViewPort = Pick<View,
   | "cam" | "camera" | "heightOf" | "frontHeight" | "ready" | "area" | "onCamera" | "onRender" | "shown" | "els"
-  | "invalidate" | "render" | "setCamera" | "toWorld" | "toScreen" | "rectOf" | "centre" | "zoomAround" | "centreOn"
+  | "invalidate" | "render" | "setCamera" | "toWorld" | "toScreen" | "rectOf" | "centre" | "zoomAround" | "limits" | "hold" | "takeIn" | "stage" | "wheelPan" | "centreOn"
   | "reveal" | "caretRect" | "topOf" | "editorOf" | "titleOf" | "animateTurn">;
 
 /** What the app uses of the bars, menus and find around the board. */

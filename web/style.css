@@ -5,6 +5,7 @@
   --ink3: rgb(43 42 39 / 0.42);
   --hairline: rgb(43 42 39 / 0.12);
   --dot: rgb(43 42 39 / 0.16);
+  --outside: #e3e0d9;
   --accent: #e8620a;
   --lane: rgb(255 255 255 / 0.45);
   --bar: rgb(241 239 234 / 0.85);
@@ -34,6 +35,7 @@
     --ink3: rgb(233 230 223 / 0.42);
     --hairline: rgb(233 230 223 / 0.12);
     --dot: rgb(233 230 223 / 0.16);
+    --outside: #2c2b28;
     --accent: #ff8a3d;
     --lane: rgb(255 255 255 / 0.04);
     --bar: rgb(31 30 28 / 0.85);
