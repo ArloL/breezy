@@ -55,3 +55,32 @@ On the owner's Mac, pulling the web board past its edge with the trackpad in Fir
 - Whether the replay tool is Swift or Python with PyObjC (`scripts/sim-hid.py` is Python).
 - How each comparison is reported, and its tolerances, set from how much the owner's own strokes and AppKit's curves vary over repeats.
 - How the spike page measures its position past the edge, where Firefox's overscroll can't be read from script. It could be a screen capture tracking a marker.
+
+## Spike verdict
+
+Measured on 2026-11-10 from 35 of the owner's strokes on a MacBook trackpad, macOS 27.0.1, Firefox 159, on a 1158 × 864 board.
+
+**The page.** A throwaway page let Firefox scroll the board natively: an `overflow: scroll` box, with no zoom.
+
+**How it was measured.** Firefox's own stretch past the edge can't be read from script, so it was tracked on screen: a red bar at the board's edge, in a 120 fps screen recording. The tracking was checked against the reference app's own record of a replay: 0.2 pt apart on average, 5.5 pt at most, with peaks of 46 against 47 pt.
+
+**Columns.** "Peak" is the furthest past the edge. "Out" is the time from first crossing the edge until back within 0.5 pt for good.
+
+| Stroke | AppKit peak | Firefox native | WheelPan | AppKit out | Firefox out | WheelPan out |
+|---|---|---|---|---|---|---|
+| release-1 | 47 pt | 41 pt | 331 pt | 1107 ms | 1308 ms | 1288 ms |
+| release-2 | 48 pt | 42 pt | 249 pt | 1033 ms | 1400 ms | 1360 ms |
+| release-5 | 71 pt | 59 pt | 437 pt | 892 ms | 1041 ms | 976 ms |
+| push-hold-1 | 29 pt | 26 pt | 178 pt | 6042 ms | 6391 ms | 2024 ms |
+| push-hold-5 | 59 pt | 55 pt | 296 pt | 5074 ms | 5958 ms | 5424 ms |
+| diagonal-2 | 33 pt | 34 pt | 220 pt | 1667 ms | 2041 ms | 2008 ms |
+| flick-mid-2 | 32 pt | 80 pt | 240 pt | 500 ms | 750 ms | 592 ms |
+| flick-mid-4 | 67 pt | 74 pt | 201 pt | 575 ms | 742 ms | 576 ms |
+| flick-3 | 204 pt | 36 pt | 471 pt | 741 ms | 708 ms | 688 ms |
+| push-after-bounce-2 | 139 pt | 56 pt | 360 pt | 1666 ms | 1983 ms | 1872 ms |
+
+**Pushes into the edge.** Firefox's own scrolling stretches within about 15 % of AppKit's; WheelPan stretches 4–8 times as far. AppKit's band is far stiffer than UIKit's: 1,092 pt pushed past the edge stretched 50 pt. Firefox also holds the stretch while a finger rests on the trackpad, as AppKit does (push-hold-1: 6.4 s against 6.0 s). WheelPan can't: a wheel event never says whether a finger is down, so its stretch springs back under a resting finger (2.0 s).
+
+**Flicks into the edge.** Neither matches. The momentum's impact in Firefox is sometimes far smaller than AppKit's and sometimes larger (flick-3: 36 against 204 pt; flick-mid-2: 80 against 32 pt). Both Firefox and WheelPan follow the momentum deltas one for one. AppKit runs a coast of its own and stops short of them: flick-9's 545 pt of momentum deltas moved its board 261 pt, still from 895 ms while the momentum events ran to 1,171 ms. A stock `NSScrollView`, with responsive scrolling on, did the same.
+
+**So** letting Firefox scroll the board natively would bring AppKit's stretch and its hold under the finger, which WheelPan can't get from wheel events. It would not bring AppKit's coast. The comparison test (`web/test/appkit-edge.test.ts`) holds 139 gaps as todos, ready for either path. The owner has not yet tried both pages by hand to confirm the verdict.
