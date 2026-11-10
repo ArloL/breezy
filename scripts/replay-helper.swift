@@ -88,8 +88,9 @@ func receive(_ c: NWConnection, _ got: Data = Data()) {
   }
 }
 
-if !AXIsProcessTrusted() {
-  FileHandle.standardError.write(Data("This process lacks Accessibility, so posted events would be dropped: allow Terminal.app in System Settings → Privacy & Security → Accessibility, then start it again.\n".utf8))
+// asks macOS to prompt for the permission and list the terminal under it, whatever Settings calls the pane
+if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary) {
+  FileHandle.standardError.write(Data("This process lacks Accessibility, so posted events would be dropped: allow your terminal in the prompt or the Settings pane it opens, then start it again.\n".utf8))
   exit(1)
 }
 let params = NWParameters.tcp
