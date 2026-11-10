@@ -1,4 +1,4 @@
-import type { Board, Card, Lane } from "./types.ts";
+import type { Board, Cam, Card, Lane } from "./types.ts";
 
 const lane = (id: string, x: number, title: string): Lane => ({ id, x, y: 0, w: 288, h: 720, title });
 
@@ -60,4 +60,11 @@ export function stressBoard(): Board {
     cards.push({ id: `f${k}`, x: int(-100, 99) * 24, y: int(110, 199) * 24, w: 240, text: phrase(3), color: int(1, 5) });
   }
   return { cards, lanes };
+}
+
+/** `?reference=x,y`: an empty board at zoom 1 with the camera there, as the reference app shows AppKit's
+ * (scripts/replay.ts); null without one. */
+export function referenceStart(search: string): Cam | null {
+  const m = /^(-?[\d.]+),(-?[\d.]+)$/.exec(new URLSearchParams(search).get("reference") ?? "");
+  return m ? { x: Number(m[1]), y: Number(m[2]), zoom: 1 } : null;
 }
