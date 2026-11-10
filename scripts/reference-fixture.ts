@@ -1,27 +1,28 @@
-// Builds web/test/appkit-edge.json from the owner's strokes in the reference app (build/reference/<name>-<n>.json)
-// and what Firefox made of each one's median repeat (build/reference/firefox/<name>-<n>.json, the latest kept).
+// Builds web/test/appkit-edge.json from the cases scripts/reference-batch.ts replayed: each of the owner's strokes in the
+// reference app, AppKit's own replay of it, and what Firefox made of it.
 //
-//   node scripts/reference-fixture.ts                  writes the fixture
-//   node scripts/reference-fixture.ts --median <name>  the path of <name>'s median repeat, to replay
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+//   node scripts/reference-fixture.ts
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { MARGIN } from "../web/camera.ts";
-import { fromClip, type Curve } from "../web/test/helpers/measures.ts";
+import { fromClip, gap, referenceLimits, type Curve, type Measures } from "../web/test/helpers/measures.ts";
 import { liftOf, measuresOf } from "./reference-check.ts";
 import type { Capture, Stroke } from "./replay.ts";
 
-export interface FixtureStroke {
+export interface Case {
+  /** The recording's file, without .json. */
   name: string;
   stage: { w: number; h: number };
   from: { x: number; y: number; zoom: number };
-  /** When the finger lifted in the median repeat, ms. */
+  /** When the finger lifted, ms. */
   lift: number;
-  /** The median repeat's camera, which Firefox's events came from. */
+  /** AppKit's camera every frame, from the owner's stroke. */
   appkit: Curve;
-  repeats: Curve[];
+  /** How far AppKit's own replay of the stroke landed from it, on each measure and the gap: what a replay can tell apart. */
+  noise: Measures & { gap: number };
   firefox: [t: number, dx: number, dy: number][];
 }
-export interface Fixture { about: string; strokes: FixtureStroke[] }
+export interface Fixture { about: string; cases: Case[] }
 
 const tenth = (n: number) => Math.round(n * 10) / 10;
 const curve = (s: Stroke): Curve => fromClip(s.frames).map(([t, x, y]) => [tenth(t), tenth(x), tenth(y)]);
@@ -33,47 +34,27 @@ export function isStray(s: Stroke) {
   return !s.frames.some(([, x, y]) => Math.abs(x - x0) >= 1 || Math.abs(y - y0) >= 1);
 }
 
-/** The repeat whose overshoot is the median of the repeats'. */
-export function median(repeats: Stroke[]): Stroke {
-  const sorted = [...repeats].sort((a, b) => measuresOf(a).overshoot - measuresOf(b).overshoot);
-  return sorted[(sorted.length - 1) >> 1];
-}
-
-const byName = (strokes: Stroke[]) => Map.groupBy(strokes.filter((s) => !s.name.endsWith("-replay")), (s) => s.name);
-
-export function buildFixture(strokes: Stroke[], captures: Record<string, Capture>): Fixture {
-  const out: FixtureStroke[] = [];
-  for (const [name, repeats] of byName(strokes)) {
-    const m = median(repeats), c = captures[name];
-    if (!c) throw new Error(`no Firefox capture of ${name}: node scripts/replay.ts "$(node scripts/reference-fixture.ts --median ${name})" --into firefox`);
-    out.push({
-      name, stage: { w: m.stage[0], h: m.stage[1] }, from: { x: MARGIN - m.start[0], y: MARGIN - m.start[1], zoom: 1 }, lift: liftOf(m),
-      appkit: curve(m), repeats: repeats.map(curve), firefox: c.events,
-    });
-  }
+export function buildFixture(cases: { file: string; recorded: Stroke; replayed: Stroke; firefox: Capture }[]): Fixture {
   return {
-    about: "The owner's trackpad strokes at the board's edge in AppKit's NSScrollView (Reference/), each repeated, as the camera every frame; and the wheel events Firefox made of the median repeat, posted by scripts/replay.ts. Built by scripts/reference-fixture.ts.",
-    strokes: out,
+    about: "The owner's trackpad strokes at the board's edge in AppKit's NSScrollView (Reference/), as the camera every frame; how far AppKit's own replay of each landed; and the wheel events Firefox made of the same events, posted by scripts/replay.ts. Built by scripts/reference-fixture.ts from scripts/reference-batch.ts's cases.",
+    cases: cases.map(({ file, recorded: r, replayed, firefox }) => {
+      const a = measuresOf(r), b = measuresOf(replayed), l = referenceLimits({ w: r.stage[0], h: r.stage[1] });
+      return {
+        name: file.replace(/\.json$/, ""), stage: { w: r.stage[0], h: r.stage[1] }, from: { x: MARGIN - r.start[0], y: MARGIN - r.start[1], zoom: 1 }, lift: liftOf(r),
+        appkit: curve(r),
+        noise: { stretch: tenth(Math.abs(a.stretch - b.stretch)), overshoot: tenth(Math.abs(a.overshoot - b.overshoot)), settle: tenth(Math.abs(a.settle - b.settle)), gap: gap(fromClip(r.frames), fromClip(replayed.frames), l) },
+        // a wheel event comes of an NSEvent with a delta alone
+        firefox: firefox.events.map(([t, dx, dy]) => [tenth(t + (r.events.find((e) => e[1] || e[2])?.[0] ?? 0)), dx, dy]),
+      };
+    }),
   };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const root = fileURLToPath(new URL("../", import.meta.url)), dir = `${root}build/reference`;
-  const files = (d: string) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => `${d}/${f}`);
-  const strokes = files(dir).map((path) => ({ path, s: JSON.parse(readFileSync(path, "utf8")) as Stroke }));
-  const at = process.argv.indexOf("--median");
-  if (at > 0) {
-    const name = process.argv[at + 1], repeats = strokes.filter((x) => x.s.name === name);
-    if (!repeats.length) throw new Error(`no strokes named ${name} in ${dir}`);
-    const m = median(repeats.map((x) => x.s));
-    console.log(repeats.find((x) => x.s === m)!.path);
-  } else {
-    // the latest capture of each stroke
-    const n = (f: string) => Number(/-(\d+)\.json$/.exec(f)![1]);
-    const captures: Record<string, Capture> = {};
-    for (const f of files(`${dir}/firefox`).sort((a, b) => n(a) - n(b))) captures[f.split("/").pop()!.replace(/-\d+\.json$/, "")] = JSON.parse(readFileSync(f, "utf8"));
-    const fixture = buildFixture(strokes.map((x) => x.s), captures);
-    writeFileSync(`${root}web/test/appkit-edge.json`, JSON.stringify(fixture));
-    console.log(`web/test/appkit-edge.json: ${fixture.strokes.map((s) => `${s.name} ×${s.repeats.length}`).join(", ")}`);
-  }
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const read = (f: string) => JSON.parse(readFileSync(f, "utf8"));
+  const cases: { recorded: string; replayed: string; firefox: string; faithful: boolean }[] = read(`${root}build/reference/cases.json`);
+  const fixture = buildFixture(cases.map((c) => ({ file: c.recorded.split("/").pop()!, recorded: read(c.recorded), replayed: read(c.replayed), firefox: read(c.firefox) })));
+  writeFileSync(`${root}web/test/appkit-edge.json`, JSON.stringify(fixture));
+  console.log(`web/test/appkit-edge.json: ${fixture.cases.length} cases`);
 }
