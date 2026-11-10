@@ -76,6 +76,12 @@ test("a wheel stream is kept as one flight entry: each delta, the camera it gave
   assert.deepEqual(s.limits, [EDGES.x0, EDGES.x1, EDGES.y0, EDGES.y1]);
 });
 
+test("a wheel stream keeps when it began, so that a stroke split into streams joins up again", () => {
+  const streams: Parameters<WheelPan["onStream"]>[0][] = [];
+  replay(flick, EDGES, 120, (s) => streams.push(s));
+  assert.equal(streams[0].at, flick.events[0][0]);
+});
+
 test("a drag begun as momentum dies away is a drag, even slower than the momentum was", () => {
   // the push bounced at 703 ms; its momentum died by 1,500, and from 1,600 a slow drag went on the same way
   const xs = replay(pushOn, EDGES);
