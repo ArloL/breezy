@@ -2,12 +2,16 @@
 // Firefox on the dev server: docs/superpowers/specs/2026-11-10-breezy-native-reference-design.md. The events are
 // posted by scripts/replay-helper.swift, started once from Terminal.app, which holds Accessibility.
 //
-//   node scripts/replay.ts build/reference/push-hold-1.json --into reference
+//   node scripts/replay.ts build/reference/push-hold-1.json --into reference|firefox
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { MARGIN } from "../web/camera.ts";
+import type { Recording } from "../web/flight.ts";
+import type { Stream } from "../web/wheel.ts";
 
 export const HELPER = "http://127.0.0.1:58569";
+const DEV = "http://127.0.0.1:58565";
 const root = fileURLToPath(new URL("../", import.meta.url));
 export const REFERENCE_APP = `${root}build/reference-dd/Build/Products/Debug/BreezyReference.app/Contents/MacOS/BreezyReference`;
 
@@ -57,12 +61,55 @@ export async function intoReference(s: Stroke): Promise<string> {
   }
 }
 
+/** What Firefox made of a replay: its wheel events from the first, in the browser's deltas, as replay() takes them. */
+export interface Capture { stage: number[]; from: number[]; events: [t: number, dx: number, dy: number][] }
+
+/** The capture in a fresh page's recording, its streams joined; refused when it is more than 2 short of the posted events. */
+export function captureOf(r: Recording, posted: Stroke): Capture {
+  const streams = r.entries.filter((e) => e[1] === "input" && e[2] === "wheel").map((e) => e[3] as unknown as Stream);
+  if (!streams.length) throw new Error("no wheel stream in the page's recording");
+  const [w, h] = streams[0].stage;
+  if (Math.abs(w - posted.stage[0]) > 1 || Math.abs(h - posted.stage[1]) > 1) throw new Error(`Firefox's board is ${w} × ${h}, the reference's ${posted.stage[0]} × ${posted.stage[1]}: resize Firefox's window, or record at its size`);
+  const t0 = streams[0].at;
+  // a stream keeps the pan it gave, against the delta
+  const events = streams.flatMap((s) => s.events.map(([t, dx, dy]) => [Math.round((s.at + t - t0) * 10) / 10, -dx + 0, -dy + 0] as [number, number, number]));
+  const sent = posted.events.filter(([, dx, dy]) => dx || dy).length;
+  if (events.length < sent - 2) throw new Error(`${events.length} wheel events for ${sent} posted: the page missed the start, or Firefox was not in front`);
+  return { stage: streams[0].stage, from: streams[0].from, events };
+}
+
+/** Sends Firefox's page on the dev server to an empty board at `s`'s start, replays `s` into it and gives the
+ * path of what it captured. */
+export async function intoFirefox(s: Stroke): Promise<string> {
+  const who = Math.random().toString(36).slice(2, 8), flight = `${root}build/flight/firefox ${who}.json`;
+  const url = `/?reference=${MARGIN - s.start[0]},${MARGIN - s.start[1]}&who=${who}`;
+  const sent = await fetch(`${DEV}/goto?url=${encodeURIComponent(url)}`, { method: "POST", signal: AbortSignal.timeout(2000) })
+    .then((r) => r.json() as Promise<{ pages: number }>)
+    .catch(() => { throw new Error("start the dev server: npm run dev"); });
+  if (!sent.pages) throw new Error("open http://localhost:58565/ in Firefox");
+  await new Promise((r) => setTimeout(r, 1500));
+  await post(s, "org.mozilla.firefox");
+  // pages post their recording every 5 s
+  for (const until = Date.now() + 12_000; Date.now() < until; await new Promise((r) => setTimeout(r, 500))) {
+    if (!existsSync(flight)) continue;
+    const r: Recording = JSON.parse(readFileSync(flight, "utf8"));
+    if (!r.entries.some((e) => e[2] === "wheel")) continue;
+    const c = captureOf(r, s), dir = `${root}build/reference/firefox`;
+    mkdirSync(dir, { recursive: true });
+    let n = 1;
+    while (existsSync(`${dir}/${s.name}-${n}.json`)) n++;
+    writeFileSync(`${dir}/${s.name}-${n}.json`, JSON.stringify(c));
+    return `${dir}/${s.name}-${n}.json`;
+  }
+  throw new Error(`no wheel stream in ${flight} after 12 s: was Firefox's page on the reference board, in front?`);
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [file, flag, into] = process.argv.slice(2);
-  if (!file || flag !== "--into" || into !== "reference") {
-    console.error("usage: node scripts/replay.ts <stroke.json> --into reference");
+  if (!file || flag !== "--into" || !["reference", "firefox"].includes(into)) {
+    console.error("usage: node scripts/replay.ts <stroke.json> --into reference|firefox");
     process.exit(2);
   }
   const s: Stroke = JSON.parse(readFileSync(file, "utf8"));
-  console.log(await intoReference(s));
+  console.log(await (into === "firefox" ? intoFirefox(s) : intoReference(s)));
 }
