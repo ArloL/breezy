@@ -86,10 +86,17 @@ export function captureOf(r: Recording, posted: Stroke): Capture {
 export async function intoFirefox(s: Stroke): Promise<string> {
   const who = Math.random().toString(36).slice(2, 8), flight = `${root}build/flight/firefox ${who}.json`;
   const url = `/?reference=${MARGIN - s.start[0]},${MARGIN - s.start[1]}&who=${who}`;
-  const sent = await fetch(`${DEV}/goto?url=${encodeURIComponent(url)}`, { method: "POST", signal: AbortSignal.timeout(2000) })
+  const goto = () => fetch(`${DEV}/goto?url=${encodeURIComponent(url)}`, { method: "POST", signal: AbortSignal.timeout(2000) })
     .then((r) => r.json() as Promise<{ pages: number }>)
     .catch(() => { throw new Error("start the dev server: npm run dev"); });
-  if (!sent.pages) throw new Error("open http://localhost:58565/ in Firefox");
+  let pages = (await goto()).pages;
+  if (!pages) {
+    spawn("open", ["-a", "Firefox", `http://localhost:58565${url}`]);
+    for (const until = Date.now() + 15_000; !pages && Date.now() < until; await new Promise((r) => setTimeout(r, 500))) pages = (await goto()).pages;
+    if (!pages) throw new Error("Firefox opened no page on the dev server in 15 s");
+  }
+  // each page would write the same flight file
+  if (pages > 1) throw new Error(`${pages} pages on the dev server: close all Breezy tabs but one`);
   await new Promise((r) => setTimeout(r, 1500));
   await post(s, "org.mozilla.firefox");
   // pages post their recording every 5 s
