@@ -328,3 +328,5 @@ body[data-screen="board"] #boards { display: none; }
 #board.native.pinching { background-color: var(--paper); overflow: hidden; }
 #board.native.pinching .grid { visibility: visible; }
 #board.native.pinching .native-content { background-image: none; background-color: transparent; }
+.native-overlay { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.native-overlay .native-content { position: absolute; left: 0; top: 0; background-image: none; background-color: transparent; }

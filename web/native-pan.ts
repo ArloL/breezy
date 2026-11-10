@@ -6,6 +6,10 @@ import type { Cam } from "./types.ts";
 
 export const nativeWanted = () => new URLSearchParams(location.search).get("pan") === "native";
 
+/** The gesture recognizer, made after the board: whether a touch is a double tap's second, the one-finger zoom. */
+let gestures: { one?: { double?: boolean } | null } | null = null;
+export const nativeGestures = (g: unknown) => void (gestures = g as typeof gestures);
+
 export function nativePan(view: View, board: HTMLElement, input: Input) {
   const note = (what: string, data: Record<string, number | number[] | string>) => (input as unknown as { app: { flight: { note: (k: "input", w: string, d: object) => void } } }).app.flight.note("input", what, data);
   const r = (n: number) => Math.round(n);
@@ -17,22 +21,54 @@ export function nativePan(view: View, board: HTMLElement, input: Input) {
   // what Breezy does with a touch, a lifted card, a selected card dragged, the one-finger zoom, the browser must not pan
   // as well
   board.addEventListener("touchmove", (e) => {
-    if (input.drag && input.drag.action !== "pan") e.preventDefault();
+    // a hold lifts its card before any drag begins: the first move after it must not start the browser's pan
+    const lifted = (input as unknown as { app: { state: { lifted: Set<string> } } }).app.state.lifted.size > 0;
+    // so must a double tap's second touch, which drags to zoom
+    if (lifted || gestures?.one?.double || (input.drag && input.drag.action !== "pan")) e.preventDefault();
   }, { passive: false });
   // A pinch: the browser pans the first finger before the second lands, and cancels its pointer, so the zoom follows the
   // touches themselves, around their midpoint, while the browser pans, as UIScrollView pans and zooms at once.
+  // the one-finger zoom went through pinch, made a no-op here: it zooms around the point first touched itself
+  input.zoomDrag = (dy: number) => {
+    const base = input.pinchBase;
+    if (base) view.zoomAround(base.c, base.cam.zoom * 2 ** (dy / 150));
+  };
   input.pinchStart = () => {};
   input.pinch = () => {};
   input.pinchEnd = () => {};
   const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   // A pinch scales the content as drawn, on the compositor, around the board point first under the fingers, and lays
   // it out once at the end: laid out each step, iOS showed the grey past the edge until it had painted the new size.
-  let z0 = 1, pinchZoom = 1, last = { x: 0, y: 0 }, still: ReturnType<typeof setTimeout> | undefined;
-  board.addEventListener("touchmove", (e) => {
+  let z0 = 1, pinchZoom = 1, last = { x: 0, y: 0 }, still: ReturnType<typeof setTimeout> | undefined, panned = false, fingers = 0;
+  // A finger left on the glass after a pinch: iOS starts no new pan for a touch already down, so the board follows it
+  // here, and coasts from its speed when it lifts.
+  let follow: { id: number; x: number; y: number; t: number; v: { x: number; y: number } } | null = null;
+  const followMove = (t: Touch, at: number) => {
+    const f = follow!, dt = Math.max(1, at - f.t), dx = t.clientX - f.x, dy = t.clientY - f.y, cam = view.cam;
+    f.v = { x: 0.7 * (dx / dt) + 0.3 * f.v.x, y: 0.7 * (dy / dt) + 0.3 * f.v.y };
+    Object.assign(f, { x: t.clientX, y: t.clientY, t: at });
+    view.setCamera({ ...cam, x: cam.x + dx, y: cam.y + dy });
+  };
+  // on the document: once the content moves to the overlay, the touches' targets are no longer in the board
+  document.addEventListener("touchmove", (e) => {
     if (e.touches.length < 2) {
-      if (pinch !== null) endPinch();
+      if (pinch !== null) {
+        endPinch();
+        const t = e.touches[0];
+        if (t) follow = { id: t.identifier, x: t.clientX, y: t.clientY, t: e.timeStamp, v: { x: 0, y: 0 } };
+      } else if (follow) {
+        const t = [...e.touches].find((u) => u.identifier === follow!.id);
+        if (t) {
+          if (e.cancelable) e.preventDefault();
+          followMove(t, e.timeStamp);
+        }
+      }
       return;
     }
+    // A second finger on a pan the browser has already begun: iOS goes on panning whatever the page does, overflow
+    // hidden included. So the content leaves the scroll container for an overlay that does not scroll, where it shows
+    // the same, and the browser's pan has nothing left to move; it comes back when the pinch ends.
+    if (pinch === null && (!e.cancelable || panned)) lift();
     if (e.cancelable) e.preventDefault();
     const d = spread(e.touches), mid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
     if (pinch === null) {
@@ -52,14 +88,34 @@ export function nativePan(view: View, board: HTMLElement, input: Input) {
     last = mid;
     // where the anchor is in the content, as drawn at z0; scaled by z / z0 and moved to sit under the fingers
     const s = pinchZoom / z0, qx = (anchor.x - shown.x) * z0, qy = (anchor.y - shown.y) * z0;
-    content.style.transform = `translate(${mid.x - qx * s + board.scrollLeft}px, ${mid.y - qy * s + board.scrollTop}px) scale(${s})`;
+    const sx = overlaid ? 0 : board.scrollLeft, sy = overlaid ? 0 : board.scrollTop;
+    content.style.transform = `translate(${mid.x - qx * s + sx}px, ${mid.y - qy * s + sy}px) scale(${s})`;
     clearTimeout(still);
     still = setTimeout(() => pinch !== null && endPinch("still"), 400);
     const cam = { x: mid.x - anchor.x * pinchZoom, y: mid.y - anchor.y * pinchZoom, zoom: pinchZoom };
     view.grid.draw(cam, { x: -1e6, y: -1e6, w: 2e6, h: 2e6 });
   }, { passive: false });
+  // the overlay the content takes refuge in from a pan the browser will not let go of
+  const overlay = document.createElement("div"), home = document.createComment("native-content");
+  overlay.className = "native-overlay";
+  document.body.appendChild(overlay);
+  let overlaid = false;
+  const lift = () => {
+    const sx = board.scrollLeft, sy = board.scrollTop;
+    content.replaceWith(home);
+    overlay.appendChild(content);
+    overlaid = true;
+    content.style.transform = `translate(${-sx}px, ${-sy}px)`;
+    note("native pinch overlay", { scroll: [r(sx), r(sy)] });
+  };
+  const putBack = () => {
+    if (!overlaid) return;
+    home.replaceWith(content);
+    overlaid = false;
+  };
   const endPinch = (how = "touchmove") => {
     clearTimeout(still);
+    putBack();
     pinch = null;
     board.classList.remove("pinching");
     content.style.transform = "";
@@ -70,7 +126,25 @@ export function nativePan(view: View, board: HTMLElement, input: Input) {
     note("native pinch end", { how, zoom: pinchZoom, scroll: [r(board.scrollLeft), r(board.scrollTop)] });
   };
   // a pinch begun on a pan the browser had taken ends in touchcancel, not touchend: left on, its scaling froze the board
-  for (const type of ["touchend", "touchcancel"] as const) board.addEventListener(type, (e) => { if (e.touches.length < 2 && pinch !== null) endPinch(type); });
+  // whether the browser has panned since the first finger came down: from then on it pans on whatever the page does
+  board.addEventListener("touchstart", (e) => { if (fingers === 0) panned = false; fingers = e.touches.length; }, { passive: true });
+  board.addEventListener("scroll", () => { if (fingers > 0 && pinch === null && Math.abs(board.scrollLeft - put.x) + Math.abs(board.scrollTop - put.y) >= 1) panned = true; }, { passive: true });
+  for (const type of ["touchend", "touchcancel"] as const) document.addEventListener(type, (e) => {
+    fingers = e.touches.length;
+    if (follow && e.touches.length === 0) {
+      const v = e.timeStamp - follow.t < 50 ? follow.v : { x: 0, y: 0 };
+      follow = null;
+      view.camera.coast(v);
+    }
+    // the second finger lifting first leaves one to follow
+    if (pinch !== null && e.touches.length === 1) {
+      const t = e.touches[0];
+      endPinch(type);
+      follow = { id: t.identifier, x: t.clientX, y: t.clientY, t: e.timeStamp, v: { x: 0, y: 0 } };
+      return;
+    }
+    if (e.touches.length < 2 && pinch !== null) endPinch(type);
+  });
   let scrolling = false;
   board.addEventListener("scroll", () => { if (!scrolling) { scrolling = true; note("native scroll start", { at: [r(board.scrollLeft), r(board.scrollTop)] }); } }, { passive: true });
   board.addEventListener("scrollend", () => { scrolling = false; note("native scroll end", { at: [r(board.scrollLeft), r(board.scrollTop)] }); });
@@ -122,6 +196,8 @@ export function nativePan(view: View, board: HTMLElement, input: Input) {
   view.stage = () => ({ top: 0, left: 0, right: board.clientWidth, bottom: board.clientHeight });
 
   board.addEventListener("scroll", () => {
+    // the scroller emptied for a pinch clamps to nothing; the pinch has the camera
+    if (pinch !== null) return;
     // the app's own move, as a spring's: setting the camera from it would stop the spring
     if (Math.abs(board.scrollLeft - put.x) < 1 && Math.abs(board.scrollTop - put.y) < 1) return;
     userScrolled = true;

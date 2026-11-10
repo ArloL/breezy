@@ -3,7 +3,7 @@ import { box, thrown } from "./flight.ts";
 import { readSight, SightWatch, toldOf } from "./sight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
 import { referenceStart, sampleBoard, stressBoard } from "./sample.ts";
-import { nativePan, nativeWanted } from "./native-pan.ts";
+import { nativeGestures, nativePan, nativeWanted } from "./native-pan.ts";
 import type { Input } from "./input.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
@@ -134,6 +134,7 @@ if (devFlight) {
 const board = document.getElementById("board")!;
 const native = nativeWanted();
 const gestures = new Gestures(app.input);
+nativeGestures(gestures);
 const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
 /** A mouse press that began on the board, not in an editor, though its double-click may have opened one under it. */
@@ -238,6 +239,8 @@ document.addEventListener("visibilitychange", () => document.hidden && gestures.
 let pinch: number | null = null;
 document.addEventListener("gesturestart", (e) => {
   e.preventDefault();
+  // SPIKE: on a pan the browser took, Breezy holds no pointers, and iOS's gesture events zoomed under it
+  if (native) return;
   if (!gestures.points.size) pinch = app.view.cam.zoom;
 });
 document.addEventListener("gesturechange", (e) => {
