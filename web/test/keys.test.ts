@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { command } from "../keys.ts";
+import { command, keyName } from "../keys.ts";
 import type { KeyEvent, Typing } from "../keys.ts";
 
 const key = (k: string, mods: Partial<KeyEvent> = {}, ctx: { mac?: boolean; typing?: Typing } = {}) =>
@@ -72,4 +72,9 @@ test("keys an input method is composing with are left to it", () => {
   assert.equal(key("Tab", { isComposing: true }, { typing: "card" }), null);
   assert.equal(key("Escape", { keyCode: 229 }), null);
   assert.equal(key("Escape", {}, { typing: "card" }), "end-edit");
+});
+
+test("the recorder keeps a named key, and only that a typing key was pressed", () => {
+  for (const k of ["Backspace", "Delete", "Escape", "Tab", "ArrowLeft", "F12"]) assert.equal(keyName(k), k);
+  for (const k of ["d", "A", "é", "😀", "👩‍💻", " ", "=", "Ω"]) assert.equal(keyName(k), "char");
 });

@@ -6,7 +6,7 @@
 //   node scripts/feel.ts [--direct] [--relay-ms 25] [--server-ms 40] [--runs 10] [--only cursor,drag,colour,outage] [--app DIR]
 import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { createServer as createHttp } from "node:http";
 import { createServer, connect } from "node:net";
 import type { Server, Socket } from "node:net";
@@ -61,6 +61,9 @@ process.on("uncaughtException", (e) => { console.error(e); process.exit(1); });
 process.on("unhandledRejection", (e) => { console.error(e); process.exit(1); });
 /** Where `name`, a server or browser this starts, logs: the reference's apart from this one's. */
 const logOf = (name: string) => join(root, "build", `feel-${opt.app ? "ref-" : ""}${name}.log`);
+/** Where a wait that timed out keeps what each page saw, emptied as this starts. */
+const failed = join(root, "build", `feel-${opt.app ? "ref-" : ""}failure`);
+rmSync(failed, { recursive: true, force: true });
 /** What `name` says, its end told when it fails. */
 const said = (name: string) => readFileSync(logOf(name), "utf8").split("\n").slice(-30).join("\n");
 const spawnGroup = (name: string, cmd: string, args: string[], opts: SpawnOptions) => {
@@ -82,7 +85,50 @@ function chromium() {
 
 async function waitFor(what: string, test: () => unknown, ms = 15_000) {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) if (await test()) return;
+  await keep(what);
   throw new Error(`timed out: ${what}`);
+}
+
+const pages: { name: string; run<T = unknown>(expression: string): Promise<T>; send(method: string, params?: object): Promise<Message> }[] = [];
+/** A page's own state, as its flight recording does not hold it: what has the keyboard, and each card's classes, editor
+ * and text length, never its words. */
+const STATE = `(() => {
+  const f = document.activeElement;
+  return {
+    screen: document.body.dataset.screen ?? null,
+    focus: f && { tag: f.tagName, cls: String(f.className), editable: f.isContentEditable, card: f.closest?.(".card")?.dataset.id ?? null },
+    sheet: document.querySelector("#sheet")?.hidden === false,
+    cards: [...document.querySelectorAll(".card")].map((c) => ({
+      id: c.dataset.id ?? null, cls: c.className, editor: c.querySelector("[contenteditable]")?.getAttribute("contenteditable") ?? null, ghost: c.style.pointerEvents === "none",
+      front: c.querySelector(".front")?.textContent.length ?? null, box: [c.getBoundingClientRect()].map((r) => [r.x, r.y, r.width, r.height].map(Math.round))[0],
+    })),
+    frames: globalThis.__frames?.slice(-300) ?? null,
+    keys: globalThis.__keys?.slice(-50) ?? null,
+  };
+})()`;
+
+/** What each page saw and showed when `what` never came, in build/feel-failure/: its flight recording, its state and a
+ * screenshot. A page not answering in 5 s is noted, as a hung page must not hang the failure. */
+async function keep(what: string) {
+  mkdirSync(failed, { recursive: true });
+  const notes = [`timed out: ${what} at ${new Date().toISOString()}`];
+  const within = <T>(p: Promise<T>) => Promise.race([p, sleep(5000).then(() => { throw new Error("no answer in 5 s"); })]);
+  for (const p of pages) {
+    const files: [string, () => Promise<string | Buffer>][] = [
+      ["flight.json", async () => `${JSON.stringify(await p.run("globalThis.breezyFlight?.recording() ?? null"))}\n`],
+      ["state.json", async () => `${JSON.stringify(await p.run(STATE))}\n`],
+      ["screen.png", async () => Buffer.from(((await p.send("Page.captureScreenshot", { format: "png" })).result as { data: string }).data, "base64")],
+    ];
+    for (const [file, get] of files) {
+      try {
+        writeFileSync(join(failed, `${p.name} ${file}`), await within(get()));
+      } catch (e) {
+        notes.push(`${p.name} ${file}: ${(e as Error).message}`);
+      }
+    }
+  }
+  writeFileSync(join(failed, "wait.txt"), `${notes.join("\n")}\n`);
+  console.log(`  kept what the pages saw in ${failed}`);
 }
 
 /** A TCP proxy from `port` to `to` that delays each chunk by `ms` one way, keeping order. `cut()` drops every
@@ -220,7 +266,9 @@ async function browser(name: string) {
     }
   };
   const key = (k: string) => send("Input.dispatchKeyEvent", { type: "keyDown", key: k, text: k, code: /\d/.test(k) ? `Digit${k}` : undefined });
-  return { name, send, run, go, click, mouse, doubleClick, key };
+  const self = { name, send, run, go, click, mouse, doubleClick, key };
+  pages.push(self);
+  return self;
 }
 
 const space = b64(16), secret = b64(32);

@@ -410,11 +410,13 @@ jobs:
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: feel
-        # and what the relay, the server and the browsers said
+        # and what the relay, the server and the browsers said, and what each page saw of a wait that timed out
         path: |
           build/feel.txt
           build/feel-ref.txt
           build/feel-*.log
+          build/feel-failure/
+          build/feel-ref-failure/
   # this commit's Release build against the reference's in scripts/baselines/bench-ref, on the same runner and in turns:
   # one runner measured zoom 4 times slower than the next, which no baseline from other runners could allow for
   bench:

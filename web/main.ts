@@ -6,7 +6,7 @@ import { sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
 import { wheelAction } from "./wheel.ts";
-import { command, onMac, perform } from "./keys.ts";
+import { command, keyName, onMac, perform } from "./keys.ts";
 import { clipHTML, clipText, readClip } from "./clip.ts";
 import type { Clip } from "./types.ts";
 import { Library } from "./library.ts";
@@ -202,6 +202,9 @@ addEventListener("keydown", (e) => {
   const s = app.state;
   const typing = s.editing ? "card" : s.renaming ? "lane" : (e.target as Element).closest?.("input, textarea") ? "field" : null;
   const cmd = command(e, { mac, typing });
+  // not each key typed into a card, which would push the rest out of the ring
+  const key = keyName(e.key);
+  if (cmd || !typing || key !== "char") app.flight.note("decision", "key", { key, typing, command: cmd, selected: s.selection.size, editing: s.editing?.id ?? null });
   if (!cmd) return;
   e.preventDefault();
   perform(app, cmd, mouse);

@@ -283,6 +283,8 @@ export class Live {
   onUnauthorized: () => void;
   /** After the relay welcomed this connection: the network works, and pushes announced meanwhile were missed. */
   onWelcome: () => void;
+  /** For the app's recorder: what the relay said, and the changes this layer sent and took, never a cursor. */
+  note: (what: string, data?: { [k: string]: number | string | boolean }) => void;
   /** The other connections in the space, as the relay names them → when each joined or was last heard. */
   roster: Map<string, number>;
   direct: Direct | null;
@@ -338,6 +340,7 @@ export class Live {
     this.onRefused = () => {};
     this.onUnauthorized = () => {};
     this.onWelcome = () => {};
+    this.note = () => {};
     this.roster = new Map();
     this.direct = peerTransport && new Direct(peerTransport(), {
       now,
@@ -446,6 +449,7 @@ export class Live {
 
   /** The socket closed with `code`, or was given up on: reconnects after a back-off, unless the token was refused. */
   dropped(code: number): void {
+    this.note("relay dropped", { code, wanted: this.wanted });
     this.ws = null;
     this.reset();
     if (code === 4001) {
@@ -457,6 +461,7 @@ export class Live {
     const quick = this.failures === 0 && this.now() - this.welcomedAt >= QUICK_RETRY_MS;
     const delay = quick ? 0 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.failures);
     this.failures++;
+    this.note("relay again", { wait: delay, failures: this.failures });
     const n = ++this.retries;
     this.retrying = true;
     this.schedule(delay, () => {
@@ -655,6 +660,7 @@ export class Live {
         this.holds = holdsFrom(m.holds);
         this.roster = new Map((Array.isArray(m.peers) ? m.peers.filter((p) => typeof p === "string") : []).map((p) => [p, this.now()]));
         this.direct?.welcome([...this.roster.keys()]);
+        this.note("relay welcome", { id: this.id, peers: this.roster.size });
         this.sendPresence();
         if (this.mine.size && this.mine.size <= MAX_HELD) this.frame({ t: "hold", ids: [...this.mine].sort() });
         // what this device pushed while its last socket was dead, as after a network change, was announced to nobody
@@ -662,9 +668,11 @@ export class Live {
         this.onWelcome();
         return this.onChange();
       case "join":
+        this.note("relay join", { id: m.id as string });
         this.roster.set(m.id as string, this.now());
         return this.sendPresence(m.id as string);
       case "leave":
+        this.note("relay leave", { id: m.id as string });
         this.peers.delete(m.id as string);
         this.decoders.delete(m.id as string);
         this.holds.delete(m.id as string);
@@ -676,7 +684,10 @@ export class Live {
         this.dropReleased();
         return this.onChange();
       case "refused":
-        if (Array.isArray(m.ids) && m.ids.length) this.onRefused(new Set(m.ids));
+        if (Array.isArray(m.ids) && m.ids.length) {
+          this.note("relay refused", { items: m.ids.length });
+          this.onRefused(new Set(m.ids));
+        }
         return;
     }
     if (typeof m?.from === "string" && typeof m.body === "string") await this.opened(m.from, decode(m.body), "relay");
@@ -750,6 +761,9 @@ export class Live {
       case "live": {
         const board = typeof b.board === "string" ? b.board : null;
         if (board !== p.overlayBoard) p.motion.clear();
+        // an item's first body, not every frame of its gesture
+        const fresh = Object.keys((b.items ?? {}) as object).filter((id) => board !== p.overlayBoard || !p.overlay.has(id));
+        if (fresh.length) this.note("relay live in", { from, board: board ?? "none", items: fresh.join(" ") });
         p.overlayBoard = board;
         for (const [id, f] of Object.entries((b.items ?? {}) as { [id: string]: Body | null })) {
           if (!f || typeof f !== "object") continue;
@@ -778,6 +792,7 @@ export class Live {
       }
       case "pushed":
         if (!integral(b.version) || b.version < 0) return;
+        this.note("relay pushed in", { from, version: b.version, records: Array.isArray(b.records) ? b.records.length : "none" });
         if (b.version > p.awaiting) p.awaitingAt = now;
         p.awaiting = Math.max(p.awaiting, b.version);
         // the push holds every edit this sender sent up to seq
@@ -938,6 +953,7 @@ export class Live {
   /** What the gesture under way changed of what it holds, and where the held items were when it began (`starts`, as
    * `{id: [x, y]}`); each pipe sends the latest when its gate lets it. */
   sendLive(board: string, items: LiveItems, caret: Caret | null = null, starts: Starts = {}): void {
+    this.noteOut(board, items, false);
     this.lastLive = { board, items: trimmed(items), caret, starts };
     if (!this.roster.size) return;
     for (const p of this.pipes) {
@@ -949,6 +965,7 @@ export class Live {
   /** What an edit outside a gesture changed of items on `board`, such as a recolour, so that others show it at once
    * rather than after its push: one keyframe, holding nothing. */
   sendEdit(board: string, items: LiveItems): void {
+    if (Object.keys(items).length) this.noteOut(board, items, true);
     if (!this.roster.size || !Object.keys(items).length) return;
     for (const p of this.pipes) p.restart();
     this.lastLive = { board, items: trimmed(items), caret: null, starts: {}, once: true };
@@ -966,8 +983,16 @@ export class Live {
     return `Direct with ${open} of ${people.length} ${people.length === 1 ? "person" : "people"}`;
   }
 
+  /** Notes the items of a live body or an edit that the last one sent did not name, as one gesture sends a body a frame. */
+  noteOut(board: string, items: LiveItems, edit: boolean): void {
+    const was = this.lastLive?.board === board && !this.lastLive.once ? this.lastLive.items : {};
+    const fresh = Object.keys(items).filter((id) => edit || !(id in was));
+    if (fresh.length) this.note("relay live out", { board, items: fresh.join(" "), peers: this.roster.size, edit });
+  }
+
   /** Announces a push with its records, or without them when they would not fit a frame. */
   sendPushed({ version, epoch, records }: Pick<Pushed, "version"> & Partial<Pushed>): Promise<boolean> {
+    this.note("relay pushed out", { version, records: records?.length ?? "none", peers: this.roster.size });
     const seq = this.pushSeq;
     return this.send({ t: "pushed", version, epoch, records, seq }, undefined, { t: "pushed", version, seq });
   }
