@@ -40,7 +40,7 @@ async function helper(path: string, body?: unknown, ms = 2000) {
 export async function post(s: Stroke, bundle: string): Promise<{ posted: number }> {
   await helper("/ping");
   const events = s.events.map(([t, dx, dy, p, m]) => { const c = toCGPhases(p, m); return [t, dx, dy, c.scroll, c.momentum]; });
-  return helper("/replay", { app: bundle, events }, (s.events.at(-1)?.[0] ?? 0) + 10_000);
+  return helper("/replay", { app: bundle, events }, Math.ceil((s.events.at(-1)?.[0] ?? 0) + 10_000));
 }
 
 /** Launches the reference at `s`'s start, replays `s` into it and gives the path of the stroke it recorded. */
