@@ -31,3 +31,15 @@ test("a replay that overshoots by more than the repeats' spread fails", () => {
 test("a replay within the repeats' spread passes", () => {
   assert.equal(check(stroke(), stroke(1.1), [stroke(), stroke(1.15)]).ok, true);
 });
+
+test("a replay whose events AppKit merged passes, as their deltas still add up", () => {
+  const merged = stroke(), e = merged.events;
+  merged.events = [e[0], [e[1][0], e[1][1] + e[2][1], 0, 4, 0], ...e.slice(3)];
+  assert.equal(check(stroke(), merged, []).ok, true);
+});
+
+test("a replay that lost deltas fails", () => {
+  const lost = stroke();
+  lost.events = lost.events.slice(0, 10);
+  assert.match(check(stroke(), lost, []).lines.join("\n"), /deltas/);
+});
