@@ -45,7 +45,10 @@ final class RecordingScrollView: NSScrollView {
 final class Reference: NSObject, NSApplicationDelegate {
   let stage: CGSize, start: CGPoint, name: String, out: URL
   var window: NSWindow!
-  let scroll = RecordingScrollView()
+  /// `--stock` measures NSScrollView as it comes, responsive scrolling on: it sees a gesture's first event alone, so
+  /// each stroke runs 4 s.
+  let stock: Bool
+  lazy var scroll: NSScrollView = stock ? NSScrollView() : RecordingScrollView()
   var recorder: StrokeRecorder
   var link: CADisplayLink?
   var count = 0
@@ -58,10 +61,11 @@ final class Reference: NSObject, NSApplicationDelegate {
     stage = CGSize(width: s[0], height: s[1])
     start = CGPoint(x: p[0], y: p[1])
     name = value("--name") ?? "stroke"
+    stock = arguments.contains("--stock")
     // built into the repo's build/, as `open` starts it in /
     let repo = Bundle.main.bundlePath.components(separatedBy: "/build/").first ?? FileManager.default.currentDirectoryPath
     out = URL(fileURLWithPath: value("--out") ?? repo + "/build/reference")
-    recorder = StrokeRecorder(name: name, stage: stage, start: start)
+    recorder = StrokeRecorder(name: name, stage: stage, start: start, endAfter: stock ? 4000 : nil)
   }
 
   func applicationDidFinishLaunching(_ note: Notification) {
@@ -78,7 +82,13 @@ final class Reference: NSObject, NSApplicationDelegate {
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
     reset()
-    scroll.onScroll = { [unowned self] e in
+    if stock {
+      NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [unowned self] e in
+        if let s = recorder.event(t: e.timestamp, dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue) { save(s) }
+        return e
+      }
+    }
+    (scroll as? RecordingScrollView)?.onScroll = { [unowned self] e in
       if let s = recorder.event(t: e.timestamp, dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue) { save(s) }
     }
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
@@ -98,12 +108,12 @@ final class Reference: NSObject, NSApplicationDelegate {
   func reset() {
     scroll.contentView.scroll(to: start)
     scroll.reflectScrolledClipView(scroll.contentView)
-    recorder = StrokeRecorder(name: name, stage: stage, start: start)
+    recorder = StrokeRecorder(name: name, stage: stage, start: start, endAfter: stock ? 4000 : nil)
   }
 
   @objc func tick(_ l: CADisplayLink) {
     guard let s = recorder.frame(t: l.timestamp, origin: scroll.contentView.bounds.origin) else { return }
-    recorder = StrokeRecorder(name: name, stage: stage, start: start)
+    recorder = StrokeRecorder(name: name, stage: stage, start: start, endAfter: stock ? 4000 : nil)
     save(s)
   }
 
