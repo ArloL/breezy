@@ -21,6 +21,8 @@ struct StrokeRecorder {
   private var lastEvent = 0.0
   /// A finger on the trackpad, which sends nothing while it holds still, and momentum under way.
   private var touching = false, coasting = false
+  /// Where the board was when the stroke began, which `start` is only until r resets to it.
+  private var from: CGPoint?
   private var still: (since: Double, at: CGPoint)?
   private var events: [[Double]] = []
   private var frames: [[Double]] = []
@@ -43,6 +45,7 @@ struct StrokeRecorder {
       still = nil
       events = []
       frames = []
+      from = nil
     }
     if phase != 0 { touching = phase != 8 && phase != 16 }
     if momentum != 0 { coasting = momentum != 8 }
@@ -54,13 +57,15 @@ struct StrokeRecorder {
   }
 
   private var stroke: Stroke {
-    Stroke(name: name, stage: [stage.width, stage.height], start: [start.x, start.y], events: events, frames: frames)
+    let at = from ?? start
+    return Stroke(name: name, stage: [stage.width, stage.height], start: [at.x, at.y], events: events, frames: frames)
   }
 
   mutating func frame(t: Double, origin: CGPoint) -> Stroke? {
     guard let t0 else { return nil }
     let now = ms(t, t0)
     frames.append([now, origin.x, origin.y])
+    if from == nil { from = origin }
     if let s = still, abs(s.at.x - origin.x) <= 0.01, abs(s.at.y - origin.y) <= 0.01 {} else { still = (now, origin) }
     guard !touching, !coasting, now - lastEvent >= restAfter, now - still!.since >= 100 else { return nil }
     return stroke
