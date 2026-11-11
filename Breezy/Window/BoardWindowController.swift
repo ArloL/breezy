@@ -69,6 +69,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     grid.frame = root.bounds
     scrollView.frame = root.bounds
     scrollView.contentView.postsBoundsChangedNotifications = true
+    // a rest that fell due during the gesture waited for its end
+    scrollView.onGestureEnd = { [weak self] in self?.restLater() }
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
     NotificationCenter.default.addObserver(
@@ -127,6 +129,10 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     // a zoom step moves the bounds more than once; the cards follow once, when the frame is laid out
     canvas.needsLayout = true
     window?.invalidateRestorableState()
+    restLater()
+  }
+
+  private func restLater() {
     resting?.cancel()
     let rest = DispatchWorkItem { [weak self] in self?.rest() }
     resting = rest
@@ -180,11 +186,12 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   @objc func newLane(_ sender: Any?) { canvas.addLaneAtCentre() }
 
   func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
-    // in world points: the clip view's move as the board grows
+    // in world points, as the clip view's move as the board grows; under keys of their own, which a build from before
+    // the board was bounded does not read as its fixed document's points
     let o = canvas.showing.origin
     state.encode(Double(o.x), forKey: "worldX")
     state.encode(Double(o.y), forKey: "worldY")
-    state.encode(Double(scrollView.magnification), forKey: "zoom")
+    state.encode(Double(scrollView.magnification), forKey: "worldZoom")
     state.encode(boardID as NSString, forKey: "board")
   }
 
@@ -192,7 +199,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     guard state.containsValue(forKey: "worldX") else { return }
     restored = true
     place(origin: NSPoint(x: state.decodeDouble(forKey: "worldX"), y: state.decodeDouble(forKey: "worldY")),
-          zoom: state.decodeDouble(forKey: "zoom"))
+          zoom: state.decodeDouble(forKey: "worldZoom"))
   }
 
   override func performTextFinderAction(_ sender: Any?) {

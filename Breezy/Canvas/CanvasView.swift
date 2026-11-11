@@ -98,8 +98,6 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var reach = BoardBounds()
   /// While the board's bounds and the scroll position move together, the clip view takes them as they are.
   private(set) var rebasing = false
-  /// How much of the world the view showed when it last rested; at any other size it zooms or resizes.
-  private(set) var restedSize: NSSize?
 
   init(model: BoardModel) {
     self.model = model
@@ -196,7 +194,6 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     guard let clip = enclosingScrollView?.contentView else { return }
     let r = shown ?? convert(clip.constrainBoundsRect(clip.bounds), from: clip)
     reach.rest(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
-    restedSize = r.size
     fitBoard()
   }
 

@@ -382,23 +382,87 @@ extension SelfTest {
         // at rest again, the board lets go of what the zoom showed
         bounded("zoomed back in")
         if c.bounds != corner { finish(name, "the board is \(c.bounds) after zooming back, was \(corner)") }
-        pull(d, name: name, down: true, corner: corner, edgeShows: edgeShows, shot: shot) {
+        pull(d, name: name, down: true, edgeShows: edgeShows, shot: shot) {
           bounded("after the pull down")
-          pull(d, name: name, down: false, corner: corner, edgeShows: edgeShows, shot: shot) {
+          pull(d, name: name, down: false, edgeShows: edgeShows, shot: shot) {
             bounded("after the pull right")
-            finish(name, nil)
+            pullsAfterZooms(d, name: name, corner: corner, edgeShows: edgeShows, shot: shot) { finish(name, nil) }
           }
         }
       }
     }
   }
 
+  /// A pan straight after a zoom is a pan, held at the edge as any other: whether the zoom was set at once, a spring the
+  /// scroll stops, or a pinch held still past the rest before it lifted. From the board's top left, zoomed out around
+  /// it, a mouse's wheel turned up and left stops at the edge, and a trackpad pulls past it.
+  private static func pullsAfterZooms(_ d: Driver, name: String, corner: NSRect, edgeShows: @escaping () -> Bool,
+                                      shot: @escaping (String) -> Void, then: @escaping () -> Void) {
+    let sv = d.wc.scrollView, clip = sv.contentView, c = d.canvas, nc = NotificationCenter.default
+    func atCorner(_ next: @escaping () -> Void) {
+      d.wc.place(origin: corner.origin, zoom: 1)
+      d.later(0.3, next)
+    }
+    func wheel(_ after: String) {
+      let before = c.bounds, at = c.showing.origin
+      let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2, wheel1: 3, wheel2: 3, wheel3: 0)!
+      sv.scrollWheel(with: NSEvent(cgEvent: e)!)
+      if c.bounds != before || c.showing.origin != at {
+        finish(name, "a wheel turned past the top left \(after) moved the view to \(c.showing.origin) on \(c.bounds), was \(at) on \(before)")
+      }
+    }
+    // a selection box held at the view's top left scrolls the board there, as far as its edge
+    func edgeScroll(_ after: String, then next: @escaping () -> Void) {
+      let before = c.bounds, s = c.showing, z = sv.magnification
+      d.mouse(.leftMouseDown, NSPoint(x: s.minX + 300 / z, y: s.minY + 300 / z))
+      d.mouse(.leftMouseDragged, NSPoint(x: s.minX + 4 / z, y: s.minY + 4 / z))
+      d.later(0.6) {
+        let now = c.showing.origin
+        d.mouse(.leftMouseUp, NSPoint(x: now.x + 4 / z, y: now.y + 4 / z))
+        if c.bounds != before || now != before.origin {
+          finish(name, "a selection box held at the top left \(after) scrolled the view to \(now) on \(c.bounds), the board was \(before)")
+        }
+        next()
+      }
+    }
+    atCorner {
+      sv.setMagnification(0.5, centeredAt: clip.bounds.origin)
+      wheel("after a zoom")
+      edgeScroll("after a zoom") {
+      pull(d, name: name, down: true, as: "down after a zoom", edgeShows: edgeShows, shot: shot) {
+        atCorner {
+          sv.springMagnification(to: 0.5, centeredAt: clip.bounds.origin)
+          d.later(0.05) {
+            wheel("during a spring zoom")
+            pull(d, name: name, down: true, as: "down after a spring zoom", edgeShows: edgeShows, shot: shot) {
+              atCorner {
+                // a pinch, as AppKit brackets one, held still past the rest before it lifts
+                nc.post(name: NSScrollView.willStartLiveMagnifyNotification, object: sv)
+                sv.setMagnification(0.5, centeredAt: clip.bounds.origin)
+                d.later(0.3) {
+                  nc.post(name: NSScrollView.didEndLiveMagnifyNotification, object: sv)
+                  d.later(0.3) {
+                    wheel("after a pinch held still")
+                    edgeScroll("after a pinch held still") {
+                      pull(d, name: name, down: true, as: "down after a pinch held still", edgeShows: edgeShows, shot: shot, then: then)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      }
+    }
+  }
+
   /// A trackpad's two fingers pull the view down, or right, past the board's top or left edge: AppKit stretches it,
   /// and the edge shows, plain; let go, it springs back and the board stays as it was.
-  private static func pull(_ d: Driver, name: String, down: Bool, corner: NSRect, edgeShows: @escaping () -> Bool,
+  private static func pull(_ d: Driver, name: String, down: Bool, as label: String? = nil, edgeShows: @escaping () -> Bool,
                            shot: @escaping (String) -> Void, then: @escaping () -> Void) {
     let sv = d.wc.scrollView, c = d.canvas
-    let way = down ? "down" : "right"
+    let way = label ?? (down ? "down" : "right"), before = c.bounds
     func scroll(_ phase: CGScrollPhase, _ delta: Int32) {
       let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: down ? delta : 0, wheel2: down ? 0 : delta, wheel3: 0)!
       e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
@@ -415,10 +479,10 @@ extension SelfTest {
         let s = c.showing
         if down ? s.minY >= c.bounds.minY : s.minX >= c.bounds.minX { finish(name, "the pull \(way) did not stretch past the edge: \(s) on \(c.bounds)") }
         if !edgeShows() { finish(name, "pulled \(way) past the edge, no edge shows") }
-        shot("pulled-\(way)")
+        shot("pulled-" + way.replacingOccurrences(of: " ", with: "-"))
         scroll(.ended, 0)
         d.later(1.5) {
-          if c.bounds != corner { finish(name, "the pull \(way) left the board at \(c.bounds), was \(corner)") }
+          if c.bounds != before { finish(name, "the pull \(way) left the board at \(c.bounds), was \(before)") }
           then()
         }
       }

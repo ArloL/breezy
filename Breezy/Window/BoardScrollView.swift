@@ -12,20 +12,55 @@ final class BoardScrollView: NSScrollView {
   /// What keeps the view's frames in the board's recording.
   var frames: FrameRecorder?
 
-  /// Whether a gesture scrolls or zooms the view, as AppKit brackets them.
-  private(set) var live = false
+  /// Whether a gesture scrolls the view, and whether one zooms it, as AppKit brackets them; the two can overlap.
+  private(set) var scrolling = false
+  private(set) var magnifying = false
+  var live: Bool { scrolling || magnifying }
+  /// Called as a gesture ends, for the board to rest once the view is still.
+  var onGestureEnd: (() -> Void)?
+  private var settingMagnification = 0
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     contentView = BoardClipView()
     let nc = NotificationCenter.default
-    for (name, now) in [(Self.willStartLiveScrollNotification, true), (Self.didEndLiveScrollNotification, false),
-                        (Self.willStartLiveMagnifyNotification, true), (Self.didEndLiveMagnifyNotification, false)] {
-      nc.addObserver(forName: name, object: self, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.live = now } }
+    let flags: [(Notification.Name, ReferenceWritableKeyPath<BoardScrollView, Bool>, Bool)] = [
+      (Self.willStartLiveScrollNotification, \.scrolling, true), (Self.didEndLiveScrollNotification, \.scrolling, false),
+      (Self.willStartLiveMagnifyNotification, \.magnifying, true), (Self.didEndLiveMagnifyNotification, \.magnifying, false),
+    ]
+    for (name, flag, now) in flags {
+      nc.addObserver(forName: name, object: self, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self[keyPath: flag] = now
+          if !now { self.onGestureEnd?() }
+        }
+      }
     }
   }
 
   required init?(coder: NSCoder) { fatalError() }
+
+  /// Whether the view zooms now: a pinch under way, or a magnification being set. Only then does the clip view grow
+  /// the board to what it would show; a pan, however soon after, stops at the edge.
+  var zooming: Bool { magnifying || settingMagnification > 0 }
+
+  private func zoom(_ set: () -> Void) {
+    settingMagnification += 1
+    defer { settingMagnification -= 1 }
+    set()
+  }
+
+  override var magnification: CGFloat {
+    get { super.magnification }
+    set { zoom { super.magnification = newValue } }
+  }
+
+  override func setMagnification(_ magnification: CGFloat, centeredAt point: NSPoint) {
+    zoom { super.setMagnification(magnification, centeredAt: point) }
+  }
+
+  override func magnify(toFit rect: NSRect) { zoom { super.magnify(toFit: rect) } }
 
   /// Whether the view moves of itself, on a spring.
   var animating: Bool { spring != nil || pan != nil }
@@ -120,15 +155,16 @@ final class BoardScrollView: NSScrollView {
   }
 }
 
-/// Keeps the board under all the view shows while it zooms or resizes: shown at a size other than the one it last
-/// rested at, the board grows to take it in first. A pan may pull past the edge, where AppKit's rubber band stretches
-/// and springs back. AppKit asks here as it sets the bounds, a size and then an origin, and as it measures a stretch.
+/// Keeps the board under all the view shows while it zooms or resizes: the board grows to take in what it would show
+/// first. A pan stops at the edge, or pulls past it, where AppKit's rubber band stretches and springs back. AppKit asks
+/// here as it sets the bounds, a size and then an origin, and as it measures a stretch, sometimes with no rect at all.
 final class BoardClipView: NSClipView {
   override func constrainBoundsRect(_ proposed: NSRect) -> NSRect {
-    guard let canvas = documentView as? CanvasView else { return super.constrainBoundsRect(proposed) }
+    guard let canvas = documentView as? CanvasView, [proposed.minX, proposed.minY, proposed.width, proposed.height].allSatisfy(\.isFinite)
+    else { return super.constrainBoundsRect(proposed) }
     if canvas.rebasing { return proposed }
     var r = proposed
-    if proposed.size != canvas.restedSize {
+    if (enclosingScrollView as? BoardScrollView)?.zooming == true || proposed.size != bounds.size {
       let d = canvas.takeIn(proposed, of: self)
       r.origin.x += d.dx
       r.origin.y += d.dy
