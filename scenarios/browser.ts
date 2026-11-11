@@ -1147,6 +1147,21 @@ export async function rebootFullEmulator(share = Number(process.env.EMULATOR_MAX
   return `the emulator held ${Math.round(mb)} MB of ${Math.round(totalmem() / 2 ** 20)}: booted it again, now ${Math.round(emulatorMB())} MB`;
 }
 
+/** Safari on the iPhone `udid` started afresh, so that no tab of a world before holds the boards' lock. */
+export async function freshSafari(udid: string) {
+  try {
+    await simctlAsync(["terminate", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
+  } catch {}
+  // and no tabs: a tab restored in the background kept the site's database open, and clearing it waited on that
+  const state = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/Safari");
+  for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(state, f + x), { force: true });
+  // nor any site's data: a world's service worker served the next world's first page from its snapshot, which has no
+  // agent in it
+  const safari = (await simctlAsync(["get_app_container", udid, "com.apple.mobilesafari", "data"], { timeout: 90_000 })).trim();
+  rmSync(join(safari, "Library/WebKit/com.apple.mobilesafari/WebsiteData"), { recursive: true, force: true });
+  await simctlAsync(["launch", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
+}
+
 /** Whether an emulator ran as this process began. */
 let hadEmulator: boolean | undefined;
 
@@ -1269,19 +1284,8 @@ export class RealWorld {
             u.searchParams.set("opened", String(++opened));
             await simctlAsync(["openurl", udid, u.href], { timeout: 90_000 });
           };
-          // Safari afresh, so that no tab of a world before holds the boards' lock; a URL opened while it starts goes
-          // nowhere, so it is opened again until a page asks
-          try {
-            await simctlAsync(["terminate", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
-          } catch {}
-          // and no tabs: a tab restored in the background kept the site's database open, and clearing it waited on that
-          const state = join(homedir(), "Library/Developer/CoreSimulator/Devices", udid, "data/Library/Safari");
-          for (const f of ["SafariTabs.db", "BrowserState.db"]) for (const x of ["", "-wal", "-shm"]) rmSync(join(state, f + x), { force: true });
-          // nor any site's data: a world's service worker served the next world's first page from its snapshot, which
-          // has no agent in it
-          const safari = (await simctlAsync(["get_app_container", udid, "com.apple.mobilesafari", "data"], { timeout: 90_000 })).trim();
-          rmSync(join(safari, "Library/WebKit/com.apple.mobilesafari/WebsiteData"), { recursive: true, force: true });
-          await simctlAsync(["launch", udid, "com.apple.mobilesafari"], { timeout: 90_000 });
+          // a URL opened while Safari starts goes nowhere, so it is opened again until a page asks
+          await freshSafari(udid);
           await openUntilAsked(() => page.open(`http://localhost:${WEB}/scenarios-clear`), () => page.connected(10_000), 4);
           this.filmIphone(udid, page);
           return new IosDevice("ios-safari", page, await SimHid.start(udid), { scene: readScene, editor: readEditor, weights: readWeights, sight: readSight });

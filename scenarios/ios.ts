@@ -2,7 +2,7 @@
 // and IndexedDB as an iPhone does, and shows the board. Its page's touches and keys go through scripts/sim-finger.m, each
 // event stamped for when it was meant, so a gesture's times hold however late a busy runner sends it; the Home Screen and
 // Safari's own touches go through idb (scripts/sim-hid.py). The page is read through the agent the scenarios' server
-// puts in it (agent.ts). One finger only. scripts/ios.ts boots the simulator.
+// puts in it (agent.ts). scripts/ios.ts boots the simulator.
 import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -293,6 +293,9 @@ export function homeClips(udid: string) {
     execFileSync("plutil", ["-extract", "Title", "raw", join(clip, "Info.plist")], { encoding: "utf8", timeout: 10_000 }).trim() === HOME_ICON);
 }
 
+/** What a finger does in a frame of several: "still" where it stays as it was. */
+type HandPhase = "down" | "move" | "up" | "still";
+
 /** Where the page saw a touch come down, and the screen's top left then, in the board's frame. */
 type Down = Point & { vx: number; vy: number };
 
@@ -463,6 +466,11 @@ export class SimFinger {
   /** One finger's events in screen points, each after its wait in ms, each stamped for when it was meant. */
   touches(t: [number, PointerPhase, number, number][]) {
     return this.send({ touches: t });
+  }
+
+  /** Several fingers, a frame of every finger on the glass each after its wait in ms, each stamped for when it was meant. */
+  frames(f: [number, [number, HandPhase, number, number][]][]) {
+    return this.send({ frames: f });
   }
 
   /** Keys by HID usage, each after its wait in ms, as the keyboard dtuhidd adds once idb connects. */
@@ -675,8 +683,9 @@ export class IosDevice extends Device {
     return this.screen(p);
   }
 
-  /** A gesture's frames as one stream, so its waits hold; with one finger. */
+  /** A gesture's frames as one stream, so its waits hold. */
   override async gesture(frames: Frame[]) {
+    if (new Set(frames.flatMap(([, , moves]) => moves.map(([f]) => f))).size > 1) return this.hands(frames);
     // points in the board's frame, as the camera and tapOn give them, where the screen shows them now: iOS moves the
     // visual viewport, and scrolls the page and the fixed board with it, to show a field the keyboard would cover, and
     // a tap aimed by the page alone landed 60 pt lower, in the card's editor, not on the board
@@ -686,11 +695,9 @@ export class IosDevice extends Device {
     });
     const t: [number, PointerPhase, number, number][] = [];
     for (const [ms, phase, moves] of frames) {
-      if (moves.length > 1 || moves.some(([f]) => f !== moves[0]![0])) throw new Error("Safari on the iOS Simulator has one finger only");
+      if (moves.length > 1) throw new Error("one finger moves once a frame");
       for (const [, p] of moves) t.push([ms, phase, p.x - vv.x + this.offset.x, p.y - vv.y + this.offset.y]);
     }
-    const fingers = new Set(frames.flatMap(([, , moves]) => moves.map(([f]) => f)));
-    if (fingers.size > 1) throw new Error("Safari on the iOS Simulator has one finger only");
     await this.page.evaluate(() => {
       delete (window as { down?: Down }).down;
       (window as { touchTimes?: [string, number][] }).touchTimes = [];
@@ -721,6 +728,28 @@ export class IosDevice extends Device {
         throw new Error(`a gesture sent as ${sent} ms from its first touch to its last lift reached the page ${Math.round(last - first)} ms long`);
       }
     }
+  }
+
+  /** Several fingers' frames as one stream, each frame every finger on the glass, as a touchscreen reports them: a
+   * finger a frame leaves out stays where it was. */
+  private async hands(frames: Frame[]) {
+    if (!this.finger) throw new Error("the iPhone was not calibrated");
+    const vv = await this.page.evaluate(() => {
+      const b = document.querySelector("#board")?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      return { x: visualViewport!.pageLeft - scrollX - b.left, y: visualViewport!.pageTop - scrollY - b.top };
+    });
+    const on = new Map<number, Point>(), out: [number, [number, HandPhase, number, number][]][] = [];
+    for (const [ms, phase, moves] of frames) {
+      const now = new Map(moves.map(([f, p]) => [f, { x: p.x - vv.x + this.offset.x, y: p.y - vv.y + this.offset.y }] as const));
+      const lifted = phase === "up" || phase === "cancel";
+      const fingers: [number, HandPhase, number, number][] = [...new Set([...on.keys(), ...now.keys()])].map((f) => {
+        const p = now.get(f) ?? on.get(f)!;
+        return [f, !now.has(f) ? "still" : lifted ? "up" : on.has(f) ? "move" : "down", p.x, p.y];
+      });
+      for (const [f, p] of now) lifted ? on.delete(f) : on.set(f, p);
+      out.push([ms, fingers]);
+    }
+    await this.finger.frames(out);
   }
 
   async pointer(phase: PointerPhase, p: Point, extra: PointerExtra = {}) {

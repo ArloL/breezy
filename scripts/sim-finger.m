@@ -9,6 +9,9 @@
 //
 //   {"touches": [[ms, "down" | "move" | "up", x, y], ...]}   one finger, each event ms after the one before, in points
 //   -> {"ok": true, "stamped": [ms...], "sent": [ms...]}     each event's stamp and when it went, on the wall clock
+//   {"frames": [[ms, [[finger, "down" | "move" | "up" | "still", x, y], ...]], ...]}
+//                                                            several fingers, a frame each event: every finger on the
+//                                                            glass in each, as a touchscreen reports them
 //   {"senders": true} -> {"ok": true, "senders": [...]}       the touchscreens, as which a touch may come
 //   {"sender": "ID"}                                         touch as that one from now on
 //   {"keys": [[ms, "down" | "up", usage], ...]}              keys by HID usage, each after its wait, as the keyboard
@@ -58,6 +61,33 @@ static Ev event(uint64_t at, double x, double y, NSString *phase, uint64_t sende
   CFRelease(finger);
   SetSender(hand, sender);
   return hand;
+}
+
+static uint32_t maskOf(NSString *phase) {
+  if ([phase isEqualToString:@"move"]) return POSITION;
+  if ([phase isEqualToString:@"still"]) return 0;
+  return RANGE | TOUCH;
+}
+
+/** A frame of `fingers`, [finger, phase, x, y] with x and y of the screen's size, as one hand. */
+static Ev hand(uint64_t at, NSArray *fingers, uint64_t sender) {
+  uint32_t mask = 0;
+  bool any = false;
+  for (NSArray *f in fingers) {
+    mask |= maskOf(f[1]);
+    any = any || ![f[1] isEqualToString:@"up"];
+  }
+  Ev h = Digitizer(NULL, at, HAND, 0, 0, mask, 0, 0, 0, 0, 0, 0, any, any, 0);
+  SetInt(h, DISPLAY_INTEGRATED, 1);
+  for (NSArray *f in fingers) {
+    bool down = ![f[1] isEqualToString:@"up"];
+    uint32_t n = 2 + [f[0] unsignedIntValue];
+    Ev e = Finger(NULL, at, n, n, maskOf(f[1]), [f[2] doubleValue], [f[3] doubleValue], 0, down ? 1 : 0, 0, down, down, 0);
+    Append(h, e, 0);
+    CFRelease(e);
+  }
+  SetSender(h, sender);
+  return h;
 }
 
 /** The touchscreens, dtuhidd's first, by a client made for it: one made earlier lists those of when it was made, and
@@ -149,7 +179,9 @@ int main(int argc, char **argv) {
           answer(@{@"ok": @YES});
           continue;
         }
-        NSArray *touches = c[@"touches"], *keys = c[@"keys"];
+        NSArray *touches = c[@"touches"], *keys = c[@"keys"], *frames = c[@"frames"];
+        bool many = [frames isKindOfClass:NSArray.class];
+        if (many) touches = frames;
         uint64_t keys_from = 0;
         if ([keys isKindOfClass:NSArray.class] && !(keys_from = keyboard())) {
           answer(@{@"error": @"no keyboard: idb has not connected"});
@@ -174,6 +206,10 @@ int main(int argc, char **argv) {
           if (keys_from) {
             e = Keyboard(NULL, due, KEYBOARD_PAGE, [t[2] unsignedIntValue], [t[1] isEqualToString:@"down"], 0);
             SetSender(e, keys_from);
+          } else if (many) {
+            NSMutableArray *fs = [NSMutableArray array];
+            for (NSArray *f in t[1]) [fs addObject:@[f[0], f[1], @([f[2] doubleValue] / width), @([f[3] doubleValue] / height)]];
+            e = hand(due, fs, sender);
           } else {
             e = event(due, [t[2] doubleValue] / width, [t[3] doubleValue] / height, t[1], sender);
           }
