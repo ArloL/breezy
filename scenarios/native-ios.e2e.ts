@@ -99,7 +99,7 @@ describe("native panning in Safari on the iOS Simulator", { skip: unfit }, () =>
     await freshSafari(udid);
     hid = await SimHid.start(udid);
     d = new IosDevice("ios-safari", page, hid, { scene: nativeScene, editor: () => null, weights: () => null, sight: () => null });
-  });
+   }, { timeout: 3 * MS });
 
   // each case on a page of its own, opened at a URL of its own: a tab the simulator opens again sees no touch
   beforeEach(async () => {
@@ -119,7 +119,7 @@ describe("native panning in Safari on the iOS Simulator", { skip: unfit }, () =>
     }
     await d.calibrate();
     await d.still("the board to stand still");
-  });
+   }, { timeout: 3 * MS });
 
   /** On failure, the page's flight recording and the iPhone's screen, into build/native-ios/. */
   const kept = async (t: TestContext, f: () => Promise<void>) => {
