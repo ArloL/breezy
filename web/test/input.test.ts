@@ -135,6 +135,48 @@ test("in native mode a pan drag on the empty board moves nothing and coasts noth
   assert.equal(a.view.camera.moving, false);
 });
 
+test("in native mode a one-finger zoom zooms around the point first touched, doubling for every 150 pt down", () => {
+  const { app: a } = app();
+  a.input.native = true;
+  const p = { x: 400, y: 300 }, w0 = a.view.toWorld(p), z0 = a.view.cam.zoom;
+  a.input.zoomDragStart(p);
+  a.input.zoomDrag(75);
+  a.input.zoomDrag(150);
+  assert.ok(Math.abs(a.view.cam.zoom - z0 * 2) < 1e-9, `zoom ${a.view.cam.zoom}`);
+  const w1 = a.view.toWorld(p);
+  assert.ok(Math.abs(w1.x - w0.x) < 1e-9 && Math.abs(w1.y - w0.y) < 1e-9, `the point first touched moved to ${JSON.stringify(w1)}`);
+  // held at the limit, with no stretch past it to spring back from
+  a.input.zoomDrag(900);
+  assert.equal(a.view.cam.zoom, 2);
+  a.input.zoomDragEnd();
+  assert.equal(a.input.pinchBase, null);
+});
+
+test("in native mode a one-finger zoom cancelled puts the camera back", () => {
+  const { app: a } = app();
+  a.input.native = true;
+  const cam = { ...a.view.cam };
+  a.input.zoomDragStart({ x: 400, y: 300 });
+  a.input.zoomDrag(150);
+  a.input.zoomDragCancel();
+  assert.deepEqual(a.view.cam, cam);
+  assert.equal(a.input.pinchBase, null);
+});
+
+test("in native mode the pointers' pinch moves nothing: the touches' own pinch has the board", () => {
+  const { app: a } = app();
+  a.input.native = true;
+  const cam = { ...a.view.cam };
+  a.input.pinchStart({ x: 400, y: 300 });
+  a.input.pinch({ x: 420, y: 320 }, 2);
+  assert.deepEqual(a.view.cam, cam);
+  a.input.pinchEnd({ x: 1, y: 1 });
+  a.input.pinchStart({ x: 400, y: 300 });
+  a.input.pinchCancel();
+  assert.deepEqual(a.view.cam, cam);
+  assert.equal(a.view.camera.moving, false);
+});
+
 test("in native mode a pan cancelled leaves the camera where the browser took it", () => {
   const { app: a } = app();
   a.input.native = true;

@@ -308,7 +308,10 @@ export class Input {
     app.view.invalidate();
   }
 
+  /** In native mode the touches themselves pinch (web/native/touch-wiring.ts): the browser cancels a panning finger's
+   * pointer, so the pointers' pinch would miss it. */
   pinchStart(c: Point) {
+    if (this.native) return;
     this.app.flight.note("input", "pinch start", { x: Math.round(c.x), y: Math.round(c.y) });
     this.stopCoast();
     this.pinchBase = { cam: { ...this.app.view.cam }, c, last: c };
@@ -316,6 +319,7 @@ export class Input {
 
   /** Zooms and pans together: the world point first under the fingers stays under them; past a limit, it stretches. */
   pinch(c: Point, scale: number) {
+    if (this.native) return;
     const { cam, c: c0 } = this.pinchBase!;
     const raw = cam.zoom * scale;
     const zoom = this.app.view.camera.stretchZoom(raw);
@@ -333,6 +337,7 @@ export class Input {
 
   /** A zoom past a limit springs back around the fingers; otherwise the pan coasts on. */
   pinchEnd(v: Point) {
+    if (this.native) return;
     this.app.flight.note("input", "pinch end");
     const c = this.pinchBase?.last;
     this.pinchBase = null;
@@ -340,6 +345,7 @@ export class Input {
   }
 
   pinchCancel() {
+    if (this.native) return;
     this.app.flight.note("input", "pinch cancel");
     this.app.view.setCamera(this.pinchBase!.cam);
     this.pinchBase = null;
@@ -353,7 +359,10 @@ export class Input {
 
   /** Down zooms in, up zooms out, as in Maps; the point first touched stays put. */
   zoomDrag(dy: number) {
-    this.pinch(this.pinchBase!.c, 2 ** (dy / ZOOM_DRAG));
+    const { c, cam } = this.pinchBase!;
+    // within the limits, as the browser's content cannot stretch past them
+    if (this.native) return this.app.view.zoomAround(c, cam.zoom * 2 ** (dy / ZOOM_DRAG));
+    this.pinch(c, 2 ** (dy / ZOOM_DRAG));
   }
 
   zoomDragEnd() {
@@ -365,7 +374,9 @@ export class Input {
 
   zoomDragCancel() {
     this.app.flight.note("input", "zoom drag cancel");
-    this.pinchCancel();
+    if (!this.native) return this.pinchCancel();
+    this.app.view.setCamera(this.pinchBase!.cam);
+    this.pinchBase = null;
   }
 
   /** At the very edge of the visible area a drag scrolls the board, slowly at first and faster the longer it stays. */
