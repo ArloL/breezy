@@ -4,9 +4,11 @@ import { CAMERA_SPRING, Camera, boardOf, clampZoom, extent, panLimits, revealing
 import { animate, motionValue } from "./motion.ts";
 import { DomField, fillFront, frontPoint } from "./field.ts";
 import { Grid } from "./grid.ts";
+import { CameraSurface } from "./surface.ts";
 import { WheelPan } from "./wheel.ts";
 import { FOLD } from "./policy.ts";
 import type { Field } from "./ports.ts";
+import type { Surface } from "./surface.ts";
 import type { Limits } from "./camera.ts";
 import type { MotionValue } from "./motion.ts";
 import type { Model } from "./model.ts";
@@ -70,7 +72,6 @@ export class View {
   root: HTMLElement;
   model: Model;
   state: State;
-  world: HTMLElement;
   lanesEl: HTMLElement;
   cardsEl: HTMLElement;
   marqueeEl: HTMLElement;
@@ -81,7 +82,7 @@ export class View {
   /** What showed when the camera last rested, which the board takes in: Freeform's canvas grows to what it shows. */
   seen: Rect | null = null;
   wheelRest?: ReturnType<typeof setTimeout>;
-  grid: Grid;
+  surface: Surface;
   els: Map<string, Shown>;
   /** Each card turning: how far it is from its front, 0, to its back, 1; with reduced motion only its faces fade. */
   turns: Map<string, { p: MotionValue<number>; fade: boolean }>;
@@ -98,14 +99,13 @@ export class View {
     this.root = root;
     this.model = model;
     this.state = state;
-    this.world = root.querySelector<HTMLElement>(".world")!;
     this.lanesEl = root.querySelector<HTMLElement>(".lanes")!;
     this.cardsEl = root.querySelector<HTMLElement>(".cards")!;
     this.marqueeEl = root.querySelector<HTMLElement>(".marquee")!;
     const m = document.querySelector<HTMLElement>(".measure")!;
     m.innerHTML = `<div class="card">${SHEET}</div><div class="card turned">${SHEET}</div>`;
     [this.mFront, this.mBack] = m.children as HTMLCollectionOf<HTMLElement>;
-    this.grid = new Grid(root.querySelector<HTMLCanvasElement>(".grid")!);
+    this.surface = new CameraSurface(root.querySelector<HTMLElement>(".world")!, new Grid(root.querySelector<HTMLCanvasElement>(".grid")!));
     this.camera = new Camera((c) => this.apply(c));
     this.camera.limits = (z) => this.limits(z);
     this.wheel = new WheelPan(this.camera, (z) => this.limits(z), () => this.stage());
@@ -201,20 +201,26 @@ export class View {
     if (animate && !this.camera.moving) this.rest();
   }
 
-  apply({ x, y, zoom }: Cam) {
-    this.world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+  apply(cam: Cam) {
+    this.surface.apply(cam);
     this.drawGrid();
     this.onCamera();
   }
 
+  /** Swaps how the camera shows, and shows it there. */
+  useSurface(s: Surface) {
+    this.surface.dispose();
+    this.surface = s;
+    this.apply(this.cam);
+  }
+
   drawGrid() {
-    const { x, y, zoom } = this.cam, b = this.board();
-    this.grid.draw({ x, y, zoom }, { x: b.x * zoom + x, y: b.y * zoom + y, w: b.w * zoom, h: b.h * zoom });
+    this.surface.drawGrid(this.cam, this.board());
   }
 
   /** The board's element, under the bars too, which the board's edge stops at. */
   stage(): Area {
-    return { top: 0, left: 0, right: this.grid.width, bottom: this.grid.height };
+    return this.surface.stage();
   }
 
   /** As far as the cards and lanes, the margin, and what showed when the camera last rested. */
@@ -226,6 +232,7 @@ export class View {
   /** The board takes in what shows now, and only that, as Freeform's canvas does when a scroll ends. */
   rest() {
     this.seen = seenFrom(this.cam, this.stage());
+    this.surface.rested();
     this.drawGrid();
   }
 
