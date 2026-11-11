@@ -12,8 +12,10 @@ enum RawReplay {
 
   /// Hands each of `raw`'s events (`[ms, base64 CGEvent data]`) to `window` at its time from now, its location moved
   /// from where the window was when recorded, `recorded` (`[x, y, w, h]` as `cgFrame` gives), to where it is; then
-  /// calls `done` with how many it handed over.
-  @MainActor static func play(_ raw: [[String]], recorded: [Double], into window: NSWindow, done: @escaping @MainActor (Int) -> Void) {
+  /// calls `done` with how many it handed over. Events handed to a window skip the app's event monitors, so each also
+  /// goes to `observe`, as a recorder's monitor would have.
+  @MainActor static func play(_ raw: [[String]], recorded: [Double], into window: NSWindow, observe: @escaping @MainActor (NSEvent) -> Void = { _ in },
+                              done: @escaping @MainActor (Int) -> Void) {
     let now = cgFrame(window)
     let dx = now.minX - recorded[0], dy = now.minY - recorded[1]
     let events = raw.compactMap { r -> (Double, Data)? in
@@ -38,6 +40,7 @@ enum RawReplay {
         DispatchQueue.main.sync {
           MainActor.assumeIsolated {
             if let e = NSEvent(cgEvent: ev) {
+              observe(e)
               window.sendEvent(e)
               handed += 1
             }

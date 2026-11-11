@@ -159,6 +159,14 @@ final class Reference: NSObject, NSApplicationDelegate {
   // MARK: --zoom
 
   let zoomSide: CGFloat = 40032
+  /// The strokes the owner makes, chosen with keys 1 to 7, each saved under its own name.
+  static let kinds = ["pinch-out-slow", "pinch-out-fast", "pinch-corner", "pinch-in-past-max", "double-tap", "pinch-pan", "lift-mid-band"]
+  lazy var kind = name
+  var savedOf: [String: Int] = [:]
+
+  func zoomTitle() {
+    window.title = "\(kind): \(savedOf[kind] ?? 0) saved — keys 1–7 choose: " + Self.kinds.enumerated().map { "\($0.offset + 1) \($0.element)" }.joined(separator: ", ")
+  }
 
   func zoomMode() {
     window = NSWindow(contentRect: NSRect(origin: .zero, size: stage), styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -175,22 +183,25 @@ final class Reference: NSObject, NSApplicationDelegate {
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
     zoomReset()
-    let rs = scroll as! RecordingScrollView
-    rs.onMagnify = { [unowned self] e in
-      let phase: FrameWriter.Phase = e.phase.contains(.began) ? .began : e.phase.contains(.ended) || e.phase.contains(.cancelled) ? .ended : .changed
-      writer.magnify(t: CACurrentMediaTime(), by: e.type == .magnify ? e.magnification : 0, phase: e.type == .magnify ? phase : .ended, at: viewPoint(e), raw: e.cgEvent?.data as Data?)
-    }
-    rs.onScroll = { [unowned self] e in
-      writer.scroll(t: CACurrentMediaTime(), dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue,
-                    at: viewPoint(e), raw: e.cgEvent?.data as Data?)
+    // at the window, not the scroll view's overrides: NSScrollView tracks a pinch past them, and two of a stroke's three
+    // pinch ends never reached magnify(with:)
+    NSEvent.addLocalMonitorForEvents(matching: Self.gestures) { [unowned self] e in
+      observe(e)
+      return e
     }
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
       switch e.charactersIgnoringModifiers {
       case "r": zoomReset(); return nil
       case "q": NSApp.terminate(nil); return nil
+      case let k? where Self.kinds.indices.contains((Int(k) ?? 0) - 1):
+        kind = Self.kinds[Int(k)! - 1]
+        zoomReset()
+        zoomTitle()
+        return nil
       default: return e
       }
     }
+    zoomTitle()
     let l = scroll.displayLink(target: self, selector: #selector(zoomTick(_:)))
     l.add(to: .main, forMode: .common)
     link = l
@@ -205,7 +216,28 @@ final class Reference: NSObject, NSApplicationDelegate {
         exit(1)
       }
       zoomReset()
-      RawReplay.play(s.raw, recorded: s.window, into: window) { n in print("handed \(n) of \(s.raw.count)"); fflush(stdout) }
+      // where the owner's view was when the stroke began
+      scroll.magnification = s.start[0]
+      scroll.contentView.scroll(to: NSPoint(x: s.start[1], y: s.start[2]))
+      scroll.reflectScrolledClipView(scroll.contentView)
+      RawReplay.play(s.raw, recorded: s.window, into: window, observe: { [unowned self] e in observe(e) }) { n in print("handed \(n) of \(s.raw.count)"); fflush(stdout) }
+    }
+  }
+
+  static let gestures: NSEvent.EventTypeMask = [.magnify, .smartMagnify, .scrollWheel, .rotate, .swipe, .gesture, .beginGesture, .endGesture]
+
+  /// Keeps `e` in the stroke: what the window's monitor sees, and what a replay hands the window, which skips monitors.
+  func observe(_ e: NSEvent) {
+    guard Self.gestures.contains(NSEvent.EventTypeMask(type: e.type)) else { return }
+    let t = CACurrentMediaTime(), at = viewPoint(e), raw = e.cgEvent?.data as Data?
+    switch e.type {
+    case .magnify:
+      let phase: FrameWriter.Phase = e.phase.contains(.began) ? .began : e.phase.contains(.ended) || e.phase.contains(.cancelled) ? .ended : .changed
+      writer.magnify(t: t, by: e.magnification, phase: phase, at: at, raw: raw)
+    case .smartMagnify: writer.magnify(t: t, by: 0, phase: .ended, at: at, raw: raw)
+    case .scrollWheel:
+      writer.scroll(t: t, dx: e.scrollingDeltaX, dy: e.scrollingDeltaY, phase: e.phase.rawValue, momentum: e.momentumPhase.rawValue, at: at, raw: raw)
+    default: writer.other(t: t, at: at, raw: raw)
     }
   }
 
@@ -219,7 +251,7 @@ final class Reference: NSObject, NSApplicationDelegate {
     scroll.magnification = 1
     scroll.contentView.scroll(to: NSPoint(x: zoomSide / 2 - stage.width / 2, y: zoomSide / 2 - stage.height / 2))
     scroll.reflectScrolledClipView(scroll.contentView)
-    writer = FrameWriter(name: name)
+    writer = FrameWriter(name: kind)
     writer.window = MainActor.assumeIsolated { RawReplay.cgFrame(window) }
   }
 
@@ -229,14 +261,14 @@ final class Reference: NSObject, NSApplicationDelegate {
                                   board: scroll.documentView!.bounds, knobH: scroll.horizontalScroller.map { Double($0.knobProportion) },
                                   knobV: scroll.verticalScroller.map { Double($0.knobProportion) })
     guard let s = writer.frame(t: l.timestamp, shown: shown) else { return }
-    writer = FrameWriter(name: name)
+    writer = FrameWriter(name: kind)
     writer.window = MainActor.assumeIsolated { RawReplay.cgFrame(window) }
     saveZoom(s)
   }
 
   func saveZoom(_ s: FrameWriter.Stroke) {
     try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-    let base = replay == nil ? name : "\(name)-replay"
+    let base = replay == nil ? kind : "\(kind)-replay"
     var url: URL
     repeat {
       count += 1
@@ -244,8 +276,8 @@ final class Reference: NSObject, NSApplicationDelegate {
     } while FileManager.default.fileExists(atPath: url.path)
     do {
       try JSONEncoder().encode(s).write(to: url)
-      saved += 1
-      window.title = "Breezy Reference — \(name): \(saved) saved"
+      savedOf[kind, default: 0] += 1
+      zoomTitle()
       print(url.path)
       fflush(stdout)
       if replay != nil { NSApp.terminate(nil) }

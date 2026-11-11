@@ -36,6 +36,8 @@ struct FrameWriter {
     var entries: [[String]] = []
     var frames: Track
     var raw: [[String]]
+    /// Where the view was just before the stroke's first event, `[zoom, camX, camY]`, for a replay to start there.
+    var start: [Double]
     /// The window's frame on screen when recorded, `[x, y, w, h]` in global display points, for a replay to move the
     /// events' locations to wherever its window is.
     var window: [Double]
@@ -52,6 +54,8 @@ struct FrameWriter {
   private var lastEvent = 0.0
   private var pointer = CGPoint.zero
   private var still: (since: Double, shown: Shown)?
+  /// The last frame before the first event.
+  private var before: Shown?
 
   init(name: String) { self.name = name }
 
@@ -63,6 +67,9 @@ struct FrameWriter {
     pointer = at
     if let data { raw.append([String(lastEvent), data.base64EncodedString()]) }
   }
+
+  /// Any other event a gesture is made of, kept to replay.
+  mutating func other(t: Double, at: CGPoint, raw data: Data?) { began(t, at, data) }
 
   mutating func magnify(t: Double, by m: Double, phase: Phase, at: CGPoint, raw data: Data?) {
     began(t, at, data)
@@ -84,7 +91,10 @@ struct FrameWriter {
 
   /// Adds a frame; gives the stroke once it has ended.
   mutating func frame(t: Double, shown s: Shown) -> Stroke? {
-    guard t0 != nil else { return nil }
+    guard t0 != nil else {
+      before = s
+      return nil
+    }
     let now = ms(t)
     let b = s.board
     rows.append([now, s.zoom, s.cam.x, s.cam.y, s.view.width, s.view.height, b.minX, b.minY, b.width, b.height, pointer.x, pointer.y,
@@ -94,8 +104,8 @@ struct FrameWriter {
     gesture = gesture == 1 ? 2 : gesture == 3 ? 0 : gesture
     if still?.shown != s { still = (now, s) }
     guard !touching, !coasting, now - lastEvent >= 1500, now - still!.since >= 100 else { return nil }
-    let w = window
+    let w = window, b0 = before ?? s
     return Stroke(context: ["app": "reference", "name": name], frames: Track(fields: Self.fields, rows: rows), raw: raw,
-                  window: [w.minX, w.minY, w.width, w.height])
+                  start: [b0.zoom, b0.cam.x, b0.cam.y], window: [w.minX, w.minY, w.width, w.height])
   }
 }
