@@ -8,6 +8,8 @@ final class BoardScrollView: NSScrollView {
   private var link: CADisplayLink?
   /// A pan the app makes, each axis on the camera's spring, as the web app's camera pans.
   private var pan: (x: Double, vx: Double, y: Double, vy: Double, to: NSPoint, last: CFTimeInterval, link: CADisplayLink)?
+  /// What keeps the view's frames in the board's recording.
+  var frames: FrameRecorder?
 
   override func scrollWheel(with event: NSEvent) {
     stopSpring()

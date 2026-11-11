@@ -52,6 +52,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.drawsBackground = false
     scrollView.contentView.drawsBackground = false
     scrollView.documentView = canvas
+    scrollView.frames = FrameRecorder(scrollView: scrollView, flight: canvas.core.flight)
     let root = NSView()
     grid.autoresizingMask = [.width, .height]
     scrollView.autoresizingMask = [.width, .height]
@@ -131,6 +132,26 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   var centre: NSPoint {
     let r = scrollView.contentView.bounds
     return NSPoint(x: r.midX, y: r.midY)
+  }
+
+  /// Help ▸ That Looked Off: keeps the board's recording, with its last 30 s of frames, in
+  /// ~/Library/Application Support/Breezy/looked-off, and sends it to its space's diag.php when it is in one.
+  @objc func thatLookedOff(_ sender: Any?) {
+    let r = canvas.core.flight.recording()
+    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Breezy/looked-off")
+    let file = try? LookedOff.keep(r, in: dir)
+    let invite = (document as? BoardDocument).flatMap { Library.shared.spaces.group(of: $0.boardID) }?.store.invite
+    let alert = NSAlert()
+    alert.messageText = file == nil ? "Couldn’t keep what happened" : "Kept the last 30 seconds"
+    alert.informativeText = file?.path ?? "Nothing could be written to \(dir.path)."
+    if let req = LookedOff.request(r, invite: invite) {
+      alert.informativeText += "\nSending it to the space’s server…"
+      Task {
+        let ok = ((try? await URLSession.shared.data(for: req))?.1 as? HTTPURLResponse)?.statusCode == 200
+        canvas.core.flight.note(.life, "looked off", ["sent": .bool(ok)])
+      }
+    }
+    if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
   }
 
   @objc func zoomIn(_ sender: Any?) { scrollView.springMagnification(to: scrollView.magnification * 1.25, centeredAt: centre) }

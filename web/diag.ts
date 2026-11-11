@@ -4,7 +4,8 @@
 import type { Recording } from "./flight.ts";
 import { deflateRaw } from "./sync/engine.ts";
 
-export type Why = "asked" | "error" | "sight";
+/** Asked for, an error, a card out of sight, or what looked off to its owner, with its frames. */
+export type Why = "asked" | "error" | "sight" | "off";
 
 /** A space's server, as sync.php's address, the space and its token, as the sync engine sends them. */
 export interface Target {
@@ -14,19 +15,22 @@ export interface Target {
 }
 
 /** The most diag.php takes, inflated. */
-export const LIMIT = 512 * 1024;
+export const LIMIT = 2 * 1024 * 1024;
 const EVERY_MS = 10 * 60_000;
 const TIMEOUT_MS = 10_000;
 
 export const diagUrl = (server: string) => server.replace(/sync\.php$/, "diag.php");
 
-/** `r`'s newest entries whose body fits LIMIT, what it left out counted as dropped. */
+/** `r` within LIMIT: its newest frames, then its newest entries, what it left out of the entries counted as dropped. */
 function fitting(why: Why, r: Recording): string {
-  let entries = r.entries;
+  let entries = r.entries, rows = r.frames?.rows;
   for (;;) {
-    const body = JSON.stringify({ why, recording: { ...r, dropped: r.dropped + r.entries.length - entries.length, entries } });
-    if (new TextEncoder().encode(body).length <= LIMIT || !entries.length) return body;
-    entries = entries.slice(Math.ceil(entries.length / 10));
+    const frames = r.frames && rows ? { frames: { fields: r.frames.fields, rows } } : {};
+    const body = JSON.stringify({ why, recording: { ...r, dropped: r.dropped + r.entries.length - entries.length, entries, ...frames } });
+    if (new TextEncoder().encode(body).length <= LIMIT) return body;
+    if (rows?.length) rows = rows.slice(Math.ceil(rows.length / 10));
+    else if (entries.length) entries = entries.slice(Math.ceil(entries.length / 10));
+    else return body;
   }
 }
 
@@ -64,10 +68,11 @@ export class Reporter {
 
   async report(why: Why): Promise<boolean> {
     const at = this.now(), last = this.last.get(why);
-    if (why !== "asked" && last !== undefined && at - last < EVERY_MS) return false;
+    const asked = why === "asked" || why === "off";
+    if (!asked && last !== undefined && at - last < EVERY_MS) return false;
     const t = await Promise.resolve(this.target()).catch(() => null);
     if (!t) return false;
-    if (why !== "asked") this.last.set(why, at);
+    if (!asked) this.last.set(why, at);
     return this.sender(t, why, this.recording());
   }
 }

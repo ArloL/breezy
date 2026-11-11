@@ -1,4 +1,4 @@
 {
   "common": ["t", "zoom", "camX", "camY", "viewW", "viewH", "boardX", "boardY", "boardW", "boardH", "px", "py", "f1x", "f1y", "f2x", "f2y", "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "magnify", "gesture"],
-  "mac": ["knobH", "knobV", "grey"]
+  "mac": ["knobH", "knobV", "knobHAt", "knobVAt", "grey"]
 }

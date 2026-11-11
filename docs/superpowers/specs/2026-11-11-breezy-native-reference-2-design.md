@@ -7,7 +7,9 @@ Phase 1 (`2026-11-10-breezy-native-reference-design.md`) replaced judging by fee
   - the zoom overshooting to 23 % and springing back to 25 %;
   - the scrollers' length changing around the pinch.
 
-  Main's build has no board edge, so it can't show any of this. The only evidence was that recording, tracked by hand, because the build recorded nothing that could be read. What "the scrollbars are weird" meant beyond their length changing isn't known; step 1 begins by asking the owner, with the recording in front of them.
+  Main's build has no board edge, so it can't show any of this. The only evidence was that recording, tracked by hand, because the build recorded nothing that could be read.
+
+  Asked with the recording in front of them, the owner said of the scrollbars: "flickering when it should be mostly stable; both knobs are changing size; jumping around; easily visible". Of the flicker: "the first movement of the video the grey shoots in from the left and then shoots back immediately. that flickers. easily visible". Read frame by frame (`scripts/test/fixtures/owner-pinch-pixels.json`), the band appears at 13.97 s, shoots in by 30 to 52 pt a frame to 167 pt, and is gone in one frame at 14.42 s; the second pinch does the same, to 215 pt. So the frames keep each knob's place as well as its size (`knobHAt`, `knobVAt`).
 - **The iPhone:** the dot grid flickered during a pinch (`1dd075e`); cards painted over the top bar during a pinch (`11a483a`); the finger left after a pinch didn't pan (`0a4ebe9`); a hold that crept 6 pt let iOS scroll the board 267 pt (`156f154`).
 - **The Mac app, October:** the board cross-faded as a card was added (`5c41379`); a card's text moved when its editor opened (`5d78bca`).
 
