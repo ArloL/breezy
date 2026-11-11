@@ -73,6 +73,14 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.onGestureEnd = { [weak self] in self?.restLater() }
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+    for v in [canvas, grid] as [NSView] {
+      v.postsFrameChangedNotifications = true
+      NotificationCenter.default.addObserver(self, selector: #selector(updateGrid), name: NSView.frameDidChangeNotification, object: v)
+    }
+    // a scroller shown or hidden, a find bar, a resize: the view's size changes, which may not move its bounds
+    scrollView.contentView.postsFrameChangedNotifications = true
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(viewMoved), name: NSView.frameDidChangeNotification, object: scrollView.contentView)
     NotificationCenter.default.addObserver(
       self, selector: #selector(occlusionChanged), name: NSWindow.didChangeOcclusionStateNotification, object: window)
     scrollView.findBarPosition = .aboveContent
@@ -124,25 +132,33 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       shownZoom = z
       showZoom(z)
     }
-    grid.update(origin: grid.convert(NSPoint.zero, from: canvas), zoom: scrollView.magnification,
-                board: grid.convert(canvas.bounds, from: canvas))
+    updateGrid()
     // a zoom step moves the bounds more than once; the cards follow once, when the frame is laid out
     canvas.needsLayout = true
     window?.invalidateRestorableState()
+    DispatchQueue.main.async { [weak self] in self?.canvas.coverView() }
     restLater()
   }
 
-  private func restLater() {
+  /// The dots and the paper where the board is now: as the view moves, and as the board or the window grows under it.
+  @objc func updateGrid() {
+    grid.update(origin: grid.convert(NSPoint.zero, from: canvas), zoom: scrollView.magnification,
+                board: grid.convert(canvas.bounds, from: canvas))
+  }
+
+  private func restLater(_ delay: Double = 0.12, anyway: Bool = false) {
     resting?.cancel()
-    let rest = DispatchWorkItem { [weak self] in self?.rest() }
+    let rest = DispatchWorkItem { [weak self] in self?.rest(anyway: anyway) }
     resting = rest
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: rest)
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: rest)
   }
 
   /// The board takes in what shows when the view has come to rest: not while a gesture or a spring moves it, which
-  /// rests it again when it ends.
-  private func rest() {
-    guard !scrollView.live, !scrollView.animating else { return }
+  /// rests it again when it ends. AppKit does not end every gesture it starts, so one that has held the view still
+  /// for a second rests too.
+  private func rest(anyway: Bool = false) {
+    guard !scrollView.animating else { return }
+    if scrollView.live && !anyway { return restLater(1, anyway: true) }
     canvas.rest()
   }
 

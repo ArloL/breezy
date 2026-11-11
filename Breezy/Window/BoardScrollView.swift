@@ -90,6 +90,7 @@ final class BoardScrollView: NSScrollView {
 
   override func smartMagnify(with event: NSEvent) {
     stopSpring()
+    stopPan()
     super.smartMagnify(with: event)
   }
 
@@ -159,12 +160,21 @@ final class BoardScrollView: NSScrollView {
 /// first. A pan stops at the edge, or pulls past it, where AppKit's rubber band stretches and springs back. AppKit asks
 /// here as it sets the bounds, a size and then an origin, and as it measures a stretch, sometimes with no rect at all.
 final class BoardClipView: NSClipView {
+  private var resizing = 0
+
+  /// A window resized, or a find bar shown or hidden: what the view shows now grows the board, as a zoom's does.
+  override func setFrameSize(_ newSize: NSSize) {
+    resizing += 1
+    defer { resizing -= 1 }
+    super.setFrameSize(newSize)
+  }
+
   override func constrainBoundsRect(_ proposed: NSRect) -> NSRect {
     guard let canvas = documentView as? CanvasView, [proposed.minX, proposed.minY, proposed.width, proposed.height].allSatisfy(\.isFinite)
     else { return super.constrainBoundsRect(proposed) }
     if canvas.rebasing { return proposed }
     var r = proposed
-    if (enclosingScrollView as? BoardScrollView)?.zooming == true || proposed.size != bounds.size {
+    if (enclosingScrollView as? BoardScrollView)?.zooming == true || resizing > 0 || proposed.size != bounds.size {
       let d = canvas.takeIn(proposed, of: self)
       r.origin.x += d.dx
       r.origin.y += d.dy

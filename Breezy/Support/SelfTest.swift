@@ -11,7 +11,7 @@ enum SelfTest {
     let d = Driver(wc)
     // a check that blocks the main thread still ends
     Thread.detachNewThread {
-      Thread.sleep(forTimeInterval: 30)
+      Thread.sleep(forTimeInterval: 60)
       let sheet = (d.window.attachedSheet ?? NSApp.modalWindow).map { w in
         (w.contentView?.subviews ?? []).compactMap { ($0 as? NSTextField)?.stringValue }.joined(separator: " | ")
       }
@@ -342,7 +342,11 @@ extension SelfTest {
       let content = BoardBounds.extent(d.board.cards.map(c.drawnRect) + d.board.lanes.map(\.rect))
       let s = c.showing, b = c.bounds
       let want = BoardBounds.board(content, seen: Rect(x: s.minX, y: s.minY, w: s.width, h: s.height)).outward
-      if Rect(x: b.minX, y: b.minY, w: b.width, h: b.height) != want { finish(name, "\(when): the document is \(b), the board \(want)") }
+      // past its bottom and right by at most a legacy scroller, which shows or hides with the size and moves the view
+      let slack = sv.scrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) / sv.magnification + 1 : 0
+      if b.minX != want.x || b.minY != want.y || !(want.w...want.w + slack).contains(b.width) || !(want.h...want.h + slack).contains(b.height) {
+        finish(name, "\(when): the document is \(b), the board \(want); the view \(s) at \(sv.magnification), scrolling \(sv.scrolling), magnifying \(sv.magnifying), scrollers hidden \(sv.horizontalScroller?.isHidden ?? true) \(sv.verticalScroller?.isHidden ?? true)")
+      }
       if c.frame.size != b.size { finish(name, "\(when): the document's frame is \(c.frame.size), the board's \(b.size)") }
       if !b.insetBy(dx: -0.01, dy: -0.01).contains(s) { finish(name, "\(when): the view shows \(s), past the board \(b)") }
       if edgeShows() { finish(name, "\(when): the edge shows, the paper \(grid.paperFrame) under \(grid.convert(clip.bounds, from: clip))") }
@@ -386,7 +390,9 @@ extension SelfTest {
           bounded("after the pull down")
           pull(d, name: name, down: false, edgeShows: edgeShows, shot: shot) {
             bounded("after the pull right")
-            pullsAfterZooms(d, name: name, corner: corner, edgeShows: edgeShows, shot: shot) { finish(name, nil) }
+            pullsAfterZooms(d, name: name, corner: corner, edgeShows: edgeShows, shot: shot) {
+              boundedAnyway(d, name: name, corner: corner, bounded: bounded) { finish(name, nil) }
+            }
           }
         }
       }
@@ -444,7 +450,13 @@ extension SelfTest {
                   d.later(0.3) {
                     wheel("after a pinch held still")
                     edgeScroll("after a pinch held still") {
-                      pull(d, name: name, down: true, as: "down after a pinch held still", edgeShows: edgeShows, shot: shot, then: then)
+                      pull(d, name: name, down: true, as: "down after a pinch held still", edgeShows: edgeShows, shot: shot) {
+                        // a zoom whose proposals' sizes are not whole points
+                        atCorner {
+                          sv.setMagnification(0.7312, centeredAt: clip.bounds.origin)
+                          edgeScroll("after a zoom to 73.12 %", then: then)
+                        }
+                      }
                     }
                   }
                 }
@@ -488,6 +500,113 @@ extension SelfTest {
       }
     }
     d.later(0.016, step)
+  }
+}
+
+extension SelfTest {
+  /// A trackpad's pinch, as the window server sends one: a gesture event of HID type zoom, `m` the magnification's
+  /// change, in phase began 1, changed 2 or ended 4, at window point `p`.
+  static func magnifyEvent(_ phase: Int64, _ m: Double, at p: NSPoint, in w: NSWindow) -> NSEvent {
+    let e = CGEvent(source: nil)!
+    e.type = CGEventType(rawValue: 29)!
+    e.setIntegerValueField(CGEventField(rawValue: 110)!, value: 8)
+    e.setDoubleValueField(CGEventField(rawValue: 113)!, value: m)
+    e.setIntegerValueField(CGEventField(rawValue: 132)!, value: phase)
+    let screen = w.convertPoint(toScreen: p)
+    e.location = CGPoint(x: screen.x, y: (NSScreen.screens.first?.frame.height ?? 0) - screen.y)
+    return NSEvent(cgEvent: e)!
+  }
+
+  /// Whatever got the view there, at rest it shows no edge: after a trackpad's pinch out at the corner and back in,
+  /// after a zoom the board missed (as one left the owner's board smaller than the view at 25 %, stuck and centred),
+  /// with a gesture whose end AppKit never told, and as the window grows at the board's bottom right, at once.
+  fileprivate static func boundedAnyway(_ d: Driver, name: String, corner: NSRect, bounded: @escaping (String) -> Void,
+                                        then: @escaping () -> Void) {
+    let sv = d.wc.scrollView, clip = sv.contentView, c = d.canvas, nc = NotificationCenter.default
+    func pinch(_ deltas: [Double], at p: NSPoint, then next: @escaping () -> Void) {
+      var events: [(Int64, Double)] = [(1, 0)] + deltas.map { (2, $0) } + [(4, 0)]
+      func step() {
+        guard !events.isEmpty else { return d.later(0.8, next) }
+        let (phase, m) = events.removeFirst()
+        sv.magnify(with: magnifyEvent(phase, m, at: p, in: d.window))
+        d.later(0.016, step)
+      }
+      step()
+    }
+    // a zoom that left the board under the view, at 25 %
+    func missed(_ when: String, wait: Double, then next: @escaping () -> Void) {
+      d.wc.place(origin: NSPoint(x: corner.minX - 800, y: corner.minY - 300), zoom: 0.25)
+      d.later(0.4) {
+        let at = c.showing.origin
+        c.reach.rest(Rect(x: 0, y: 0, w: 1, h: 1))
+        c.fitBoard()
+        d.later(wait) {
+          bounded(when)
+          if c.showing.origin != at { finish(name, "\(when), the view moved from \(at) to \(c.showing.origin)") }
+          next()
+        }
+      }
+    }
+    func grow(_ zoom: CGFloat, then next: @escaping () -> Void) {
+      let w = d.window, frame = w.frame
+      d.wc.place(origin: .zero, zoom: zoom)
+      let b = c.bounds, size = c.showing.size
+      d.wc.place(origin: NSPoint(x: b.maxX - size.width, y: b.maxY - size.height), zoom: zoom)
+      d.later(0.3) {
+        let at = c.showing.origin
+        w.setFrame(NSRect(x: frame.minX, y: frame.minY - 300, width: frame.width + 400, height: frame.height + 300), display: true)
+        // at once: the board under all the view shows, no edge, and the view where it was; at rest, the board exactly
+        let when = "the window grown at the bottom right at \(Int(zoom * 100)) %", grid = d.wc.grid
+        if !c.bounds.insetBy(dx: -0.01, dy: -0.01).contains(c.showing) { finish(name, "\(when): the view shows \(c.showing) past \(c.bounds)") }
+        if !grid.paperFrame.insetBy(dx: -0.5, dy: -0.5).contains(grid.convert(clip.bounds, from: clip)) { finish(name, "\(when): the edge shows") }
+        if c.showing.origin != at { finish(name, "\(when): the view moved from \(at) to \(c.showing.origin)") }
+        d.later(0.3) {
+          bounded(when)
+          w.setFrame(frame, display: true)
+          d.later(0.3, next)
+        }
+      }
+    }
+    // a two-finger double tap that zooms out to show the whole document, animated as AppKit animates its smart zoom
+    d.wc.place(origin: corner.origin, zoom: 1)
+    d.later(0.3) {
+      NSAnimationContext.runAnimationGroup { _ in sv.animator().magnify(toFit: clip.convert(c.bounds, from: c)) }
+      d.later(0.8) {
+        shot(d, "whole-board")
+        bounded("after an animated zoom to the whole board")
+        pinches()
+      }
+    }
+    func pinches() {
+    d.wc.place(origin: corner.origin, zoom: 2)
+    d.later(0.3) {
+      let p = clip.convert(NSPoint(x: clip.bounds.minX + 20, y: clip.bounds.minY + 20), to: nil)
+      pinch(Array(repeating: -0.3, count: 8), at: p) {
+        bounded("after a pinch out at the top left")
+        let out = sv.magnification
+        pinch(Array(repeating: 0.06, count: 20), at: p) {
+          if sv.magnification < out * 1.5 { finish(name, "a pinch in from \(out) zoomed to \(sv.magnification)") }
+          bounded("after a pinch back in")
+          missed("after a zoom the board missed", wait: 0.4) {
+            // AppKit brackets some scrolls with no end
+            nc.post(name: NSScrollView.willStartLiveScrollNotification, object: sv)
+            missed("after a zoom the board missed, in a gesture that never ended", wait: 1.6) {
+              nc.post(name: NSScrollView.didEndLiveScrollNotification, object: sv)
+              grow(1) { grow(0.25, then: then) }
+            }
+          }
+        }
+      }
+    }
+    }
+  }
+}
+
+extension SelfTest {
+  /// With -BreezyShots <dir>, a capture of the window as `step`.png there.
+  static func shot(_ d: Driver, _ step: String) {
+    guard let shots = UserDefaults.standard.string(forKey: "BreezyShots") else { return }
+    try? d.image().representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: shots).appendingPathComponent("\(step).png"))
   }
 }
 

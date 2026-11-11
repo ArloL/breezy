@@ -95,7 +95,7 @@ final class BreezyUITests: XCTestCase {
      "lanes": [{"id": "l", "x": 480, "y": 0, "w": 288, "h": 720, "title": "Doing"}],
      "cards": [{"id": "a", "x": 0, "y": 0, "w": 240, "text": "Near", "color": 1}]}
     """#, ["-BreezySelfTest", "bounded-board", "-BreezySelfTestOut", out.path])
-    XCTAssertTrue(app.wait(for: .notRunning, timeout: 40))
+    XCTAssertTrue(app.wait(for: .notRunning, timeout: 90))
     XCTAssertEqual(try String(contentsOf: out, encoding: .utf8), "PASS bounded-board")
   }
 }
