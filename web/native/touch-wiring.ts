@@ -23,8 +23,8 @@ const middle = (t: TouchList) => ({ x: (t[0]!.clientX + t[1]!.clientX) / 2, y: (
 export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, gestures: Gestures) {
   const off = new AbortController(), signal = off.signal;
   const { input, state, view } = app;
-  /** A touch sequence begun on the board, and whether the browser has panned since its first finger. */
-  let ours = false, panned = false;
+  /** A touch sequence begun on the board, whether the browser has panned since its first finger, and whether it pinched. */
+  let ours = false, panned = false, pinched = false;
   /** Whether a touch of the sequence kept the browser from panning, which the flight recording notes once. */
   let stopped = false;
   let pinch: { d: number; zoom: number; mid: Point; still?: ReturnType<typeof setTimeout> } | null = null;
@@ -40,7 +40,7 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
     end("lost");
     hearing.abort();
     hearing = new AbortController();
-    ours = panned = stopped = false;
+    ours = panned = stopped = pinched = false;
     follow = null;
     board.classList.remove("pan-anyway");
   }, { capture: true, passive: true, signal });
@@ -118,6 +118,7 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
       if (!gestures.two) gestures.cancelAll();
       view.camera.stop();
       surface.pinchStart(mid, pinchKind({ cancelable: e.cancelable, pannedThisTouch: panned }));
+      pinched = true;
       pinch = { d: spreadAtDown || d, zoom: view.cam.zoom, mid };
       spreadAtDown = 0;
     }
@@ -138,7 +139,8 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
       follow = null;
       view.camera.coast(v);
     }
-    if (pinch && e.touches.length === 1) {
+    // a pinch held still has ended already, and its finger left would pan nothing
+    if ((pinch || pinched) && e.touches.length === 1) {
       end(e.type);
       followFrom(e.touches[0], e.timeStamp);
     } else if (pinch && e.touches.length < 2) end(e.type);
