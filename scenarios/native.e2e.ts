@@ -227,6 +227,25 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       }
     }));
 
+    // the touches made in the page, as a desktop Firefox has none: iOS can lose a lift, whose sequence pans on unheard
+    test("a touch whose lift went unheard leaves its pan out of the next touch's pinch", { timeout: MS, skip: kind === "firefox" && "no touch events" }, (t) => kept(t, async () => {
+      const touch = (type: string, at: [number, number][], changed = at.map((_, i) => i)) => page.evaluate(({ type, at, changed }) => {
+        const target = document.elementFromPoint(at[0]![0], at[0]![1])!;
+        const ts = at.map(([x, y], i) => new Touch({ identifier: i, target, clientX: x, clientY: y }));
+        target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : ts, changedTouches: changed.map((i) => ts[i]!) }));
+      }, { type, at, changed });
+      await settled(page);
+      await touch("touchstart", [[600, 420]]);
+      await page.mouse.wheel(0, 200);
+      await settled(page);
+      const from = (await notes(page)).length;
+      await touch("touchstart", [[500, 420], [700, 420]]);
+      await touch("touchmove", [[480, 420], [720, 420]]);
+      await touch("touchend", [[480, 420], [720, 420]]);
+      const kinds = (await notes(page, from)).filter((e) => e[2] === "native pinch start").map((e) => (e[3] as { kind: string }).kind);
+      assert.deepEqual(kinds, ["own"]);
+    }));
+
     test("zoomed out to 25 %, the board still covers the window", { timeout: MS }, (t) => kept(t, async () => {
       for (let i = 0; i < 40 && (await page.evaluate(() => nativeCamera())).zoom > 0.2501; i++) await zoomBy(page, 400);
       assert.equal((await settled(page)).zoom, 0.25);
