@@ -131,6 +131,26 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       near(to.x, from.x, 0.5, "x");
     }));
 
+    test("a wheel pans the board while a card is edited", { timeout: MS }, (t) => kept(t, async () => {
+      const c = await page.evaluate(() => {
+        const r = document.querySelector(".cards > [data-id]")!.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      });
+      // again when the clicks came too far apart to be one double-click, as on a busy runner
+      for (let tries = 1; !await page.evaluate(() => !!(document.activeElement as HTMLElement | null)?.isContentEditable); tries++) {
+        if (tries > 3) throw new Error("a double-click opened no editor, three times");
+        await page.mouse.dblclick(c.x, c.y);
+        await sleep(300);
+      }
+      // over the board, clear of the keyboard bar the edit shows
+      await page.mouse.move(600, 420);
+      const from = await settled(page);
+      await page.mouse.wheel(0, 300);
+      const to = await settled(page);
+      near(to.y, from.y - 300, 2, "y");
+      assert.ok(await page.evaluate(() => !!(document.activeElement as HTMLElement | null)?.isContentEditable), "the edit ended");
+    }));
+
     test("⌘-scroll zooms around the pointer, and the board stays put under it", { timeout: MS }, (t) => kept(t, async () => {
       const p = { x: 500, y: 420 };
       await page.mouse.move(p.x, p.y);

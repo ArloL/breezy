@@ -17,7 +17,7 @@ const middle = (t: TouchList) => ({ x: (t[0]!.clientX + t[1]!.clientX) / 2, y: (
  * Touch on a native board, which the browser pans with one finger: what Breezy does with a touch, a lifted card, a quick
  * drag, the one-finger zoom, keeps the browser from panning too; two fingers pinch from the touches themselves, as the
  * browser cancels a panning finger's pointer; the finger left after a pinch pans the board, as iOS starts no pan for a
- * touch already down; and while a card is edited the board scrolls only for a touch begun outside the editor. Undone by
+ * touch already down; and while a card edited by touch is open the board scrolls only for a touch begun outside the editor. Undone by
  * the returned function.
  */
 export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, gestures: Gestures) {
@@ -152,8 +152,11 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
     t.addEventListener("touchcancel", f, on);
   };
 
-  // iOS scrolled the board to keep a dragged or spacebar-moved caret in view, taking the card out of sight
-  document.addEventListener("focusin", (e) => editorOf(e.target) && board.classList.add("editing"), { signal });
+  // iOS scrolled the board to keep a dragged or spacebar-moved caret in view, taking the card out of sight; an edit begun
+  // with a mouse or trackpad keeps the board free, which nothing else would unlock for its wheel
+  document.addEventListener("focusin", (e) => {
+    if (editorOf(e.target) && app.touching && matchMedia("(pointer: coarse)").matches) board.classList.add("editing");
+  }, { signal });
   document.addEventListener("focusout", (e) => editorOf(e.target) && board.classList.remove("editing"), { signal });
 
   return () => {
