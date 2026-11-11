@@ -8,8 +8,11 @@ final class BoardScrollView: NSScrollView {
   private var link: CADisplayLink?
   /// A pan the app makes, each axis on the camera's spring, as the web app's camera pans.
   private var pan: (x: Double, vx: Double, y: Double, vy: Double, to: NSPoint, last: CFTimeInterval, link: CADisplayLink)?
+  /// What keeps the view's frames in the board's recording.
+  var frames: FrameRecorder?
 
   override func scrollWheel(with event: NSEvent) {
+    frames?.scrolled(event)
     stopSpring()
     stopPan()
     guard event.modifierFlags.contains(.command), let doc = documentView else { return super.scrollWheel(with: event) }
@@ -19,12 +22,14 @@ final class BoardScrollView: NSScrollView {
   }
 
   override func magnify(with event: NSEvent) {
+    frames?.magnified(event)
     stopSpring()
     stopPan()
     super.magnify(with: event)
   }
 
   override func smartMagnify(with event: NSEvent) {
+    frames?.smartMagnified(event)
     stopSpring()
     super.smartMagnify(with: event)
   }
