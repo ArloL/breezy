@@ -1,8 +1,10 @@
 // Native panning, ?pan=native, in headless Chromium and Firefox on the web app as it ships, with the demo board: the
 // browser scrolls the board; Breezy's zoom, find and layout sit on top. Run with
 //   node --test scenarios/native.e2e.ts
-import { before, beforeEach, describe, test } from "node:test";
+// A failing case leaves the page's flight recording in build/scenarios/native-<browser>-<case>/.
+import { before, beforeEach, describe, test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium, firefox, type Browser, type Page } from "playwright-core";
 import { buildSite, readFlight, serveStatic } from "./browser.ts";
 import { exitsAfter } from "./exit.ts";
@@ -14,6 +16,7 @@ const MS = 60_000;
 const WINDOW = { width: 1200, height: 800 };
 
 const site = new URL("../build/web-native", import.meta.url).pathname;
+const out = new URL("../build/scenarios/", import.meta.url).pathname;
 buildSite(site);
 const web = serveStatic(site, PORT);
 const browsers: Browser[] = [];
@@ -100,23 +103,35 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       const context = await browser.newContext({ viewport: WINDOW });
       await context.addInitScript(`globalThis.nativeCamera = ${camera}; globalThis.nativeFind = ${find}; globalThis.nativeFound = ${found};`);
       page = await context.newPage();
-    });
+    }, { timeout: MS });
     beforeEach(async () => {
       await page.setViewportSize(WINDOW);
       await page.goto(`http://127.0.0.1:${PORT}/?pan=native&demo`);
       await page.waitForSelector(".native-content .cards > [data-id]", { timeout: 10_000 });
       await page.mouse.move(600, 420);
-    });
+    }, { timeout: MS });
 
-    test("a wheel pans the native board", { timeout: MS }, async () => {
+    /** On failure, the page's flight recording, into build/scenarios/, which the desktop job uploads. */
+    const kept = async (t: TestContext, f: () => Promise<void>) => {
+      try {
+        await f();
+      } catch (e) {
+        const dir = `${out}native-${kind}-${t.name.replace(/\W+/g, "-").slice(0, 60)}/`;
+        mkdirSync(dir, { recursive: true });
+        await page.evaluate(readFlight).then((r) => writeFileSync(`${dir}flight.json`, JSON.stringify(r)), () => {});
+        throw e;
+      }
+    };
+
+    test("a wheel pans the native board", { timeout: MS }, (t) => kept(t, async () => {
       const from = await settled(page);
       await page.mouse.wheel(0, 300);
       const to = await settled(page);
       near(to.y, from.y - 300, 2, "y");
       near(to.x, from.x, 0.5, "x");
-    });
+    }));
 
-    test("⌘-scroll zooms around the pointer, and the board stays put under it", { timeout: MS }, async () => {
+    test("⌘-scroll zooms around the pointer, and the board stays put under it", { timeout: MS }, (t) => kept(t, async () => {
       const p = { x: 500, y: 420 };
       await page.mouse.move(p.x, p.y);
       const from = await settled(page);
@@ -126,9 +141,9 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       const w = { x: (p.x - from.x) / from.zoom, y: (p.y - from.y) / from.zoom };
       near(w.x * to.zoom + to.x, p.x, 2, "x under the pointer");
       near(w.y * to.zoom + to.y, p.y, 2, "y under the pointer");
-    });
+    }));
 
-    test("find glides to a match", { timeout: MS }, async () => {
+    test("find glides to a match", { timeout: MS }, (t) => kept(t, async () => {
       await settled(page);
       await page.click('[data-act="search"]');
       const path = await glide(page, "plan"), end = await settled(page), at = path.at(-1)!;
@@ -137,10 +152,10 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       const steps = new Set(path.map((c) => `${Math.round(c.x)} ${Math.round(c.y)}`));
       assert.ok(steps.size > 2, `moved in ${steps.size - 1} steps`);
       near(await foundX(page), WINDOW.width / 2, 2, "the match's centre");
-    });
+    }));
 
     // its view reaches past the board as it last rested, where the browser held the scroll position short of it
-    test("find glides to an outermost card at 25 %, every frame where the camera asked", { timeout: MS }, async () => {
+    test("find glides to an outermost card at 25 %, every frame where the camera asked", { timeout: MS }, (t) => kept(t, async () => {
       await page.mouse.move(1100, 420);
       for (let i = 0; i < 40 && (await page.evaluate(() => nativeCamera())).zoom > 0.2501; i++) await zoomBy(page, 400);
       await settled(page);
@@ -154,9 +169,9 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       near(path.at(-1)!.x, end.x, 1, "x at rest");
       near(path.at(-1)!.y, end.y, 1, "y at rest");
       near(await foundX(page), WINDOW.width / 2, 2, "the match's centre");
-    });
+    }));
 
-    test("a wheel during find's glide wins, and the glide stops where the wheel found it", { timeout: MS }, async () => {
+    test("a wheel during find's glide wins, and the glide stops where the wheel found it", { timeout: MS }, (t) => kept(t, async () => {
       await settled(page);
       await page.click('[data-act="search"]');
       // the find from the page, the wheel sent once the camera is on its way
@@ -176,9 +191,9 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       assert.ok(Math.abs(at.found - WINDOW.width / 2) > 20, `not judged: the glide had ${Math.abs(at.found - WINDOW.width / 2)} pt left when the wheel came`);
       near(end.x, at.cam.x, 1, "x");
       near(end.y, at.cam.y - 300, 2, "y");
-    });
+    }));
 
-    test("zoomed out to 25 %, the board still covers the window", { timeout: MS }, async () => {
+    test("zoomed out to 25 %, the board still covers the window", { timeout: MS }, (t) => kept(t, async () => {
       for (let i = 0; i < 40 && (await page.evaluate(() => nativeCamera())).zoom > 0.2501; i++) await zoomBy(page, 400);
       assert.equal((await settled(page)).zoom, 0.25);
       const size = await page.evaluate(() => {
@@ -186,9 +201,9 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
         return { w: r.width, h: r.height, iw: innerWidth, ih: innerHeight };
       });
       assert.ok(size.w >= size.iw + 1 && size.h >= size.ih + 1, JSON.stringify(size));
-    });
+    }));
 
-    test("a larger window leaves the camera where it was, the board still past the window", { timeout: MS }, async () => {
+    test("a larger window leaves the camera where it was, the board still past the window", { timeout: MS }, (t) => kept(t, async () => {
       const from = await settled(page);
       await page.setViewportSize({ width: 2600, height: 1800 });
       const to = await settled(page);
@@ -199,7 +214,7 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
         return { w: b.scrollWidth, h: b.scrollHeight, cw: b.clientWidth, ch: b.clientHeight };
       });
       assert.ok(size.w >= size.cw + 1 && size.h >= size.ch + 1, JSON.stringify(size));
-    });
+    }));
   });
 }
 
