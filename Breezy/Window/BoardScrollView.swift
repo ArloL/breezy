@@ -12,7 +12,6 @@ final class BoardScrollView: NSScrollView {
   var frames: FrameRecorder?
 
   override func scrollWheel(with event: NSEvent) {
-    frames?.scrolled(event)
     stopSpring()
     stopPan()
     guard event.modifierFlags.contains(.command), let doc = documentView else { return super.scrollWheel(with: event) }
@@ -22,14 +21,12 @@ final class BoardScrollView: NSScrollView {
   }
 
   override func magnify(with event: NSEvent) {
-    frames?.magnified(event)
     stopSpring()
     stopPan()
     super.magnify(with: event)
   }
 
   override func smartMagnify(with event: NSEvent) {
-    frames?.smartMagnified(event)
     stopSpring()
     super.smartMagnify(with: event)
   }
