@@ -3,11 +3,9 @@ import BreezyKit
 import IOSurface
 
 /// The scroll view's document view: draws the board held by `model` and turns pointer and key
-/// input into changes on it. World coordinates, as stored in the board, are offset by `origin`.
+/// input into changes on it. Its bounds are the board, in world coordinates, as stored in the board: as the board grows
+/// or shrinks at its left or top, its frame does and what it holds stays put.
 final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
-  static let origin: CGFloat = 834 * 24
-  static let size: CGFloat = 2 * origin
-
   let model: BoardModel
   /// What a press, drag and release do; this view turns events into calls on it and draws what it holds.
   let core: CanvasCore
@@ -96,6 +94,12 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   var floating: Records.Floating? { core.floating }
   /// The last reveal noted, to note the next only when it decides otherwise, not on every key.
   var revealed = ""
+  /// What the view showed, which the board takes in as the web app's does.
+  var reach = BoardBounds()
+  /// While the board's bounds and the scroll position move together, the clip view takes them as they are.
+  private(set) var rebasing = false
+  /// How much of the world the view showed when it last rested; at any other size it zooms or resizes.
+  private(set) var restedSize: NSSize?
 
   init(model: BoardModel) {
     self.model = model
@@ -108,7 +112,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       "dpr": .number(Double(NSScreen.main?.backingScaleFactor ?? 1)),
       "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"),
     ])
-    super.init(frame: NSRect(x: 0, y: 0, width: Self.size, height: Self.size))
+    super.init(frame: .zero)
     host.frame = bounds
     addSubview(host)
     marquee.wantsLayer = true
@@ -138,9 +142,9 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     }
     core.onLand = { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
     core.camera = { [unowned self] in
-      guard let clip = enclosingScrollView?.contentView else { return Scene.Camera(x: 0, y: 0, zoom: 1) }
-      let z = Double(zoom)
-      return Scene.Camera(x: Double(Self.origin - clip.bounds.minX) * z, y: Double(Self.origin - clip.bounds.minY) * z, zoom: z)
+      guard enclosingScrollView != nil else { return Scene.Camera(x: 0, y: 0, zoom: 1) }
+      let z = Double(zoom), s = showing
+      return Scene.Camera(x: -Double(s.minX) * z, y: -Double(s.minY) * z, zoom: z)
     }
     sync()
   }
@@ -162,12 +166,78 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
 
   func world(_ event: NSEvent) -> NSPoint { world(at: event.locationInWindow) }
 
-  func world(at windowPoint: NSPoint) -> NSPoint {
-    let p = convert(windowPoint, from: nil)
-    return NSPoint(x: p.x - Self.origin, y: p.y - Self.origin)
+  func world(at windowPoint: NSPoint) -> NSPoint { convert(windowPoint, from: nil) }
+
+  func doc(_ r: Rect) -> NSRect { NSRect(x: r.x, y: r.y, width: r.w, height: r.h) }
+
+  /// What the scroll view shows, in world points: past the board's edge too, while it is pulled there.
+  var showing: NSRect {
+    guard let clip = enclosingScrollView?.contentView else { return visibleRect }
+    return convert(clip.bounds, from: clip)
   }
 
-  func doc(_ r: Rect) -> NSRect { NSRect(x: r.x + Self.origin, y: r.y + Self.origin, width: r.w, height: r.h) }
+  /// Where the scroll view's clip view puts world point `p`, as its scroll position.
+  func clipPoint(_ p: NSPoint) -> NSPoint {
+    NSPoint(x: p.x - bounds.minX + frame.minX, y: p.y - bounds.minY + frame.minY)
+  }
+
+  // MARK: the board's edge
+
+  /// The board, as far as its cards and lanes, the margin, and what the view showed.
+  func reachedBoard() -> NSRect {
+    let content = BoardBounds.extent(board.cards.map(drawnRect) + board.lanes.map(\.rect))
+    let b = reach.board(content)
+    return NSRect(x: b.x, y: b.y, width: b.w, height: b.h)
+  }
+
+  /// The view came to rest showing `shown`, in world points, by default where it settles now: the board keeps that
+  /// and lets go of what it showed before, as the web app's does when a scroll ends.
+  func rest(_ shown: NSRect? = nil) {
+    guard let clip = enclosingScrollView?.contentView else { return }
+    let r = shown ?? convert(clip.constrainBoundsRect(clip.bounds), from: clip)
+    reach.rest(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
+    restedSize = r.size
+    fitBoard()
+  }
+
+  /// A zoom or a resize proposes that the clip view show `proposed`, in its own points: the board grows to take it in,
+  /// so that zooming out never shows its edge. Returns how far the clip view's points moved under it, as its bounds
+  /// did, so that a proposal in the old points can follow.
+  func takeIn(_ proposed: NSRect, of clip: NSClipView) -> CGVector {
+    let r = convert(proposed, from: clip)
+    reach.takeIn(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
+    return fitBoard()
+  }
+
+  /// Fits the canvas to the board. Grown or shrunk at its left or top, the clip view's points move under what shows,
+  /// and its scroll position moves by as much in the same pass, so that nothing on screen moves; returns how far.
+  @discardableResult
+  func fitBoard() -> CGVector {
+    let b = reachedBoard(), old = bounds
+    guard b != old else { return .zero }
+    rebasing = true
+    defer { rebasing = false }
+    let d = old == .zero ? .zero : CGVector(dx: old.minX - b.minX, dy: old.minY - b.minY)
+    let clip = enclosingScrollView?.contentView
+    let at = clip?.bounds.origin
+    setFrameSize(b.size)
+    setBoundsOrigin(b.origin)
+    // the card layers and others' marks sit on these two in world points; AppKit leaves their layers' bounds at the
+    // origin, so they are set too
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    for v in [host, presenceView] as [NSView] {
+      v.frame = b
+      v.bounds = b
+      v.layer?.bounds = b
+    }
+    CATransaction.commit()
+    if let clip, let at {
+      clip.setBoundsOrigin(NSPoint(x: at.x + d.dx, y: at.y + d.dy))
+      enclosingScrollView?.reflectScrolledClipView(clip)
+    }
+    return d
+  }
 
   /// Moves a point to the nearest whole pixel on screen; one conversion for many points.
   func pixelGrid() -> (NSPoint) -> NSPoint {
@@ -179,7 +249,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// `r` moved to the nearest whole pixel on screen.
   func pixelAligned(_ r: NSRect) -> NSRect { NSRect(origin: pixelGrid()(r.origin), size: r.size) }
 
-  var visibleWorldCentre: NSPoint { NSPoint(x: visibleRect.midX - Self.origin, y: visibleRect.midY - Self.origin) }
+  var visibleWorldCentre: NSPoint { NSPoint(x: visibleRect.midX, y: visibleRect.midY) }
 
   /// The front's height: stacking uses it for turned cards too.
   func height(_ id: String) -> Double { heights[id] ?? 2 * Metrics.grid }
@@ -239,6 +309,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       heights = Dictionary(uniqueKeysWithValues: board.cards.map { ($0.id, measure($0)) })
     }
     layoutCards()
+    fitBoard()
   }
 
   /// Places the lanes: those the pointer does not hold spring to their new places; when
@@ -397,7 +468,7 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// Puts others' cursors and the names over what they hold where the board shows them.
   func showPresence() {
     var marks = presence.cursors.map {
-      PresenceView.Mark(key: "cursor " + $0.key, kind: .cursor, person: $0.person, rect: NSRect(x: $0.x + Self.origin, y: $0.y + Self.origin, width: 0, height: 0))
+      PresenceView.Mark(key: "cursor " + $0.key, kind: .cursor, person: $0.person, rect: NSRect(x: $0.x, y: $0.y, width: 0, height: 0))
     }
     let s = shown
     for (id, person) in presence.taken {

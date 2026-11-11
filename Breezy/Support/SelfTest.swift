@@ -36,6 +36,7 @@ enum SelfTest {
     case "taken-events": MainActor.assumeIsolated { takenEvents(d) }
     case "replay": MainActor.assumeIsolated { replay(d) }
     case "gesture-marks": MainActor.assumeIsolated { gestureMarks(d) }
+    case "bounded-board": boundedBoard(d)
     default: finish(name, "unknown check")
     }
   }
@@ -49,8 +50,11 @@ enum SelfTest {
   }
 
   static func finish(_ name: String, _ failure: String?) -> Never {
-    print(failure.map { "FAIL \(name): \($0)" } ?? "PASS \(name)")
+    let line = failure.map { "FAIL \(name): \($0)" } ?? "PASS \(name)"
+    print(line)
     fflush(stdout)
+    // for the UI tests, which cannot read the app's output
+    if let out = UserDefaults.standard.string(forKey: "BreezySelfTestOut") { try? line.write(toFile: out, atomically: true, encoding: .utf8) }
     exit(failure == nil ? 0 : 1)
   }
 
@@ -59,7 +63,7 @@ enum SelfTest {
   private static func zoomSharp(_ d: Driver) {
     let name = "zoom-sharp"
     skipUnlessVisible(name, d)
-    let centre = NSPoint(x: CanvasView.origin + 264, y: CanvasView.origin + 180)
+    let centre = NSPoint(x: 264, y: 180)
     func check(_ zoom: CGFloat, then next: @escaping () -> Void) {
       d.wc.place(origin: NSPoint(x: centre.x - 450 / zoom, y: centre.y - 300 / zoom), zoom: zoom)
       d.later(0.8) {
@@ -228,17 +232,17 @@ extension SelfTest {
     // the zoom springs there
     d.later(1.2) {
       if abs(sv.magnification - 1) > 0.001 { finish(name, "⇧0 left zoom at \(sv.magnification)") }
-      d.wc.place(origin: NSPoint(x: CanvasView.origin - 300, y: CanvasView.origin - 200), zoom: 0.75)
+      d.wc.place(origin: NSPoint(x: -300, y: -200), zoom: 0.75)
       if (d.wc.document as? NSDocument)?.isDocumentEdited == true { finish(name, "scrolling edited the document") }
       let archiver = NSKeyedArchiver(requiringSecureCoding: false)
       d.wc.window(d.window, willEncodeRestorableState: archiver)
       archiver.finishEncoding()
-      d.wc.place(origin: NSPoint(x: CanvasView.origin, y: CanvasView.origin), zoom: 1)
+      d.wc.place(origin: .zero, zoom: 1)
       guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: archiver.encodedData) else { finish(name, "no state") }
       unarchiver.requiresSecureCoding = false
       d.wc.window(d.window, didDecodeRestorableState: unarchiver)
-      let o = sv.contentView.bounds.origin
-      if abs(sv.magnification - 0.75) > 0.001 || abs(o.x - (CanvasView.origin - 300)) > 1 || abs(o.y - (CanvasView.origin - 200)) > 1 {
+      let o = d.canvas.showing.origin
+      if abs(sv.magnification - 0.75) > 0.001 || abs(o.x + 300) > 1 || abs(o.y + 200) > 1 {
         finish(name, "restored to \(o) at \(sv.magnification)")
       }
       finish(name, nil)
@@ -299,7 +303,7 @@ extension SelfTest {
       guard let (zoom, dark, back) = steps.popLast() else { finish(name, nil) }
       NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
       d.canvas.turn(back ? "a" : nil)
-      d.wc.place(origin: NSPoint(x: CanvasView.origin - 40, y: CanvasView.origin - 40), zoom: zoom)
+      d.wc.place(origin: NSPoint(x: -40, y: -40), zoom: zoom)
       // after the turn's spring
       d.later(0.9) {
         let before = d.image()
@@ -320,6 +324,109 @@ extension SelfTest {
   }
 }
 
+extension SelfTest {
+  /// The scroll view's document is the board: its cards and lanes, 1,194 pt round them, and what showed at rest, so
+  /// that its edge shows only while the view is pulled past it, and AppKit springs it back. Grown at its left and top
+  /// and shrunk back, by a card or by a zoom, nothing on screen moves. With -BreezyShots <dir> it captures each step.
+  fileprivate static func boundedBoard(_ d: Driver) {
+    let name = "bounded-board"
+    let c = d.canvas, sv = d.wc.scrollView, clip = sv.contentView, grid = d.wc.grid
+    let shots = UserDefaults.standard.string(forKey: "BreezyShots")
+    func shot(_ step: String) {
+      guard let shots else { return }
+      try? d.image().representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: shots).appendingPathComponent("\(step).png"))
+    }
+    func near(_ a: NSPoint, _ b: NSPoint, within e: CGFloat = 0.01) -> Bool { abs(a.x - b.x) <= e && abs(a.y - b.y) <= e }
+    func edgeShows() -> Bool { !grid.paperFrame.insetBy(dx: -0.5, dy: -0.5).contains(grid.convert(clip.bounds, from: clip)) }
+    func bounded(_ when: String) {
+      let content = BoardBounds.extent(d.board.cards.map(c.drawnRect) + d.board.lanes.map(\.rect))
+      let s = c.showing, b = c.bounds
+      let want = BoardBounds.board(content, seen: Rect(x: s.minX, y: s.minY, w: s.width, h: s.height)).outward
+      if Rect(x: b.minX, y: b.minY, w: b.width, h: b.height) != want { finish(name, "\(when): the document is \(b), the board \(want)") }
+      if c.frame.size != b.size { finish(name, "\(when): the document's frame is \(c.frame.size), the board's \(b.size)") }
+      if !b.insetBy(dx: -0.01, dy: -0.01).contains(s) { finish(name, "\(when): the view shows \(s), past the board \(b)") }
+      if edgeShows() { finish(name, "\(when): the edge shows, the paper \(grid.paperFrame) under \(grid.convert(clip.bounds, from: clip))") }
+    }
+    func screen(_ id: String) -> NSPoint { c.convert(c.doc(c.drawnRect(d.board.card(id)!)).origin, to: nil) }
+    func centre() -> NSPoint { NSPoint(x: c.showing.midX, y: c.showing.midY) }
+    // AppKit puts the scroll position on whole pixels, which a zoom's centre can be half a screen point from
+    func centred(_ mid: NSPoint) -> Bool { near(centre(), mid, within: 0.5 / sv.magnification) }
+    bounded("opened")
+    shot("opened")
+    d.wc.place(origin: c.bounds.origin, zoom: 1)
+    bounded("at the top left")
+    shot("top-left")
+    let corner = c.bounds, shown = c.showing, a = screen("a"), at = clip.bounds.origin
+    // a card far up and to the left grows the board there: the clip view's points move, what shows does not
+    d.model.perform("Far") { $0.cards.append(Card(id: "far", x: corner.minX - 2400, y: corner.minY - 1200, text: "Far")) }
+    let grown = CGVector(dx: corner.minX - c.bounds.minX, dy: corner.minY - c.bounds.minY)
+    if grown.dx < 2400 || grown.dy < 1200 { finish(name, "a card past the top left grew the board by \(grown)") }
+    if !near(c.showing.origin, shown.origin) { finish(name, "growing moved the view from \(shown.origin) to \(c.showing.origin)") }
+    if !near(screen("a"), a) { finish(name, "growing moved card a on screen from \(a) to \(screen("a"))") }
+    if !near(clip.bounds.origin, NSPoint(x: at.x + grown.dx, y: at.y + grown.dy)) { finish(name, "the scroll position is \(clip.bounds.origin)") }
+    d.model.undoManager.undo()
+    if d.board.card("far") != nil { finish(name, "undo left the far card") }
+    if c.bounds != corner { finish(name, "the board is \(c.bounds) once the far card went, was \(corner)") }
+    if !near(c.showing.origin, shown.origin) || !near(screen("a"), a) { finish(name, "shrinking moved what shows") }
+    // zoomed out around the middle, the view shows past the top left: the board takes it in, and the middle holds
+    let mid = centre()
+    sv.setMagnification(0.25, centeredAt: c.clipPoint(mid))
+    if !centred(mid) { finish(name, "zooming out moved the middle from \(mid) to \(centre())") }
+    if !c.bounds.insetBy(dx: -0.01, dy: -0.01).contains(c.showing) { finish(name, "zoomed out, the view shows \(c.showing) past the board \(c.bounds)") }
+    d.later(0.4) {
+      bounded("zoomed out")
+      shot("zoomed-out")
+      sv.setMagnification(1, centeredAt: c.clipPoint(mid))
+      if !centred(mid) { finish(name, "zooming in moved the middle from \(mid) to \(centre())") }
+      d.later(0.4) {
+        // at rest again, the board lets go of what the zoom showed
+        bounded("zoomed back in")
+        if c.bounds != corner { finish(name, "the board is \(c.bounds) after zooming back, was \(corner)") }
+        pull(d, name: name, down: true, corner: corner, edgeShows: edgeShows, shot: shot) {
+          bounded("after the pull down")
+          pull(d, name: name, down: false, corner: corner, edgeShows: edgeShows, shot: shot) {
+            bounded("after the pull right")
+            finish(name, nil)
+          }
+        }
+      }
+    }
+  }
+
+  /// A trackpad's two fingers pull the view down, or right, past the board's top or left edge: AppKit stretches it,
+  /// and the edge shows, plain; let go, it springs back and the board stays as it was.
+  private static func pull(_ d: Driver, name: String, down: Bool, corner: NSRect, edgeShows: @escaping () -> Bool,
+                           shot: @escaping (String) -> Void, then: @escaping () -> Void) {
+    let sv = d.wc.scrollView, c = d.canvas
+    let way = down ? "down" : "right"
+    func scroll(_ phase: CGScrollPhase, _ delta: Int32) {
+      let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: down ? delta : 0, wheel2: down ? 0 : delta, wheel3: 0)!
+      e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+      e.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase.rawValue))
+      sv.scrollWheel(with: NSEvent(cgEvent: e)!)
+    }
+    scroll(.began, 0)
+    var steps = 12
+    func step() {
+      scroll(.changed, 30)
+      steps -= 1
+      guard steps == 0 else { return d.later(0.016, step) }
+      d.later(0.1) {
+        let s = c.showing
+        if down ? s.minY >= c.bounds.minY : s.minX >= c.bounds.minX { finish(name, "the pull \(way) did not stretch past the edge: \(s) on \(c.bounds)") }
+        if !edgeShows() { finish(name, "pulled \(way) past the edge, no edge shows") }
+        shot("pulled-\(way)")
+        scroll(.ended, 0)
+        d.later(1.5) {
+          if c.bounds != corner { finish(name, "the pull \(way) left the board at \(c.bounds), was \(corner)") }
+          then()
+        }
+      }
+    }
+    d.later(0.016, step)
+  }
+}
+
 /// Sends synthetic events to a board window; points are world coordinates.
 final class Driver {
   let wc: BoardWindowController
@@ -333,7 +440,7 @@ final class Driver {
   }
 
   func point(_ p: NSPoint) -> NSPoint {
-    canvas.convert(NSPoint(x: p.x + CanvasView.origin, y: p.y + CanvasView.origin), to: nil)
+    canvas.convert(p, to: nil)
   }
 
   func mouse(_ type: NSEvent.EventType, _ p: NSPoint, clicks: Int = 1, mods: NSEvent.ModifierFlags = []) {

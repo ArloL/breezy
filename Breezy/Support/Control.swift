@@ -163,9 +163,10 @@ import Network
   private static func editor(_ wc: BoardWindowController, _ tv: EditorTextView) -> JSONValue {
     let clip = wc.scrollView.contentView
     let zoom = wc.scrollView.magnification
+    let shown = wc.canvas.showing
     func canvasBox(_ d: NSRect) -> JSONValue {
       .object([
-        "x": .number((d.minX - clip.bounds.minX) * zoom), "y": .number((d.minY - clip.bounds.minY) * zoom),
+        "x": .number((d.minX - shown.minX) * zoom), "y": .number((d.minY - shown.minY) * zoom),
         "w": .number(d.width * zoom), "h": .number(d.height * zoom),
       ])
     }
@@ -211,11 +212,9 @@ import Network
   private static func pointer(_ c: Command) throws {
     guard let wc = window, let w = wc.window else { throw Failure(description: "no board open") }
     if c.kind == "touch" { throw Failure(description: "the Mac has no touch") }
-    let clip = wc.scrollView.contentView
     let zoom = wc.scrollView.magnification
-    let s = NSPoint(x: try c.need(c.x, "x"), y: try c.need(c.y, "y"))
-    let doc = NSPoint(x: clip.bounds.minX + s.x / zoom, y: clip.bounds.minY + s.y / zoom)
-    let at = wc.canvas.convert(doc, to: nil)
+    let s = NSPoint(x: try c.need(c.x, "x"), y: try c.need(c.y, "y")), shown = wc.canvas.showing
+    let at = wc.canvas.convert(NSPoint(x: shown.minX + s.x / zoom, y: shown.minY + s.y / zoom), to: nil)
     var mods: NSEvent.ModifierFlags = []
     if c.shift == true { mods.insert(.shift) }
     if c.option == true { mods.insert(.option) }

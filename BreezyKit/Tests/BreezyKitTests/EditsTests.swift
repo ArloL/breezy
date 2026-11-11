@@ -100,15 +100,6 @@ import Testing
   #expect(Metrics.laneWidth == 288)
 }
 
-@Test func recentringCentresTheBoardOnTheOriginOnceItReachesPastTheLimit() {
-  let b = board([card("a", 0, 0)], [lane("l", 40_000, 0, 480, 720)])
-  let r = b.recentred(within: 20_000)
-  #expect([r.card("a")!.x, r.card("a")!.y] == [-20_232, -360])
-  #expect([r.lane("l")!.x, r.lane("l")!.y] == [19_768, -360])
-  let edge = board([card("a", -240, -240)], [lane("l", 0, 0, 240, 240)])
-  #expect(edge.recentred(within: 240) == edge)
-}
-
 @Test func resizeLaneSnapsAndKeepsAMinimumSize() {
   var b = board([], [lane("l", 0, 0)])
   b.resizeLane("l", w: 520, h: 10)
@@ -133,15 +124,4 @@ import Testing
   #expect([right.x, right.y] == [-24, 0])
   let below = board([card("a", 0, 60)], []).openSpot(w: 240, h: 48, near: 0, 0, heightOf: h48)
   #expect([below.x, below.y] == [0, -24])
-}
-
-@Test func recentringLeavesABoardReachingEachLimitAndMovesOneReachingPastAnyOne() {
-  let reaching = [lane("l", -240, 0, 96, 96), lane("l", 144, 0, 96, 96), lane("l", 0, -240, 96, 96), lane("l", 0, 144, 96, 96)]
-  for l in reaching {
-    #expect(board([], [l]).recentred(within: 240) == board([], [l]))
-    var past = l
-    past.x += l.x < 0 ? -24 : l.x > 0 ? 24 : 0
-    past.y += l.y < 0 ? -24 : l.y > 0 ? 24 : 0
-    #expect(board([], [past]).recentred(within: 240) != board([], [past]), "\(past)")
-  }
 }
