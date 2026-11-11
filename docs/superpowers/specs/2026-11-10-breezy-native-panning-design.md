@@ -3,7 +3,7 @@
 The owner wants panning to feel amazing on every platform, however big the change. Measuring the Mac trackpad against AppKit ([native reference](2026-11-10-breezy-native-reference-design.md), "Spike verdict") showed two ways to get there, each winning half of the strokes:
 
 - **Native.** Firefox's own scrolling holds the stretch while a finger rests and pushes like AppKit (median 7 pt off). Its flicks into the edge are too soft (74 pt off), and it springs back about 300 ms slow.
-- **Tuned.** WheelPan, with AppKit's band and spring (commit 451de6e), gets flick impacts closer (26 pt off with the experimental coast). It can't hold, because a wheel event never says whether a finger is down.
+- **Tuned.** WheelPan, with AppKit's band and spring (commit cc352c2), gets flick impacts closer (26 pt off with the experimental coast). It can't hold, because a wheel event never says whether a finger is down.
 
 So Breezy gets both ways of panning. Each platform and input uses whichever comes closer to its own native reference, scored and then felt. The owner doesn't need native everywhere, only the best feel everywhere: "if it feels iOS-y on Safari that's fine".
 
@@ -61,7 +61,7 @@ If spike 2 or 3 fails on iOS, the iPhone keeps the camera mode, and native stays
 - The best feel on every platform wins, however big the change.
 - Native isn't required everywhere; iOS-like on Safari is fine.
 - Both modes are built and compared by score and by feel.
-- The tuned band and spring are committed now (451de6e).
+- The tuned band and spring are committed now (cc352c2).
 
 ## My calls
 

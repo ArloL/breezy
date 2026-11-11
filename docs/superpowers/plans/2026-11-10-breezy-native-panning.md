@@ -17,17 +17,16 @@
 
 **Branches and PRs**
 - PR #271 (the bounded board and trackpad rubber band) has **merged**.
-- `try/bounded-canvas` holds, unpushed, on top of it:
+- `try/bounded-canvas` holds, pushed, on top of it, rebased onto main on 2026-11-11:
   1. **the measuring kit:** the reference app (`Reference/`), the replay helper and scripts (`scripts/replay*.{ts,swift}`, `scripts/reference-*.ts`, `scripts/dev-goto.ts`, `scripts/appkit-score.ts`), the fixture and test (`web/test/appkit-edge*`), and the owner's strokes (`scripts/reference-strokes/`);
-  2. **the tuned band and spring** (451de6e), which depends on 1;
+  2. **the tuned band and spring** (cc352c2), which depends on 1;
   3. **the specs and this plan.**
 - AGENTS.md wants small PRs off main, not stacked. So:
-  1. rebase the branch onto main;
-  2. open the measuring kit's PR first (1 and the specs);
-  3. once it merges, open the tuned band and spring's PR;
-  4. build this plan on a new branch off main after both.
-- The commits are ordered so 1 and 2 split cleanly at 451de6e, but check with `git log --oneline main..`.
-- **The spike** is on `spike/native-pan`: the native mode in `web/native-pan.ts`, the measuring tools in `spike-tools/` (the page, capture, scoring, tracker and window bounds). It's throwaway: read it, don't merge it.
+  1. open the measuring kit's PR first (1 and the specs);
+  2. once it merges, open the tuned band and spring's PR;
+  3. build this plan on a new branch off main after both.
+- The commits are ordered so 1 and 2 split cleanly at cc352c2, but check with `git log --oneline main..`.
+- **The spike** is on `spike/native-pan`: the native mode in `web/native-pan.ts`, the measuring tools in `spike-tools/` (the page, capture, scoring, tracker and window bounds). It's throwaway: read it, don't merge it. Its base is the branch before that rebase, so the hashes above hold; don't rebase it.
 
 **Setup on the Mac**
 - **Permissions.** Accessibility and Screen Recording are granted to Visual Studio Code. Run the replay helper and `screencapture` from a session inside it, or grant them to the terminal you use.
@@ -111,7 +110,7 @@
 - `View` gains `surface: Surface`, set in its constructor to a `CameraSurface`, and `useSurface(s: Surface)`, which swaps it and re-applies the camera.
 
 - [ ] **Step 1: Move the code.** Move `apply`'s transform and grid drawing and `stage()` into `CameraSurface`; `View` calls `this.surface`.
-- [ ] **Step 2: Run the suite.** `npm test && npm run check`. Expected: all pass, as before (821 at 451de6e).
+- [ ] **Step 2: Run the suite.** `npm test && npm run check`. Expected: all pass, as before (821 at the tuned band, before the rebase onto main).
 - [ ] **Step 3: Commit.**
 
 ### Task 3: Native touch decisions, pure
