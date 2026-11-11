@@ -1,5 +1,6 @@
-export function stopsBrowserPan(s: { lifted: boolean; dragAction: string | null; doubleTapSecond: boolean; editing: boolean; inEditor: boolean }): boolean {
-  return s.lifted || (s.dragAction !== null && s.dragAction !== "pan") || s.doubleTapSecond || (s.editing && s.inEditor);
+// `held`: a hold anywhere, as on the board for a marquee, drags something once it moves, never pans
+export function stopsBrowserPan(s: { lifted: boolean; held: boolean; dragAction: string | null; doubleTapSecond: boolean; editing: boolean; inEditor: boolean }): boolean {
+  return s.lifted || s.held || (s.dragAction !== null && s.dragAction !== "pan") || s.doubleTapSecond || (s.editing && s.inEditor);
 }
 
 // "taken": the browser owns the touch, as it can't be cancelled or has scrolled since the sequence's first finger.

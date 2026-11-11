@@ -2,10 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { coastFromLift, followVelocity, pinchKind, stopsBrowserPan } from "../native/touch.ts";
 
-const none = { lifted: false, dragAction: null, doubleTapSecond: false, editing: false, inEditor: false };
+const none = { lifted: false, held: false, dragAction: null, doubleTapSecond: false, editing: false, inEditor: false };
 
 test("stopsBrowserPan", () => {
   assert.equal(stopsBrowserPan({ ...none, lifted: true }), true);
+  assert.equal(stopsBrowserPan({ ...none, held: true }), true, "a hold on the board, a lane or its corner, before it moves far enough to drag");
   assert.equal(stopsBrowserPan({ ...none, dragAction: "move" }), true);
   assert.equal(stopsBrowserPan({ ...none, dragAction: "pan" }), false);
   assert.equal(stopsBrowserPan({ ...none, doubleTapSecond: true }), true);

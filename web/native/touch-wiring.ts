@@ -69,6 +69,7 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
     if (!stopOnce(e) || e.touches.length > 1) return;
     const stop = stopsBrowserPan({
       lifted: state.lifted.size > 0,
+      held: gestures.one?.state === "held",
       dragAction: input.drag?.action ?? null,
       doubleTapSecond: !!gestures.one?.double,
       editing: !!state.editing,
@@ -76,7 +77,7 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
     });
     if (!stop) return;
     if (e.cancelable) e.preventDefault();
-    if (!stopped) app.flight.note("input", "native pan stopped", { cancelable: e.cancelable, lifted: state.lifted.size, drag: input.drag?.action ?? null });
+    if (!stopped) app.flight.note("input", "native pan stopped", { cancelable: e.cancelable, lifted: state.lifted.size, held: gestures.one?.state === "held", drag: input.drag?.action ?? null });
     stopped = true;
   };
   board.addEventListener("touchmove", stopPan, { passive: false, signal });
