@@ -18,6 +18,8 @@ import { UI } from "./ui.ts";
 import { Presence } from "./presence.ts";
 import { panMode, storedPan, storePan } from "./pan-mode.ts";
 import { NativeSurface } from "./native/surface.ts";
+import { wireTouch } from "./native/touch-wiring.ts";
+import type { CameraSurface } from "./surface.ts";
 
 /** Safari's trackpad pinch. */
 interface GestureEvent extends UIEvent {
@@ -106,11 +108,12 @@ if (params.has("record")) void import("./record.ts").then((m) => m.install());
 const reference = referenceStart(location.search);
 const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : reference ? { cards: [], lanes: [] } : null;
 const board = document.getElementById("board")!;
+let native = null as NativeSurface | null;
 const app = new App(scratch ?? { cards: [], lanes: [] }, {
   view: (app) => {
     const v = new View(board, app.model, app.state);
     v.wheel.onStream = (s) => app.flight.note("input", "wheel", s);
-    if (pan === "native") v.useSurface(new NativeSurface(board, v, app.flight));
+    if (pan === "native") v.useSurface(native = new NativeSurface(board, v, app.flight, (v.surface as CameraSurface).grid));
     return v;
   },
   presence: (view) => new Presence(view),
@@ -141,6 +144,7 @@ if (devFlight) {
 }
 
 const gestures = new Gestures(app.input);
+if (native) wireTouch(app, board, native, gestures);
 const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
 /** A mouse press that began on the board, not in an editor, though its double-click may have opened one under it. */
@@ -165,7 +169,8 @@ board.addEventListener("pointerdown", (e) => {
 // mousedown of a double-click that opened an editor would select the word under the pointer, which typing replaces.
 board.addEventListener("mousedown", (e) => (editor(e) && !boardClick) || e.preventDefault());
 // Tap, then hold and drag, is iOS's text gesture too: it shows the magnifier over card text even where text cannot be selected.
-board.addEventListener("touchstart", (e) => editor(e) || e.preventDefault(), { passive: false });
+// Prevented, it would stop every native pan, and the magnifier showed only where the owner expected it without.
+board.addEventListener("touchstart", (e) => editor(e) || pan === "native" || e.preventDefault(), { passive: false });
 addEventListener("pointermove", (e) => {
   app.library?.pointerAt({ x: e.clientX, y: e.clientY });
   if (e.pointerType === "mouse") return mouse.move({ x: e.clientX, y: e.clientY, buttons: e.buttons });
@@ -255,8 +260,12 @@ if (pan === "native") board.addEventListener("scroll", () => app.input.drag && a
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
 // Safari reports a trackpad pinch as gesture events, their scale counting from the pinch's start; a touch pinch comes as pointers.
 let pinch: number | null = null;
+// a touch pinch's own, which in native mode the touches pinch: Breezy holds no pointers on a native pan, and these zoomed
+// under it
+const touchGestures = pan === "native" && matchMedia("(pointer: coarse)").matches;
 document.addEventListener("gesturestart", (e) => {
   e.preventDefault();
+  if (touchGestures) return;
   if (!gestures.points.size) pinch = app.view.cam.zoom;
 });
 document.addEventListener("gesturechange", (e) => {
