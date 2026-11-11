@@ -47,6 +47,28 @@ test("sends the newest entries that fit what the server takes, saying how many i
   assert.equal(b.recording.dropped, 8000 - b.recording.entries.length);
 });
 
+test("fitting drops the oldest frames first, then the oldest entries", async () => {
+  const { calls, f } = fetcher();
+  const fields = Array.from({ length: 25 }, (_, i) => (i ? `f${i}` : "t"));
+  const rows = Array.from({ length: 30_000 }, (_, i) => fields.map((_, k) => (k ? 1234.5 + k : i)));
+  await send(target, "off", { ...recording(10), frames: { fields, rows } }, { fetch: f });
+  const b = await body(calls[0]!.init);
+  assert.ok(JSON.stringify(b).length <= LIMIT, `${JSON.stringify(b).length} bytes`);
+  assert.equal(b.why, "off");
+  assert.equal(b.recording.entries.length, 10);
+  assert.equal(b.recording.dropped, 0);
+  assert.ok(b.recording.frames.rows.length < 30_000 && b.recording.frames.rows.length > 1000, `${b.recording.frames.rows.length} rows`);
+  assert.equal(b.recording.frames.rows.at(-1)[0], 29_999);
+});
+
+test("what looked off is sent every time it is asked, as a report asked for is", async () => {
+  let sent = 0;
+  const r = new Reporter(() => target, () => recording(1), { send: async () => (sent++, true) });
+  await r.report("off");
+  await r.report("off");
+  assert.equal(sent, 2);
+});
+
 test("a send that fails says so and never throws", async () => {
   const rejecting = (async () => { throw new TypeError("offline"); }) as unknown as typeof fetch;
   assert.equal(await send(target, "asked", recording(1), { fetch: rejecting }), false);

@@ -56,9 +56,15 @@ test("only the reasons an app sends for, and only a recording, are taken", async
   assert.equal((await call(DIAG, sp.s, sp.token, "POST", {}, JSON.stringify({ why: "asked", recording: "x" }))).status, 400);
 });
 
-test("a recording over 512 KB is refused", async () => {
+test("a recording over 2 MiB is refused, and one just under it taken", async () => {
   const sp = await space();
-  assert.equal((await sp.send("asked", { schema: 1, pad: "x".repeat(512 * 1024) })).status, 413);
+  assert.equal((await sp.send("asked", { schema: 1, pad: "x".repeat(2 * 1024 * 1024) })).status, 413);
+  assert.equal((await sp.send("asked", { schema: 1, pad: "x".repeat(2 * 1024 * 1024 - 100) })).status, 200);
+});
+
+test("what looked off to its owner is taken, its frames with it", async () => {
+  const sp = await space();
+  assert.equal((await sp.send("off", { schema: 1, frames: { fields: ["t"], rows: [[1]] } })).status, 200);
 });
 
 test("a space sends at most 20 in an hour", async () => {
