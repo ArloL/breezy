@@ -32,6 +32,19 @@ final class FrameWriterTests: XCTestCase {
     XCTAssertEqual(stroke.raw.map { $0[1] }, [Data([1]), Data([2]), Data([3])].map { $0.base64EncodedString() })
   }
 
+  func testKeepsWhereTheViewWasBeforeItsFirstEvent() throws {
+    var w = FrameWriter(name: "pinch")
+    var before = at(1.5)
+    before.cam = CGPoint(x: 300, y: 400)
+    XCTAssertNil(w.frame(t: 9.98, shown: before))
+    pinch(&w)
+    var s: FrameWriter.Stroke?
+    var t = 10.05
+    while s == nil, t < 13 { s = w.frame(t: t, shown: at(0.9)); t += 0.0166 }
+    let stroke = try XCTUnwrap(s)
+    XCTAssertEqual(stroke.start, [1.5, 300, 400])
+  }
+
   func testEndsOnlyOnceStillAndRested() {
     var w = FrameWriter(name: "pinch")
     pinch(&w)
