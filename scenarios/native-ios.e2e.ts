@@ -80,6 +80,21 @@ function watchPinch() {
   }, { capture: true, passive: true });
 }
 
+/** The camera as the fingers went from two to one, the first time: runs in the page. */
+function watchLift() {
+  const w = window as { liftAt?: Cam };
+  delete w.liftAt;
+  const at = (e: TouchEvent) => {
+    if (e.touches.length !== 1 || w.liftAt) return;
+    const b = document.querySelector("#board")!.getBoundingClientRect(), content = document.querySelector(".native-content")!.getBoundingClientRect();
+    const t = document.querySelector<HTMLElement>(".world")!.style.transform.match(/translate\((-?[\d.e+-]+)px(?:, (-?[\d.e+-]+)px)?\) scale\(([\d.]+)\)/)!;
+    w.liftAt = { x: content.left - b.left + Number(t[1]), y: content.top - b.top + Number(t[2] ?? 0), zoom: Number(t[3]) };
+  };
+  // after the page has heard it, and ended the pinch
+  addEventListener("touchend", at, { passive: true });
+  addEventListener("touchcancel", at, { passive: true });
+}
+
 const near = (a: number, b: number, by: number, what: string) => assert.ok(Math.abs(a - b) <= by, `${what}: ${a} is not within ${by} of ${b}`);
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const toScreen = (c: Cam, p: Point) => ({ x: p.x * c.zoom + c.x, y: p.y * c.zoom + c.y });
@@ -167,6 +182,29 @@ describe("native panning in Safari on the iOS Simulator", { skip: unfit }, () =>
     assert.ok(await page.evaluate(() => !!(document.querySelector(".native-overlay")!.compareDocumentPosition(document.getElementById("top")!) & Node.DOCUMENT_POSITION_FOLLOWING)), "the overlay paints over the bars");
     const anchor = toWorld(at.cam, at.mid), off = dist(toScreen(after, anchor), end);
     assert.ok(off <= 8, `the board point between the fingers as the second came is ${off.toFixed(1)} pt from them`);
+  }));
+
+  /** After `pinch`, which ends with finger 1 lifted, finger 0 drags 100 pt down and rests before it lifts: the board
+   * follows it 100 pt, from where the second finger left it. */
+  const leftFingerPans = async (pinch: Frame[], at: Point) => {
+    await page.evaluate(watchLift);
+    const to = { x: at.x, y: at.y + 100 };
+    await d.gesture([...pinch, ...line(at, to, 10), [200, "move", [[0, to]]], [16, "up", [[0, to]]]]);
+    await d.still("the board to stand still");
+    const lift = await page.evaluate(() => (window as { liftAt?: Cam }).liftAt ?? null), after = (await d.scene()).camera;
+    assert.ok(lift, "the page saw no finger lift from two to one");
+    near(after.zoom, lift.zoom, 0.001, "the zoom after the lift");
+    near(after.y - lift.y, 100, 5, "the board's move under the finger left");
+    near(after.x, lift.x, 5, "the camera's x");
+  };
+
+  test("the finger left from a pinch on a native pan pans the board on its own", { timeout: MS }, (t) => kept(t, async () => {
+    const { w, h } = await d.size(), a = { x: w / 2 - 50, y: h * 0.8 }, a1 = { x: a.x, y: a.y - 120 }, b = { x: w / 2 + 50, y: a1.y };
+    const spread: Frame[] = Array.from({ length: 10 }, (_, i): Frame => [16, "move", [[0, { x: a1.x - 5 * (i + 1), y: a1.y }], [1, { x: b.x + 5 * (i + 1), y: b.y }]]]);
+    const at = { x: a1.x - 50, y: a1.y };
+    await leftFingerPans([[0, "down", [[0, a]]], ...line(a, a1, 12), [16, "down", [[1, b]]], ...spread, [50, "up", [[1, { x: b.x + 50, y: b.y }]]]], at);
+    const kinds = (await page.evaluate(readFlight))!.entries.filter((e) => e[2] === "native pinch start").map((e) => (e[3] as { kind: string }).kind);
+    assert.deepEqual(kinds, ["taken"]);
   }));
 
   test("a hold on the board drags a marquee, and the board does not pan", { timeout: MS }, (t) => kept(t, async () => {
