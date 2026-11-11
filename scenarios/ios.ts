@@ -232,24 +232,54 @@ export async function iosUnfit(): Promise<string | false> {
 /** The name the scenarios' app has on the iPhone's Home Screen. */
 export const HOME_ICON = "Breezy Scenarios";
 
-/** Forgets the idb companions its record names that have ended, as scripts/sim-hid.py does: idb connects to the one the
- * record names, and its command failed on a record a companion that ended left behind. */
-function dropEndedCompanions(state = "/tmp/idb/state") {
+/** The idb companions of iPhone `udid` started before its boot, by when its launchd_sim started, in `ps -axo
+ * pid=,lstart=,command=`: a companion stays alive when its iPhone goes down, holding that boot's dtuhidd connection, and
+ * idb reused one after the next boot, so every touch failed on `The dtuhidd connection … has been invalidated`. */
+export function staleCompanions(ps: string, udid: string): number[] {
+  const rows = [...ps.matchAll(/^\s*(\d+)\s+(\w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4})\s+(.*)$/gm)]
+    .map((m) => ({ pid: Number(m[1]), at: Date.parse(m[2]!), command: m[3]! }));
+  const boot = rows.find((r) => /^launchd_sim /.test(r.command) && r.command.includes(`/${udid}/`))?.at;
+  if (boot === undefined) return [];
+  return rows.filter((r) => /^\S*idb_companion /.test(r.command) && r.command.includes(`--udid ${udid} `) && r.at < boot).map((r) => r.pid);
+}
+
+const listProcesses = () => execFileSync("ps", ["-axo", "pid=,lstart=,command="],
+  { encoding: "utf8", timeout: 30_000, env: { ...process.env, LC_ALL: "C" }, maxBuffer: 64 * 2 ** 20 });
+
+/** Ends iPhone `udid`'s companions older than its boot and forgets them, and those that have ended, which scripts/sim-hid.py
+ * forgets too: idb connects to the one its record names, or else to one holding the socket. Other iPhones' are kept. */
+export async function dropStaleCompanions(udid: string, { state = "/tmp/idb/state", ps = listProcesses }: { state?: string; ps?: () => string } = {}): Promise<number[]> {
+  const alive = (pid?: number) => {
+    try {
+      process.kill(pid!, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let stale: number[] = [];
+  try {
+    stale = staleCompanions(ps(), udid);
+  } catch (e) {
+    noteHid(`no companions listed: ${(e as Error).message.split("\n")[0]}`);
+  }
+  for (const pid of stale) {
+    noteHid(`ending idb's companion ${pid}, started before the iPhone's boot`);
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {}
+    for (const end = Date.now() + 5000; alive(pid) && Date.now() < end; await sleep(50));
+    if (alive(pid)) try { process.kill(pid, "SIGKILL"); } catch {}
+  }
   let companions: { pid?: number; path?: string }[];
   try {
     companions = JSON.parse(readFileSync(state, "utf8"));
   } catch {
-    return;
+    return stale;
   }
-  const alive = (c: { pid?: number; path?: string }) => {
-    try {
-      process.kill(c.pid!, 0);
-    } catch {
-      return false;
-    }
-    return !!c.path && existsSync(c.path);
-  };
-  if (!companions.every(alive)) writeFileSync(state, JSON.stringify(companions.filter(alive)));
+  const live = (c: { pid?: number; path?: string }) => !stale.includes(c.pid!) && alive(c.pid) && !!c.path && existsSync(c.path);
+  if (!companions.every(live)) writeFileSync(state, JSON.stringify(companions.filter(live)));
+  return stale;
 }
 
 /** Where the Home Screen shows icon `label`, in screen points, or null; SpringBoard's own icons are what its
@@ -259,7 +289,7 @@ export async function homeIcon(udid: string, label = HOME_ICON): Promise<Point |
   // synchronous: idb took 0.5 to 16 s there, and the harness serves the pages meanwhile
   let out = "";
   for (let tries = 1; ; tries++) {
-    dropEndedCompanions();
+    await dropStaleCompanions(udid);
     try {
       out = (await execFileAsync("uvx", ["--quiet", "--python", "3.11", "--from", "fb-idb", "idb", "ui", "describe-all", "--udid", udid, "--json"],
         { encoding: "utf8", timeout: 120_000 })).stdout;
@@ -336,6 +366,7 @@ export class SimHid {
   /** It holds the connection, or an error `ms` on, which the world's own limit of 180 s leaves room for. */
   static async start(udid: string, { ms = 120_000, command = [`${root}scripts/sim-hid.py`, [udid]] }: { ms?: number; command?: [string, string[]] } = {}): Promise<SimHid> {
     noteHid("started");
+    await dropStaleCompanions(udid);
     const h = new SimHid(spawn(command[0], command[1], { stdio: ["pipe", "pipe", "pipe"] }));
     // its first line says it holds the connection
     await h.answer(ms).catch((e) => {
