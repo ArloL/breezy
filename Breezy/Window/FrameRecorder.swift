@@ -67,7 +67,7 @@ import BreezyKit
     let input = [wheel.dx, wheel.dy, wheel.phase, wheel.momentum, magnify, gesture]
     let moving = shown != lastShown || input.contains { $0 != 0 }
     if moving || stillFrames == 0 {
-      flight.frame(Array(shown.prefix(11)) + [nil, nil, nil, nil] + input.map { Optional($0) } + Array(shown.suffix(3)))
+      flight.frame(Array(shown.prefix(11)) + [nil, nil, nil, nil] + input.map { Optional($0) } + Array(shown.suffix(5)))
       if !moving { stillFrames = 1 }
     } else {
       stillFrames += 1
@@ -85,8 +85,8 @@ import BreezyKit
     link = nil
   }
 
-  /// The camera, the view, the board and the pointer, then the knobs and what is drawn short: the fields but `t` and
-  /// the input, in order, with the pointer's two at 10 and 11.
+  /// The camera, the view, the board and the pointer, then the knobs' sizes and places and what is drawn short: the
+  /// fields but `t`, the fingers and the input, in order.
   private func shown() -> [Double?]? {
     guard let sv = scrollView, let doc = sv.documentView, let window = sv.window else { return nil }
     let clip = sv.contentView, z = sv.magnification
@@ -96,6 +96,7 @@ import BreezyKit
     let px = (q.x - clip.bounds.minX) * z, py = (clip.isFlipped ? q.y - clip.bounds.minY : clip.bounds.maxY - q.y) * z
     let b = doc.bounds
     let geometry: [Double?] = [z, cam.x, cam.y, clip.frame.width, clip.frame.height, b.minX, b.minY, b.width, b.height, px, py]
-    return geometry + [sv.horizontalScroller.map { Double($0.knobProportion) }, sv.verticalScroller.map { Double($0.knobProportion) }, drawnShort()]
+    let h = sv.horizontalScroller, v = sv.verticalScroller
+    return geometry + [h.map { Double($0.knobProportion) }, v.map { Double($0.knobProportion) }, h.map { $0.doubleValue }, v.map { $0.doubleValue }, drawnShort()]
   }
 }

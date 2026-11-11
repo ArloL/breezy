@@ -442,6 +442,7 @@ extension SelfTest {
         d.later(0.5) {
           guard let last = rows().last, rows().count > m else { finish(name, "a resize kept no frame") }
           let w = sv.contentView.frame.width
+          if last[field("knobHAt")] == nil || last[field("knobVAt")] == nil { finish(name, "no knob places in the frames") }
           if abs((last[field("viewW")] ?? 0) - w) > 0.5 { finish(name, "frames are in points at a backing scale of \(d.window.backingScaleFactor): viewW \(last[field("viewW")] ?? -1), the view \(w) pt") }
           finish(name, nil)
         }

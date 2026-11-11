@@ -33,7 +33,7 @@ public final class Flight: @unchecked Sendable {
   /// What a frame holds, in order, as scripts/frames/fields.json lists them: every platform's, then the Mac's.
   public static let frameFields = [
     "t", "zoom", "camX", "camY", "viewW", "viewH", "boardX", "boardY", "boardW", "boardH", "px", "py", "f1x", "f1y", "f2x", "f2y",
-    "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "magnify", "gesture", "knobH", "knobV", "grey",
+    "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "magnify", "gesture", "knobH", "knobV", "knobHAt", "knobVAt", "grey",
   ]
 
   public struct Recording: Encodable, Sendable {
