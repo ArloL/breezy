@@ -5,8 +5,8 @@
 // copied so that sync.php stays as it is.
 declare(strict_types=1);
 
-const MAX_REQUEST = 524288;
-const WHY = ['asked', 'error', 'sight'];
+const MAX_REQUEST = 2097152;
+const WHY = ['asked', 'error', 'sight', 'off'];
 const PER_HOUR = 20;
 const KEEP = 100;
 const KEEP_SECONDS = 30 * 86400;

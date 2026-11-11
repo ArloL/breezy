@@ -64,6 +64,9 @@ enum MainMenu {
     ])
     main.addItem(window)
     NSApp.windowsMenu = window.submenu
+    let help = submenu("Help", [item("That Looked Off", #selector(BoardWindowController.thatLookedOff(_:)), "l", [.command, .option])])
+    main.addItem(help)
+    NSApp.helpMenu = help.submenu
     return main
   }
 
