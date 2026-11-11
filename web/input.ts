@@ -51,6 +51,8 @@ export class Input {
   pressHit: Hit | null;
   scroll: number;
   stoppedCoast: boolean;
+  /** The browser pans the board, as a scroll container: a pan drag leaves the camera to it. */
+  native = false;
   edgeSince!: number;
   edgeLast!: number;
 
@@ -223,6 +225,7 @@ export class Input {
     d.last = p;
     const app = this.app;
     if (d.action === "pan") {
+      if (this.native) return;
       app.view.setCamera(banded({ ...d.raw0!, x: d.raw0!.x + p.x - d.p0.x, y: d.raw0!.y + p.y - d.p0.y }, d.limits!, app.view.stage()));
       return;
     }
@@ -273,7 +276,7 @@ export class Input {
     s.held = new Set();
     s.lifted = new Set();
     s.float = null;
-    if (d.action === "pan") this.coastFrom(v);
+    if (d.action === "pan" && !this.native) this.coastFrom(v);
     if (d.action === "move") {
       app.model.update((b) => R.land(b, new Set(d.origins!.map((o) => o.id)), d.room!));
       app.model.end("Move");
@@ -301,7 +304,7 @@ export class Input {
     // a pan may happen during an edit session, which must survive it
     if (d.action !== "pan" && d.action !== "marquee") app.model.cancel();
     if (d.action !== "pan") app.select(d.sel0);
-    app.view.setCamera(d.cam0);
+    if (d.action !== "pan" || !this.native) app.view.setCamera(d.cam0);
     app.view.invalidate();
   }
 

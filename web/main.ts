@@ -17,6 +17,7 @@ import { View } from "./view.ts";
 import { UI } from "./ui.ts";
 import { Presence } from "./presence.ts";
 import { panMode, storedPan, storePan } from "./pan-mode.ts";
+import { NativeSurface } from "./native/surface.ts";
 
 /** Safari's trackpad pinch. */
 interface GestureEvent extends UIEvent {
@@ -99,16 +100,17 @@ function record(app: App) {
 const params = new URLSearchParams(location.search);
 const askedPan = params.get("pan");
 if (askedPan === "native" || askedPan === "camera") storePan(askedPan);
-// Task 5 chooses the surface by this
 const pan = panMode(location.search, storedPan());
 if (params.has("record")) void import("./record.ts").then((m) => m.install());
 // ?stress, ?demo and ?reference show boards that are not kept, as before
 const reference = referenceStart(location.search);
 const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : reference ? { cards: [], lanes: [] } : null;
+const board = document.getElementById("board")!;
 const app = new App(scratch ?? { cards: [], lanes: [] }, {
   view: (app) => {
-    const v = new View(document.getElementById("board")!, app.model, app.state);
+    const v = new View(board, app.model, app.state);
     v.wheel.onStream = (s) => app.flight.note("input", "wheel", s);
+    if (pan === "native") v.useSurface(new NativeSurface(board, v, app.flight));
     return v;
   },
   presence: (view) => new Presence(view),
@@ -118,6 +120,7 @@ const app = new App(scratch ?? { cards: [], lanes: [] }, {
     return ui;
   },
 });
+app.input.native = pan === "native";
 app.view.setCamera(reference ?? { x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
 startUpdates(app);
@@ -137,7 +140,6 @@ if (devFlight) {
   }, 5000);
 }
 
-const board = document.getElementById("board")!;
 const gestures = new Gestures(app.input);
 const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
@@ -196,6 +198,9 @@ addEventListener("wheel", (e) => {
 }, { capture: true, passive: true });
 addEventListener("wheel", (e) => {
   if (document.body.dataset.screen === "boards") return;
+  // A native board scrolls itself, and Breezy keeps the zoom. The wheel stops the app's own move, as find's glide:
+  // writing the scroll position each frame, it cancelled the browser's smooth scroll of a mouse's wheel.
+  if (pan === "native" && !e.ctrlKey && !e.metaKey) return app.view.camera.stop();
   e.preventDefault();
   // should Safari also send the pinch as ⌃-wheel, it would zoom twice
   if (pinch !== null && e.ctrlKey) return;
@@ -237,6 +242,8 @@ document.addEventListener("paste", (e) => {
   e.preventDefault();
   app.paste(clip);
 });
+// what a held drag is over has moved, the board scrolled under it, as after a wheel's pan above
+if (pan === "native") board.addEventListener("scroll", () => app.input.drag && app.input.dragMove(app.input.drag.last), { passive: true });
 // iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
 // Safari reports a trackpad pinch as gesture events, their scale counting from the pinch's start; a touch pinch comes as pointers.
