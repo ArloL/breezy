@@ -35,6 +35,7 @@
 - **Dev server:** `npm run dev`. Keep exactly one Breezy tab open in Firefox: every open page answers `/goto`.
 - **Reference app:** build it with `xcodegen generate && xcodebuild build -project Breezy.xcodeproj -scheme BreezyReference -destination 'platform=macOS' -derivedDataPath build/reference-dd`.
 - **The owner's strokes:** copy them into `build/reference/` (`cp scripts/reference-strokes/*.json build/reference/`) before running `scripts/reference-batch.ts`, or Task 7's capture. `build/` isn't kept.
+- **Earlier flight recordings:** `scripts/flight-recordings/` holds the 157 pages' recordings from `build/flight/` as of 2026-11-10, Mac and iPhone, carried over to move this work to another Mac. Their findings are in `web/test/trackpad-edge.json` and the memory notes; delete the folder once nothing needs the raw streams.
 
 **Setup on the iPhone**
 - **Browser.** The owner's iPhone browser is **Firefox for iOS**: WebKit, user agent "FxiOS".

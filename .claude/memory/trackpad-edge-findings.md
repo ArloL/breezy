@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: a7f3b882-e6ff-4486-a48c-c78deacb57b8
-  modified: 2026-11-10T09:54:45.895Z
+  modified: 2026-11-11T07:55:56.611Z
 ---
 
 From the owner's MacBook trackpad, 2026-11-10 (Chrome and Firefox 159 on macOS, fixtures in web/test/trackpad-edge.json):
@@ -18,4 +18,4 @@ From the owner's MacBook trackpad, 2026-11-10 (Chrome and Firefox 159 on macOS, 
 - Dev pages on localhost:58565 post their flight recording to build/flight/ every 5 s; read those instead of asking the owner to paste console snippets (they found that a "weird workaround").
 
 **Why:** these took several rounds with the owner to find; they explain WheelPan's constants.
-**How to apply:** when wheel/trackpad feel is reported off, read build/flight/<browser> <id>.json first; a page reload starts a new id. Related: [[native-feel-reference-testing]].
+**How to apply:** when wheel/trackpad feel is reported off, read build/flight/<browser> <id>.json first; a page reload starts a new id. The recordings as of 2026-11-10 are kept in scripts/flight-recordings/. Related: [[native-feel-reference-testing]].
