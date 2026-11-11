@@ -166,11 +166,18 @@ function startOf(t: FrameTrack): number {
   return num(ts[Math.max(0, i)]);
 }
 
-/** `field` over time as the reference's, from each one's gesture start, within `tol`, every 8 ms both cover. */
+/** `field` over time as the reference's, from each one's gesture start, within `tol`, every 8 ms both cover, read on a
+ * straight line between frames. */
 export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number): Finding[] {
   const a0 = startOf(t), b0 = startOf(ref);
   const pa = column(t, "t").map((u, i) => [num(u) - a0, num(column(t, field)[i])]), pb = column(ref, "t").map((u, i) => [num(u) - b0, num(column(ref, field)[i])]);
-  const at = (p: number[][], u: number) => p.findLast(([v]) => v <= u)?.[1] ?? p[0][1];
+  // on a straight line between frames: a display link skips frames where nothing redraws, 100 ms and more
+  const at = (p: number[][], u: number) => {
+    const j = p.findIndex(([v]) => v > u);
+    if (j <= 0) return j === 0 ? p[0][1] : p.at(-1)![1];
+    const [u0, a0] = p[j - 1], [u1, a1] = p[j];
+    return a0 + ((a1 - a0) * (u - u0)) / (u1 - u0);
+  };
   const end = Math.min(pa.at(-1)![0], pb.at(-1)![0]), times: number[] = [], bad: boolean[] = [], gaps: number[] = [];
   for (let u = 0; u <= end; u += 8) { times.push(u + a0); gaps.push(Math.abs(at(pa, u) - at(pb, u))); bad.push(gaps.at(-1)! > tol); }
   return runs(times, bad, "curve", (a, b) => `${field} parted from the reference's by up to ${Math.max(...gaps.slice(a, b + 1)).toFixed(3)}, past ${tol}`);

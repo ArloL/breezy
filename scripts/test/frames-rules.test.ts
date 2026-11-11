@@ -108,6 +108,13 @@ test("curve finds a zoom curve 0.02 off the reference's with tol 0.01", () => {
   assert.deepEqual(curve(ref, ref, "zoom", 0.01), []);
 });
 
+test("curve reads between frames a display link skipped, as a straight line", () => {
+  // the reference drew every 16 ms; the other skipped 100 ms where nothing redrew, on the same line
+  const ref = track(Array.from({ length: 20 }, (_, i) => ({ t: i * 16, zoom: 1 - i * 0.02, gesture: i ? 2 : 1 })));
+  const sparse = track([0, 1, 2, 9, 10, 19].map((i) => ({ t: i * 16, zoom: 1 - i * 0.02, gesture: i ? 2 : 1 })));
+  assert.deepEqual(curve(sparse, ref, "zoom", 0.005), []);
+});
+
 test("frames reads a recording's track, and column names a missing field in its error", () => {
   const t = track([{}, {}]);
   const r: Recording = { schema: 1, origin: 0, dropped: 0, context: null, entries: [], frames: t };
