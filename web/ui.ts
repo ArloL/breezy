@@ -5,6 +5,7 @@ import { haptic } from "./haptics.ts";
 import { animate } from "./motion.ts";
 import { clampZoom } from "./view.ts";
 import { composingKey } from "./ime.ts";
+import { storePan, type PanMode } from "./pan-mode.ts";
 import type { App, Match } from "./app.ts";
 
 const KEYS_H = 44;
@@ -43,6 +44,7 @@ export class UI {
   menus: Menus;
   zoom: number | undefined;
   zoomTimer: ReturnType<typeof setTimeout> | undefined;
+  pan: PanMode = "camera";
 
   constructor(app: App) {
     this.app = app;
@@ -105,6 +107,14 @@ export class UI {
       case "redo": return app.redo();
       case "search": return this.openFind();
       case "version": b!.textContent = b!.dataset.next ? `${b!.dataset.version}, ${b!.dataset.next} ready` : b!.dataset.version!; return;
+      case "pan-mode": {
+        const next = this.pan === "native" ? "camera" : "native";
+        storePan(next);
+        const url = new URL(location.href);
+        url.searchParams.delete("pan");
+        location.replace(url);
+        return;
+      }
       case "new-space": this.closeMenu(); return app.library?.newSpace();
       case "rename-space": this.closeMenu(); return app.library?.renameSpace();
       case "leave-space": this.closeMenu(); return app.library?.leaveSpace();
@@ -202,6 +212,12 @@ export class UI {
     const visible = top + vv.height - (this.app.state.editing ? KEYS_H : 0);
     const bottom = bar.hidden ? visible : Math.min(visible, bar.getBoundingClientRect().top - origin);
     return { top: Math.max(above.getBoundingClientRect().bottom - origin, top), bottom, left: 0, right: innerWidth };
+  }
+
+  /** Shows the pan mode the menu item switches away from. */
+  setPanMode(mode: PanMode) {
+    this.pan = mode;
+    this.$('[data-act="pan-mode"]').textContent = `Panning: ${mode === "native" ? "Native" : "Camera"}`;
   }
 
   /** A light tap where the device has a Taptic Engine. */

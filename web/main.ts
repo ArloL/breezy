@@ -16,6 +16,7 @@ import { ask } from "./sheet.ts";
 import { View } from "./view.ts";
 import { UI } from "./ui.ts";
 import { Presence } from "./presence.ts";
+import { panMode, storedPan, storePan } from "./pan-mode.ts";
 
 /** Safari's trackpad pinch. */
 interface GestureEvent extends UIEvent {
@@ -96,6 +97,10 @@ function record(app: App) {
 }
 
 const params = new URLSearchParams(location.search);
+const askedPan = params.get("pan");
+if (askedPan === "native" || askedPan === "camera") storePan(askedPan);
+// Task 5 chooses the surface by this
+const pan = panMode(location.search, storedPan());
 if (params.has("record")) void import("./record.ts").then((m) => m.install());
 // ?stress, ?demo and ?reference show boards that are not kept, as before
 const reference = referenceStart(location.search);
@@ -107,7 +112,11 @@ const app = new App(scratch ?? { cards: [], lanes: [] }, {
     return v;
   },
   presence: (view) => new Presence(view),
-  ui: (app) => new UI(app),
+  ui: (app) => {
+    const ui = new UI(app);
+    ui.setPanMode(pan);
+    return ui;
+  },
 });
 app.view.setCamera(reference ?? { x: 16, y: app.ui.area().top + 16, zoom: 0.75 });
 app.view.render();
