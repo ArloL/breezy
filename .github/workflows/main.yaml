@@ -255,6 +255,9 @@ jobs:
       run: npx playwright-core install chromium webkit firefox
     - name: Platform rows and trace replays
       run: node --test --test-force-exit scenarios/platform/*.test.ts
+    - name: Native panning in Chromium and Firefox
+      timeout-minutes: 4
+      run: node --test --test-force-exit scenarios/native.e2e.ts
     - name: Build the Mac app
       run: |
         xcodegen generate
