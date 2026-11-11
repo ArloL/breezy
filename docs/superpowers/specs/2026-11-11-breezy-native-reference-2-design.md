@@ -112,3 +112,18 @@ The owner: "start with the things I tell you look off — if the idea can't pinp
 - Tolerances, set from how the owner's repeats and the reference's curves vary.
 - The capture tools on each platform, and the colours of test boards.
 - Where the quicker "That looked off" entry sits in each app, and its shortcut.
+
+## Spike findings
+
+**A recorded pinch, replayed into AppKit** (2026-11-11, macOS 27, the owner's MacBook trackpad; `spike/pinch-replay`, kept unmerged). A bare `NSScrollView` (magnification 0.25–2, a 40,032 pt document) recorded each event it received as `CGEvent` data, and its magnification on every frame. The owner made three pinches out past 25 %. Each was replayed into the same window four ways:
+
+| Route | Magnify events received | Zoom |
+|---|---|---|
+| Posted to the HID tap, as recorded | 92 of 94, 0, 0 | stayed at 100 % |
+| Posted, window under the pointer rewritten and the cursor moved over the window | 94 of 94, 0, 0 | stayed at 100 % |
+| Posted to the app's own process (`postToPid`) | 94, 72, 139 of 94, 72, 140 | stayed at 100 % |
+| In the app: `NSEvent(cgEvent:)` handed to `window.sendEvent` | not seen by the window's monitor, as expected | as recorded |
+
+In the app, the replays' lowest zoom was 0.2296, 0.2271 and 0.2239 against the recordings' 0.2296, 0.2274 and 0.2235. All three settled at 0.25, as recorded, within 1, 31 and 25 ms of the recordings' settle times. Aligned on the first frame the zoom left 100 %, and allowing one display frame of timing either way, the curves stay within 0.009, 0.011 and 0.011. Without that allowance, the largest gap is 0.05–0.075, in the first 56 ms, where a single magnify event moves the zoom 9 %.
+
+**Verdict.** A posted pinch reaches the app as `NSEvent`s of type magnify with the recorded values and phases, but `NSScrollView` zooms by none of them, by every route tried. Pinches are therefore replayed in the app, through `NSEvent(cgEvent:)` and `window.sendEvent`: in Breezy through the Debug control port (`Breezy/Support/Control.swift`), and in the reference app through its own. Fixtures are made from Debug builds. The window server's own handling of a pinch is not covered by a replay; the owner's hand covers it. The evidence is in `build/native-reference-2/spike/`.
