@@ -17,15 +17,9 @@
 
 **Branches and PRs**
 - PR #271 (the bounded board and trackpad rubber band) has **merged**.
-- `try/bounded-canvas` holds, pushed, on top of it, rebased onto main on 2026-11-11:
-  1. **the measuring kit:** the reference app (`Reference/`), the replay helper and scripts (`scripts/replay*.{ts,swift}`, `scripts/reference-*.ts`, `scripts/dev-goto.ts`, `scripts/appkit-score.ts`), the fixture and test (`web/test/appkit-edge*`), and the owner's strokes (`scripts/reference-strokes/`);
-  2. **the tuned band and spring** (cc352c2), which depends on 1;
-  3. **the specs and this plan.**
-- AGENTS.md wants small PRs off main, not stacked. So:
-  1. open the measuring kit's PR first (1 and the specs);
-  2. once it merges, open the tuned band and spring's PR;
-  3. build this plan on a new branch off main after both.
-- The commits are ordered so 1 and 2 split cleanly at cc352c2, but check with `git log --oneline main..`.
+- The measuring kit (the reference app in `Reference/`, the replay helper and scripts, the fixture and test in `web/test/appkit-edge*`, the owner's strokes in `scripts/reference-strokes/`), the specs and this plan go in their own PR off main.
+- The tuned band and spring (cc352c2 on `try/bounded-canvas`) follow in the next PR, as they depend on the kit.
+- Build this plan on a new branch off main after both.
 - **The spike** is on `spike/native-pan`: the native mode in `web/native-pan.ts`, the measuring tools in `spike-tools/` (the page, capture, scoring, tracker and window bounds). It's throwaway: read it, don't merge it. Its base is the branch before that rebase, so the hashes above hold; don't rebase it. Keep it until native mode has merged: Tasks 5 and 6 build on its `web/native-pan.ts` and CSS, Task 7 on its tracker and scoring; then delete it, locally and on origin.
 
 **Setup on the Mac**
@@ -34,6 +28,8 @@
 - **Dev server:** `npm run dev`. Keep exactly one Breezy tab open in Firefox: every open page answers `/goto`.
 - **Reference app:** build it with `xcodegen generate && xcodebuild build -project Breezy.xcodeproj -scheme BreezyReference -destination 'platform=macOS' -derivedDataPath build/reference-dd`.
 - **The owner's strokes:** copy them into `build/reference/` (`cp scripts/reference-strokes/*.json build/reference/`) before running `scripts/reference-batch.ts`, or Task 7's capture. `build/` isn't kept.
+- **Earlier recordings and runs:** `origin/try/bounded-canvas` keeps, unmerged, the 157 pages' flight recordings as of 2026-11-10, Mac and iPhone, in `scripts/flight-recordings/`, and `build/reference/` and `build/reference-pilot/` in `scripts/reference-runs/`: the replays into AppKit, Firefox's captures and `cases.json` that `scripts/reference-fixture.ts` builds `web/test/appkit-edge.json` from. To put them back: `git archive origin/try/bounded-canvas scripts/flight-recordings scripts/reference-runs | tar -x -C build/`, then `cp -R build/scripts/reference-runs/* build/` and `mv build/scripts/flight-recordings build/flight`. Delete the branch once nothing needs them.
+- **Claude Code's memory:** `.claude/settings.local.json` isn't kept, and it holds `"autoMemoryDirectory"`, the absolute path to `.claude/memory/`. Recreate it on a new Mac, or the memory notes aren't read.
 
 **Setup on the iPhone**
 - **Browser.** The owner's iPhone browser is **Firefox for iOS**: WebKit, user agent "FxiOS".
