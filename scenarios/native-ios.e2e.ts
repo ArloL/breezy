@@ -207,6 +207,16 @@ describe("native panning in Safari on the iOS Simulator", { skip: unfit }, () =>
     assert.deepEqual(kinds, ["taken"]);
   }));
 
+  test("the finger left from a pinch held still pans the board", { timeout: MS }, (t) => kept(t, async () => {
+    const { w, h } = await d.size(), m = { x: w / 2, y: h * 0.5 };
+    const spread: Frame[] = Array.from({ length: 5 }, (_, i): Frame => [16, "move", [[0, { x: m.x - 50 - 5 * (i + 1), y: m.y }], [1, { x: m.x + 50 + 5 * (i + 1), y: m.y }]]]);
+    const at = { x: m.x - 75, y: m.y };
+    // held past the 400 ms that end a still pinch before the second finger lifts
+    await leftFingerPans([[0, "down", [[0, { x: m.x - 50, y: m.y }], [1, { x: m.x + 50, y: m.y }]]], ...spread, [600, "up", [[1, { x: m.x + 75, y: m.y }]]]], at);
+    const ends = (await page.evaluate(readFlight))!.entries.filter((e) => e[2] === "native pinch end").map((e) => (e[3] as { how: string }).how);
+    assert.deepEqual(ends, ["still"]);
+  }));
+
   test("a hold on the board drags a marquee, and the board does not pan", { timeout: MS }, (t) => kept(t, async () => {
     const s = await d.scene(), before = s.camera;
     // from between two lanes over a card; held, it creeps 6 pt, short of a drag's 8, and rests before it goes on
