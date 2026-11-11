@@ -1,0 +1,212 @@
+[
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/diagonal-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-replay-2.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/diagonal-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-3.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-replay-3.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/diagonal-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-4.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/diagonal-replay-4.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/diagonal-4.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-2.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-3.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-3.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-4.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-4.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-4.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-5.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-5.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-5.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-6.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-6.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-6.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-7.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-7.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-7.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-8.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-8.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-8.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-9.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-replay-9.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-9.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-mid-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-replay-2.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-mid-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-3.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-replay-3.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-mid-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-4.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/flick-mid-replay-4.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/flick-mid-4.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/pull-back-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/pull-back-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/pull-back-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/pull-back-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/pull-back-replay-3.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/pull-back-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/pull-back-3.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/pull-back-replay-5.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/pull-back-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-after-bounce-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-replay-2.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-after-bounce-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-3.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-replay-4.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-after-bounce-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-4.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-after-bounce-replay-5.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-after-bounce-4.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-hold-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-replay-2.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-hold-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-4.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-replay-3.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-hold-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-5.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-replay-4.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-hold-4.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-6.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/push-hold-replay-5.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/push-hold-5.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/release-1.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/release-replay-1.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/release-1.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/release-2.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/release-replay-2.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/release-2.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/release-3.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/release-replay-3.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/release-3.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/release-4.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/release-replay-4.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/release-4.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/release-5.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/release-replay-5.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/release-5.json",
+  "faithful": false
+ },
+ {
+  "recorded": "/Users/arlookeeffe/Developer/breezy/build/reference/release-6.json",
+  "replayed": "/Users/arlookeeffe/Developer/breezy/build/reference/release-replay-6.json",
+  "firefox": "/Users/arlookeeffe/Developer/breezy/build/reference/firefox/release-6.json",
+  "faithful": false
+ }
+]

@@ -35,6 +35,8 @@
 - **Reference app:** build it with `xcodegen generate && xcodebuild build -project Breezy.xcodeproj -scheme BreezyReference -destination 'platform=macOS' -derivedDataPath build/reference-dd`.
 - **The owner's strokes:** copy them into `build/reference/` (`cp scripts/reference-strokes/*.json build/reference/`) before running `scripts/reference-batch.ts`, or Task 7's capture. `build/` isn't kept.
 - **Earlier flight recordings:** `scripts/flight-recordings/` holds the 157 pages' recordings from `build/flight/` as of 2026-11-10, Mac and iPhone, carried over to move this work to another Mac. Their findings are in `web/test/trackpad-edge.json` and the memory notes; delete the folder once nothing needs the raw streams.
+- **Earlier reference runs:** `scripts/reference-runs/` holds `build/reference/` and `build/reference-pilot/` as of 2026-11-10: the replays into AppKit, Firefox's captures and `cases.json` that `scripts/reference-fixture.ts` builds `web/test/appkit-edge.json` from, the spike's native captures, and the first pilot runs. `cp -R scripts/reference-runs/* build/` puts them back, so the fixture rebuilds without replaying every stroke again. Delete the folder once nothing needs them.
+- **Claude Code's memory:** `.claude/settings.local.json` isn't kept, and it holds `"autoMemoryDirectory"`, the absolute path to `.claude/memory/`. Recreate it on a new Mac, or the memory notes aren't read.
 
 **Setup on the iPhone**
 - **Browser.** The owner's iPhone browser is **Firefox for iOS**: WebKit, user agent "FxiOS".
