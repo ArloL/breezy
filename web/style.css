@@ -319,3 +319,12 @@ body[data-screen="board"] #boards { display: none; }
 }
 .boards-list .people { gap: 2px; }
 .boards-list .person { width: 22px; height: 22px; border-radius: 11px; font-size: 10px; line-height: 22px; }
+
+/* ?pan=native: the board scrolls itself, the grid a pattern in what scrolls; past its edge, a rubber band shows a shade
+   darker */
+#board.native { overflow: scroll; touch-action: pan-x pan-y; scrollbar-width: none; overscroll-behavior: auto; background-color: color-mix(in srgb, var(--paper) 85%, var(--ink, #888)); }
+#board.native::-webkit-scrollbar { display: none; }
+#board.native .grid { visibility: hidden; position: fixed; }
+#board.native .native-content { position: relative; background-color: var(--paper); background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.5px); }
+/* others' cursors are placed on screen, not in what scrolls */
+#board.native .presence { position: fixed; }

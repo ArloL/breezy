@@ -120,3 +120,29 @@ test("a double tap on the corner of the card being edited ends the edit and turn
   assert.equal(a.state.editing, null);
   assert.equal(a.state.turned, "a");
 });
+
+test("in native mode a pan drag on the empty board moves nothing and coasts nothing: the browser pans", () => {
+  const { app: a } = app();
+  a.input.native = true;
+  const cam = { ...a.view.cam };
+  a.input.touchStart({ x: 400, y: 600 });
+  a.input.dragStart({ x: 400, y: 600 }, { x: 350, y: 550 }, false);
+  assert.equal(a.input.drag?.action, "pan");
+  a.input.dragMove({ x: 300, y: 500 });
+  assert.deepEqual(a.view.cam, cam);
+  a.input.dragEnd({ x: 300, y: 500 }, { x: -2, y: -2 });
+  assert.deepEqual(a.view.cam, cam);
+  assert.equal(a.view.camera.moving, false);
+});
+
+test("in native mode a pan cancelled leaves the camera where the browser took it", () => {
+  const { app: a } = app();
+  a.input.native = true;
+  a.input.touchStart({ x: 400, y: 600 });
+  a.input.dragStart({ x: 400, y: 600 }, { x: 350, y: 550 }, false);
+  // the browser's pan, as the scroll position's camera
+  a.view.setCamera({ ...a.view.cam, y: a.view.cam.y - 80 });
+  const cam = { ...a.view.cam };
+  a.input.dragCancel();
+  assert.deepEqual(a.view.cam, cam);
+});
