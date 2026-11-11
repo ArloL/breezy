@@ -188,11 +188,12 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     return NSRect(x: b.x, y: b.y, width: b.w, height: b.h)
   }
 
-  /// The view came to rest showing `shown`, in world points, by default where it settles now: the board keeps that
-  /// and lets go of what it showed before, as the web app's does when a scroll ends.
+  /// The view came to rest showing `shown`, in world points, by default what it shows now: the board keeps that and
+  /// lets go of what it showed before, as the web app's does when a scroll ends. Not where AppKit would settle it: for
+  /// a document smaller than the view that is its top left, wherever the view is.
   func rest(_ shown: NSRect? = nil) {
-    guard let clip = enclosingScrollView?.contentView else { return }
-    let r = shown ?? convert(clip.constrainBoundsRect(clip.bounds), from: clip)
+    guard enclosingScrollView != nil else { return }
+    let r = shown ?? showing
     reach.rest(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
     fitBoard()
   }
@@ -204,6 +205,16 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     let r = convert(proposed, from: clip)
     reach.takeIn(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
     return fitBoard()
+  }
+
+  /// A board smaller than the view, which no zoom should leave, as a pinch's own steps can skip the clip view: it takes
+  /// in what shows at once, where a pan could not reach the rest of it.
+  func coverView() {
+    guard !rebasing, let clip = enclosingScrollView?.contentView else { return }
+    guard frame.width < clip.bounds.width - 0.5 || frame.height < clip.bounds.height - 0.5 else { return }
+    let r = showing
+    reach.takeIn(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
+    fitBoard()
   }
 
   /// Fits the canvas to the board. Grown or shrunk at its left or top, the clip view's points move under what shows,
