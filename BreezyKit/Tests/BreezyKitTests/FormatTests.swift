@@ -51,14 +51,3 @@ private func isMalformed(_ json: String) -> Bool {
   #expect(Set(ids).count == 3)
   #expect(b.cards.map(\.color) == [5, 1])
 }
-
-@Test func recentringBringsFarItemsIntoReach() {
-  let b = board([card("near", 0, 0), card("far", 50_000, 24)], [lane("l", 49_000, 0)])
-  let r = b.recentred(within: 20_000)
-  let xs = r.cards.flatMap { [$0.x, $0.x + $0.w] }
-  // centred on the origin, still on the grid, nothing moved relative to anything else
-  #expect(abs(xs.min()! + xs.max()!) <= Metrics.grid * 2)
-  #expect(r.card("near")!.x.truncatingRemainder(dividingBy: Metrics.grid) == 0)
-  #expect(r.card("far")!.x - r.card("near")!.x == 50_000)
-  #expect(board([card("a", 0, 0)]).recentred(within: 20_000) == board([card("a", 0, 0)]))
-}

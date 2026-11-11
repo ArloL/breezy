@@ -9,6 +9,8 @@ enum Theme {
   static let ink3 = dynamic(0x2b2a27, 0xe9e6df, alpha: 0.42)
   static let hairline = dynamic(0x2b2a27, 0xe9e6df, alpha: 0.12)
   static let dot = dynamic(0x2b2a27, 0xe9e6df, alpha: 0.16)
+  /// Past the board's edge.
+  static let outside = dynamic(0xe3e0d9, 0x2c2b28)
   static let accent = dynamic(0xe8620a, 0xff8a3d)
   /// The crease across the corner of a card without notes: a shadow on the card's side, a highlight on the corner's.
   static let creaseShadow = NSColor(name: nil) { $0.isDark ? NSColor(white: 0, alpha: 0.26) : NSColor(hex: 0x2b2a27, alpha: 0.075) }

@@ -26,6 +26,7 @@ extension CanvasView {
       turnLink = (l, CACurrentMediaTime())
     }
     layoutCards()
+    fitBoard()
     // an edited card's own reveal keeps it, and its caret, in sight
     if let id, editing == nil { revealTurned(id) }
   }

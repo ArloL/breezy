@@ -7,15 +7,15 @@ final class BreezyUITests: XCTestCase {
   override func tearDown() { app?.terminate() }
 
   /// Launches the app on a board written from `json` into a temporary file, with a store in a
-  /// temporary folder; returns the board file and the store's file.
+  /// temporary folder, and `arguments`; returns the board file and the store's file.
   @discardableResult
-  func open(_ json: String) -> (board: URL, store: URL) {
+  func open(_ json: String, _ arguments: [String] = []) -> (board: URL, store: URL) {
     let tmp = FileManager.default.temporaryDirectory
     let url = tmp.appendingPathComponent(UUID().uuidString + ".breezy")
     let store = tmp.appendingPathComponent(UUID().uuidString)
     try! json.write(to: url, atomically: true, encoding: .utf8)
     app = XCUIApplication()
-    app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-BreezyBoard", url.path, "-BreezyStore", store.path]
+    app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "-BreezyBoard", url.path, "-BreezyStore", store.path] + arguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5))
     return (url, store.appendingPathComponent("Spaces/local.json"))
@@ -83,5 +83,19 @@ final class BreezyUITests: XCTestCase {
     let card = app.groups.matching(identifier: "card").firstMatch
     expectation(for: NSPredicate(format: "value == 'back'"), evaluatedWith: card)
     waitForExpectations(timeout: 3)
+  }
+
+  /// The app's own check of the board's edge, which reads what its views hold: the scroll view's document is the board,
+  /// 1,194 pt round the cards and lanes and what showed at rest; its edge shows only while a trackpad pulls past it;
+  /// grown at the left and top, by a card or a zoom, and shrunk back, nothing on screen moves.
+  func testTheBoardIsBoundedAndHoldsStillAsItGrows() throws {
+    let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+    open(#"""
+    {"format": 1,
+     "lanes": [{"id": "l", "x": 480, "y": 0, "w": 288, "h": 720, "title": "Doing"}],
+     "cards": [{"id": "a", "x": 0, "y": 0, "w": 240, "text": "Near", "color": 1}]}
+    """#, ["-BreezySelfTest", "bounded-board", "-BreezySelfTestOut", out.path])
+    XCTAssertTrue(app.wait(for: .notRunning, timeout: 40))
+    XCTAssertEqual(try String(contentsOf: out, encoding: .utf8), "PASS bounded-board")
   }
 }

@@ -13,7 +13,7 @@ extension CanvasView {
     let chars = event.charactersIgnoringModifiers ?? ""
     if chars == "l" || chars == "L" {
       let m = convert(window!.mouseLocationOutsideOfEventStream, from: nil)
-      return addLane(at: NSPoint(x: m.x - Self.origin, y: m.y - Self.origin))
+      return addLane(at: m)
     }
     if !core.key(code: event.keyCode, chars: chars) { super.keyDown(with: event) }
   }

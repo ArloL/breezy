@@ -14,10 +14,12 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   let scrollView = BoardScrollView()
   let zoomCapsule = ZoomCapsule()
   private var shownZoom: Int?
-  private let grid = GridView()
+  let grid = GridView()
   private let people = NSStackView()
   private var shownPeople: [Person]?
   private var restored = false
+  /// The board takes in what shows once the view has been still this long, as the web app's once a wheel stops.
+  private var resting: DispatchWorkItem?
   private let finder = NSTextFinder()
   private lazy var finderClient = BoardFinderClient(canvas: canvas)
 
@@ -49,6 +51,9 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.allowsMagnification = true
     scrollView.minMagnification = 0.25
     scrollView.maxMagnification = 2
+    // AppKit's own rubber band, at the board's edge
+    scrollView.horizontalScrollElasticity = .allowed
+    scrollView.verticalScrollElasticity = .allowed
     scrollView.drawsBackground = false
     scrollView.contentView.drawsBackground = false
     scrollView.documentView = canvas
@@ -87,10 +92,13 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
 
   required init?(coder: NSCoder) { fatalError() }
 
+  /// Shows the board from world point `origin` at the top left, at `zoom`, and rests there.
   func place(origin: NSPoint, zoom: CGFloat) {
     scrollView.magnification = zoom
-    scrollView.contentView.scroll(to: origin)
-    scrollView.reflectScrolledClipView(scrollView.contentView)
+    let clip = scrollView.contentView
+    canvas.rest(NSRect(origin: origin, size: clip.bounds.size))
+    clip.scroll(to: canvas.clipPoint(origin))
+    scrollView.reflectScrolledClipView(clip)
     viewMoved()
   }
 
@@ -114,10 +122,22 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
       shownZoom = z
       showZoom(z)
     }
-    grid.update(origin: scrollView.contentView.bounds.origin, zoom: scrollView.magnification)
+    grid.update(origin: grid.convert(NSPoint.zero, from: canvas), zoom: scrollView.magnification,
+                board: grid.convert(canvas.bounds, from: canvas))
     // a zoom step moves the bounds more than once; the cards follow once, when the frame is laid out
     canvas.needsLayout = true
     window?.invalidateRestorableState()
+    resting?.cancel()
+    let rest = DispatchWorkItem { [weak self] in self?.rest() }
+    resting = rest
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: rest)
+  }
+
+  /// The board takes in what shows when the view has come to rest: not while a gesture or a spring moves it, which
+  /// rests it again when it ends.
+  private func rest() {
+    guard !scrollView.live, !scrollView.animating else { return }
+    canvas.rest()
   }
 
   /// The capsule sits at the top of the board, below the toolbar and any find bar.
@@ -160,17 +180,18 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
   @objc func newLane(_ sender: Any?) { canvas.addLaneAtCentre() }
 
   func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
-    let o = scrollView.contentView.bounds.origin
-    state.encode(Double(o.x), forKey: "originX")
-    state.encode(Double(o.y), forKey: "originY")
+    // in world points: the clip view's move as the board grows
+    let o = canvas.showing.origin
+    state.encode(Double(o.x), forKey: "worldX")
+    state.encode(Double(o.y), forKey: "worldY")
     state.encode(Double(scrollView.magnification), forKey: "zoom")
     state.encode(boardID as NSString, forKey: "board")
   }
 
   func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
-    guard state.containsValue(forKey: "zoom") else { return }
+    guard state.containsValue(forKey: "worldX") else { return }
     restored = true
-    place(origin: NSPoint(x: state.decodeDouble(forKey: "originX"), y: state.decodeDouble(forKey: "originY")),
+    place(origin: NSPoint(x: state.decodeDouble(forKey: "worldX"), y: state.decodeDouble(forKey: "worldY")),
           zoom: state.decodeDouble(forKey: "zoom"))
   }
 
@@ -194,10 +215,12 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     for l in canvas.board.lanes { r = r.union(canvas.doc(l.rect)) }
     let size = scrollView.contentView.bounds.size
     guard !r.isNull else {
-      return place(origin: NSPoint(x: CanvasView.origin - size.width / 2, y: CanvasView.origin - size.height / 2), zoom: 1)
+      return place(origin: NSPoint(x: -size.width / 2, y: -size.height / 2), zoom: 1)
     }
-    scrollView.magnify(toFit: r.insetBy(dx: -48, dy: -48))
-    if scrollView.magnification > 1 { scrollView.setMagnification(1, centeredAt: NSPoint(x: r.midX, y: r.midY)) }
+    let pad = r.insetBy(dx: -48, dy: -48)
+    scrollView.magnify(toFit: NSRect(origin: canvas.clipPoint(pad.origin), size: pad.size))
+    if scrollView.magnification > 1 { scrollView.setMagnification(1, centeredAt: canvas.clipPoint(NSPoint(x: r.midX, y: r.midY))) }
+    canvas.rest()
     viewMoved()
   }
 

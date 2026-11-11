@@ -2,8 +2,11 @@ import AppKit
 import BreezyKit
 
 /// The dot grid in screen space: one dot, repeated across and down by replicator layers, so a
-/// scroll or zoom step only sets a spacing and nothing is drawn.
+/// scroll or zoom step only sets a spacing and nothing is drawn. The dots lie on the board's paper; past its edge,
+/// seen only while the view is pulled there, is plain outside, as the web app's.
 final class GridView: NSView {
+  /// The board, in this view's points.
+  private let paper = CALayer()
   private let rows = CAReplicatorLayer()
   private let columns = CAReplicatorLayer()
   private let dot = CALayer()
@@ -15,7 +18,9 @@ final class GridView: NSView {
     dot.cornerRadius = diameter / 2
     columns.addSublayer(dot)
     rows.addSublayer(columns)
-    layer!.addSublayer(rows)
+    paper.masksToBounds = true
+    paper.addSublayer(rows)
+    layer!.addSublayer(paper)
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -24,7 +29,8 @@ final class GridView: NSView {
   override var wantsUpdateLayer: Bool { true }
 
   override func updateLayer() {
-    layer?.backgroundColor = Theme.paper.cgColor
+    layer?.backgroundColor = Theme.outside.cgColor
+    paper.backgroundColor = Theme.paper.cgColor
     dot.backgroundColor = Theme.dot.cgColor
   }
 
@@ -33,16 +39,22 @@ final class GridView: NSView {
     needsDisplay = true
   }
 
-  /// origin: the canvas point at the top left of the view.
-  func update(origin: NSPoint, zoom: CGFloat) {
+  /// What of the view the paper covers.
+  var paperFrame: NSRect { paper.isHidden ? .zero : paper.frame }
+
+  /// origin: where the world's origin is in this view; board: the board, in this view's points.
+  func update(origin: NSPoint, zoom: CGFloat, board: NSRect) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    let shown = board.intersection(bounds.insetBy(dx: -1, dy: -1))
+    paper.isHidden = shown.isEmpty
+    paper.frame = shown.isEmpty ? .zero : shown
     rows.isHidden = zoom < 0.4
     let t = CGFloat(Metrics.grid) * zoom
-    let fx = (-origin.x * zoom).truncatingRemainder(dividingBy: t)
-    let fy = (-origin.y * zoom).truncatingRemainder(dividingBy: t)
+    let fx = origin.x.truncatingRemainder(dividingBy: t)
+    let fy = origin.y.truncatingRemainder(dividingBy: t)
     let frame = NSRect(x: fx - 2 * t, y: fy - 2 * t, width: bounds.width + 4 * t, height: bounds.height + 4 * t)
-    rows.frame = frame
+    rows.frame = frame.offsetBy(dx: -paper.frame.minX, dy: -paper.frame.minY)
     rows.instanceCount = Int((frame.height / t).rounded(.up))
     rows.instanceTransform = CATransform3DMakeTranslation(0, t, 0)
     columns.frame = NSRect(x: 0, y: 0, width: frame.width, height: t)

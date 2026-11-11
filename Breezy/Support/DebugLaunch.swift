@@ -6,9 +6,10 @@ import BreezyKit
 /// -BreezyCapture <png> writes a window capture after 1.5 s and quits; -BreezyBench <json> runs the
 /// benchmark and quits; -BreezyAppearance light|dark|switch fixes the appearance, or starts light
 /// and switches to dark before the capture; -BreezyTurn any turns over the first card with notes;
-/// -BreezyEdit any starts editing the first card; -BreezySelfTest <check> runs a SelfTest check; -BreezyReplay <stroke>
-/// -BreezyReplayOut <json> replays a reference stroke and keeps its recording (Replay); -BreezyControl <port> takes
-/// scenario commands on that port, with no board open, in a fresh store as the others.
+/// -BreezyEdit any starts editing the first card; -BreezySelfTest <check> runs a SelfTest check, writing its verdict to
+/// -BreezySelfTestOut <file> too, and its steps' captures to -BreezyShots <dir> where it takes them; -BreezyReplay
+/// <stroke> -BreezyReplayOut <json> replays a reference stroke and keeps its recording (Replay); -BreezyControl <port>
+/// takes scenario commands on that port, with no board open, in a fresh store as the others.
 enum DebugLaunch {
   private static let defaults = UserDefaults.standard
   static var board: String? { defaults.string(forKey: "BreezyBoard") }
@@ -41,7 +42,7 @@ enum DebugLaunch {
     let url = URL(fileURLWithPath: board)
     let loaded: Board
     do {
-      loaded = try BoardFormat.decode(Data(contentsOf: url)).recentred(within: Double(CanvasView.origin) - 2_000)
+      loaded = try BoardFormat.decode(Data(contentsOf: url))
     } catch {
       print("cannot open \(board): \(error.localizedDescription)")
       exit(1)
