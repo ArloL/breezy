@@ -86,6 +86,14 @@ const glide = (page: Page, q: string) => page.evaluate((q) => new Promise<Cam[]>
 }), q);
 
 /** The flight recording's notes from entry `from` on. */
+/** The demo board afresh, the window its usual size and the pointer over the board. */
+async function open(page: Page) {
+  await page.setViewportSize(WINDOW);
+  await page.goto(`http://127.0.0.1:${PORT}/?pan=native&demo`);
+  await page.waitForSelector(".native-content .cards > [data-id]", { timeout: 10_000 });
+  await page.mouse.move(600, 420);
+}
+
 const notes = async (page: Page, from = 0) => (await page.evaluate(readFlight))!.entries.slice(from);
 
 async function zoomBy(page: Page, dy: number, times = 1) {
@@ -104,12 +112,7 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       await context.addInitScript(`globalThis.nativeCamera = ${camera}; globalThis.nativeFind = ${find}; globalThis.nativeFound = ${found};`);
       page = await context.newPage();
     }, { timeout: MS });
-    beforeEach(async () => {
-      await page.setViewportSize(WINDOW);
-      await page.goto(`http://127.0.0.1:${PORT}/?pan=native&demo`);
-      await page.waitForSelector(".native-content .cards > [data-id]", { timeout: 10_000 });
-      await page.mouse.move(600, 420);
-    }, { timeout: MS });
+    beforeEach(() => open(page), { timeout: MS });
 
     /** On failure, the page's flight recording, into build/scenarios/, which the desktop job uploads. */
     const kept = async (t: TestContext, f: () => Promise<void>) => {
@@ -191,26 +194,37 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       near(await foundX(page), WINDOW.width / 2, 2, "the match's centre");
     }));
 
+    // the wheel goes a round trip after the glide sets off: should the glide have ended or nearly by then, as Firefox's
+    // timers on a busy runner can make it, the case says nothing of the wheel, and is run again on a page of its own
     test("a wheel during find's glide wins, and the glide stops where the wheel found it", { timeout: MS }, (t) => kept(t, async () => {
-      await settled(page);
-      await page.click('[data-act="search"]');
-      // the find from the page, the wheel sent once the camera is on its way
-      await page.evaluate(() => new Promise<void>((done, fail) => {
-        const from = nativeCamera(), t0 = performance.now();
-        addEventListener("wheel", () => void (globalThis.atWheel = { cam: nativeCamera(), found: nativeFound() }), { capture: true, once: true });
-        nativeFind("plan");
-        const frame = () => {
-          if (Math.abs(nativeCamera().x - from.x) > 1) done();
-          else if (performance.now() - t0 > 5000) fail(new Error("find's glide did not set off in 5 s"));
-          else requestAnimationFrame(frame);
-        };
-        requestAnimationFrame(frame);
-      }));
-      await page.mouse.wheel(0, 300);
-      const end = await settled(page), at = (await page.evaluate(() => globalThis.atWheel))!;
-      assert.ok(Math.abs(at.found - WINDOW.width / 2) > 20, `not judged: the glide had ${Math.abs(at.found - WINDOW.width / 2)} pt left when the wheel came`);
-      near(end.x, at.cam.x, 1, "x");
-      near(end.y, at.cam.y - 300, 2, "y");
+      for (let tries = 1; ; tries++) {
+        if (tries > 1) await open(page);
+        await settled(page);
+        await page.click('[data-act="search"]');
+        // the find from the page, the wheel sent once the camera is on its way
+        await page.evaluate(() => new Promise<void>((done, fail) => {
+          const from = nativeCamera(), t0 = performance.now();
+          addEventListener("wheel", () => void (globalThis.atWheel = { cam: nativeCamera(), found: nativeFound() }), { capture: true, once: true });
+          nativeFind("plan");
+          const frame = () => {
+            if (Math.abs(nativeCamera().x - from.x) > 1) done();
+            else if (performance.now() - t0 > 5000) fail(new Error("find's glide did not set off in 5 s"));
+            else requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        }));
+        await page.mouse.wheel(0, 300);
+        const end = await settled(page), at = (await page.evaluate(() => globalThis.atWheel))!;
+        const left = Math.abs(at.found - WINDOW.width / 2);
+        if (left <= 20 && tries < 3) {
+          t.diagnostic(`try ${tries}: the glide had ${left} pt left when the wheel came; again`);
+          continue;
+        }
+        assert.ok(left > 20, `not judged in ${tries} tries: the glide had ${left} pt left when the wheel came`);
+        near(end.x, at.cam.x, 1, "x");
+        near(end.y, at.cam.y - 300, 2, "y");
+        return;
+      }
     }));
 
     test("zoomed out to 25 %, the board still covers the window", { timeout: MS }, (t) => kept(t, async () => {
