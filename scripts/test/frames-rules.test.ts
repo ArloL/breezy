@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FIELDS, MAC_FIELDS, column, frames } from "../frames/track.ts";
-import { continuity, coverage, curve, flicker, follow, scrollers } from "../frames/rules.ts";
+import { continuity, coverage, curve, flicker, follow, pops, scrollers } from "../frames/rules.ts";
 import type { FrameTrack, Recording } from "../../web/flight.ts";
 
 type Row = Partial<Record<string, number | null>>;
@@ -90,6 +90,15 @@ test("flicker finds grey for two frames and back", () => {
   assert.equal(f[0].to, 6 * 16);
   // a value that changes and stays is no flicker
   assert.deepEqual(flicker(track(Array.from({ length: 12 }, (_, i) => ({ grey: i >= 5 ? 40 : 0 }))), ["grey"]), []);
+});
+
+test("pops finds grey that grew with a pinch gone in one frame", () => {
+  const rows: Row[] = Array.from({ length: 12 }, (_, i) => ({ grey: i < 10 ? i * 15 : 0 }));
+  const f = pops(track(rows), ["grey"], 20);
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.equal(f[0].from, 9 * 16);
+  assert.equal(f[0].to, 10 * 16);
+  assert.deepEqual(pops(track(Array.from({ length: 12 }, (_, i) => ({ grey: Math.max(0, 135 - i * 15) }))), ["grey"], 20), []);
 });
 
 test("scrollers finds a knob changing at a constant zoom", () => {

@@ -32,8 +32,10 @@ function runs(t: Col, bad: boolean[], rule: Finding["rule"], say: (from: number,
 
 const CONTACT_PHASES = new Set([1, 2, 4]); // NSEvent's began, stationary, changed
 
-/** The view's world rect past the board's, in view pt: the furthest any side reaches past it. */
+/** The view's world rect past the board's, in view pt: the furthest any side reaches past it; 0 for a track with no
+ * camera, as a screen capture's. */
 function pastBoard(t: FrameTrack): number[] {
+  if (!has(t, "zoom")) return t.rows.map(() => 0);
   const [z, x, y, w, h, bx, by, bw, bh] = ["zoom", "camX", "camY", "viewW", "viewH", "boardX", "boardY", "boardW", "boardH"].map((f) => column(t, f));
   return t.rows.map((_, i) => {
     const s = num(z[i]), x0 = num(x[i]), y0 = num(y[i]), x1 = x0 + num(w[i]) / s, y1 = y0 + num(h[i]) / s;
@@ -45,8 +47,8 @@ function pastBoard(t: FrameTrack): number[] {
 /** Nothing past the board's edge shows, as the camera has it or as drawn (`grey`), unless a pan pulled it there: a pan
  * in contact or coasting, until the view is back inside. */
 export function coverage(t: FrameTrack): Finding[] {
-  const past = pastBoard(t), grey = maybe(t, "grey"), wheel = column(t, "wheelPhase"), momentum = column(t, "momentumPhase");
-  const f1 = column(t, "f1x"), gesture = column(t, "gesture"), ts = column(t, "t");
+  const past = pastBoard(t), grey = maybe(t, "grey"), wheel = maybe(t, "wheelPhase"), momentum = maybe(t, "momentumPhase");
+  const f1 = maybe(t, "f1x"), gesture = maybe(t, "gesture"), ts = column(t, "t");
   let pulled = false;
   const bad = t.rows.map((_, i) => {
     const out = past[i] > 0.5 || num(grey[i]) > 0.5;
@@ -148,6 +150,18 @@ export function flicker(t: FrameTrack, fields: string[], maxFrames = 3): Finding
       out.push({ rule: "flicker", from: num(ts[i]), to: num(ts[k]), say: `${f} went from ${v[i - 1]} to ${v[i]} for ${k - i + 1} frame${k > i ? "s" : ""} and back` });
       i = k + 1;
     }
+  }
+  return out.sort((a, b) => a.from - b.from);
+}
+
+/** Nothing drawn in `fields` jumps more than `max` from one frame to the next: grey that grew with a pinch and goes in
+ * a frame as it ends reads as a flash, where what grew goes as it came. */
+export function pops(t: FrameTrack, fields: string[], max: number): Finding[] {
+  const ts = column(t, "t"), out: Finding[] = [];
+  for (const f of fields) {
+    const v = column(t, f).map(num);
+    for (let i = 1; i < v.length; i++)
+      if (Math.abs(v[i] - v[i - 1]) > max) out.push({ rule: "flicker", from: num(ts[i - 1]), to: num(ts[i]), say: `${f} jumped from ${v[i - 1]} to ${v[i]} in one frame` });
   }
   return out.sort((a, b) => a.from - b.from);
 }
