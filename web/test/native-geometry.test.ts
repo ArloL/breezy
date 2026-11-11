@@ -46,3 +46,9 @@ test("pinchTransform and pinchCamera put the anchor under mid", () => {
   const cam = pinchCamera(anchor, z, mid);
   assert.ok(Math.abs(anchor.x * cam.zoom + cam.x - mid.x) < 0.01 && Math.abs(anchor.y * cam.zoom + cam.y - mid.y) < 0.01);
 });
+
+test("the transforms CSS reads never print a number in exponent form", () => {
+  const tiny = { x: 1e-9, y: -3e-8, w: 2388, h: 2388 };
+  assert.equal(layoutOf(tiny, 1, { w: 10, h: 10 }).world, "translate(0px, 0px) scale(1)");
+  assert.doesNotMatch(pinchTransform({ x: 1e-9, y: 0 }, tiny, 1, 1, { x: 0, y: 3e-8 }, { x: 0, y: 0 }), /\de[-+]/);
+});
