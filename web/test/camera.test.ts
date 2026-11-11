@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APPKIT_REBOUND, Camera, MARGIN, MIN_ZOOM, MAX_ZOOM, banded, boardOf, panLimits, revealing, seenFrom } from "../camera.ts";
+import { APPKIT_REBOUND, Camera, MARGIN, MIN_ZOOM, MAX_ZOOM, banded, boardOf, extent, panLimits, revealing, seenFrom, takeIn } from "../camera.ts";
 import { projection } from "../physics.ts";
 import type { Cam } from "../types.ts";
 import { fixture } from "./helpers/fixture.ts";
@@ -195,6 +195,26 @@ test("the board takes in what showed, so it never ends on screen at rest", () =>
   const seen = { x: -5000, y: 0, w: 3200, h: 100 };
   assert.deepEqual(boardOf({ x: 0, y: 0, w: 0, h: 0 }, seen), { x: -5000, y: -1194, w: 6194, h: 2388 });
   assert.deepEqual(seenFrom({ x: 100, y: -50, zoom: 0.5 }, PHONE), { x: -200, y: 100, w: 640, h: 1386 });
+});
+
+test("the board reaches as the Mac's does, by the shared cases", () => {
+  type V = [number, number, number, number];
+  const r = ([x, y, w, h]: V) => ({ x, y, w, h });
+  const f = fixture("board.json") as {
+    margin: number;
+    extent: { name: string; rects: V[]; extent: V }[];
+    board: { name: string; content: V; seen: V | null; board: V }[];
+    seen: { name: string; camera: [number, number, number]; area: V; seen: V }[];
+    takeIn: { name: string; seen: V | null; shown: V; out: V }[];
+  };
+  assert.equal(MARGIN, f.margin);
+  for (const c of f.extent) assert.deepEqual(extent(c.rects.map(r)), r(c.extent), c.name);
+  for (const c of f.board) assert.deepEqual(boardOf(r(c.content), c.seen && r(c.seen)), r(c.board), c.name);
+  for (const c of f.seen) {
+    const [left, top, right, bottom] = c.area;
+    assert.deepEqual(seenFrom({ x: c.camera[0], y: c.camera[1], zoom: c.camera[2] }, { left, top, right, bottom }), r(c.seen), c.name);
+  }
+  for (const c of f.takeIn) assert.deepEqual(takeIn(c.seen && r(c.seen), r(c.shown)), r(c.out), c.name);
 });
 
 test("a pan stops where the board's edge meets the screen's, at any zoom", () => {
