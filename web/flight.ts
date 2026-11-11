@@ -6,6 +6,13 @@ export type Kind = "context" | "geometry" | "decision" | "transition" | "input" 
 export type Value = number | boolean | string | null | Value[] | { [k: string]: Value };
 export type Entry = [t: number, kind: Kind, what: string, data?: { [k: string]: Value }];
 
+/** The last seconds of frames, as `fields` names them once and `rows` give them, one a frame: what showed, what moved it
+ * and what drew it (scripts/frames/fields.json), for the rules over frames in scripts/frames/rules.ts. */
+export interface FrameTrack {
+  fields: string[];
+  rows: (number | null)[][];
+}
+
 /** A device's entries, `t` ms after `origin` on the wall clock. */
 export interface Recording {
   schema: 1;
@@ -15,6 +22,7 @@ export interface Recording {
   /** Which device and build, kept apart from the ring, which a long session overwrites. */
   context: { [k: string]: Value } | null;
   entries: Entry[];
+  frames?: FrameTrack;
 }
 
 const tenth = (n: number) => Math.round(n * 10) / 10;
