@@ -26,7 +26,7 @@
   2. once it merges, open the tuned band and spring's PR;
   3. build this plan on a new branch off main after both.
 - The commits are ordered so 1 and 2 split cleanly at cc352c2, but check with `git log --oneline main..`.
-- **The spike** is on `spike/native-pan`: the native mode in `web/native-pan.ts`, the measuring tools in `spike-tools/` (the page, capture, scoring, tracker and window bounds). It's throwaway: read it, don't merge it. Its base is the branch before that rebase, so the hashes above hold; don't rebase it.
+- **The spike** is on `spike/native-pan`: the native mode in `web/native-pan.ts`, the measuring tools in `spike-tools/` (the page, capture, scoring, tracker and window bounds). It's throwaway: read it, don't merge it. Its base is the branch before that rebase, so the hashes above hold; don't rebase it. Keep it until native mode has merged: Tasks 5 and 6 build on its `web/native-pan.ts` and CSS, Task 7 on its tracker and scoring; then delete it, locally and on origin.
 
 **Setup on the Mac**
 - **Permissions.** Accessibility and Screen Recording are granted to Visual Studio Code. Run the replay helper and `screencapture` from a session inside it, or grant them to the terminal you use.
