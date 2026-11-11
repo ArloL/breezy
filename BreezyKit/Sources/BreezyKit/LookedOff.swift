@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// What looked off to the owner: the recording with its last seconds of frames, kept on disk always and sent to the
 /// space's diag.php beside its sync.php when the board is in a space, as web/diag.ts sends with reason "off"
