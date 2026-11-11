@@ -32,6 +32,18 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
   let spreadAtDown = 0;
   let follow: { id: number; x: number; y: number; t: number; v: Point } | null = null;
 
+  /** Each sequence's listeners at its touches' targets. */
+  let hearing = new AbortController();
+  // a sequence whose last lift went unheard leaves nothing to the next: its pan, its pinch, its unlocked board
+  document.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== e.changedTouches.length) return;
+    end("lost");
+    hearing.abort();
+    hearing = new AbortController();
+    ours = panned = stopped = false;
+    follow = null;
+    board.classList.remove("pan-anyway");
+  }, { capture: true, passive: true, signal });
   board.addEventListener("touchstart", (e) => {
     if (!ours) panned = stopped = false;
     ours = true;
@@ -139,7 +151,7 @@ export function wireTouch(app: App, board: HTMLElement, surface: NativeSurface, 
    * editor opens: a held card's moves went unheard, and the browser panned under it; the double tap that began an edit
    * left the board free to scroll under it. */
   const heard = (t: EventTarget) => {
-    const done = new AbortController(), on = { signal: AbortSignal.any([done.signal, signal]), passive: false };
+    const done = new AbortController(), on = { signal: AbortSignal.any([done.signal, hearing.signal, signal]), passive: false };
     const f = (e: Event) => {
       done.abort();
       lifted(e as TouchEvent);
