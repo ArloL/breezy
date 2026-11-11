@@ -164,6 +164,7 @@ describe("native panning in Safari on the iOS Simulator", { skip: unfit }, () =>
     // the browser's pan, taken: its content went to the overlay for the pinch
     const kinds = (await page.evaluate(readFlight))!.entries.filter((e) => e[2] === "native pinch start").map((e) => (e[3] as { kind: string }).kind);
     assert.deepEqual(kinds, ["taken"]);
+    assert.ok(await page.evaluate(() => !!(document.querySelector(".native-overlay")!.compareDocumentPosition(document.getElementById("top")!) & Node.DOCUMENT_POSITION_FOLLOWING)), "the overlay paints over the bars");
     const anchor = toWorld(at.cam, at.mid), off = dist(toScreen(after, anchor), end);
     assert.ok(off <= 8, `the board point between the fingers as the second came is ${off.toFixed(1)} pt from them`);
   }));

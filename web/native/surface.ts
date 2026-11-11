@@ -145,7 +145,11 @@ export class NativeSurface implements Surface {
   }
 
   private lift(at: Point) {
-    this.overlay ??= document.body.appendChild(Object.assign(document.createElement("div"), { className: "native-overlay" }));
+    if (!this.overlay) {
+      this.overlay = Object.assign(document.createElement("div"), { className: "native-overlay" });
+      // beside the board, under the bars after it, as the board's content is
+      this.board.after(this.overlay);
+    }
     this.content.replaceWith(this.home);
     this.overlay.append(this.content);
     this.pinch!.overlaid = true;
