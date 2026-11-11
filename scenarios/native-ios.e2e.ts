@@ -169,6 +169,21 @@ describe("native panning in Safari on the iOS Simulator", { skip: unfit }, () =>
     assert.ok(off <= 8, `the board point between the fingers as the second came is ${off.toFixed(1)} pt from them`);
   }));
 
+  test("a hold on the board drags a marquee, and the board does not pan", { timeout: MS }, (t) => kept(t, async () => {
+    const s = await d.scene(), before = s.camera;
+    // from between two lanes over a card; held, it creeps 6 pt, short of a drag's 8, and rests before it goes on
+    const from = { x: 312, y: 150 }, to = { x: 120, y: 260 };
+    assert.ok(!s.cards.some((c) => from.x >= c.x && from.x < c.x + c.w && from.y >= c.y && from.y < c.y + c.h), "the hold begins on a card");
+    const a = await d.screen(from), b = await d.screen(to), dir = { x: (b.x - a.x) / dist(a, b), y: (b.y - a.y) / dist(a, b) };
+    const crept = { x: a.x + 6 * dir.x, y: a.y + 6 * dir.y };
+    await d.gesture([[0, "down", [[0, a]]], [400, "move", [[0, a]]], ...line(a, crept, 6), [300, "move", [[0, crept]]], ...line(crept, b, 30), [16, "up", [[0, b]]]]);
+    await d.still("the board to stand still");
+    const after = await d.scene();
+    assert.ok(item(after, "c-hiring").selected, `the marquee selected ${after.cards.filter((c) => c.selected).map((c) => c.id).join(", ") || "nothing"}`);
+    near(after.camera.x, before.x, 1, "the camera's x");
+    near(after.camera.y, before.y, 1, "the camera's y");
+  }));
+
   test("a held card drags, and the board does not pan", { timeout: MS }, (t) => kept(t, async () => {
     const s = await d.scene(), c = item(s, "c-hiring"), from = { x: c.x + c.w / 2, y: c.y + c.h / 2 };
     const before = s.camera;
