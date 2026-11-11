@@ -119,14 +119,15 @@ export class NativeSurface implements Surface {
     this.settle();
   }
 
-  /** A larger window, or one turned, shows more: the board takes it in, so that the content stays larger than the
-   * window and the scroll position the camera stands for is there to write. */
+  /** A larger window, or one turned, shows more: the content stays larger than the window, the camera where it was. */
   private resized() {
-    this.view.takeIn();
     this.lay(this.view.cam);
   }
 
+  /** The board takes in what `cam` shows first: past it, as find's glide to an outermost card far out, the browser held
+   * the scroll position short of where the camera asked, and clicks went to what was not under them. */
   private lay(cam: Cam) {
+    this.view.takeIn(cam);
     this.write(scrollOf(cam, this.layout(cam.zoom).board));
   }
 
