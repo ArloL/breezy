@@ -82,3 +82,54 @@ import Testing
   c.press(at: Point(x: 10, y: 20.2))
   #expect(c.flight.recording().entries.first?.data == ["x": .number(120), "y": .number(-10), "clicks": .number(1)])
 }
+
+/// A frame of every field but `t`, which the recording stamps.
+private func frameRow(_ v: Double) -> [Double?] { Flight.frameFields.dropFirst().map { $0 == "f1x" ? nil : v } }
+
+@Test func framesKeepThirtySeconds() {
+  var now = 0.0
+  let f = Flight(now: { now }, wall: { 0 })
+  for _ in 0..<4000 {
+    now += 8.3
+    f.frame(frameRow(1))
+  }
+  let rows = f.recording().frames!.rows
+  let first = rows.first![0]!, last = rows.last![0]!
+  #expect(last == 33200)
+  #expect(last - first <= 30_000)
+  #expect(last - first > 29_980)
+  #expect(rows.count == 3615)
+}
+
+@Test func framesEncodeAsFieldsAndRows() throws {
+  var now = 1000.0
+  let f = Flight(now: { now }, wall: { 0 })
+  f.frame(frameRow(2))
+  now += 16.6
+  f.frame(frameRow(3))
+  let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(f.recording())) as! [String: Any]
+  let frames = json["frames"] as! [String: Any]
+  #expect(frames["fields"] as? [String] == Flight.frameFields)
+  let rows = frames["rows"] as! [[Any]]
+  #expect(rows.count == 2)
+  #expect(rows[1][0] as? Double == 1016.6)
+  #expect(rows[1][1] as? Double == 3)
+  #expect(rows[1][Flight.frameFields.firstIndex(of: "f1x")!] is NSNull)
+}
+
+@Test func aRecordingWithoutFramesHasNoFramesKey() throws {
+  let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Flight().recording())) as! [String: Any]
+  #expect(json["frames"] == nil)
+}
+
+@Test func aFrameOfTheWrongLengthIsNotKept() {
+  let f = Flight()
+  f.frame([1, 2, 3])
+  #expect(f.recording().frames == nil)
+}
+
+@Test func frameFieldsMatchTheChecker() throws {
+  let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../scripts/frames/fields.json").standardized
+  let listed = try JSONDecoder().decode([String: [String]].self, from: Data(contentsOf: url))
+  #expect(Flight.frameFields == listed["common"]! + listed["mac"]!)
+}

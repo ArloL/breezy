@@ -32,6 +32,7 @@ enum SelfTest {
     case "zoom-sharp": zoomSharp(d)
     case "caret-click": caretClick(d)
     case "edit-in-place": editInPlace(d)
+    case "frames": MainActor.assumeIsolated { frames(d) }
     default: finish(name, "unknown check")
     }
   }
@@ -408,4 +409,47 @@ final class Driver {
   func later(_ delay: Double = 0.3, _ step: @escaping () -> Void) {
     DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: step)
   }
+}
+
+extension SelfTest {
+  /// The recording keeps frames while the view moves and one after it rests: for a zoom on the app's spring, for one
+  /// AppKit animates, as a two-finger double tap's, and for a resize; in points, whatever the display's scale.
+  @MainActor fileprivate static func frames(_ d: Driver) {
+    let name = "frames"
+    let sv = d.wc.scrollView
+    let rows: @MainActor () -> [[Double?]] = { d.canvas.core.flight.recording().frames?.rows ?? [] }
+    let field = { (f: String) in Flight.frameFields.firstIndex(of: f)! }
+    @MainActor func zoomsChanged(since n: Int) -> Bool { Set(rows().dropFirst(n).compactMap { $0[field("zoom")] }).count > 2 }
+    @MainActor func restedLast() -> Bool {
+      let r = rows().suffix(2).map { $0[field("zoom")] }
+      return r.count == 2 && r[0] == r[1]
+    }
+    sv.springMagnification(to: 0.5, centeredAt: sv.contentView.bounds.center)
+    d.later(1.2) {
+      if !zoomsChanged(since: 0) { finish(name, "a spring's zoom kept \(rows().count) frames") }
+      if !restedLast() { finish(name, "no frame after the spring rested") }
+      let ts = rows().map { $0[0]! }
+      if ts != ts.sorted() { finish(name, "frames out of order") }
+      let n = rows().count
+      NSAnimationContext.runAnimationGroup { c in
+        c.duration = 0.3
+        sv.animator().magnification = 1
+      }
+      d.later(1.0) {
+        if !zoomsChanged(since: n) { finish(name, "an animated zoom, as a two-finger double tap makes, kept no frames") }
+        let m = rows().count
+        d.window.setContentSize(NSSize(width: 1000, height: 700))
+        d.later(0.5) {
+          guard let last = rows().last, rows().count > m else { finish(name, "a resize kept no frame") }
+          let w = sv.contentView.frame.width
+          if abs((last[field("viewW")] ?? 0) - w) > 0.5 { finish(name, "frames are in points at a backing scale of \(d.window.backingScaleFactor): viewW \(last[field("viewW")] ?? -1), the view \(w) pt") }
+          finish(name, nil)
+        }
+      }
+    }
+  }
+}
+
+private extension NSRect {
+  var center: NSPoint { NSPoint(x: midX, y: midY) }
 }
