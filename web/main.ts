@@ -198,9 +198,16 @@ addEventListener("wheel", (e) => {
 }, { capture: true, passive: true });
 addEventListener("wheel", (e) => {
   if (document.body.dataset.screen === "boards") return;
-  // A native board scrolls itself, and Breezy keeps the zoom. The wheel stops the app's own move, as find's glide:
-  // writing the scroll position each frame, it cancelled the browser's smooth scroll of a mouse's wheel.
-  if (pan === "native" && !e.ctrlKey && !e.metaKey) return app.view.camera.stop();
+  // A native board scrolls itself, and Breezy keeps the zoom. A wheel during the app's own move, as find's glide, stops
+  // it and scrolls the board itself: the glide's last write, reaching the browser after it had begun the wheel's scroll,
+  // cancelled that scroll.
+  if (pan === "native" && !e.ctrlKey && !e.metaKey) {
+    if (!app.view.camera.moving) return;
+    e.preventDefault();
+    app.view.camera.stop();
+    const by = wheelAction(e).pan!;
+    return board.scrollBy({ left: -by.x, top: -by.y, behavior: "smooth" });
+  }
   e.preventDefault();
   // should Safari also send the pinch as ⌃-wheel, it would zoom twice
   if (pinch !== null && e.ctrlKey) return;

@@ -4,7 +4,7 @@
 import { before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { chromium, firefox, type Browser, type Page } from "playwright-core";
-import { buildSite, serveStatic } from "./browser.ts";
+import { buildSite, readFlight, serveStatic } from "./browser.ts";
 import { exitsAfter } from "./exit.ts";
 import type { Cam } from "../web/types.ts";
 
@@ -24,6 +24,9 @@ const closeAll = async () => {
 
 declare global {
   var nativeCamera: () => Cam;
+  var nativeFind: (q: string) => void;
+  var nativeFound: () => number;
+  var atWheel: { cam: Cam; found: number } | undefined;
 }
 
 /** The camera as drawn: where the world's origin is on screen, through the scroll position. Runs in the page. */
@@ -31,6 +34,19 @@ function camera(): Cam {
   const content = document.querySelector<HTMLElement>(".native-content")!.getBoundingClientRect();
   const m = document.querySelector<HTMLElement>(".world")!.style.transform.match(/translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/)!;
   return { x: content.left + Number(m[1]), y: content.top + Number(m[2]), zoom: Number(m[3]) };
+}
+
+/** Finds `q` as typing it into the open find bar would. Runs in the page. */
+function find(q: string) {
+  const field = document.querySelector<HTMLInputElement>("#find input")!;
+  field.value = q;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Where the match find shows is centred across the window, NaN before it shows. Runs in the page. */
+function found() {
+  const r = document.querySelector(".cards > .found")?.getBoundingClientRect();
+  return r ? r.left + r.width / 2 : NaN;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -48,11 +64,26 @@ async function settled(page: Page): Promise<Cam> {
   throw new Error("the camera did not stand still in 5 s");
 }
 
-/** Where the match find shows is centred across the window. */
-const foundX = (page: Page) => page.evaluate(() => {
-  const r = document.querySelector(".cards > .found")!.getBoundingClientRect();
-  return r.left + r.width / 2;
-});
+const foundX = (page: Page) => page.evaluate(() => nativeFound());
+
+/** Finds `q` from the page, and the camera as drawn on every frame until it has stood still for 10, within 5 s. */
+const glide = (page: Page, q: string) => page.evaluate((q) => new Promise<Cam[]>((done, fail) => {
+  const seen = [nativeCamera()], t0 = performance.now();
+  let still = 0;
+  nativeFind(q);
+  const frame = () => {
+    const c = nativeCamera(), last = seen.at(-1)!;
+    seen.push(c);
+    still = Math.abs(c.x - last.x) < 0.01 && Math.abs(c.y - last.y) < 0.01 ? still + 1 : 0;
+    if (still >= 10) done(seen);
+    else if (performance.now() - t0 > 5000) fail(new Error("the camera did not stand still in 5 s"));
+    else requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}), q);
+
+/** The flight recording's notes from entry `from` on. */
+const notes = async (page: Page, from = 0) => (await page.evaluate(readFlight))!.entries.slice(from);
 
 async function zoomBy(page: Page, dy: number, times = 1) {
   await page.keyboard.down("Meta");
@@ -67,7 +98,7 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
       const browser = await type.launch();
       browsers.push(browser);
       const context = await browser.newContext({ viewport: WINDOW });
-      await context.addInitScript(`globalThis.nativeCamera = ${camera}`);
+      await context.addInitScript(`globalThis.nativeCamera = ${camera}; globalThis.nativeFind = ${find}; globalThis.nativeFound = ${found};`);
       page = await context.newPage();
     });
     beforeEach(async () => {
@@ -100,34 +131,51 @@ for (const [kind, type] of [["chromium", chromium], ["firefox", firefox]] as con
     test("find glides to a match", { timeout: MS }, async () => {
       await settled(page);
       await page.click('[data-act="search"]');
-      const path = await page.evaluate(() => new Promise<Cam[]>((done) => {
-        const field = document.querySelector<HTMLInputElement>("#find input")!, seen: Cam[] = [], t0 = performance.now();
-        field.value = "plan";
-        field.dispatchEvent(new Event("input", { bubbles: true }));
-        const frame = () => {
-          seen.push(nativeCamera());
-          if (performance.now() - t0 < 800) requestAnimationFrame(frame);
-          else done(seen);
-        };
-        requestAnimationFrame(frame);
-      }));
-      const end = await settled(page), at = path.at(-1)!;
-      near(at.x, end.x, 1, "x at 800 ms");
-      near(at.y, end.y, 1, "y at 800 ms");
+      const path = await glide(page, "plan"), end = await settled(page), at = path.at(-1)!;
+      near(at.x, end.x, 1, "x at rest");
+      near(at.y, end.y, 1, "y at rest");
       const steps = new Set(path.map((c) => `${Math.round(c.x)} ${Math.round(c.y)}`));
       assert.ok(steps.size > 2, `moved in ${steps.size - 1} steps`);
       near(await foundX(page), WINDOW.width / 2, 2, "the match's centre");
     });
 
-    test("a wheel during find's glide wins, and the glide stops", { timeout: MS }, async () => {
+    // its view reaches past the board as it last rested, where the browser held the scroll position short of it
+    test("find glides to an outermost card at 25 %, every frame where the camera asked", { timeout: MS }, async () => {
+      await page.mouse.move(1100, 420);
+      for (let i = 0; i < 40 && (await page.evaluate(() => nativeCamera())).zoom > 0.2501; i++) await zoomBy(page, 400);
       await settled(page);
       await page.click('[data-act="search"]');
-      await page.fill("#find input", "plan");
-      await sleep(60);
-      await page.mouse.wheel(0, 300);
+      const from = (await notes(page)).length;
+      const path = await glide(page, "less but"), end = await settled(page);
+      const refused = (await notes(page, from)).filter((e) => e[2] === "native scroll refused");
+      assert.deepEqual(refused, []);
+      const steps = new Set(path.map((c) => `${Math.round(c.x)} ${Math.round(c.y)}`));
+      assert.ok(steps.size > 2, `moved in ${steps.size - 1} steps`);
+      near(path.at(-1)!.x, end.x, 1, "x at rest");
+      near(path.at(-1)!.y, end.y, 1, "y at rest");
+      near(await foundX(page), WINDOW.width / 2, 2, "the match's centre");
+    });
+
+    test("a wheel during find's glide wins, and the glide stops where the wheel found it", { timeout: MS }, async () => {
       await settled(page);
-      const x = await foundX(page);
-      assert.ok(Math.abs(x - WINDOW.width / 2) > 20, `the match's centre at ${x}, as if the glide went on`);
+      await page.click('[data-act="search"]');
+      // the find from the page, the wheel sent once the camera is on its way
+      await page.evaluate(() => new Promise<void>((done, fail) => {
+        const from = nativeCamera(), t0 = performance.now();
+        addEventListener("wheel", () => void (globalThis.atWheel = { cam: nativeCamera(), found: nativeFound() }), { capture: true, once: true });
+        nativeFind("plan");
+        const frame = () => {
+          if (Math.abs(nativeCamera().x - from.x) > 1) done();
+          else if (performance.now() - t0 > 5000) fail(new Error("find's glide did not set off in 5 s"));
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }));
+      await page.mouse.wheel(0, 300);
+      const end = await settled(page), at = (await page.evaluate(() => globalThis.atWheel))!;
+      assert.ok(Math.abs(at.found - WINDOW.width / 2) > 20, `not judged: the glide had ${Math.abs(at.found - WINDOW.width / 2)} pt left when the wheel came`);
+      near(end.x, at.cam.x, 1, "x");
+      near(end.y, at.cam.y - 300, 2, "y");
     });
 
     test("zoomed out to 25 %, the board still covers the window", { timeout: MS }, async () => {
