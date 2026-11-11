@@ -7,8 +7,8 @@
     { "name": "a card and a lane apart", "rects": [[-600, 48, 240, 96], [480, -240, 288, 720]], "extent": [-600, -240, 1368, 720] }
   ],
   "board": [
-    { "name": "an empty board is 2, 388 square, as Freeform's", "content": [0, 0, 0, 0], "seen": null, "board": [-1194, -1194, 2388, 2388] },
-    { "name": "one text box, 202 × 37, made Freeform's 2, 590 × 2, 425", "content": [10, 20, 202, 37], "seen": null, "board": [-1184, -1174, 2590, 2425] },
+    { "name": "an empty board is 2,388 square, as Freeform's", "content": [0, 0, 0, 0], "seen": null, "board": [-1194, -1194, 2388, 2388] },
+    { "name": "one text box, 202 × 37, made Freeform's 2,590 × 2,425", "content": [10, 20, 202, 37], "seen": null, "board": [-1184, -1174, 2590, 2425] },
     { "name": "what showed far to the left stretches it there", "content": [0, 0, 0, 0], "seen": [-5000, 0, 3200, 100], "board": [-5000, -1194, 6194, 2388] },
     { "name": "what showed within it changes nothing", "content": [0, 0, 480, 720], "seen": [-100, -100, 1200, 800], "board": [-1194, -1194, 2868, 3108] },
     { "name": "what showed past every side", "content": [0, 0, 240, 48], "seen": [-4000, -3000, 9000, 7000], "board": [-4000, -3000, 9000, 7000] }
