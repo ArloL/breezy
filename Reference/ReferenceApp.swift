@@ -8,7 +8,7 @@ import AppKit
 //   BreezyReference --zoom --stage 1200x800 --name pinch-out [--replay <stroke.json>]
 // A 40,032 pt board that zooms from 25 % to 200 %, as main's Mac board, each stroke a frame track and its events
 // (FrameWriter); --replay hands a stroke's events to the window in the app (RawReplay), keeps what they did as
-// <name>-replay-<n>.json and quits.
+// <name>-replay-<n>.json and quits. REFERENCE_TRACE=1 prints each event it keeps.
 
 let boardSide: CGFloat = 2388
 
@@ -183,12 +183,7 @@ final class Reference: NSObject, NSApplicationDelegate {
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
     zoomReset()
-    // at the window, not the scroll view's overrides: NSScrollView tracks a pinch past them, and two of a stroke's three
-    // pinch ends never reached magnify(with:)
-    NSEvent.addLocalMonitorForEvents(matching: Self.gestures) { [unowned self] e in
-      observe(e)
-      return e
-    }
+    if replay == nil { (NSApp as? ReferenceApplication)?.dequeued = { [unowned self] e in observe(e) } }
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
       switch e.charactersIgnoringModifiers {
       case "r": zoomReset(); return nil
@@ -226,10 +221,15 @@ final class Reference: NSObject, NSApplicationDelegate {
 
   static let gestures: NSEvent.EventTypeMask = [.magnify, .smartMagnify, .scrollWheel, .rotate, .swipe, .gesture, .beginGesture, .endGesture]
 
-  /// Keeps `e` in the stroke: what the window's monitor sees, and what a replay hands the window, which skips monitors.
+  /// Keeps `e` in the stroke: what the app takes from its queue, and what a replay hands the window, which skips it.
   func observe(_ e: NSEvent) {
     guard Self.gestures.contains(NSEvent.EventTypeMask(type: e.type)) else { return }
     let t = CACurrentMediaTime(), at = viewPoint(e), raw = e.cgEvent?.data as Data?
+    if ProcessInfo.processInfo.environment["REFERENCE_TRACE"] != nil {
+      let m = e.type == .magnify ? e.magnification : 0, mp = e.type == .scrollWheel ? e.momentumPhase.rawValue : 0
+      print(String(format: "%.3f type %d phase %d momentum %d mag %.4f zoom %.4f", t, e.type.rawValue, e.phase.rawValue, mp, m, scroll.magnification))
+      fflush(stdout)
+    }
     switch e.type {
     case .magnify:
       let phase: FrameWriter.Phase = e.phase.contains(.began) ? .began : e.phase.contains(.ended) || e.phase.contains(.cancelled) ? .ended : .changed
@@ -248,8 +248,11 @@ final class Reference: NSObject, NSApplicationDelegate {
   }
 
   func zoomReset() {
-    scroll.magnification = 1
-    scroll.contentView.scroll(to: NSPoint(x: zoomSide / 2 - stage.width / 2, y: zoomSide / 2 - stage.height / 2))
+    // from 100 %, a fast pinch runs out of the fingers' spread at about 26 %, before AppKit's band past 25 %
+    let z: CGFloat = ["pinch-out-fast", "pinch-corner", "lift-mid-band"].contains(kind) ? 0.5 : 1
+    scroll.magnification = z
+    let at = kind == "pinch-corner" ? NSPoint.zero : NSPoint(x: zoomSide / 2 - stage.width / z / 2, y: zoomSide / 2 - stage.height / z / 2)
+    scroll.contentView.scroll(to: at)
     scroll.reflectScrolledClipView(scroll.contentView)
     writer = FrameWriter(name: kind)
     writer.window = MainActor.assumeIsolated { RawReplay.cgFrame(window) }
@@ -289,10 +292,22 @@ final class Reference: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 }
 
+/// Hands on each event taken from the queue. NSScrollView takes a pinch's later events itself, which skips local monitors,
+/// sendEvent and its overrides: the end of 7 of 8 fast pinches reached none of them, and each was taken here.
+final class ReferenceApplication: NSApplication {
+  var dequeued: ((NSEvent) -> Void)?
+
+  override func nextEvent(matching mask: NSEvent.EventTypeMask, until date: Date?, inMode mode: RunLoop.Mode, dequeue: Bool) -> NSEvent? {
+    let e = super.nextEvent(matching: mask, until: date, inMode: mode, dequeue: dequeue)
+    if dequeue, let e { dequeued?(e) }
+    return e
+  }
+}
+
 @main
 enum ReferenceMain {
   static func main() {
-    let app = NSApplication.shared
+    let app = ReferenceApplication.shared
     // the test host runs no window of its own
     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return app.run() }
     let delegate = Reference(arguments: CommandLine.arguments)
