@@ -18,7 +18,6 @@ import BreezyKit
   private var magnify = 0.0, gesture = 0.0
   /// Where the last event was, in the window, while its gesture goes on.
   private var pointer: NSPoint?
-  private var monitor: Any?
 
   init(scrollView: NSScrollView, flight: Flight) {
     self.scrollView = scrollView
@@ -30,19 +29,15 @@ import BreezyKit
     for name in [NSView.boundsDidChangeNotification, NSView.frameDidChangeNotification] {
       NotificationCenter.default.addObserver(self, selector: #selector(moved), name: name, object: clip)
     }
-    // the window's events, not the scroll view's overrides: NSScrollView tracks a pinch past them, and in the reference
-    // app two of a stroke's three pinch ends never reached magnify(with:)
-    monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .smartMagnify, .scrollWheel]) { [weak self] e in
-      MainActor.assumeIsolated {
-        guard let self, e.window != nil, e.window === self.scrollView?.window else { return }
-        self.observe(e)
-      }
-      return e
+    // what the app takes from its queue, not a monitor or the scroll view's overrides, which NSScrollView skips
+    (NSApp as? BreezyApplication)?.observeDequeued(by: self) { [weak self] e in
+      guard let self, e.window != nil, e.window === self.scrollView?.window else { return }
+      self.observe(e)
     }
   }
 
-  /// Keeps `e`'s input for the next frame: what the window's monitor sees, and what a replay hands the window, which
-  /// skips monitors.
+  /// Keeps `e`'s input for the next frame: what the app takes from its queue, and what a replay hands the window, which
+  /// skips it.
   func observe(_ e: NSEvent) {
     switch e.type {
     case .magnify: magnified(e)
@@ -53,7 +48,7 @@ import BreezyKit
   }
 
   isolated deinit {
-    if let monitor { NSEvent.removeMonitor(monitor) }
+    (NSApp as? BreezyApplication)?.stopObserving(by: self)
   }
 
   private func scrolled(_ e: NSEvent) {

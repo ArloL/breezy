@@ -33,6 +33,7 @@ enum SelfTest {
     case "caret-click": caretClick(d)
     case "edit-in-place": editInPlace(d)
     case "frames": MainActor.assumeIsolated { frames(d) }
+    case "taken-events": MainActor.assumeIsolated { takenEvents(d) }
     default: finish(name, "unknown check")
     }
   }
@@ -446,6 +447,37 @@ extension SelfTest {
           if abs((last[field("viewW")] ?? 0) - w) > 0.5 { finish(name, "frames are in points at a backing scale of \(d.window.backingScaleFactor): viewW \(last[field("viewW")] ?? -1), the view \(w) pt") }
           finish(name, nil)
         }
+      }
+    }
+  }
+}
+
+extension SelfTest {
+  /// An event the app takes from its queue reaches the recording though nothing dispatches it, as NSScrollView takes a
+  /// pinch's later events itself, past monitors and sendEvent: the owner's fast pinches on 2026-11-14 lost their ends so.
+  @MainActor fileprivate static func takenEvents(_ d: Driver) {
+    let name = "taken-events"
+    // in front, as the window server routes a posted scroll to the window under the cursor
+    NSApp.activate(ignoringOtherApps: true)
+    d.window.orderFrontRegardless()
+    d.later(0.5) {
+      let p = d.window.convertPoint(toScreen: NSPoint(x: d.window.frame.width / 2, y: d.window.frame.height / 2))
+      guard let ev = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: -40, wheel2: 0, wheel3: 0) else {
+        finish(name, "no scroll event made")
+      }
+      ev.location = CGPoint(x: p.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - p.y)
+      // through the window server, which gives it its window; taken here before the run loop can dispatch it. Posting
+      // needs Accessibility for the app that runs the check.
+      CGWarpMouseCursorPosition(ev.location)
+      ev.post(tap: .cghidEventTap)
+      guard let taken = NSApp.nextEvent(matching: .scrollWheel, until: Date(timeIntervalSinceNow: 2), inMode: .eventTracking, dequeue: true) else {
+        finish(name, "the posted scroll never came off the queue: active \(NSApp.isActive), key \(d.window.isKeyWindow)")
+      }
+      if taken.window !== d.window { finish(name, "the scroll came off the queue for \(taken.window.map { "window \($0.windowNumber)" } ?? "no window"), not \(d.window.windowNumber)") }
+      d.later(0.5) {
+        let dy = Flight.frameFields.firstIndex(of: "wheelDY")!
+        let rows = d.canvas.core.flight.recording().frames?.rows ?? []
+        finish(name, rows.contains { ($0[dy] ?? 0) != 0 } ? nil : "a scroll taken from the queue never reached the recording: \(rows.count) frames")
       }
     }
   }

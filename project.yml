@@ -26,7 +26,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIconFile: Breezy
         LSApplicationCategoryType: public.app-category.productivity
-        NSPrincipalClass: NSApplication
+        NSPrincipalClass: $(PRODUCT_MODULE_NAME).BreezyApplication
         # empty off main, where the updater stays off
         SUFeedURL: $(BREEZY_UPDATE_FEED)
         SUPublicEDKey: $(BREEZY_UPDATE_KEY)

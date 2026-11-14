@@ -25,7 +25,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<string>$(PRODUCT_MODULE_NAME).BreezyApplication</string>
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
 	<key>SUEnableAutomaticChecks</key>
