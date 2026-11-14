@@ -3,7 +3,7 @@ import XCTest
 
 final class FrameWriterTests: XCTestCase {
   let shown = FrameWriter.Shown(zoom: 1, cam: CGPoint(x: 100, y: 200), view: CGSize(width: 1200, height: 800),
-                                board: CGRect(x: 0, y: 0, width: 40032, height: 40032), knobH: 0.03, knobV: 0.02)
+                                board: CGRect(x: 0, y: 0, width: 40032, height: 40032), knobH: 0.03, knobV: 0.02, knobHAt: 0.5, knobVAt: 0.25)
   func at(_ zoom: Double) -> FrameWriter.Shown { var s = shown; s.zoom = zoom; return s }
   func col(_ s: FrameWriter.Stroke, _ f: String) -> [Double?] { s.frames.rows.map { $0[FrameWriter.fields.firstIndex(of: f)!] } }
 
@@ -27,6 +27,7 @@ final class FrameWriterTests: XCTestCase {
     XCTAssertEqual(col(stroke, "magnify").prefix(3), [-0.01, -0.1, 0])
     XCTAssertEqual(col(stroke, "gesture").prefix(4), [1, 2, 3, 0])
     XCTAssertEqual(col(stroke, "knobH")[0], 0.03)
+    XCTAssertEqual(col(stroke, "knobVAt")[0], 0.25)
     XCTAssertEqual(col(stroke, "t")[0], 8)
     XCTAssertEqual(col(stroke, "px")[0], 600)
     XCTAssertEqual(stroke.raw.map { $0[1] }, [Data([1]), Data([2]), Data([3])].map { $0.base64EncodedString() })

@@ -8,7 +8,7 @@ import Foundation
 struct FrameWriter {
   static let fields = [
     "t", "zoom", "camX", "camY", "viewW", "viewH", "boardX", "boardY", "boardW", "boardH", "px", "py", "f1x", "f1y", "f2x", "f2y",
-    "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "magnify", "gesture", "knobH", "knobV", "grey",
+    "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "magnify", "gesture", "knobH", "knobV", "knobHAt", "knobVAt", "grey",
   ]
 
   struct Shown: Equatable {
@@ -18,6 +18,9 @@ struct FrameWriter {
     var board: CGRect
     var knobH: Double?
     var knobV: Double?
+    /// Each knob's place along its scroller, 0 to 1.
+    var knobHAt: Double? = nil
+    var knobVAt: Double? = nil
   }
 
   enum Phase { case began, changed, ended }
@@ -98,7 +101,7 @@ struct FrameWriter {
     let now = ms(t)
     let b = s.board
     rows.append([now, s.zoom, s.cam.x, s.cam.y, s.view.width, s.view.height, b.minX, b.minY, b.width, b.height, pointer.x, pointer.y,
-                 nil, nil, nil, nil, wheel.dx, wheel.dy, wheel.phase, wheel.momentum, magnify, gesture, s.knobH, s.knobV, 0])
+                 nil, nil, nil, nil, wheel.dx, wheel.dy, wheel.phase, wheel.momentum, magnify, gesture, s.knobH, s.knobV, s.knobHAt, s.knobVAt, 0])
     wheel = (0, 0, wheel.phase == 8 || wheel.phase == 16 ? 0 : wheel.phase, wheel.momentum == 8 ? 0 : wheel.momentum)
     magnify = 0
     gesture = gesture == 1 ? 2 : gesture == 3 ? 0 : gesture
