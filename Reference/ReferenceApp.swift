@@ -262,7 +262,8 @@ final class Reference: NSObject, NSApplicationDelegate {
     let clip = scroll.contentView
     let shown = FrameWriter.Shown(zoom: scroll.magnification, cam: clip.bounds.origin, view: clip.frame.size,
                                   board: scroll.documentView!.bounds, knobH: scroll.horizontalScroller.map { Double($0.knobProportion) },
-                                  knobV: scroll.verticalScroller.map { Double($0.knobProportion) })
+                                  knobV: scroll.verticalScroller.map { Double($0.knobProportion) },
+                                  knobHAt: scroll.horizontalScroller.map { $0.doubleValue }, knobVAt: scroll.verticalScroller.map { $0.doubleValue })
     guard let s = writer.frame(t: l.timestamp, shown: shown) else { return }
     writer = FrameWriter(name: kind)
     writer.window = MainActor.assumeIsolated { RawReplay.cgFrame(window) }
