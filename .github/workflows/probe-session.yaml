@@ -46,7 +46,7 @@ jobs:
     - name: Turn Spotlight off
       if: ${{ inputs.world }}
       run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
-    - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+    - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
     - name: Install the toolchain
       run: npm ci
     - name: Install the relay
