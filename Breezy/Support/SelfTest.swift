@@ -482,6 +482,17 @@ extension SelfTest {
       e.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase.rawValue))
       sv.scrollWheel(with: NSEvent(cgEvent: e)!)
     }
+    // what the recording holds from the pull on, for a failure to show: the frames' view and board tops and phases,
+    // the board's rests, and the scrollers
+    let began = ProcessInfo.processInfo.systemUptime * 1000
+    @MainActor func evidence(since t0: Double) -> String {
+      let r = c.core.flight.recording(), f = Flight.frameFields
+      let rows = (r.frames?.rows ?? []).filter { ($0[0] ?? 0) >= t0 }.map { row in
+        ["t", "zoom", "camY", "boardY", "boardH", "wheelPhase", "momentumPhase"].map { k in row[f.firstIndex(of: k)!].map { String(format: "%.1f", k == "t" ? $0 - t0 : $0) } ?? "-" }.joined(separator: " ")
+      }
+      let rests = r.entries.filter { $0.what == "board rest" }.suffix(4).map { "\($0.data ?? [:])" }
+      return "scrollers \(sv.scrollerStyle == .legacy ? "legacy" : "overlay"), scale \(d.window.backingScaleFactor); frames (t zoom camY boardY boardH wheel momentum): \(rows.joined(separator: " | ")); rests: \(rests.joined(separator: " | "))"
+    }
     scroll(.began, 0)
     var steps = 12
     func step() {
@@ -495,7 +506,7 @@ extension SelfTest {
         shot("pulled-" + way.replacingOccurrences(of: " ", with: "-"))
         scroll(.ended, 0)
         d.later(1.5) {
-          if c.bounds != before { finish(name, "the pull \(way) left the board at \(c.bounds), was \(before)") }
+          if c.bounds != before { finish(name, "the pull \(way) left the board at \(c.bounds), was \(before); \(MainActor.assumeIsolated { evidence(since: began) })") }
           then()
         }
       }
