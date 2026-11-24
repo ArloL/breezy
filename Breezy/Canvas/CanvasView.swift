@@ -202,7 +202,10 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
       if sv.horizontalScroller?.isHidden == false { r.size.height += room }
     }
     reach.rest(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
+    let was = bounds
     fitBoard()
+    let rect = { (b: NSRect) in JSONValue.array([b.minX, b.minY, b.width, b.height].map { .number(($0 * 10).rounded() / 10) }) }
+    core.flight.note(.decision, "board rest", ["shown": rect(r), "board": rect(bounds), "was": rect(was), "zoom": .number(sv.magnification)])
   }
 
   /// A zoom or a resize proposes that the clip view show `proposed`, in its own points: the board grows to take it in,
