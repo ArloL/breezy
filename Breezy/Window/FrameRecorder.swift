@@ -51,24 +51,29 @@ import BreezyKit
     (NSApp as? BreezyApplication)?.stopObserving(by: self)
   }
 
+  /// Where `e` was in the window: a replayed event has none, and its location is on screen.
+  private func place(_ e: NSEvent) -> NSPoint {
+    scrollView?.window.map { RawReplay.inWindow(e, of: $0) } ?? e.locationInWindow
+  }
+
   private func scrolled(_ e: NSEvent) {
     wheel.dx += e.scrollingDeltaX
     wheel.dy += e.scrollingDeltaY
     wheel.phase = Double(e.phase.rawValue)
     wheel.momentum = Double(e.momentumPhase.rawValue)
-    pointer = e.locationInWindow
+    pointer = place(e)
     wake()
   }
 
   private func magnified(_ e: NSEvent) {
     magnify += e.magnification
     gesture = e.phase.contains(.began) ? 1 : e.phase.contains(.ended) || e.phase.contains(.cancelled) ? 3 : 2
-    pointer = e.locationInWindow
+    pointer = place(e)
     wake()
   }
 
   private func smartMagnified(_ e: NSEvent) {
-    pointer = e.locationInWindow
+    pointer = place(e)
     wake()
   }
 
