@@ -51,12 +51,14 @@ final class BoardScrollView: NSScrollView {
     set()
   }
 
-  override var magnification: CGFloat {
+  // dynamic: this class is final, so Swift called the setter itself on `animator()`'s proxy, whose super call handed
+  // AppKit the proxy as the scroll view and faulted; through the runtime the proxy animates it, as AppKit means
+  override dynamic var magnification: CGFloat {
     get { super.magnification }
     set { zoom { super.magnification = newValue } }
   }
 
-  override func setMagnification(_ magnification: CGFloat, centeredAt point: NSPoint) {
+  override dynamic func setMagnification(_ magnification: CGFloat, centeredAt point: NSPoint) {
     zoom { super.setMagnification(magnification, centeredAt: point) }
   }
 
