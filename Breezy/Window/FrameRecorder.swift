@@ -13,6 +13,7 @@ import BreezyKit
   var drawnShort: () -> Double = { 0 }
   private var link: CADisplayLink?
   private var lastShown: [Double?]?
+  private var lastInput: [Double]?
   private var stillFrames = 0
   private var wheel = (dx: 0.0, dy: 0.0, phase: 0.0, momentum: 0.0)
   private var magnify = 0.0, gesture = 0.0
@@ -93,7 +94,10 @@ import BreezyKit
   @objc private func tick() {
     guard let shown = shown() else { return stop() }
     let input = [wheel.dx, wheel.dy, wheel.phase, wheel.momentum, magnify, gesture]
-    let moving = shown != lastShown || input.contains { $0 != 0 }
+    // a phase is held, not input: a scroll that may begin and never does held the recorder writing for good, and the
+    // ring let the gesture before it go
+    let moving = shown != lastShown || wheel.dx != 0 || wheel.dy != 0 || magnify != 0 || input != lastInput
+    lastInput = input
     if moving || stillFrames == 0 {
       flight.frame(Array(shown.prefix(11)) + [nil, nil, nil, nil] + input.map { Optional($0) } + Array(shown.suffix(5)))
       if !moving { stillFrames = 1 }

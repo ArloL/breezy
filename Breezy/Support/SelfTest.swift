@@ -541,7 +541,15 @@ extension SelfTest {
       let n = gestures().count
       event(events.doubleTap).map(frames.observe)
       d.later(0.3) {
-        finish(name, gestures().dropFirst(n).contains(3) ? nil : "no frame marks the double tap: \(gestures().dropFirst(n))")
+        if !gestures().dropFirst(n).contains(3) { finish(name, "no frame marks the double tap: \(gestures().dropFirst(n))") }
+        // a scroll that may begin and never does, as the owner's pinch-in-past-max-5 ended: the view is still
+        event(events.pinch[0]).map(frames.observe)
+        d.later(1.0) {
+          let m = gestures().count
+          d.later(0.5) {
+            finish(name, gestures().count == m ? nil : "a scroll that never began kept \(gestures().count - m) frames in half a second of a still view")
+          }
+        }
       }
     }
   }
