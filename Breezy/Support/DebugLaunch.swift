@@ -6,8 +6,9 @@ import BreezyKit
 /// -BreezyCapture <png> writes a window capture after 1.5 s and quits; -BreezyBench <json> runs the
 /// benchmark and quits; -BreezyAppearance light|dark|switch fixes the appearance, or starts light
 /// and switches to dark before the capture; -BreezyTurn any turns over the first card with notes;
-/// -BreezyEdit any starts editing the first card; -BreezySelfTest <check> runs a SelfTest check; -BreezyControl <port>
-/// takes scenario commands on that port, with no board open, in a fresh store as the others.
+/// -BreezyEdit any starts editing the first card; -BreezySelfTest <check> runs a SelfTest check; -BreezyReplay <stroke>
+/// -BreezyReplayOut <json> replays a reference stroke and keeps its recording (Replay); -BreezyControl <port> takes
+/// scenario commands on that port, with no board open, in a fresh store as the others.
 enum DebugLaunch {
   private static let defaults = UserDefaults.standard
   static var board: String? { defaults.string(forKey: "BreezyBoard") }
@@ -59,6 +60,9 @@ enum DebugLaunch {
     if let out = defaults.string(forKey: "BreezyBench") {
       let bench = Bench(wc, out: out)
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) { bench.run() }
+    }
+    if let stroke = defaults.string(forKey: "BreezyReplay"), let out = defaults.string(forKey: "BreezyReplayOut") {
+      MainActor.assumeIsolated { Replay.run(stroke, out: out, wc) }
     }
     if let check = defaults.string(forKey: "BreezySelfTest") {
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) { SelfTest.run(check, wc) }

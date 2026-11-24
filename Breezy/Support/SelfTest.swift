@@ -34,6 +34,7 @@ enum SelfTest {
     case "edit-in-place": editInPlace(d)
     case "frames": MainActor.assumeIsolated { frames(d) }
     case "taken-events": MainActor.assumeIsolated { takenEvents(d) }
+    case "replay": MainActor.assumeIsolated { replay(d) }
     default: finish(name, "unknown check")
     }
   }
@@ -478,6 +479,39 @@ extension SelfTest {
         let dy = Flight.frameFields.firstIndex(of: "wheelDY")!
         let rows = d.canvas.core.flight.recording().frames?.rows ?? []
         finish(name, rows.contains { ($0[dy] ?? 0) != 0 } ? nil : "a scroll taken from the queue never reached the recording: \(rows.count) frames")
+      }
+    }
+  }
+}
+
+extension SelfTest {
+  /// The owner's pinch in past 200 %, as the reference app recorded it, replayed: it zooms about where the fingers were,
+  /// as AppKit zooms about the cursor, and the recording keeps where they were, as a replayed event's place is on screen.
+  @MainActor fileprivate static func replay(_ d: Driver) {
+    let name = "replay"
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../ReferenceTests/pinch-in-past-max.json")
+    guard let data = try? Data(contentsOf: fixture), let s = try? JSONDecoder().decode(Replay.Stroke.self, from: data) else { finish(name, "can’t read \(fixture.path)") }
+    d.window.setContentSize(Replay.stage)
+    // off the screen's origin, where a place on screen and in the window differ
+    d.window.setFrameOrigin(NSPoint(x: 120, y: 40))
+    // where a replay left it, far from the pinch
+    CGWarpMouseCursorPosition(CGPoint(x: 5, y: 5))
+    d.later(0.5) {
+      Replay.start(s, d.wc)
+      Replay.play(s, d.wc) { n in
+        if n != s.raw.count { finish(name, "handed \(n) of \(s.raw.count) events") }
+        Replay.rested(d.canvas.core.flight) {
+          let rows = d.canvas.core.flight.recording().frames?.rows ?? []
+          let f = { (k: String) in Flight.frameFields.firstIndex(of: k)! }
+          let pinch = rows.filter { ($0[f("magnify")] ?? 0) != 0 }
+          guard let first = pinch.first, let last = rows.last else { finish(name, "no pinch in \(rows.count) frames") }
+          if abs((last[f("zoom")] ?? 0) - 2) > 0.001 { finish(name, "rested at \(last[f("zoom")] ?? 0), not 2") }
+          // the board point under the fingers, which a pinch about them keeps
+          let under = { (r: [Double?]) in NSPoint(x: r[f("camX")]! + r[f("px")]! / r[f("zoom")]!, y: r[f("camY")]! + r[f("py")]! / r[f("zoom")]!) }
+          let p0 = under(first)
+          let drift = pinch.map { r in max(abs(under(r).x - p0.x), abs(under(r).y - p0.y)) }.max() ?? 0
+          finish(name, drift > 3 ? "the board point under the fingers moved \(Int(drift)) pt as it pinched" : nil)
+        }
       }
     }
   }

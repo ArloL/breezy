@@ -14,7 +14,8 @@ targets:
   Breezy:
     type: application
     platform: macOS
-    sources: [Breezy]
+    # RawReplay hands the reference app's strokes to Breezy's window too
+    sources: [Breezy, Reference/RawReplay.swift]
     dependencies:
       - package: BreezyKit
       - package: Sparkle
