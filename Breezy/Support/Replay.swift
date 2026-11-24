@@ -51,7 +51,8 @@ import BreezyKit
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
         play(s, wc) { n in
           print("handed \(n) of \(s.raw.count)")
-          rested(wc.canvas.core.flight) {
+          rested(wc.canvas.core.flight, within: 10) { rested in
+            if !rested { print("never rested") }
             do {
               try JSONEncoder().encode(wc.canvas.core.flight.recording()).write(to: URL(fileURLWithPath: out))
               print(out)
@@ -66,13 +67,22 @@ import BreezyKit
     }
   }
 
-  /// Calls `then` once the recording has kept no frame for a second, as the view rests after AppKit's spring.
-  static func rested(_ flight: Flight, then: @escaping @MainActor () -> Void) {
-    let rows = flight.recording().frames?.rows.count ?? 0
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-      MainActor.assumeIsolated {
-        if flight.recording().frames?.rows.count ?? 0 == rows { then() } else { rested(flight, then: then) }
+  /// Calls `then(true)` once the recording's newest frame is a second old, as the view rests after AppKit's spring, or
+  /// `then(false)` if it has not within `seconds`, while the ring still holds the gesture: a full ring keeps as many
+  /// frames however many come, and its count read a view resizing every 125 ms as rested.
+  static func rested(_ flight: Flight, within seconds: Double, then: @escaping @MainActor (Bool) -> Void) {
+    let deadline = ProcessInfo.processInfo.systemUptime + seconds
+    func look() {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        MainActor.assumeIsolated {
+          let now = ProcessInfo.processInfo.systemUptime
+          let newest = flight.recording().frames?.rows.last?[0] ?? nil
+          if newest.map({ now * 1000 - $0 >= 1000 }) ?? true { return then(true) }
+          if now > deadline { return then(false) }
+          look()
+        }
       }
     }
+    look()
   }
 }
