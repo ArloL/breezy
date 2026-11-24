@@ -194,11 +194,13 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   func rest(_ shown: NSRect? = nil) {
     guard let sv = enclosingScrollView else { return }
     var r = shown ?? showing
-    // as far as the view without its scrollers: a board sized to the view with them hid scrollers that take room, the
-    // view grew, the board with it, and they came back, every 125 ms for good
-    let bare = NSScrollView.contentSize(forFrameSize: sv.frame.size, horizontalScrollerClass: nil, verticalScrollerClass: nil,
-                                        borderType: sv.borderType, controlSize: .regular, scrollerStyle: sv.scrollerStyle)
-    r.size = NSSize(width: max(r.width, bare.width / sv.magnification), height: max(r.height, bare.height / sv.magnification))
+    // as far as the view without scrollers that take room: a board sized to the view with them hid them, the view
+    // grew, the board with it, and they came back, every 125 ms for good; overlay scrollers take none
+    if sv.scrollerStyle == .legacy {
+      let room = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) / sv.magnification
+      if sv.verticalScroller?.isHidden == false { r.size.width += room }
+      if sv.horizontalScroller?.isHidden == false { r.size.height += room }
+    }
     reach.rest(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
     fitBoard()
   }
