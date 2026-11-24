@@ -37,6 +37,7 @@ enum SelfTest {
     case "replay": MainActor.assumeIsolated { replay(d) }
     case "gesture-marks": MainActor.assumeIsolated { gestureMarks(d) }
     case "bounded-board": boundedBoard(d)
+    case "bounded-rests": MainActor.assumeIsolated { boundedRests(d) }
     default: finish(name, "unknown check")
     }
   }
@@ -342,8 +343,9 @@ extension SelfTest {
       let content = BoardBounds.extent(d.board.cards.map(c.drawnRect) + d.board.lanes.map(\.rect))
       let s = c.showing, b = c.bounds
       let want = BoardBounds.board(content, seen: Rect(x: s.minX, y: s.minY, w: s.width, h: s.height)).outward
-      // past its bottom and right by at most a legacy scroller, which shows or hides with the size and moves the view
-      let slack = sv.scrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) / sv.magnification + 1 : 0
+      // past its bottom and right by at most a legacy scroller, which shows or hides with the size and moves the view,
+      // and a point at either edge rounded outward
+      let slack = sv.scrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) / sv.magnification + 2 : 0
       if b.minX != want.x || b.minY != want.y || !(want.w...want.w + slack).contains(b.width) || !(want.h...want.h + slack).contains(b.height) {
         finish(name, "\(when): the document is \(b), the board \(want); the view \(s) at \(sv.magnification), scrolling \(sv.scrolling), magnifying \(sv.magnifying), scrollers hidden \(sv.horizontalScroller?.isHidden ?? true) \(sv.verticalScroller?.isHidden ?? true)")
       }
@@ -849,6 +851,29 @@ extension SelfTest {
             finish(name, gestures().count == m ? nil : "a scroll that never began kept \(gestures().count - m) frames in half a second of a still view")
           }
         }
+      }
+    }
+  }
+}
+
+extension SelfTest {
+  /// Zoomed out until the board takes in all it shows, with scrollers that take room as this Mac's do, the view comes
+  /// to rest: replayed pinches left it resizing with its scrollers every 125 ms for good, its board sized each time
+  /// for the view's other size.
+  @MainActor fileprivate static func boundedRests(_ d: Driver) {
+    let name = "bounded-rests"
+    let sv = d.wc.scrollView
+    sv.scrollerStyle = .legacy
+    d.wc.place(origin: d.canvas.bounds.origin, zoom: 0.28)
+    let sizes = { () -> [[Double?]] in
+      let f = Flight.frameFields, rows = d.canvas.core.flight.recording().frames?.rows ?? []
+      return rows.map { r in ["viewW", "viewH", "boardW", "boardH"].map { r[f.firstIndex(of: $0)!] } }
+    }
+    d.later(1.5) {
+      let n = sizes().count
+      d.later(1.0) {
+        let since = Array(sizes().dropFirst(n))
+        finish(name, Set(since.map { "\($0)" }).count > 1 ? "the view and board kept resizing at rest: \(since.count) frames in a second, \(Set(since.map { "\($0)" }).sorted().joined(separator: " / "))" : nil)
       }
     }
   }
