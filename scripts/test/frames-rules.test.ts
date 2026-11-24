@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FIELDS, MAC_FIELDS, column, frames } from "../frames/track.ts";
-import { continuity, coverage, curve, flicker, follow, pops, scrollers } from "../frames/rules.ts";
+import { continuity, coverage, curve, edgePops, flicker, follow, pops, scrollers } from "../frames/rules.ts";
 import type { FrameTrack, Recording } from "../../web/flight.ts";
 
 type Row = Partial<Record<string, number | null>>;
@@ -39,6 +39,24 @@ test("coverage lets a pan pull past the edge", () => {
   assert.deepEqual(coverage(track(rows)), []);
 });
 
+test("coverage lets a pinch show past the edge as far as the reference's showed at that moment, and no further", () => {
+  // AppKit, pinched at its board's top left, keeps the board under the fingers past the edge, up to 626 pt
+  const atCorner = (past: number) => pinch(range(0.5, 0.25, 20), (i) => ({ boardX: 1000 - 600 / 0.5 + (past * i) / 19 / 0.25, boardY: -5000, boardW: 20000, boardH: 20000 }));
+  const ref = track(atCorner(120));
+  assert.deepEqual(coverage(track(atCorner(100)), ref), []);
+  const f = coverage(track(atCorner(160)), ref);
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.match(f[0].say, /past the board.*the reference's/);
+});
+
+test("coverage finds grey past the edge where the reference showed none", () => {
+  // on a board smaller than the view at 25 %, a pinch at its centre shows past both sides; AppKit's board had no edge there
+  const small = pinch(range(0.5, 0.25, 20), () => ({ boardX: 500, boardY: 300, boardW: 1000, boardH: 1000 }));
+  const big = pinch(range(0.5, 0.25, 20), () => ({ boardX: -20000, boardY: -20000, boardW: 40032, boardH: 40032 }));
+  assert.deepEqual(coverage(track(big), track(big)), []);
+  assert.equal(coverage(track(small), track(big)).length, 1);
+});
+
 test("follow finds the board slipping under a pinch's centre", () => {
   // the world point under 600,400 moves by 3 pt over the pinch
   const rows = pinch(range(1, 0.5, 10), (i, z) => ({ camX: 1000 - 600 / z + (i * 3) / 9 / z }));
@@ -62,6 +80,50 @@ test("continuity takes a spring back over 15 frames as smooth", () => {
     const s = i / 15, z = Math.exp(Math.log(0.23) + (Math.log(0.25) - Math.log(0.23)) * (1 - (1 + 6 * s) * Math.exp(-6 * s)));
     rows.push({ zoom: z, camX: 1000 - 600 / z, camY: 800 - 400 / z, gesture: 0, magnify: 0 });
   }
+  assert.deepEqual(continuity(track(rows)), []);
+});
+
+test("continuity takes AppKit's spring, stepping its zoom every other frame on a 120 Hz display, as smooth", () => {
+  // the reference's pinch-out-fast-6 after its fingers lift: 0.2418, 0.2428, 0.2428, 0.2446, 0.2446 … every 8.3 ms
+  const rows: Row[] = pinch(range(0.3, 0.24, 10)).map((r, i) => ({ ...r, t: i * 8.3 }));
+  const held = [0.2418, 0.2428, 0.2428, 0.2446, 0.2446, 0.2461, 0.2461, 0.2474, 0.2474, 0.2484, 0.2484, 0.2491, 0.2491];
+  held.forEach((z, i) => rows.push({ t: (10 + i) * 8.3, zoom: z, camX: 1000 - 600 / z, camY: 800 - 400 / z, gesture: 0, magnify: 0 }));
+  assert.deepEqual(continuity(track(rows)), []);
+});
+
+test("continuity lets AppKit's own animation start as a gesture ends, as a two-finger double tap's, and no faster", () => {
+  // the reference's double-tap-7: zoom 1 → 1.5 easing in from rest, every 8.3 ms, its event in the frame before
+  const ease = [1, 1, 1.012, 1.0255, 1.0441, 1.068, 1.0963, 1.1276];
+  const tap = (zs: number[]) => track(zs.map((z, i) => ({ t: i * 8.3, zoom: z, camX: 1000 - 600 / z, camY: 800 - 400 / z, gesture: i === 0 ? 3 : 0 })));
+  assert.deepEqual(continuity(tap(ease)), []);
+  assert.equal(continuity(tap([1, 1, 1.08, 1.1, 1.12])).length, 1);
+});
+
+test("continuity lets AppKit's settle zoom about a point of its own once nothing touches", () => {
+  // the reference's pinch-out-fast-11 settling: the zoom steps 0.2488 → 0.2499 about the view's left edge, far from the
+  // pointer, and the view's centre moves 2.6 pt
+  const rows: Row[] = [0.2488, 0.2488, 0.2488, 0.2499, 0.2499].map((z, i) => ({ t: i * 8.3, zoom: z, camX: 17000 }));
+  assert.deepEqual(continuity(track(rows)), []);
+});
+
+test("continuity lets a scroll move the view a frame after it came, as AppKit applies it", () => {
+  // the reference's pinch-pan-13: 5 pt of wheel in one frame, the view moving 5 pt in the next
+  const rows: Row[] = [[0, 400], [5, 400], [0, 395], [0, 395]].map(([dx, x], i) => ({ t: i * 8.3, wheelDX: dx, wheelPhase: i ? 4 : 1, camX: x }));
+  assert.deepEqual(continuity(track(rows)), []);
+});
+
+test("continuity lets AppKit pull the view back from past the board once the fingers lift, faster the further past", () => {
+  // the reference's pinch-corner-1: 626 pt past the board's left at 0.228, still a frame, then 19.7, 24.5, 27.3 pt a frame
+  const z = 0.228, at = (x: number) => ({ zoom: z, camX: x, boardX: 0, boardY: -5000, boardW: 40032, boardH: 40032 });
+  const back = (first: number) => track([0, 0, first, first + 24.5, first + 52].map((d, i) => ({ t: i * 8.3, ...at(-626 / z + d / z), gesture: i === 0 ? 3 : 0 })));
+  assert.deepEqual(continuity(back(19.7)), []);
+  assert.equal(continuity(back(60)).length, 1);
+});
+
+test("continuity lets the camera go on with a settle's zoom in a frame its zoom holds, as AppKit steps zoom at 60 Hz", () => {
+  // the reference's lift-mid-band-17: the zoom holds at 0.2427 for a frame while the camera moves on
+  const rows: Row[] = [[0.2406, 17236.22], [0.2417, 17247.32], [0.2427, 17257.53], [0.2427, 17266.77], [0.2445, 17275.05]]
+    .map(([zoom, camX], i) => ({ t: i * 8.3, zoom, camX, viewW: 1495 }));
   assert.deepEqual(continuity(track(rows)), []);
 });
 
@@ -101,6 +163,27 @@ test("pops finds grey that grew with a pinch gone in one frame", () => {
   assert.deepEqual(pops(track(Array.from({ length: 12 }, (_, i) => ({ grey: Math.max(0, 135 - i * 15) }))), ["grey"], 20), []);
 });
 
+test("edgePops finds the view's reach past the board leaping in a frame, further than the reference's ever did", () => {
+  // the bounded build's pinch-out-slow-4: 212 pt past the board's edge, gone in a frame as the pinch ends
+  const band = (reach: number[]) => track(reach.map((r) => ({ camX: -r })));
+  const leap = band([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 212, 0, 0]);
+  const f = edgePops(leap, band(Array(14).fill(0)));
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.equal(f[0].rule, "flicker");
+  assert.equal(f[0].from, 11 * 16);
+  // AppKit's own, pinched at its corner, comes back by up to 85 pt a frame: as far, and 20 pt more, is no leap
+  const appkit = band([0, 30, 60, 85, 85, 0, 0]);
+  assert.deepEqual(edgePops(band([0, 30, 60, 100, 100, 0, 0]), appkit), []);
+  // with no reference, 30 pt a frame, as the owner's video shows the band shooting in by 30 to 52
+  assert.equal(edgePops(band([0, 20, 40, 60])).length, 0);
+  assert.equal(edgePops(band([0, 50, 0])).length, 2);
+});
+
+test("flicker finds the view resizing and back, as the bounded board's did with its scrollers every 125 ms", () => {
+  const rows: Row[] = Array.from({ length: 30 }, (_, i) => (i % 15 === 0 ? { viewW: 1512, viewH: 883, boardW: 5350 } : { viewW: 1495, viewH: 866, boardW: 5411 }));
+  assert.ok(flicker(track(rows), ["viewW", "viewH", "boardW", "boardH"]).length >= 2);
+});
+
 test("scrollers finds a knob changing at a constant zoom", () => {
   const rows: Row[] = Array.from({ length: 8 }, (_, i) => ({ knobH: i < 4 ? 0.6 : 0.5 }));
   const f = scrollers(track(rows));
@@ -108,6 +191,25 @@ test("scrollers finds a knob changing at a constant zoom", () => {
   assert.equal(f[0].from, 4 * 16);
   const zooming: Row[] = Array.from({ length: 8 }, (_, i) => ({ zoom: 1 - i * 0.02, knobH: 0.6 - i * 0.01 }));
   assert.deepEqual(scrollers(track(zooming)), []);
+});
+
+test("scrollers lets knobs change while AppKit steps its zoom every other frame", () => {
+  const rows: Row[] = Array.from({ length: 12 }, (_, i) => ({ t: i * 8.3, zoom: 1 - Math.floor(i / 2) * 0.02, knobH: 0.6 - i * 0.005 }));
+  assert.deepEqual(scrollers(track(rows)), []);
+});
+
+test("scrollers lets knobs change while the view is past the board, as AppKit's shrink as it overscrolls", () => {
+  // past the board's left edge by 40 to 0 pt, as the reference's corner pinch draws back
+  const rows: Row[] = Array.from({ length: 8 }, (_, i) => ({ camX: -40 + i * 5, knobH: 0.55 + i * 0.005 }));
+  assert.deepEqual(scrollers(track(rows)), []);
+});
+
+test("curve aligns tracks at their first input, though a recorder kept no gesture's begin", () => {
+  // Breezy's recorder lost a pinch's begin when its next event came in the same frame; its frames start before the stroke
+  const ref = track(pinch(range(1, 0.5, 20)));
+  const late = pinch(range(1, 0.5, 20)).map((r) => ({ ...r, gesture: r.gesture === 1 ? 2 : r.gesture }));
+  const breezy = track([...Array.from({ length: 30 }, () => ({ zoom: 1, camX: 400, camY: 400 })), ...late].map((r, i) => ({ ...r, t: i * 16 })));
+  assert.deepEqual(curve(breezy, ref, "zoom", 0.01), []);
 });
 
 test("curve finds a zoom curve 0.02 off the reference's with tol 0.01", () => {

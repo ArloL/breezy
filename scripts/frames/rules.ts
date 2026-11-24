@@ -45,18 +45,37 @@ function pastBoard(t: FrameTrack): number[] {
 }
 
 /** Nothing past the board's edge shows, as the camera has it or as drawn (`grey`), unless a pan pulled it there: a pan
- * in contact or coasting, until the view is back inside. */
-export function coverage(t: FrameTrack): Finding[] {
+ * in contact or coasting, until the view is back inside. Given the reference's stroke, also as far past it as the
+ * reference showed at that moment of the stroke, within `tol` pt: AppKit, pinched at its board's corner, keeps the
+ * board under the fingers past the edge and draws it back once they lift (the owner's ruling: grey past the edge only
+ * where the reference shows it). */
+export function coverage(t: FrameTrack, ref?: FrameTrack, tol = 2): Finding[] {
   const past = pastBoard(t), grey = maybe(t, "grey"), wheel = maybe(t, "wheelPhase"), momentum = maybe(t, "momentumPhase");
   const f1 = maybe(t, "f1x"), gesture = maybe(t, "gesture"), ts = column(t, "t");
+  const shown = past.map((p, i) => Math.max(p, num(grey[i])));
+  let allowed = (_: number) => 0.5;
+  if (ref) {
+    const a0 = startOf(t), b0 = startOf(ref), rt = column(ref, "t").map((u) => num(u) - b0), rg = maybe(ref, "grey");
+    const rp = pastBoard(ref).map((p, i) => Math.max(p, num(rg[i])));
+    // the most the reference showed within a frame either side, on a straight line between its frames
+    const at = (u: number) => {
+      const j = rt.findIndex((v) => v > u);
+      if (j <= 0) return j === 0 ? rp[0] : rp.at(-1)!;
+      return rp[j - 1] + ((rp[j] - rp[j - 1]) * (u - rt[j - 1])) / (rt[j] - rt[j - 1]);
+    };
+    allowed = (i) => Math.max(...[-FRAME, 0, FRAME].map((s) => at(num(ts[i]) - a0 + s))) + tol;
+  }
   let pulled = false;
   const bad = t.rows.map((_, i) => {
-    const out = past[i] > 0.5 || num(grey[i]) > 0.5;
+    const out = shown[i] > 0.5;
     if (CONTACT_PHASES.has(num(wheel[i])) || num(momentum[i]) !== 0 || (f1[i] !== null && num(gesture[i]) === 0)) pulled = true;
     if (!out) pulled = false;
-    return out && !pulled;
+    return out && !pulled && shown[i] > allowed(i);
   });
-  return runs(ts, bad, "coverage", (a, b) => `the view shows ${Math.max(...past.slice(a, b + 1)).toFixed(1)} pt past the board, and ${Math.max(...grey.slice(a, b + 1).map(num)).toFixed(1)} pt drawn past it, with no pan pulling it there`);
+  return runs(ts, bad, "coverage", (a, b) => {
+    const theirs = ref ? `, where the reference's showed ${Math.max(0, ...Array.from({ length: b - a + 1 }, (_, k) => allowed(a + k) - tol)).toFixed(1)} pt` : ", with no pan pulling it there";
+    return `the view shows ${Math.max(...past.slice(a, b + 1)).toFixed(1)} pt past the board, and ${Math.max(...grey.slice(a, b + 1).map(num)).toFixed(1)} pt drawn past it${theirs}`;
+  });
 }
 
 /** Where a gesture holds: its fingers' centre, else the pointer, in view pt. */
@@ -95,31 +114,51 @@ const EPS_ZOOM = 0.02, EPS_PAN = 4, FRAME = 16;
 export function continuity(t: FrameTrack, { gapMs = 34 } = {}): Finding[] {
   const c = Object.fromEntries(["t", "zoom", "camX", "camY", "viewW", "viewH", "px", "py", "magnify", "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "f1x", "f1y", "f2x", "f2y", "gesture"].map((f) => [f, column(t, f)]));
   const n = t.rows.length, out: Finding[] = [];
-  const lz = c.zoom.map((z) => Math.log(num(z)));
+  const lz = c.zoom.map((z) => Math.log(num(z))), past = pastBoard(t);
   // the world point at the view's centre, in view pt at that frame's zoom
   const centre = (i: number, axis: "X" | "Y") => num(c[`cam${axis}`][i]) + num(c[axis === "X" ? "viewW" : "viewH"][i]) / 2 / num(c.zoom[i]);
   const input = (i: number) => num(c.magnify[i]) !== 0 || num(c.wheelDX[i]) !== 0 || num(c.wheelDY[i]) !== 0 || CONTACT_PHASES.has(num(c.wheelPhase[i])) || c.f1x[i] !== null;
-  const band = (d: number, prevRate: number, dt: number, allowance: number, eps: number) => {
-    const carried = 2 * prevRate * dt, e = (eps * dt) / FRAME;
-    return d < Math.min(0, carried) - allowance - e || d > Math.max(0, carried) + allowance + e;
+  // the motion under way: each axis's slowest and fastest rate over the last 34 ms, as AppKit steps its zoom every
+  // other frame on a 120 Hz display and a late frame's next catches up
+  const rates: { t: number; z: number; x: number; y: number }[] = [];
+  const under = (k: "z" | "x" | "y", now: number) => {
+    const r = rates.filter((q) => now - q.t <= 34).map((q) => q[k]);
+    return r.length ? [Math.min(...r), Math.max(...r)] : [0, 0];
   };
-  let prevZ = 0, prevX = 0, prevY = 0;
+  const band = (d: number, [lo, hi]: number[], dt: number, allowance: number, eps: number) => {
+    const e = (eps * dt) / FRAME;
+    return d < Math.min(0, 2 * lo * dt) - allowance - e || d > Math.max(0, 2 * hi * dt) + allowance + e;
+  };
+  const push = (i: number, dz: number, dx: number, dy: number, dt: number) => rates.push({ t: num(c.t[i]), z: dz / dt, x: dx / dt, y: dy / dt });
+  // AppKit starts a motion of its own as a gesture ends, as a two-finger double tap's zoom, easing in from rest
+  let ended = -Infinity;
   for (let i = 1; i < n; i++) {
     const dt = num(c.t[i]) - num(c.t[i - 1]);
+    if (num(c.gesture[i - 1]) === 3) ended = num(c.t[i - 1]);
     if (dt <= 0) continue;
     const z = num(c.zoom[i]);
     const dz = lz[i] - lz[i - 1], dx = (centre(i, "X") - centre(i - 1, "X")) * z, dy = (centre(i, "Y") - centre(i - 1, "Y")) * z;
-    if (dt > gapMs && !input(i)) { prevZ = dz / dt; prevX = dx / dt; prevY = dy / dt; continue; }
+    if (dt > gapMs && !input(i)) { push(i, dz, dx, dy, dt); continue; }
+    const starting = num(c.t[i]) - ended <= 50 ? 2 : 1;
     const zin = Math.abs(Math.log(1 + num(c.magnify[i]))) * 1.5;
     const [hx, hy] = heldAt(t, i, c);
     const fingers = c.f1x[i] !== null && c.f1x[i - 1] !== null ? Math.hypot(...heldAt(t, i, c).map((v, k) => v - heldAt(t, i - 1, c)[k]) as [number, number]) : 0;
-    const panIn = Math.hypot(num(c.wheelDX[i]), num(c.wheelDY[i])) + fingers;
-    const zoomShiftX = Math.abs(dz) * Math.abs(hx - num(c.viewW[i]) / 2) * 1.5, zoomShiftY = Math.abs(dz) * Math.abs(hy - num(c.viewH[i]) / 2) * 1.5;
-    const what = band(dz, prevZ, dt, zin, EPS_ZOOM) ? `zoom by ${(Math.exp(dz) * 100 - 100).toFixed(1)} %`
-      : band(dx, prevX, dt, panIn + zoomShiftX, EPS_PAN) ? `${dx.toFixed(1)} pt across`
-      : band(dy, prevY, dt, panIn + zoomShiftY, EPS_PAN) ? `${dy.toFixed(1)} pt down` : null;
+    // a scroll's delta moves the view in its frame or the next, as AppKit applies it
+    const panIn = Math.max(Math.hypot(num(c.wheelDX[i]), num(c.wheelDY[i])), Math.hypot(num(c.wheelDX[i - 1]), num(c.wheelDY[i - 1]))) + fingers;
+    // once nothing touches, AppKit's settle zooms about a point of its own, anywhere in the view
+    const touching = num(c.gesture[i]) === 1 || num(c.gesture[i]) === 2 || CONTACT_PHASES.has(num(c.wheelPhase[i])) || c.f1x[i] !== null;
+    // the zoom under way, as AppKit steps it every other frame while the camera moves on every frame
+    const zr = under("z", num(c.t[i - 1])), zoomed = Math.max(Math.abs(dz), Math.max(Math.abs(zr[0]), Math.abs(zr[1])) * dt);
+    const zoomShiftX = zoomed * (touching ? Math.abs(hx - num(c.viewW[i]) / 2) : num(c.viewW[i]) / 2) * 1.5;
+    const zoomShiftY = zoomed * (touching ? Math.abs(hy - num(c.viewH[i]) / 2) : num(c.viewH[i]) / 2) * 1.5;
+    // and pulls a view past the board back, as a spring, harder the further past: a tenth of it each 16 ms at most
+    const pull = touching ? 0 : (0.1 * Math.max(0, past[i - 1]) * dt) / FRAME;
+    const now = num(c.t[i - 1]);
+    const what = band(dz, under("z", now), dt, zin, EPS_ZOOM * starting) ? `zoom by ${(Math.exp(dz) * 100 - 100).toFixed(1)} %`
+      : band(dx, under("x", now), dt, panIn + zoomShiftX + pull, EPS_PAN * starting) ? `${dx.toFixed(1)} pt across`
+      : band(dy, under("y", now), dt, panIn + zoomShiftY + pull, EPS_PAN * starting) ? `${dy.toFixed(1)} pt down` : null;
     if (what) out.push({ rule: "continuity", from: num(c.t[i - 1]), to: num(c.t[i]), say: `one frame moved ${what}, more than its input and the motion under way` });
-    prevZ = dz / dt; prevX = dx / dt; prevY = dy / dt;
+    push(i, dz, dx, dy, dt);
   }
   // a pan's hand-off: the frame its contact ends, the wheel's phase ended or the last finger up
   const speed = (i: number) => {
@@ -154,6 +193,20 @@ export function flicker(t: FrameTrack, fields: string[], maxFrames = 3): Finding
   return out.sort((a, b) => a.from - b.from);
 }
 
+/** How far the view reaches past the board, the camera's or as drawn, never leaps in one frame: no further than the
+ * reference's furthest leap in its stroke and `margin` pt more, as AppKit's own at its board's corner come back by up to
+ * 85 pt a frame; with no reference, `margin` + 10, as the owner's video shows the band shooting in by 30 to 52 pt. */
+export function edgePops(t: FrameTrack, ref?: FrameTrack, margin = 20): Finding[] {
+  const reach = (u: FrameTrack) => { const g = maybe(u, "grey"); return pastBoard(u).map((p, i) => Math.max(0, p, num(g[i]))); };
+  const leaps = (r: number[]) => r.slice(1).map((v, i) => Math.abs(v - r[i]));
+  const max = ref ? Math.max(0, ...leaps(reach(ref))) + margin : margin + 10;
+  const r = reach(t), ts = column(t, "t"), out: Finding[] = [];
+  leaps(r).forEach((d, i) => {
+    if (d > max) out.push({ rule: "flicker", from: num(ts[i]), to: num(ts[i + 1]), say: `the view's reach past the board went from ${r[i].toFixed(0)} to ${r[i + 1].toFixed(0)} pt in one frame, past ${max.toFixed(0)}` });
+  });
+  return out;
+}
+
 /** Nothing drawn in `fields` jumps more than `max` from one frame to the next: grey that grew with a pinch and goes in
  * a frame as it ends reads as a flash, where what grew goes as it came. */
 export function pops(t: FrameTrack, fields: string[], max: number): Finding[] {
@@ -169,14 +222,19 @@ export function pops(t: FrameTrack, fields: string[], max: number): Finding[] {
 /** While the zoom holds, the scrollers' knobs keep their size. */
 export function scrollers(t: FrameTrack): Finding[] {
   const z = column(t, "zoom").map(num), kh = column(t, "knobH").map(num), kv = column(t, "knobV").map(num), ts = column(t, "t");
-  const bad = z.map((_, i) => i > 0 && Math.abs(z[i] - z[i - 1]) < 1e-9 && (Math.abs(kh[i] - kh[i - 1]) > 0.002 || Math.abs(kv[i] - kv[i - 1]) > 0.002));
+  const past = pastBoard(t);
+  // steady for two frames running: AppKit steps a zoom every other frame on a 120 Hz display; and inside the board, as
+  // AppKit's knobs shrink while the view overscrolls
+  const steady = (i: number) => i > 1 && Math.abs(z[i] - z[i - 1]) < 1e-9 && Math.abs(z[i - 1] - z[i - 2]) < 1e-9;
+  const bad = z.map((_, i) => steady(i) && past[i] <= 0.5 && past[i - 1] <= 0.5 && (Math.abs(kh[i] - kh[i - 1]) > 0.002 || Math.abs(kv[i] - kv[i - 1]) > 0.002));
   return runs(ts, bad, "scrollers", (a, b) => `a scroller's knob changed size at a steady zoom, ${kh[a - 1]}→${kh[b]} across and ${kv[a - 1]}→${kv[b]} down`);
 }
 
-/** When a track's gesture begins: its first frame of a pinch, a wheel in contact or a finger, else its first frame. */
+/** When a track's gesture begins: its first frame with any input, a pinch's step, a wheel's delta or phase, a gesture
+ * or a finger, else its first frame; a recorder may keep no gesture's begin, and its frames may start before it. */
 function startOf(t: FrameTrack): number {
-  const g = column(t, "gesture"), w = column(t, "wheelPhase"), f = column(t, "f1x"), ts = column(t, "t");
-  const i = t.rows.findIndex((_, i) => num(g[i]) === 1 || CONTACT_PHASES.has(num(w[i])) || f[i] !== null);
+  const [g, w, dx, dy, m, f] = ["gesture", "wheelPhase", "wheelDX", "wheelDY", "magnify", "f1x"].map((k) => maybe(t, k)), ts = column(t, "t");
+  const i = t.rows.findIndex((_, i) => num(g[i]) !== 0 || num(w[i]) !== 0 || num(dx[i]) !== 0 || num(dy[i]) !== 0 || num(m[i]) !== 0 || f[i] !== null);
   return num(ts[Math.max(0, i)]);
 }
 
