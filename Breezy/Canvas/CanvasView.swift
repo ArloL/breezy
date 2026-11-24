@@ -192,8 +192,13 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// lets go of what it showed before, as the web app's does when a scroll ends. Not where AppKit would settle it: for
   /// a document smaller than the view that is its top left, wherever the view is.
   func rest(_ shown: NSRect? = nil) {
-    guard enclosingScrollView != nil else { return }
-    let r = shown ?? showing
+    guard let sv = enclosingScrollView else { return }
+    var r = shown ?? showing
+    // as far as the view without its scrollers: a board sized to the view with them hid scrollers that take room, the
+    // view grew, the board with it, and they came back, every 125 ms for good
+    let bare = NSScrollView.contentSize(forFrameSize: sv.frame.size, horizontalScrollerClass: nil, verticalScrollerClass: nil,
+                                        borderType: sv.borderType, controlSize: .regular, scrollerStyle: sv.scrollerStyle)
+    r.size = NSSize(width: max(r.width, bare.width / sv.magnification), height: max(r.height, bare.height / sv.magnification))
     reach.rest(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
     fitBoard()
   }
