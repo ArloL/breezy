@@ -10,10 +10,16 @@ enum RawReplay {
     return CGRect(x: w.frame.minX, y: top - w.frame.maxY, width: w.frame.width, height: w.frame.height)
   }
 
+  /// Where `e` was in `window`: a handed event has no window, and its location is on screen.
+  @MainActor static func inWindow(_ e: NSEvent, of window: NSWindow) -> NSPoint {
+    e.window == nil ? window.convertPoint(fromScreen: e.locationInWindow) : e.locationInWindow
+  }
+
   /// Hands each of `raw`'s events (`[ms, base64 CGEvent data]`) to `window` at its time from now, its location moved
   /// from where the window was when recorded, `recorded` (`[x, y, w, h]` as `cgFrame` gives), to where it is; then
   /// calls `done` with how many it handed over. Events handed to a window skip the app's event monitors, so each also
-  /// goes to `observe`, as a recorder's monitor would have.
+  /// goes to `observe`, as a recorder's monitor would have. The cursor goes to each event's location, as AppKit zooms a
+  /// pinch about the cursor: about wherever it was left, a replay ended 200 pt from where the owner's pinch had.
   @MainActor static func play(_ raw: [[String]], recorded: [Double], into window: NSWindow, observe: @escaping @MainActor (NSEvent) -> Void = { _ in },
                               done: @escaping @MainActor (Int) -> Void) {
     let now = cgFrame(window)
@@ -37,6 +43,7 @@ enum RawReplay {
         ev.timestamp = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         ev.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: windowNumber)
         ev.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: windowNumber)
+        CGWarpMouseCursorPosition(ev.location)
         DispatchQueue.main.sync {
           MainActor.assumeIsolated {
             if let e = NSEvent(cgEvent: ev) {

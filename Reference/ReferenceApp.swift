@@ -304,7 +304,7 @@ final class Reference: NSObject, NSApplicationDelegate {
 
   /// Where `e` was, in the view's points from its top left.
   func viewPoint(_ e: NSEvent) -> CGPoint {
-    let clip = scroll.contentView, q = clip.convert(e.locationInWindow, from: nil), z = scroll.magnification
+    let clip = scroll.contentView, q = clip.convert(MainActor.assumeIsolated { RawReplay.inWindow(e, of: window) }, from: nil), z = scroll.magnification
     return CGPoint(x: (q.x - clip.bounds.minX) * z, y: (q.y - clip.bounds.minY) * z)
   }
 
