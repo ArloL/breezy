@@ -67,12 +67,15 @@ import BreezyKit
 
   private func magnified(_ e: NSEvent) {
     magnify += e.magnification
-    gesture = e.phase.contains(.began) ? 1 : e.phase.contains(.ended) || e.phase.contains(.cancelled) ? 3 : 2
+    // a begin stays until a frame keeps it, though the pinch's next event comes in the same frame
+    gesture = e.phase.contains(.began) ? 1 : e.phase.contains(.ended) || e.phase.contains(.cancelled) ? 3 : gesture == 1 ? 1 : 2
     pointer = place(e)
     wake()
   }
 
+  /// A two-finger double tap: a gesture of one event, as the reference app keeps it.
   private func smartMagnified(_ e: NSEvent) {
+    gesture = 3
     pointer = place(e)
     wake()
   }

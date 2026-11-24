@@ -35,6 +35,7 @@ enum SelfTest {
     case "frames": MainActor.assumeIsolated { frames(d) }
     case "taken-events": MainActor.assumeIsolated { takenEvents(d) }
     case "replay": MainActor.assumeIsolated { replay(d) }
+    case "gesture-marks": MainActor.assumeIsolated { gestureMarks(d) }
     default: finish(name, "unknown check")
     }
   }
@@ -512,6 +513,35 @@ extension SelfTest {
           let drift = pinch.map { r in max(abs(under(r).x - p0.x), abs(under(r).y - p0.y)) }.max() ?? 0
           finish(name, drift > 3 ? "the board point under the fingers moved \(Int(drift)) pt as it pinched" : nil)
         }
+      }
+    }
+  }
+}
+
+extension SelfTest {
+  /// The recording marks a pinch's begin though its next event comes in the same frame, and a two-finger double tap as a
+  /// gesture of one event, as the reference app does: from the owner's strokes, a pinch's first four events and a double
+  /// tap's. Without either, the rules over frames found no start to align a stroke with the reference's at.
+  @MainActor fileprivate static func gestureMarks(_ d: Driver) {
+    let name = "gesture-marks"
+    let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../scripts/selftest/gesture-marks.json")
+    struct Events: Decodable { let pinch: [String]; let doubleTap: String }
+    guard let data = try? Data(contentsOf: url), let events = try? JSONDecoder().decode(Events.self, from: data), let frames = d.wc.scrollView.frames else {
+      finish(name, "can’t read \(url.path)")
+    }
+    let event = { (s: String) in Data(base64Encoded: s).flatMap { CGEvent(withDataAllocator: nil, data: $0 as CFData) }.flatMap { NSEvent(cgEvent: $0) } }
+    let gestures = { () -> [Double] in
+      let g = Flight.frameFields.firstIndex(of: "gesture")!
+      return (d.canvas.core.flight.recording().frames?.rows ?? []).compactMap { $0[g] ?? nil }
+    }
+    // all in one frame, as a fast pinch's come
+    for s in events.pinch { event(s).map(frames.observe) }
+    d.later(0.3) {
+      if !gestures().contains(1) { finish(name, "no frame marks the pinch's begin: \(gestures())") }
+      let n = gestures().count
+      event(events.doubleTap).map(frames.observe)
+      d.later(0.3) {
+        finish(name, gestures().dropFirst(n).contains(3) ? nil : "no frame marks the double tap: \(gestures().dropFirst(n))")
       }
     }
   }
