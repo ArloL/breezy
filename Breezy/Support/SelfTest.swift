@@ -501,7 +501,8 @@ extension SelfTest {
       Replay.start(s, d.wc)
       Replay.play(s, d.wc) { n in
         if n != s.raw.count { finish(name, "handed \(n) of \(s.raw.count) events") }
-        Replay.rested(d.canvas.core.flight) {
+        Replay.rested(d.canvas.core.flight, within: 10) { rested in
+          if !rested { finish(name, "the view never rested") }
           let rows = d.canvas.core.flight.recording().frames?.rows ?? []
           let f = { (k: String) in Flight.frameFields.firstIndex(of: k)! }
           let pinch = rows.filter { ($0[f("magnify")] ?? 0) != 0 }
@@ -511,7 +512,15 @@ extension SelfTest {
           let under = { (r: [Double?]) in NSPoint(x: r[f("camX")]! + r[f("px")]! / r[f("zoom")]!, y: r[f("camY")]! + r[f("py")]! / r[f("zoom")]!) }
           let p0 = under(first)
           let drift = pinch.map { r in max(abs(under(r).x - p0.x), abs(under(r).y - p0.y)) }.max() ?? 0
-          finish(name, drift > 3 ? "the board point under the fingers moved \(Int(drift)) pt as it pinched" : nil)
+          if drift > 3 { finish(name, "the board point under the fingers moved \(Int(drift)) pt as it pinched") }
+          // a view that never rests, as the bounded board's that resized with its scrollers every 125 ms: once its ring
+          // is full a recording keeps as many frames however many come
+          let busy = Flight(frameSeconds: 0.5), values = [Double?](repeating: 0, count: Flight.frameFields.count - 1)
+          let moving = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in busy.frame(values) }
+          Replay.rested(busy, within: 2) { rested in
+            moving.invalidate()
+            finish(name, rested ? "a view still moving read as rested" : nil)
+          }
         }
       }
     }
