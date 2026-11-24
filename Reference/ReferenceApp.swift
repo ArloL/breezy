@@ -35,6 +35,60 @@ final class Board: NSView {
   }
 }
 
+/// --zoom's board: a layer's colour, nothing drawn. A drawn 40,032 pt board starved a live pinch out to a frame each 30–60
+/// ms: each step out redrew the whole view at the board's own scale, about 90 Mpx at 25 % on Retina.
+final class PlainBoard: NSView {
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override func updateLayer() { layer?.backgroundColor = NSColor.black.cgColor }
+}
+
+/// --zoom's dots, as main's GridView: one dot replicated across and down in the view's space, over the board only and
+/// hidden below 40 %, so a zoom step sets a spacing and draws nothing.
+final class ZoomGrid: NSView {
+  private let rows = CAReplicatorLayer(), columns = CAReplicatorLayer(), dot = CALayer()
+  private let diameter: CGFloat = 1.8, step: CGFloat = 24
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer!.masksToBounds = true
+    dot.cornerRadius = diameter / 2
+    dot.backgroundColor = NSColor(white: 0.35, alpha: 1).cgColor
+    columns.addSublayer(dot)
+    rows.addSublayer(columns)
+    layer!.addSublayer(rows)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  func update(_ scroll: NSScrollView) {
+    let clip = scroll.contentView, z = scroll.magnification, o = clip.bounds.origin, board = scroll.documentView!.bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    // the board's part of the view, in view points
+    let shown = NSRect(x: (board.minX - o.x) * z, y: (board.minY - o.y) * z, width: board.width * z, height: board.height * z)
+      .intersection(NSRect(origin: .zero, size: clip.frame.size))
+    frame = NSRect(origin: NSPoint(x: clip.frame.minX + shown.minX, y: clip.frame.minY + shown.minY), size: shown.size)
+    rows.isHidden = z < 0.4 || shown.isEmpty
+    let t = step * z
+    let fx = ((board.minX - o.x) * z - shown.minX).truncatingRemainder(dividingBy: t)
+    let fy = ((board.minY - o.y) * z - shown.minY).truncatingRemainder(dividingBy: t)
+    let f = NSRect(x: fx - 2 * t, y: fy - 2 * t, width: shown.width + 4 * t, height: shown.height + 4 * t)
+    rows.frame = f
+    rows.instanceCount = Int((f.height / t).rounded(.up))
+    rows.instanceTransform = CATransform3DMakeTranslation(0, t, 0)
+    columns.frame = NSRect(x: 0, y: 0, width: f.width, height: t)
+    columns.instanceCount = Int((f.width / t).rounded(.up))
+    columns.instanceTransform = CATransform3DMakeTranslation(t, 0, 0)
+    dot.frame = NSRect(x: -diameter / 2, y: -diameter / 2, width: diameter, height: diameter)
+    CATransaction.commit()
+  }
+}
+
 /// Sees each scroll event. Overriding scrollWheel also turns off responsive scrolling, which took a gesture's events
 /// after the first on a background thread, past local monitors and NSApplication alike: they saw 1 of a replayed
 /// push's 41. Breezy's BoardScrollView overrides it too.
@@ -158,10 +212,12 @@ final class Reference: NSObject, NSApplicationDelegate {
 
   // MARK: --zoom
 
-  let zoomSide: CGFloat = 40032
+  static let zoomSide: CGFloat = 40032
+  static func zoomBoard() -> NSView { PlainBoard(frame: NSRect(x: 0, y: 0, width: zoomSide, height: zoomSide)) }
   /// The strokes the owner makes, chosen with keys 1 to 7, each saved under its own name.
   static let kinds = ["pinch-out-slow", "pinch-out-fast", "pinch-corner", "pinch-in-past-max", "double-tap", "pinch-pan", "lift-mid-band"]
   lazy var kind = name
+  let grid = ZoomGrid(frame: .zero)
   var savedOf: [String: Int] = [:]
 
   func zoomTitle() {
@@ -177,8 +233,13 @@ final class Reference: NSObject, NSApplicationDelegate {
     scroll.minMagnification = 0.25
     scroll.maxMagnification = 2
     scroll.backgroundColor = NSColor(red: 0x1c / 255, green: 0x1c / 255, blue: 0x1e / 255, alpha: 1)
-    scroll.documentView = Board(frame: NSRect(x: 0, y: 0, width: zoomSide, height: zoomSide))
+    scroll.documentView = Self.zoomBoard()
     window.contentView = scroll
+    scroll.addSubview(grid, positioned: .above, relativeTo: scroll.contentView)
+    scroll.contentView.postsBoundsChangedNotifications = true
+    NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: nil) { [unowned self] _ in
+      MainActor.assumeIsolated { grid.update(scroll) }
+    }
     window.center()
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
@@ -251,7 +312,7 @@ final class Reference: NSObject, NSApplicationDelegate {
     // from 100 %, a fast pinch runs out of the fingers' spread at about 26 %, before AppKit's band past 25 %
     let z: CGFloat = ["pinch-out-fast", "pinch-corner", "lift-mid-band"].contains(kind) ? 0.5 : 1
     scroll.magnification = z
-    let at = kind == "pinch-corner" ? NSPoint.zero : NSPoint(x: zoomSide / 2 - stage.width / z / 2, y: zoomSide / 2 - stage.height / z / 2)
+    let at = kind == "pinch-corner" ? NSPoint.zero : NSPoint(x: Self.zoomSide / 2 - stage.width / z / 2, y: Self.zoomSide / 2 - stage.height / z / 2)
     scroll.contentView.scroll(to: at)
     scroll.reflectScrolledClipView(scroll.contentView)
     writer = FrameWriter(name: kind)
