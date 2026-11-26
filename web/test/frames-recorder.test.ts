@@ -158,7 +158,7 @@ function wheels(pinching = () => false) {
   const s = setup();
   let fire: (() => void) | null = null;
   const w = new WheelFrames(s.r, { rest: 120, setTimer: (f) => ((fire = f), 1), clearTimer: () => (fire = null), pinching });
-  const ev = (deltaY: number, mods: { ctrlKey?: boolean; deltaMode?: number } = {}) => ({ deltaX: 0, deltaY, deltaMode: 0, ctrlKey: false, metaKey: false, ...mods });
+  const ev = (deltaY: number, mods: { ctrlKey?: boolean; deltaMode?: number } = {}) => ({ deltaX: 0, deltaY, deltaMode: 0, ctrlKey: false, metaKey: false, clientX: 0, clientY: 0, ...mods });
   return { ...s, w, ev, rest: () => fire?.() };
 }
 
@@ -193,4 +193,11 @@ test("a wheel stream ends after it rests", () => {
   rest();
   tick();
   assert.deepEqual(col("wheelPhase").slice(0, 2), [1, 8]);
+});
+
+test("a ⌃-wheel pinch's frames hold where it zooms", () => {
+  const { w, tick, col } = wheels();
+  w.take({ deltaX: 0, deltaY: 5, deltaMode: 0, ctrlKey: true, metaKey: false, clientX: 300, clientY: 200 });
+  tick();
+  assert.deepEqual([col("px")[0], col("py")[0]], [300, 200]);
 });
