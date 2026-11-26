@@ -5,7 +5,7 @@ import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
 import { referenceStart, sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
-import { wheelAction } from "./wheel.ts";
+import { wheelAction, wheelOnCamera } from "./wheel.ts";
 import { command, keyName, onMac, perform } from "./keys.ts";
 import { clipHTML, clipText, readClip } from "./clip.ts";
 import type { Clip } from "./types.ts";
@@ -226,10 +226,7 @@ addEventListener("wheel", (e) => {
   e.preventDefault();
   // should Safari also send the pinch as ⌃-wheel, it would zoom twice
   if (pinch !== null && e.ctrlKey) return;
-  const a = wheelAction(e);
-  const view = app.view;
-  if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
-  else view.wheelPan(a.pan!);
+  wheelOnCamera(app.view, e);
   // what a held drag is over has moved
   if (app.input.drag) app.input.dragMove(app.input.drag.last);
 }, { passive: false });
