@@ -1,5 +1,5 @@
 // The owner's 16 pans (straight, diagonal, flicks), recorded on 2026-11-26 in the reference app with its axes free
-// (build/reference/pans), as AppKit drew them and replayed them, and as the Mac app replayed them on a board as wide as
+// (scripts/reference-strokes/pans), as AppKit drew them and replayed them, and as the Mac app replayed them on a board as wide as
 // AppKit's (fixtures/mac-pans/board.breezy). Each build's findings are held in mac-pans-known.json, a ratchet as
 // mac-pinch.test.ts's. The pinches could not see the owner's diagonal pans held to one axis (#327): none of them pans
 // alone, and no rule followed a pan's travel; path does, and these strokes give it pans.

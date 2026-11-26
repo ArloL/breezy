@@ -68,7 +68,7 @@ async function main() {
   const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
   const build = arg("--build"), pan = arg("--pan") ?? "native";
   if (!build || !["native", "camera"].includes(pan)) throw new Error("usage: web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--smoke] [--repeats 1]");
-  const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "", repeats = Number(arg("--repeats") ?? 1);
+  const strokes = arg("--strokes") ?? join(repo, "scripts/reference-strokes/pinches"), only = arg("--only") ?? "", repeats = Number(arg("--repeats") ?? 1);
   const smoke = process.argv.includes("--smoke"), list = arg("--list")?.split(",");
   // --wide: a board as wide as the reference app's, for pans that travel past an empty board's edge (web/sample.ts)
   const wide = process.argv.includes("--wide") ? "&wide" : "";

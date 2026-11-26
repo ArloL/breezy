@@ -3,7 +3,7 @@
 //
 //   node scripts/frames-fixture.ts --app <Breezy.app> --build <name> [--strokes <dir>] [--out <dir>] [--board <file>] [--only <prefix>] [--load]
 //
-// Each stroke the reference app kept in --strokes (build/reference-strokes/take-5) is replayed with -BreezyReplay into
+// Each stroke the reference app kept in --strokes (scripts/reference-strokes/pinches; the pans in …/pans) is replayed with -BreezyReplay into
 // the app on scripts/selftest/frames.breezy; its track goes to scripts/test/fixtures/mac-pinch/<build>/<stroke>.json
 // and the owner's own, as recorded, to …/reference/<stroke>.json. Given BreezyReference.app, it replays into the
 // reference app's --zoom instead, the replay's own error to compare Breezy's with. --load keeps every core busy.
@@ -20,7 +20,7 @@ const repo = new URL("..", import.meta.url).pathname;
 const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
 const app = arg("--app"), build = arg("--build");
 if (!app || !build) throw new Error("usage: frames-fixture.ts --app <Breezy.app> --build <name> [--strokes <dir>] [--only <prefix>] [--load]");
-const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "";
+const strokes = arg("--strokes") ?? join(repo, "scripts/reference-strokes/pinches"), only = arg("--only") ?? "";
 // --out keeps a set of strokes apart from the pinches': the pans, whose builds are not the pinches' (mac-pans); --board
 // replays them on another board, as the pans' as wide as the reference app's (mac-pans/board.breezy)
 const out = arg("--out") ? join(repo, arg("--out")!) : join(repo, "scripts/test/fixtures/mac-pinch");
