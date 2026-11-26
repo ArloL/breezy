@@ -79,6 +79,16 @@ jobs:
         path: ~/Library/Caches/ms-playwright
     - name: Install Chromium, WebKit and Firefox
       run: npx playwright-core install chromium webkit firefox
+    # the owner's 41 strokes as synthetic input, a browser to a process side by side (scenarios/strokes.e2e.ts)
+    - name: The owner's strokes in Chromium, WebKit and Firefox
+      timeout-minutes: 12
+      run: |
+        mkdir -p build
+        for b in chromium webkit firefox; do STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts > "build/strokes-$b.txt" 2>&1 & done
+        failed=0
+        for job in $(jobs -p); do wait "$job" || failed=1; done
+        cat build/strokes-*.txt
+        exit "$failed"
     - name: Build the Mac app
       run: |
         xcodegen generate
