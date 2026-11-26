@@ -38,6 +38,9 @@ private func cases() throws -> BoardCases { try JSONDecoder().decode(BoardCases.
 @Test func theBoardAsDrawnCoversItsReachInWholePoints() {
   #expect(Rect(x: 1646, y: -428.4, w: 1600, h: 1066.6666666666667).outward == Rect(x: 1646, y: -429, w: 1600, h: 1068))
   #expect(Rect(x: -1194, y: -1194, w: 2388, h: 2388).outward == Rect(x: -1194, y: -1194, w: 2388, h: 2388))
+  // taken in at a fractional top, the board's bottom stays: -1196.3 + 3110.3 is 1914.0000000000002, which grew it 1 pt
+  let shown = Rect(x: -1194, y: -1196.3, w: 1358.5, h: 941.9)
+  #expect(Rect(x: -1194, y: -1194, w: 3156, h: 3108).union(shown).outward == Rect(x: -1194, y: -1197, w: 3156, h: 3111))
 }
 
 @Test func whatShowedWhenTheViewLastRestedIsAllItKeeps() {

@@ -49,9 +49,11 @@ extension Rect {
     return Rect(x: x0, y: y0, w: max(x + w, o.x + o.w) - x0, h: max(y + h, o.y + o.h) - y0)
   }
 
-  /// The least rect on whole points that holds this one.
+  /// The least rect on whole points that holds this one. An edge within rounding error of a whole point is on it: a
+  /// union's far edge, x + w, comes back from its own sum a hair past the point it was.
   public var outward: Rect {
-    let x0 = x.rounded(.down), y0 = y.rounded(.down)
-    return Rect(x: x0, y: y0, w: (x + w).rounded(.up) - x0, h: (y + h).rounded(.up) - y0)
+    func whole(_ v: Double, _ r: FloatingPointRoundingRule) -> Double { abs(v - v.rounded()) < 1e-9 ? v.rounded() : v.rounded(r) }
+    let x0 = whole(x, .down), y0 = whole(y, .down)
+    return Rect(x: x0, y: y0, w: whole(x + w, .up) - x0, h: whole(y + h, .up) - y0)
   }
 }
