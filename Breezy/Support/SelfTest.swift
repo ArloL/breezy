@@ -39,6 +39,7 @@ enum SelfTest {
     case "bounded-board": boundedBoard(d)
     case "bounded-rests": MainActor.assumeIsolated { boundedRests(d) }
     case "fades": MainActor.assumeIsolated { fades(d) }
+    case "diagonal-pan": diagonalPan(d)
     default: finish(name, "unknown check")
     }
   }
@@ -340,6 +341,37 @@ extension SelfTest {
   /// The scroll view's document is the board: its cards and lanes, 1,194 pt round them, and what showed at rest, so
   /// that its edge shows only while the view is pulled past it, and AppKit springs it back. Grown at its left and top
   /// and shrunk back, by a card or by a zoom, nothing on screen moves. With -BreezyShots <dir> it captures each step.
+  /// Two fingers moving left and up together pan the view both ways together: an NSScrollView takes a scroll along the
+  /// axis it starts on only, unless told otherwise, and the owner's diagonal pans each moved one way (2611.0.205).
+  fileprivate static func diagonalPan(_ d: Driver) {
+    let name = "diagonal-pan", sv = d.wc.scrollView, c = d.canvas
+    func scroll(_ phase: CGScrollPhase, _ dx: Int32, _ dy: Int32) {
+      let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: dy, wheel2: dx, wheel3: 0)!
+      e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+      e.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase.rawValue))
+      sv.scrollWheel(with: NSEvent(cgEvent: e)!)
+    }
+    d.later(0.5) {
+      let before = c.showing.origin
+      scroll(.began, 0, 0)
+      var steps = 10
+      func step() {
+        scroll(.changed, 12, 10)
+        steps -= 1
+        guard steps == 0 else { return d.later(0.016, step) }
+        scroll(.ended, 0, 0)
+        d.later(1.0) {
+          let after = c.showing.origin, moved = (x: abs(after.x - before.x), y: abs(after.y - before.y))
+          if moved.x < 50 || moved.y < 50 {
+            finish(name, "a pan of 120 by 100 pt moved the view \(Int(moved.x)) by \(Int(moved.y)) pt, from \(before) to \(after) at \(sv.magnification)")
+          }
+          finish(name, nil)
+        }
+      }
+      d.later(0.016, step)
+    }
+  }
+
   fileprivate static func boundedBoard(_ d: Driver) {
     let name = "bounded-board"
     let c = d.canvas, sv = d.wc.scrollView, clip = sv.contentView, grid = d.wc.grid
