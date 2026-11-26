@@ -136,7 +136,6 @@ jobs:
   # job's devices take 40, so that a question about them alone is asked with only=strokes
   strokes:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'strokes' }}
-    # the desktop job's runner, whose own ratchet scenarios/strokes-known/ci is
     runs-on: macos-latest
     timeout-minutes: 45
     permissions:
@@ -156,29 +155,33 @@ jobs:
       with:
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
         path: ~/Library/Caches/ms-playwright
-    - name: Install WebKit and Firefox
-      run: npx playwright-core install webkit firefox
-    # the owner's 41 strokes as synthetic input in WebKit and Firefox, a browser at a time; not Chromium, which on this
-    # runner drew at 27 fps alone (21 beside the others) and took 21 of the 41 too slowly to judge, so it runs on the
-    # owner's Mac; each line marked with its browser, each replay's frames and findings kept (scenarios/strokes.e2e.ts),
-    # against CI's own ratchet
-    - name: The owner's strokes in WebKit and Firefox
-      # a report until two runs agree with CI's ratchet, scenarios/strokes-known/ci (ruled 2026-11-26)
-      continue-on-error: true
-      timeout-minutes: 32
+    - name: Install Firefox
+      run: npx playwright-core install firefox
+    # the owner's 41 strokes as synthetic input in Firefox, held to Firefox's own real-input captures of them
+    # (scenarios/strokes.e2e.ts): CI's runner drew WebKit and Firefox at 60 Hz and Chromium at 27 fps, where against
+    # AppKit a different stroke crossed its line each run; each line marked, each replay's frames and findings kept
+    - name: The owner's strokes in Firefox
+      timeout-minutes: 12
       run: |
         mkdir -p build/strokes
-        failed=0
-        for b in webkit firefox; do
-          STROKES_DUMP=build/strokes/frames STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee "build/strokes/$b.txt" | sed "s/^/$b: /" || failed=1
-        done
-        exit "$failed"
+        STROKES_DUMP=build/strokes/frames STROKES_BROWSERS=firefox node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee build/strokes/firefox.txt | sed "s/^/firefox: /"
+    # that it sees what it is for: a native board's camera read short of its scroll, planted (scripts/plants.ts)
+    - name: Plants
+      if: ${{ !cancelled() }}
+      timeout-minutes: 15
+      run: node scripts/plants.ts --level L6 --where strokes
     - if: ${{ always() }}
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         if-no-files-found: ignore
         name: strokes
         path: build/strokes
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        if-no-files-found: ignore
+        name: plants-strokes
+        path: build/plants
   # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
   # cannot run one: Apple Silicon has no nested virtualization (the emulator segfaulted booting in software), and the
   # Intel one, which has it, had not booted after 14 min (probed 2026-10-28, run 40655831748)

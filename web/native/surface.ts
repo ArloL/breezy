@@ -1,3 +1,4 @@
+import { planted } from "../sync/plant.ts";
 import { camOf, isEcho, layoutOf, pinchCamera, pinchTransform, px, scrollOf } from "./geometry.ts";
 import type { Flight } from "../flight.ts";
 import type { Grid } from "../grid.ts";
@@ -204,7 +205,7 @@ export class NativeSurface implements Surface {
     this.written = { x: NaN, y: NaN };
     this.following = true;
     try {
-      this.view.camera.set(camOf(at, this.shown.board, this.shown.zoom));
+      this.view.camera.set(camOf(planted("native-scroll-scale") ? { x: at.x * 0.95, y: at.y * 0.95 } : at, this.shown.board, this.shown.zoom));
     } finally {
       this.following = false;
     }
@@ -215,7 +216,7 @@ export class NativeSurface implements Surface {
     const at = this.at();
     this.scrolling = false;
     this.flight.note("input", "native scroll end", { at: [r(at.x), r(at.y)] });
-    if (!this.userScrolled || this.pinching) return;
+    if (!this.userScrolled || this.pinching || planted("native-no-settle")) return;
     this.userScrolled = false;
     this.settle();
   }
