@@ -413,6 +413,15 @@ export class Library {
       : { title: "Not Sent", message: "Breezy couldn’t reach the server of a shared space. Try again once it can.", cancel: null });
   }
 
+  /** That Looked Off: sends the recording with its last seconds of frames as what looked off, every time it is asked. */
+  async lookedOff() {
+    const sent = await this.reporter.report("off");
+    await ask(sent
+      ? { title: "Sent", message: "Tell Claude what looked off.", cancel: null }
+      : { title: "Not Sent", message: "Breezy couldn’t reach the server of a shared space. Try again once it can.", cancel: null });
+    return sent;
+  }
+
   async askName() {
     const r = await ask({ title: "Your Name", message: "Others in your spaces see it beside your cursor.", value: this.spaces.me.name, placeholder: "Name", ok: "OK" });
     const name = r?.value?.trim();

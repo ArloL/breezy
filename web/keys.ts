@@ -3,7 +3,7 @@ import type { Card, Point } from "./types.ts";
 
 export type Command =
   | "undo" | "redo" | "select-all" | "find" | "find-next" | "find-previous" | "find-selection"
-  | "zoom-in" | "zoom-out" | "zoom-reset" | "end-edit" | "switch-side" | "turn" | "escape" | "delete" | "new-lane"
+  | "zoom-in" | "zoom-out" | "zoom-reset" | "end-edit" | "switch-side" | "turn" | "escape" | "delete" | "new-lane" | "looked-off"
   | `colour-${string}`;
 
 export type Typing = "card" | "lane" | "field" | null;
@@ -13,6 +13,7 @@ export type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey
 /** What `perform` uses of the app. */
 export interface KeyApp {
   state: { selection: ReadonlySet<string>; turned: string | null };
+  library?: { lookedOff(): Promise<boolean> };
   ui: { openFind(text?: string): void; findStep(d: number): void };
   view: { toWorld(p: Point): Point };
   undo(): void;
@@ -49,6 +50,8 @@ export function command(e: KeyEvent, { mac, typing }: { mac: boolean; typing: Ty
   const mod = mac ? e.metaKey : e.ctrlKey;
   const other = mac ? e.ctrlKey : e.metaKey;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  // ⌥⌘L, as the Mac app's Help ▸ That Looked Off, wherever the keyboard is: by its place, as ⌥L types ¬
+  if (mod && e.altKey && !other && !e.shiftKey && e.code === "KeyL") return "looked-off";
   if (mod && !e.altKey && !other) {
     const cmd = modified(k, e.shiftKey);
     if (!cmd) return null;
@@ -90,6 +93,7 @@ export function perform(app: KeyApp, cmd: Command, mouse: KeyMouse) {
   const s = app.state;
   const ui = app.ui;
   switch (cmd) {
+    case "looked-off": return void app.library?.lookedOff();
     case "undo": return app.undo();
     case "redo": return app.redo();
     case "select-all": return app.selectAll();
