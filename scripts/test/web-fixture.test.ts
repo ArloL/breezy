@@ -2,7 +2,7 @@
 // put it (Breezy/Support/Replay.swift), and the events moved from the reference's view onto the page's.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { offsetOf, startCam, strokeOf } from "../web-fixture.ts";
+import { mergeSpread, missed, offsetOf, startCam, strokeOf } from "../web-fixture.ts";
 
 test("startCam places a stroke as Replay.swift does", () => {
   // 100, 50 pt from where a view centred on the reference's 40,032 pt board would begin, at 100 %: as far from the
@@ -25,4 +25,18 @@ test("a capture keeps the stroke, from the frame before it began, not the page's
   assert.deepEqual(strokeOf({ fields, rows }, 100).rows, [[90, 0.5], [120, 0.6], [200, 0.7]]);
   // nothing before: all of it
   assert.deepEqual(strokeOf({ fields, rows }, -5).rows, rows);
+});
+
+test("a stroke whose scrolls or pinches reached no frame is a failed replay; a double tap no page sees is not", () => {
+  const fields = ["t", "wheelDY", "magnify", "gesture"];
+  const loaded = { fields, rows: [[0, 0, 0, 0], [13, 0, 0, 0]] };
+  assert.equal(missed(loaded, 100, "posted 87 of 87: gesture 8=87, magnification -2.16"), true);
+  assert.equal(missed(loaded, 100, "posted 96 of 96: scroll=96, magnification 0.0"), true);
+  assert.equal(missed(loaded, 100, "posted 1 of 1: gesture 22=1, magnification 0.0"), false);
+  const pinched = { fields, rows: [[0, 0, 0, 0], [120, 0, -0.1, 1]] };
+  assert.equal(missed(pinched, 100, "posted 87 of 87: gesture 8=87, magnification -2.16"), false);
+});
+
+test("a run's spreads join those of strokes it did not replay", () => {
+  assert.deepEqual(mergeSpread({ a: 0.1, b: 0.2 }, { b: 0.05, c: 0.3 }), { a: 0.1, b: 0.05, c: 0.3 });
 });
