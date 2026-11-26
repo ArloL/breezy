@@ -1,95 +1,127 @@
-// Replays the owner's reference strokes into Firefox on the dev server, native panning on, and keeps each page's frames
-// as the fixture the rules over frames judge the web app by (docs/superpowers/plans/2026-11-26-breezy-native-reference-2-web.md,
-// Task 7), as scripts/frames-fixture.ts does for the Mac app:
+// Replays the owner's reference strokes into a Firefox that Playwright launches, never the owner's, native panning on or
+// off, and keeps each page's frames for the rules over frames (docs/superpowers/plans/2026-11-26-breezy-feel-levels.md,
+// Task 3), as scripts/frames-fixture.ts does for the Mac app:
 //
-//   node scripts/web-fixture.ts --build <name> [--strokes <dir>] [--only <prefix>] [--repeats 3]
+//   node scripts/web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--smoke] [--repeats 1]
 //
-// The dev server must be up (npm run dev) with one Firefox page on it, never breezy.k5d.de. Each stroke opens the
-// reference's empty board where the stroke began, as Breezy/Support/Replay.swift places it, and is posted as fresh
-// events by scripts/post-stroke.swift, moved from the reference's window onto Firefox's. The first replay goes to
-// scripts/test/fixtures/web-pinch/<build>/<stroke>.json, the others to build/web-pinch/<build>-<n>/, for the spread of
-// Firefox's own repeats. Replays move the cursor and take the front window: leave the Mac alone while they run.
+// The site is built and served here. Each stroke opens the reference's empty board where the stroke began, in a view of
+// the reference's size, as Breezy/Support/Replay.swift places it, and is posted as fresh events by
+// scripts/post-stroke.swift, moved from the reference's view onto the page's. The first replay goes to
+// scripts/test/fixtures/web-pinch/<build>-<pan>/<stroke>.json, the others to build/web-pinch/<build>-<pan>-<n>/; with
+// three or more, each stroke's spread, how far its repeats' zoom parted, goes to …/<build>-<pan>-spread.json. Replays
+// move the cursor and take the front window: leave the Mac alone while they run.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { FrameTrack, Recording } from "../web/flight.ts";
-
-const repo = new URL("..", import.meta.url).pathname;
-const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
-const build = arg("--build");
-if (!build) throw new Error("usage: web-fixture.ts --build <name> [--strokes <dir>] [--only <prefix>] [--repeats 3]");
-const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "", repeats = Number(arg("--repeats") ?? 3);
-const DEV = "http://127.0.0.1:58565", WHO = "fixture", flight = join(repo, `build/flight/firefox ${WHO}.json`);
-setTimeout(() => { console.error("the replays ran past 60 minutes"); process.exit(1); }, 60 * 60_000).unref();
 
 /** The reference app's board and view, and where Breezy's reference page puts its empty board: Replay.swift's. */
 const REFERENCE_BOARD = 40032, REFERENCE_VIEW = { w: 1495, h: 932 }, REFERENCE_STAGE_H = 949, MARGIN = 1194;
-interface Stroke { start: [number, number, number]; window: [number, number, number, number]; context?: { name?: string }; raw: [string, string][] }
+/** One stroke of each kind, for a quick pass. */
+const SMOKE = ["double-tap-7", "lift-mid-band-17", "pinch-corner-1", "pinch-in-past-max-1", "pinch-out-fast-6", "pinch-out-slow-1", "pinch-pan-12"];
+interface Stroke { start: number[]; window?: number[]; context?: { name?: string }; raw?: [string, string][] }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const read = (): Recording | null => { try { return JSON.parse(readFileSync(flight, "utf8")); } catch { return null; } };
-const osa = (...lines: string[]) => execFileSync("osascript", lines.flatMap((l) => ["-e", l]), { encoding: "utf8", timeout: 10_000 }).trim();
-
-/** The page's camera for `s`'s start, a stage `w` × `h` pt: as far from the board's centre as the reference's was from
- * its board's, or from the top left for a pinch at the corner, at its zoom. */
-export function startCam(s: Pick<Stroke, "start" | "context">, w: number, h: number) {
+/** The page's camera for `s`'s start, in a view the reference's size: as far from the board's centre as the reference's
+ * was from its board's, or from the top left for a pinch at the corner, at its zoom. */
+export function startCam(s: Pick<Stroke, "start" | "context">) {
   const [z, x, y] = s.start, corner = s.context?.name === "pinch-corner";
   const refAt = (view: number) => (corner ? 0 : REFERENCE_BOARD / 2 - view / z / 2);
   const dx = x - refAt(REFERENCE_VIEW.w), dy = y - refAt(REFERENCE_VIEW.h);
-  const wx = corner ? -MARGIN + dx : -w / z / 2 + dx, wy = corner ? -MARGIN + dy : -h / z / 2 + dy;
+  const wx = (corner ? -MARGIN : -REFERENCE_VIEW.w / z / 2) + dx, wy = (corner ? -MARGIN : -REFERENCE_VIEW.h / z / 2) + dy;
   return { x: -wx * z, y: -wy * z, zoom: z };
 }
 
-/** Opens `url` in the dev server's one page and waits for that page's first recording. */
-async function open(url: string): Promise<Recording> {
-  const was = read()?.origin;
-  const r = await fetch(`${DEV}/goto?url=${encodeURIComponent(url)}`, { method: "POST", headers: { "X-Breezy-Replay": "1" }, signal: AbortSignal.timeout(3000) })
-    .then((r) => r.json() as Promise<{ pages: number }>).catch(() => { throw new Error("start the dev server: npm run dev"); });
-  if (r.pages !== 1) throw new Error(`${r.pages} pages on the dev server: open one Firefox tab on it`);
-  for (const until = Date.now() + 15_000; Date.now() < until; await sleep(300)) {
-    const now = read();
-    if (now && now.origin !== was && now.frames?.rows.length) return now;
-  }
-  throw new Error("the page posted no recording of its own in 15 s");
+/** From the reference window's view, the bottom `REFERENCE_STAGE_H` pt of `window` [x, y, w, h], to the page's content,
+ * at `inner` on screen: both top left, in screen points from the top left. */
+export function offsetOf([x, y, , h]: number[], inner: { x: number; y: number }) {
+  return { dx: inner.x - x, dy: inner.y - (y + h - REFERENCE_STAGE_H) };
 }
 
-/** Firefox's front window, in screen points from the top left. */
-function firefoxWindow() {
-  osa('tell application "Firefox" to activate');
-  const [x, y, w, h] = osa('tell application "System Events" to tell process "Firefox" to get {position, size} of front window').split(/,\s*/).map(Number);
-  return { x, y, w, h };
+/** `t` from the frame before `from` on, the page's clock: the stroke and the state it began in, not the page's setup,
+ * as a stroke begun at 50 % on the empty board opens with the view past it, which camera mode takes in at its first rest
+ * and the rules read as grey and a flicker before the gesture. */
+export function strokeOf(t: FrameTrack, from: number): FrameTrack {
+  const i = t.rows.findIndex((r) => (r[0] ?? 0) >= from);
+  return { fields: t.fields, rows: i <= 0 ? t.rows : t.rows.slice(i - 1) };
 }
 
-const poster = join(repo, "build/post-stroke");
-if (!existsSync(poster)) execFileSync("swiftc", ["-O", join(repo, "scripts/post-stroke.swift"), "-o", poster], { stdio: "inherit", timeout: 300_000 });
-const small = (t: FrameTrack): FrameTrack => ({ fields: t.fields, rows: t.rows.map((r) => r.map((v) => (v == null ? v : Math.round(v * 1e4) / 1e4))) });
+async function main() {
+  const repo = new URL("..", import.meta.url).pathname;
+  const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
+  const build = arg("--build"), pan = arg("--pan") ?? "native";
+  if (!build || !["native", "camera"].includes(pan)) throw new Error("usage: web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--smoke] [--repeats 1]");
+  const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "", repeats = Number(arg("--repeats") ?? 1);
+  const smoke = process.argv.includes("--smoke");
+  setTimeout(() => { console.error("the replays ran past 45 minutes"); process.exit(1); }, 45 * 60_000).unref();
 
-const first = await open(`/?reference=0,0&pan=native&who=${WHO}`);
-const f0 = first.frames!, row = f0.rows.at(-1)!, stage = { w: row[f0.fields.indexOf("viewW")]!, h: row[f0.fields.indexOf("viewH")]! };
-console.log(`Firefox's view ${stage.w} × ${stage.h} pt`);
-for (const name of readdirSync(strokes).filter((f) => f.endsWith(".json") && f.startsWith(only)).sort()) {
-  const s: Stroke = JSON.parse(readFileSync(join(strokes, name), "utf8"));
-  for (let n = 1; n <= repeats; n++) {
-    const c = startCam(s, stage.w, stage.h);
-    await open(`/?reference=${c.x},${c.y},${c.zoom}&pan=native&who=${WHO}`);
-    const ff = firefoxWindow(), [rx, ry, , rh] = s.window;
-    // from the reference's view onto Firefox's: their windows' content areas, top left to top left
-    const dx = ff.x - rx, dy = ff.y + ff.h - stage.h - (ry + rh - REFERENCE_STAGE_H);
-    await sleep(500);
-    const said = execFileSync(poster, [join(strokes, name), String(dx), String(dy)], { encoding: "utf8", timeout: 60_000 }).trim();
-    const posted = Date.now();
-    // the page posts every 5 s while its recording changes: once a whole 6 s passes with no post after the stroke and
-    // its rest, the file holds all of it
-    let r: Recording | null = null;
-    for (const until = posted + 30_000; Date.now() < until; await sleep(300)) {
-      const at = statSync(flight).mtimeMs;
-      if (at > posted - 5000 && Date.now() - Math.max(at, posted + 1500) > 6000 && (r = read())?.frames) break;
+  const { firefox } = await import("playwright-core");
+  const { buildSite, serveStatic } = await import("../scenarios/browser.ts");
+  const { curve } = await import("./frames/rules.ts");
+  const site = mkdtempSync(join(tmpdir(), "web-fixture-"));
+  buildSite(site);
+  const server = serveStatic(site, 58571);
+  const poster = join(repo, "build/post-stroke");
+  if (!existsSync(poster)) execFileSync("swiftc", ["-O", join(repo, "scripts/post-stroke.swift"), "-o", poster], { stdio: "inherit", timeout: 300_000 });
+  const browser = await firefox.launch({ headless: false });
+  const page = await browser.newPage({ viewport: { width: REFERENCE_VIEW.w, height: REFERENCE_VIEW.h } });
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const frames = () => page.evaluate(() => (globalThis as { breezyFlight?: { recording(): Recording } }).breezyFlight?.recording().frames ?? null);
+  // Playwright's Firefox to the front, as the poster posts into whatever is in front: by its process, run from
+  // Playwright's own folder, as the owner's Firefox has the same name
+  // Playwright's own folder, as the owner's Firefox has the same name; of its processes, the one with a window
+  let pid = "";
+  const front = () => {
+    for (const p of pid ? [pid] : execFileSync("pgrep", ["-f", "ms-playwright/firefox"], { encoding: "utf8" }).trim().split("\n")) {
+      try {
+        execFileSync("osascript", ["-e", `tell application "System Events" to set frontmost of (first process whose unix id is ${p}) to true`], { timeout: 10_000, stdio: "ignore" });
+        return void (pid = p);
+      } catch {}
     }
-    if (!r?.frames) throw new Error(`${name}: no frames posted after the stroke`);
-    const dir = n === 1 ? join(repo, "scripts/test/fixtures/web-pinch", build) : join(repo, "build/web-pinch", `${build}-${n}`);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, name), JSON.stringify(small(r.frames)) + "\n");
-    console.log(`${name} ${n}/${repeats}: ${said}, ${r.frames.rows.length} frames`);
+    throw new Error("no window of Playwright's Firefox to bring to the front");
+  };
+  const small = (t: FrameTrack): FrameTrack => ({ fields: t.fields, rows: t.rows.map((r) => r.map((v) => (v == null ? v : Math.round(v * 1e4) / 1e4))) });
+
+  const names = readdirSync(strokes).filter((f) => f.endsWith(".json") && f.startsWith(only) && (!smoke || SMOKE.includes(f.replace(".json", "")))).sort();
+  const spread: Record<string, number> = {};
+  try {
+    for (const name of names) {
+      const s: Stroke = JSON.parse(readFileSync(join(strokes, name), "utf8")), kept: FrameTrack[] = [];
+      for (let n = 1; n <= repeats; n++) {
+        const c = startCam(s);
+        await page.goto(`http://localhost:58571/?reference=${c.x},${c.y},${c.zoom}&pan=${pan}`);
+        await page.waitForFunction(() => (globalThis as { breezyFlight?: unknown }).breezyFlight, null, { timeout: 15_000 });
+        front();
+        await sleep(400);
+        const inner = await page.evaluate(() => ({ x: (window as unknown as { mozInnerScreenX: number }).mozInnerScreenX, y: (window as unknown as { mozInnerScreenY: number }).mozInnerScreenY }));
+        const { dx, dy } = offsetOf(s.window ?? [0, 0, 0, REFERENCE_STAGE_H], inner);
+        const began = await page.evaluate(() => performance.now());
+        const said = execFileSync(poster, [join(strokes, name), String(dx), String(dy)], { encoding: "utf8", timeout: 60_000 }).trim();
+        // done once its last frame has stood 1.5 s: the recorder writes none while the view is still
+        let t: FrameTrack | null = null, last = NaN, since = Date.now();
+        for (const until = Date.now() + 20_000; Date.now() < until; await sleep(250)) {
+          t = await frames();
+          const at = t?.rows.at(-1)?.[0] ?? NaN;
+          if (at !== last) (last = at), (since = Date.now());
+          else if (Date.now() - since > 1500) break;
+        }
+        if (!t) throw new Error(`${name}: the page kept no frames`);
+        const dir = n === 1 ? join(repo, "scripts/test/fixtures/web-pinch", `${build}-${pan}`) : join(repo, "build/web-pinch", `${build}-${pan}-${n}`);
+        mkdirSync(dir, { recursive: true });
+        t = strokeOf(t, began);
+        writeFileSync(join(dir, name), JSON.stringify(small(t)) + "\n");
+        kept.push(t);
+        console.log(`${name} ${n}/${repeats}: ${said}, ${t.rows.length} frames`);
+      }
+      const up = (say: string) => Number(/up to ([0-9.]+)/.exec(say)?.[1] ?? 0);
+      if (kept.length >= 3) spread[name.replace(".json", "")] = Math.round(Math.max(0, ...kept.slice(1).flatMap((k) => curve(k, kept[0], "zoom", 0).map((f) => up(f.say)))) * 1000) / 1000;
+    }
+    if (Object.keys(spread).length) writeFileSync(join(repo, "scripts/test/fixtures/web-pinch", `${build}-${pan}-spread.json`), JSON.stringify(spread, null, 1) + "\n");
+  } finally {
+    await browser.close();
+    server.close();
   }
 }
-process.exit(0);
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
