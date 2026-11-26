@@ -270,3 +270,12 @@ test("AppKit's replays still pass every rule", () => {
     assert.deepEqual(check(read(`${dir}reference-replay/${s}`), read(`${dir}reference/${s}`), REPLAYED), [], s);
   }
 });
+
+test("curve holds a track still past its last frame, to the reference's end, as a recorder writes none while still", () => {
+  // a double tap the page never saw: two rows at load, where the reference zoomed from 1 to 1.5 over 300 ms
+  const page = track([{ t: 0 }, { t: 13 }]);
+  const ref = track(range(1, 1.5, 20).map((z, i) => ({ t: i * 16, zoom: z, gesture: i === 0 ? 3 : 0 })));
+  const f = curve(page, ref, "zoom", 0.05);
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.match(f[0].say, /up to 0\.5/);
+});
