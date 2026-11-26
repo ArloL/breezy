@@ -13,6 +13,7 @@ extension CanvasView {
   func turn(_ id: String?) {
     let id = id.flatMap { board.card($0) == nil ? nil : $0 }
     guard id != turned else { return }
+    (enclosingScrollView as? BoardScrollView)?.frames?.wake()
     let affected = [turned, id].compactMap { $0 }
     turned = id
     let fade = Spring.reduced

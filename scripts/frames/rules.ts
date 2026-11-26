@@ -5,7 +5,7 @@ import { column } from "./track.ts";
 import type { FrameTrack } from "../../web/flight.ts";
 
 export interface Finding {
-  rule: "follow" | "coverage" | "continuity" | "flicker" | "scrollers" | "curve";
+  rule: "follow" | "coverage" | "continuity" | "flicker" | "scrollers" | "curve" | "fades" | "editor";
   /** The first and last frame's `t`, in ms. */
   from: number;
   to: number;
@@ -254,3 +254,19 @@ export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number
   for (let u = 0; u <= end; u += 8) { times.push(u + a0); gaps.push(Math.abs(at(pa, u) - at(pb, u))); bad.push(gaps.at(-1)! > tol); }
   return runs(times, bad, "curve", (a, b) => `${field} parted from the reference's by up to ${Math.max(...gaps.slice(a, b + 1)).toFixed(3)}, past ${tol}`);
 }
+
+/** Nothing on the Mac's board animates as its cards change, which AppKit's implicit actions on the cards' host layer did,
+ * fading the whole board in from its last frame (5c41379): no frame with an animation on that layer. */
+export function fades(t: FrameTrack): Finding[] {
+  const n = maybe(t, "fading").map(num), ts = column(t, "t");
+  return runs(ts, n.map((v) => v > 0), "fades", (a, b) => `the cards' host layer animated for ${b - a + 1} frame${b > a ? "s" : ""}: the board cross-faded`);
+}
+
+/** A capture of a card as its editor opens holds its pixels: at each step, a zoom, dark or light and front or back, no
+ * more than `max` of the card's pixels change, as the editor drew text off the bitmap's pixels (5d78bca). */
+export function editorHolds(t: FrameTrack, max = 10): Finding[] {
+  const [z, dark, back, n] = ["zoom", "dark", "back", "changed"].map((f) => column(t, f).map(num));
+  return n.flatMap((c, i) => c > max ? [{ rule: "editor", from: i, to: i,
+    say: `${c} pixels of the card's ${back[i] ? "back" : "front"} changed as its editor opened at ${z[i]} in ${dark[i] ? "dark" : "light"}` }] : []);
+}
+

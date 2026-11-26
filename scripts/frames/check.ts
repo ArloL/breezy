@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { FrameTrack } from "../../web/flight.ts";
-import { continuity, coverage, curve, edgePops, flicker, follow, scrollers, type Finding } from "./rules.ts";
+import { continuity, coverage, curve, edgePops, fades, flicker, follow, scrollers, type Finding } from "./rules.ts";
 
 /** A replay's own error: AppKit's replays of the owner's strokes slipped the board up to 0.8 pt from under the fingers,
  * parted from the owner's zoom by up to 0.113, on fast pinches, and leapt past the board's corner 30 pt a frame further. */
@@ -23,7 +23,7 @@ export const track = (path: string): FrameTrack => {
 /** Every rule's findings over `t`, judged against `ref`'s stroke when given. */
 export function check(t: FrameTrack, ref?: FrameTrack, tol = RECORDED): Finding[] {
   return [...follow(t, tol.follow), ...coverage(t, ref), ...continuity(t), ...flicker(t, ["zoom", "grey", "viewW", "viewH", "boardW", "boardH"]),
-    ...edgePops(t, ref, tol.edge), ...scrollers(t), ...(ref ? curve(t, ref, "zoom", tol.curve) : [])];
+    ...edgePops(t, ref, tol.edge), ...scrollers(t), ...fades(t), ...(ref ? curve(t, ref, "zoom", tol.curve) : [])];
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
