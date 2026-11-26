@@ -551,10 +551,25 @@ extension SelfTest {
       let screen = d.window.convertPoint(toScreen: p)
       CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: (NSScreen.screens.first?.frame.height ?? 0) - screen.y))
       let held = c.convert(p, from: nil)
+      // the scrollers' knobs change with the zoom only, as AppKit's over a document that stays: not as the board grows
+      // for the pinch as it begins, nor as it lets that go at rest
+      func knobs() -> [CGFloat] { [sv.horizontalScroller, sv.verticalScroller].map { $0.map { $0.knobProportion } ?? 0 } }
+      func steady(_ was: [CGFloat], _ when: String) {
+        if zip(was, knobs()).contains(where: { abs($0 - $1) > 0.002 }) { finish(name, "\(when), at a steady zoom, the scrollers' knobs went from \(was) to \(knobs())") }
+      }
+      var before = knobs()
       func step() {
-        guard !events.isEmpty else { return d.later(0.8, next) }
+        guard !events.isEmpty else {
+          let (end, z) = (knobs(), sv.magnification)
+          return d.later(0.8) {
+            if sv.magnification == z { steady(end, "a pinch at rest") }
+            next()
+          }
+        }
         let (phase, m) = events.removeFirst()
         sv.magnify(with: magnifyEvent(phase, m, at: p, in: d.window))
+        if phase == 1 { steady(before, "a pinch begun") }
+        before = knobs()
         d.later(0.016) {
           // the board under the view at every step, not only at rest: AppKit puts the view past the board's top left
           // while it proposes the clip view an origin of 0, 0

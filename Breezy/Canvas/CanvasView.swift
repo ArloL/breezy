@@ -182,6 +182,13 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   // MARK: the board's edge
 
   /// The board, as far as its cards and lanes, the margin, and what the view showed.
+  /// The board as its cards and lanes and their margin make it, whatever the view showed: what the scrollers measure.
+  var steadyBoard: NSRect {
+    let content = BoardBounds.extent(board.cards.map(drawnRect) + board.lanes.map(\.rect))
+    let b = BoardBounds.board(content, seen: nil).outward
+    return NSRect(x: b.x, y: b.y, width: b.w, height: b.h)
+  }
+
   func reachedBoard() -> NSRect {
     let content = BoardBounds.extent(board.cards.map(drawnRect) + board.lanes.map(\.rect))
     let b = reach.board(content)
