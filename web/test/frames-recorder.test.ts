@@ -1,0 +1,126 @@
+// The recorder of frames: a row each animation frame while what shows or the input changes, in the Mac's fields, on a
+// fake clock (docs/superpowers/plans/2026-11-26-breezy-native-reference-2-web.md, Task 3).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { Flight } from "../flight.ts";
+import { FrameRecorder, type FrameSource } from "../frames.ts";
+import type { Cam } from "../types.ts";
+
+function setup() {
+  let now = 0, hidden = false;
+  const queue = new Map<number, (t: number) => void>();
+  let id = 0;
+  const flight = new Flight({ now: () => now });
+  const state = { cam: { x: 0, y: 0, zoom: 1 } as Cam, coverTop: false, grid: 0 };
+  const source: FrameSource = {
+    cam: () => state.cam, stage: () => ({ w: 1200, h: 800 }), board: () => ({ x: -1194, y: -1194, w: 3000, h: 3000 }),
+    coverTop: () => state.coverTop, gridShort: () => state.grid,
+  };
+  const r = new FrameRecorder(flight, source, {
+    raf: (f) => (queue.set(++id, f), id), caf: (i) => queue.delete(i), hidden: () => hidden,
+  });
+  const tick = (n = 1) => {
+    for (let k = 0; k < n; k++) {
+      now += 16;
+      const due = [...queue.values()];
+      queue.clear();
+      for (const f of due) f(now);
+    }
+  };
+  const rows = () => flight.recording().frames?.rows ?? [];
+  const col = (name: string) => rows().map((row) => row[Flight.frameFields.indexOf(name)]);
+  return { r, state, tick, rows, col, queue, setHidden: (h: boolean) => (hidden = h) };
+}
+
+test("a row each frame while the camera moves, one once still, then none", () => {
+  const { r, state, tick, rows, queue } = setup();
+  r.wake();
+  for (let i = 1; i <= 5; i++) {
+    state.cam = { x: -10 * i, y: 0, zoom: 1 };
+    tick();
+  }
+  assert.equal(rows().length, 5);
+  tick(40);
+  assert.equal(rows().length, 6, "one row once still, and no more");
+  assert.equal(queue.size, 0, "the loop stops once still");
+});
+
+test("camX is the board point at the view's top left", () => {
+  const { r, state, tick, col } = setup();
+  state.cam = { x: -200, y: -100, zoom: 2 };
+  r.wake();
+  tick();
+  assert.deepEqual([col("camX")[0], col("camY")[0], col("zoom")[0]], [100, 50, 2]);
+});
+
+test("a native pinch's frames follow its transform", () => {
+  const { r, state, tick, col } = setup();
+  r.magnify(0, "began");
+  for (let i = 1; i <= 4; i++) {
+    state.cam = { x: 0, y: 0, zoom: 1 - i * 0.1 };
+    r.magnify(-0.1, "changed");
+    tick();
+  }
+  assert.deepEqual(col("zoom").map((z) => Math.round(z! * 10) / 10), [0.9, 0.8, 0.7, 0.6]);
+});
+
+test("a begin and an end in one frame both reach the frames", () => {
+  const { r, tick, col } = setup();
+  r.magnify(0, "began");
+  r.magnify(0, "ended");
+  tick(3);
+  assert.deepEqual(col("gesture").slice(0, 2), [1, 3]);
+});
+
+test("wheel deltas are AppKit's way round", () => {
+  const { r, tick, col } = setup();
+  r.wheel(10, 0, 4, 0);
+  tick();
+  assert.deepEqual([col("wheelDX")[0], col("wheelPhase")[0]], [-10, 4]);
+});
+
+test("the first two touches are the fingers, the pinch's centre between them", () => {
+  const { r, tick, col } = setup();
+  r.pointer(7, 100, 200, true);
+  r.pointer(3, 300, 400, true);
+  tick();
+  assert.deepEqual([col("f1x")[0], col("f1y")[0], col("f2x")[0], col("px")[0], col("py")[0]], [300, 400, 100, 200, 300]);
+  r.pointer(3, null, null, true);
+  r.pointer(7, null, null, true);
+  tick();
+  assert.equal(col("f1x")[1], null);
+});
+
+test("a hidden page keeps no loop, and wakes on input", () => {
+  const { r, tick, queue, setHidden, rows } = setup();
+  setHidden(true);
+  r.wake();
+  assert.equal(queue.size, 0);
+  setHidden(false);
+  r.pointer(1, 10, 10, false);
+  assert.equal(queue.size, 1);
+  tick();
+  assert.equal(rows().length, 1);
+});
+
+test("no loop while recording is off", () => {
+  const g = globalThis as { __breezyNoFlight?: boolean };
+  g.__breezyNoFlight = true;
+  try {
+    const { r, queue } = setup();
+    r.wake();
+    r.wheel(1, 1, 1, 0);
+    assert.equal(queue.size, 0);
+  } finally {
+    delete g.__breezyNoFlight;
+  }
+});
+
+test("the top bar covered and the grid short reach the frames", () => {
+  const { r, state, tick, col } = setup();
+  state.coverTop = true;
+  state.grid = 40;
+  r.wake();
+  tick();
+  assert.deepEqual([col("coverTop")[0], col("grid")[0]], [1, 40]);
+});
