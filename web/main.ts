@@ -2,7 +2,7 @@ import { App } from "./app.ts";
 import { box, thrown } from "./flight.ts";
 import { readSight, SightWatch, toldOf } from "./sight.ts";
 import { Gestures, HOLD_MS, holdCheck } from "./gestures.ts";
-import { referenceStart, sampleBoard, stressBoard } from "./sample.ts";
+import { referenceBoard, referenceStart, sampleBoard, stressBoard } from "./sample.ts";
 import { startUpdates } from "./update.ts";
 import { Mouse } from "./mouse.ts";
 import { wheelAction, wheelOnCamera } from "./wheel.ts";
@@ -107,7 +107,7 @@ const pan = panMode(location.search, storedPan());
 if (params.has("record")) void import("./record.ts").then((m) => m.install());
 // ?stress, ?demo and ?reference show boards that are not kept, as before
 const reference = referenceStart(location.search);
-const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : reference ? { cards: [], lanes: [] } : null;
+const scratch = params.has("stress") ? stressBoard() : params.has("demo") ? sampleBoard() : reference ? referenceBoard(location.search) : null;
 const board = document.getElementById("board")!;
 let native = null as NativeSurface | null;
 const app = new App(scratch ?? { cards: [], lanes: [] }, {

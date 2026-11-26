@@ -1,0 +1,13 @@
+{
+ "reference-replay": {
+  "continuity": [
+   "pan-flick-1"
+  ]
+ },
+ "main-2ba8656": {
+  "path": [
+   "pan-flick-2",
+   "pan-flick-3"
+  ]
+ }
+}

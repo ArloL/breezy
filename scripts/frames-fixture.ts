@@ -1,7 +1,7 @@
 // Replays the owner's reference strokes into a Breezy.app and keeps both frame tracks as the fixture the rules over
 // frames are tested on (docs/superpowers/plans/2026-11-11-breezy-native-reference-2.md, Task 9):
 //
-//   node scripts/frames-fixture.ts --app <Breezy.app> --build <name> [--strokes <dir>] [--only <prefix>] [--load]
+//   node scripts/frames-fixture.ts --app <Breezy.app> --build <name> [--strokes <dir>] [--out <dir>] [--board <file>] [--only <prefix>] [--load]
 //
 // Each stroke the reference app kept in --strokes (build/reference-strokes/take-5) is replayed with -BreezyReplay into
 // the app on scripts/selftest/frames.breezy; its track goes to scripts/test/fixtures/mac-pinch/<build>/<stroke>.json
@@ -21,7 +21,9 @@ const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? p
 const app = arg("--app"), build = arg("--build");
 if (!app || !build) throw new Error("usage: frames-fixture.ts --app <Breezy.app> --build <name> [--strokes <dir>] [--only <prefix>] [--load]");
 const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "";
-const out = join(repo, "scripts/test/fixtures/mac-pinch");
+// --out keeps a set of strokes apart from the pinches': the pans, whose builds are not the pinches' (mac-pans); --board
+// replays them on another board, as the pans' as wide as the reference app's (mac-pans/board.breezy)
+const out = arg("--out") ? join(repo, arg("--out")!) : join(repo, "scripts/test/fixtures/mac-pinch");
 
 /** Four decimals are a ten-thousandth of a point or of a zoom: finer than any rule reads, and a third of the size. */
 const small = (t: FrameTrack): FrameTrack => ({ fields: t.fields, rows: t.rows.map((r) => r.map((v) => (v == null ? v : Math.round(v * 1e4) / 1e4))) });
@@ -34,7 +36,7 @@ const busy = process.argv.includes("--load") ? cpus().map(() => spawn("sh", ["-c
 try {
   for (const f of readdirSync(strokes).filter((f) => /^[a-z-]+-\d+\.json$/.test(f) && f.startsWith(only)).sort()) {
     const dir = mkdtempSync(join(tmpdir(), "frames-fixture-"));
-    copyFileSync(join(repo, "scripts/selftest/frames.breezy"), join(dir, "board.breezy"));
+    copyFileSync(join(repo, arg("--board") ?? "scripts/selftest/frames.breezy"), join(dir, "board.breezy"));
     const rec = join(dir, "recording.json");
     try {
       const reference = app.endsWith("BreezyReference.app");

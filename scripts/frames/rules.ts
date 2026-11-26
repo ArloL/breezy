@@ -5,7 +5,7 @@ import { column } from "./track.ts";
 import type { FrameTrack } from "../../web/flight.ts";
 
 export interface Finding {
-  rule: "follow" | "coverage" | "continuity" | "flicker" | "scrollers" | "curve" | "fades" | "editor" | "chrome";
+  rule: "follow" | "coverage" | "continuity" | "flicker" | "scrollers" | "curve" | "path" | "fades" | "editor" | "chrome";
   /** The first and last frame's `t`, in ms. */
   from: number;
   to: number;
@@ -263,6 +263,47 @@ export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number
   };
   for (let u = 0; u <= end; u += 8) { times.push(u + a0); gaps.push(off(u)); bad.push(gaps.at(-1)! > tol); }
   return runs(times, bad, "curve", (a, b) => `${field} parted from the reference's by up to ${Math.max(...gaps.slice(a, b + 1)).toFixed(3)}, past ${tol}`);
+}
+
+/** A pan travels as AppKit's did: how far the view has gone since its first input, in view pt, against how far the
+ * reference's had at the same time, never more than `tol` apart. Travel rather than place, as the boards differ; a view
+ * that zooms, as with a pinch or a double tap, travels with its zoom, which curve judges, so such a stroke is left alone.
+ * The owner's diagonal pans on the Mac held to one axis, which no other rule saw (#327). */
+export function path(t: FrameTrack, ref: FrameTrack, tol = 20): Finding[] {
+  // from each track's first wheel delta: one track's began phase may come a frame or more before its first delta, which
+  // on a pan of 0.7 pt/ms read as 34 pt of travel apart where the two moved alike frame for frame
+  const firstDelta = (x: FrameTrack) => {
+    const dx = maybe(x, "wheelDX"), dy = maybe(x, "wheelDY"), i = x.rows.findIndex((_, i) => num(dx[i]) !== 0 || num(dy[i]) !== 0);
+    return i < 0 ? startOf(x) : num(column(x, "t")[i]);
+  };
+  // from the stroke on: the Mac app opens a wide board fitted to its window, at 25 %, before the replay sets its zoom
+  const zooms = (x: FrameTrack) => {
+    const s0 = firstDelta(x), ts = column(x, "t"), z = column(x, "zoom").map(num).filter((_, i) => num(ts[i]) >= s0);
+    return z.length > 0 && Math.max(...z) - Math.min(...z) > 0.001;
+  };
+  if (zooms(t) || zooms(ref)) return [];
+  const travel = (x: FrameTrack) => {
+    const s0 = firstDelta(x), ts = column(x, "t").map((u) => num(u) - s0), z = column(x, "zoom").map((v) => num(v) || 1);
+    const cx = column(x, "camX").map(num), cy = column(x, "camY").map(num);
+    const at = (c: number[], u: number) => {
+      const j = ts.findIndex((v) => v > u);
+      if (j <= 0) return j === 0 ? c[0]! : c.at(-1)!;
+      return c[j - 1]! + ((c[j]! - c[j - 1]!) * (u - ts[j - 1]!)) / (ts[j]! - ts[j - 1]!);
+    };
+    // from where the view was before the first delta: Firefox gathers a gesture's first events into one, and its frame
+    // shows the view already moved by it, 25 to 34 pt on the owner's pans
+    const zx = cx.map((v, i) => v * z[i]!), zy = cy.map((v, i) => v * z[i]!), k = Math.max(0, ts.findIndex((u) => u >= 0) - 1);
+    const x0 = ts[k]! < 0 ? zx[k]! : at(zx, 0), y0 = ts[k]! < 0 ? zy[k]! : at(zy, 0);
+    return { end: ts.at(-1)!, at: (u: number) => [at(zx, u) - x0, at(zy, u) - y0] as const };
+  };
+  const a = travel(t), b = travel(ref), a0 = firstDelta(t), times: number[] = [], bad: boolean[] = [], gaps: number[] = [];
+  for (let u = 0; u <= Math.max(a.end, b.end); u += 8) {
+    const [ax, ay] = a.at(u), [bx, by] = b.at(u);
+    times.push(u + a0);
+    gaps.push(Math.hypot(ax - bx, ay - by));
+    bad.push(gaps.at(-1)! > tol);
+  }
+  return runs(times, bad, "path", (i, j) => `the view travelled up to ${Math.max(...gaps.slice(i, j + 1)).toFixed(1)} pt otherwise than the reference's, past ${tol}`);
 }
 
 /** Nothing on the Mac's board animates as its cards change, which AppKit's implicit actions on the cards' host layer did,

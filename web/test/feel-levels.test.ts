@@ -12,8 +12,10 @@ import { track } from "../../scripts/frames/check.ts";
 import { restGap, zoomGap } from "../../scripts/frames/gaps.ts";
 
 const fixtures = new URL("../../scripts/test/fixtures/web-pinch/", import.meta.url).pathname;
-/** The captures level 2 calibrates against: camera mode, with each stroke's own repeat spread beside them. */
-const BUILD = "main-ae48c1b-camera";
+/** The captures level 2 calibrates against: camera mode, with each stroke's own repeat spread beside them; the
+ * pinches', and the pans' on a board as wide as the reference app's. */
+const BUILDS = ["main-ae48c1b-camera", "pans-2ba8656-camera"];
+const BUILD = BUILDS[0]!;
 /** Never under AppKit's replays' own error, as Firefox's spread is far under it for most strokes: 38 of the 41. */
 const FLOOR = 0.12;
 /** How far, in view pt, a replay may come to rest from where its capture did: the worst of the 41 is 0.5. */
@@ -22,14 +24,16 @@ setTimeout(() => { console.error("feel-levels ran past 60 s"); process.exit(1); 
 
 
 test("each level calibrates against its own mode's capture: level 2's zoom stays within 0.12, or a stroke's repeat spread, of camera mode's, and comes to rest where it did", () => {
-  const spread: Record<string, number> = JSON.parse(readFileSync(`${fixtures}${BUILD}-spread.json`, "utf8"));
   const drifted: string[] = [];
-  for (const f of readdirSync(`${fixtures}${BUILD}`).sort()) {
-    const s = f.replace(".json", ""), capture = track(`${fixtures}${BUILD}/${f}`);
-    const gap = zoomGap(replayCapture(capture), capture), tol = Math.max(FLOOR, spread[s] ?? 0);
-    if (gap > tol) drifted.push(`${s} zoom ${gap.toFixed(3)} past ${tol}`);
-    const rest = restGap(replayCapture(capture), capture);
-    if (rest > REST) drifted.push(`${s} rest ${rest.toFixed(1)} pt past ${REST}`);
+  for (const build of BUILDS) {
+    const spread: Record<string, number> = JSON.parse(readFileSync(`${fixtures}${build}-spread.json`, "utf8"));
+    for (const f of readdirSync(`${fixtures}${build}`).sort()) {
+      const s = f.replace(".json", ""), capture = track(`${fixtures}${build}/${f}`);
+      const out = replayCapture(capture, { wide: build.startsWith("pans-") }), gap = zoomGap(out, capture), tol = Math.max(FLOOR, spread[s] ?? 0);
+      if (gap > tol) drifted.push(`${s} zoom ${gap.toFixed(3)} past ${tol}`);
+      const rest = restGap(out, capture);
+      if (rest > REST) drifted.push(`${s} rest ${rest.toFixed(1)} pt past ${REST}`);
+    }
   }
   assert.deepEqual(drifted, [], "level 2 moved otherwise than the real input it replays: a change to the zoom or pan path, or to the replay, since the captures' build, or a stale capture");
 });

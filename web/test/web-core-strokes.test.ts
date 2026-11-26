@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { replayCapture } from "./helpers/stroke-replay.ts";
 import { check, REPLAYED, track } from "../../scripts/frames/check.ts";
+import { pathTolerance, setOf } from "../../scripts/frames/sets.ts";
 import type { FrameTrack } from "../flight.ts";
 
 const fixtures = new URL("../../scripts/test/fixtures/", import.meta.url).pathname;
@@ -28,13 +29,26 @@ for (const build of Object.keys(KNOWN))
     const spread: Record<string, number> = JSON.parse(readFileSync(`${dir}-spread.json`, "utf8"));
     const found: Record<string, string[]> = {};
     for (const f of readdirSync(dir).sort()) {
-      const s = f.replace(".json", ""), out = replayCapture(track(`${dir}/${f}`));
-      for (const x of check(out, track(`${fixtures}mac-pinch/reference-replay/${f}`), { ...REPLAYED, curve: Math.max(REPLAYED.curve, spread[s] ?? 0) })) {
+      const s = f.replace(".json", ""), out = replayCapture(track(`${dir}/${f}`), { wide: build.startsWith("pans-") });
+      const set = setOf(fixtures, build);
+      for (const x of check(out, track(`${set}reference-replay/${f}`), { ...REPLAYED, curve: Math.max(REPLAYED.curve, spread[s] ?? 0), path: pathTolerance(set, s) })) {
         if (!(found[x.rule] ??= []).includes(s)) found[x.rule].push(s);
       }
     }
     assert.deepEqual(found, KNOWN[build], "a finding gone is a fix: take it out of web-core-strokes-known.json; a new one is a regression");
   });
+
+test("a pan on the page's wide reference board travels as far as it is sent, where the empty board's edge stops it", () => {
+  // 120 frames of 10 pt, from the empty board's middle: 1,190 pt, past its 1,194 pt margin from there
+  const fields = ["t", "zoom", "camX", "camY", "viewW", "viewH", "px", "py", "wheelDX", "wheelDY", "magnify"];
+  const rows = Array.from({ length: 120 }, (_, i) => [i * 8, 1, -747, -466, 1495, 932, 700, 400, i ? -10 : 0, 0, 0]);
+  const travel = (wide: boolean) => {
+    const out = replayCapture({ fields, rows } as FrameTrack, { wide }), x = out.fields.indexOf("camX");
+    return out.rows.at(-1)![x]! - out.rows[0]![x]!;
+  };
+  assert.ok(Math.abs(travel(true) - 1190) < 2, `${travel(true)}`);
+  assert.ok(travel(false) < 600, `${travel(false)}`);
+});
 
 test("a frame's magnification no one ⌃-wheel step can give fails the replay, rather than turn the camera to NaN", () => {
   const fields = ["t", "zoom", "camX", "camY", "viewW", "viewH", "px", "py", "wheelDX", "wheelDY", "magnify"];

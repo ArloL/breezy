@@ -18,10 +18,14 @@ import { exitsAfter } from "./exit.ts";
 import { frameMs, inputSpan, judged, merge } from "./strokes-play.ts";
 import { check, REPLAYED, track } from "../scripts/frames/check.ts";
 import { restGap, zoomGap } from "../scripts/frames/gaps.ts";
+import { pathTolerance, setOf } from "../scripts/frames/sets.ts";
 import { strokeOf } from "../scripts/web-fixture.ts";
 import type { FrameTrack, Recording } from "../web/flight.ts";
 
-const BUILD = process.env.STROKES_FROM ?? "main-ae48c1b-native";
+// the pinches' captures only: synthetic input did not reproduce Firefox's real-input captures of the owner's pans,
+// which came to rest 0.5 to 92 pt from them, the same to the decimal with smooth scrolling off (2026-11-26), so level 3
+// is not calibrated for pans; STROKES_FROM=main-ae48c1b-native,pans-2ba8656-native plays them too, on the wide board
+const BUILDS = (process.env.STROKES_FROM ?? "main-ae48c1b-native").split(",");
 const VIEW = { width: 1495, height: 932 };
 /** How much longer than the capture's the browser may take to take a stroke's input before its zoom reads late. */
 const SLOW = 1.1;
@@ -29,16 +33,22 @@ const SLOW = 1.1;
  * the line from one run to the next, so these count as whatever the ratchet holds. */
 const BAND = 0.15;
 const SMOKE = ["double-tap-7", "lift-mid-band-17", "pinch-corner-1", "pinch-in-past-max-1", "pinch-out-fast-6", "pinch-out-slow-1", "pinch-pan-12"];
-const fixtures = new URL("../scripts/test/fixtures/", import.meta.url).pathname, captures = `${fixtures}web-pinch/${BUILD}`;
+const fixtures = new URL("../scripts/test/fixtures/", import.meta.url).pathname;
 // Against AppKit on the owner's Mac only: on CI's runner, drawing at 60 Hz and less where the Mac draws at 120, a
 // different stroke crossed its line each run, and planted, a zoom 10 % slow went unseen against AppKit, its strokes
 // already apart from AppKit's. CI holds Firefox to its own real-input captures, which saw it, and a camera that read
 // the native scroll 5 % short (scripts/plants.ts).
 const AGAINST_APPKIT = !process.env.CI;
 const knownDir = new URL("./strokes-known/mac/", import.meta.url).pathname;
-const spread: Record<string, number> = JSON.parse(readFileSync(`${captures}-spread.json`, "utf8"));
 const smoke = !!process.env.STROKES_SMOKE;
-const strokes = readdirSync(captures).map((f) => f.replace(".json", "")).filter((s) => !smoke || SMOKE.includes(s)).sort();
+/** Each stroke's capture build, and its spread from that build's -spread.json. */
+const buildOf: Record<string, string> = {}, spread: Record<string, number> = {};
+for (const b of BUILDS) {
+  for (const f of readdirSync(`${fixtures}web-pinch/${b}`)) buildOf[f.replace(".json", "")] = b;
+  Object.assign(spread, JSON.parse(readFileSync(`${fixtures}web-pinch/${b}-spread.json`, "utf8")));
+}
+const strokes = Object.keys(buildOf).filter((s) => !smoke || SMOKE.includes(s)).sort();
+const captureOf = (s: string) => track(`${fixtures}web-pinch/${buildOf[s]}/${s}.json`);
 const kinds = { chromium, webkit, firefox } as const;
 const names = (process.env.STROKES_BROWSERS ?? "chromium,webkit,firefox").split(",") as (keyof typeof kinds)[];
 for (const n of names) if (!(n in kinds)) throw new Error(`STROKES_BROWSERS names ${n}: chromium, webkit or firefox`);
@@ -63,10 +73,10 @@ const hasPinch = (t: FrameTrack) => { const i = t.fields.indexOf("magnify"); ret
 /** Plays `capture`'s input into `page` on its rows' schedule, from where its first row's camera was: the rows due at
  * once as one step (scenarios/strokes-play.ts), ⌃ held over a run of pinch steps. Gives the frames from the one before
  * the stroke, once the last has stood 1.5 s. */
-export async function playCapture(page: Page, capture: FrameTrack): Promise<FrameTrack> {
+export async function playCapture(page: Page, capture: FrameTrack, wide = false): Promise<FrameTrack> {
   const col = (k: string) => capture.fields.indexOf(k), v = (r: (number | null)[], k: string) => (col(k) >= 0 ? r[col(k)] ?? 0 : 0);
   const first = capture.rows[0]!, z = v(first, "zoom") || 1;
-  await page.goto(`http://localhost:${PORT}/?reference=${-v(first, "camX") * z},${-v(first, "camY") * z},${z}&pan=native`);
+  await page.goto(`http://localhost:${PORT}/?reference=${-v(first, "camX") * z},${-v(first, "camY") * z},${z}&pan=native${wide ? "&wide" : ""}`);
   await page.waitForFunction(() => (globalThis as { breezyFlight?: unknown }).breezyFlight, null, { timeout: 15_000 });
   await sleep(300);
   const t0 = first[0] ?? 0, inputs = capture.rows.filter((r) => v(r, "wheelDX") || v(r, "wheelDY") || v(r, "magnify"));
@@ -127,7 +137,7 @@ for (const name of names)
     for (const s of strokes)
       test(`${name}: ${s}`, async () => {
         failed.push(s);
-        const capture = track(`${captures}/${s}.json`), out = await playCapture(page, capture);
+        const capture = captureOf(s), out = await playCapture(page, capture, buildOf[s]!.startsWith("pans-"));
         // STROKES_DUMP=<dir> keeps each replay's frames, to see what a drift or a finding is
         if (process.env.STROKES_DUMP) {
           mkdirSync(`${process.env.STROKES_DUMP}/${name}`, { recursive: true });
@@ -146,10 +156,10 @@ for (const name of names)
           if (rest > 2) drifted.push(`${s} rest ${rest.toFixed(1)} pt past 2`);
         }
         if (ratio > SLOW) return void (add("slow", s), failed.pop());
-        const ref = track(`${fixtures}mac-pinch/reference-replay/${s}.json`), tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
+        const set = setOf(fixtures, buildOf[s]!), ref = track(`${set}reference-replay/${s}.json`), tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
         const gap = zoomGap(out, ref);
         if (Math.abs(gap / tol - 1) <= BAND) borderline.push(s);
-        for (const x of check(out, ref, { ...REPLAYED, curve: tol })) add(x.rule, s);
+        for (const x of check(out, ref, { ...REPLAYED, curve: tol, path: pathTolerance(set, s) })) add(x.rule, s);
         failed.pop();
       });
     if (name === "firefox")
@@ -159,7 +169,7 @@ for (const name of names)
     test(`${name}: every stroke played, its pinches zoomed, and most in time to judge`, () => {
       assert.deepEqual(failed, [], `${failed.join(", ")} did not play`);
       // every stroke with a pinch the browser took in time zoomed: one that did not is a browser taking no ⌃-wheel
-      const missed = strokes.filter((s) => hasPinch(track(`${captures}/${s}.json`)) && !zoomed.includes(s) && !found.slow?.includes(s));
+      const missed = strokes.filter((s) => hasPinch(captureOf(s)) && !zoomed.includes(s) && !found.slow?.includes(s));
       assert.deepEqual(missed, [], `${name} took no synthetic pinch on ${missed.join(", ")}`);
       const slow = found.slow?.length ?? 0;
       assert.ok(slow <= strokes.length / 2, `${name} took ${slow} of ${strokes.length} strokes too slowly to judge`);
