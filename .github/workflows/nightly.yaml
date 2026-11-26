@@ -176,6 +176,12 @@ jobs:
         if-no-files-found: ignore
         name: strokes
         path: build/strokes
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        if-no-files-found: ignore
+        name: plants-strokes
+        path: build/plants
   # The scenarios' Android pairs, Chrome's and Firefox's, on an emulator: GitHub's Linux runners have KVM, its macOS runners
   # cannot run one: Apple Silicon has no nested virtualization (the emulator segfaulted booting in software), and the
   # Intel one, which has it, had not booted after 14 min (probed 2026-10-28, run 40655831748)

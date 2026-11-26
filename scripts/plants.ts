@@ -59,6 +59,12 @@ export const PLANTS: Plant[] = [
   },
 ];
 
+/** What of a run's output says why it failed: its failing tests, their assertions and its counts, at most 40 lines,
+ * printed where a run fails other than as planted, as its whole log stays on the runner. */
+export function failedLines(out: string): string[] {
+  return out.split("\n").filter((l) => /^\s*✖|AssertionError|^ℹ (pass|fail) /.test(l)).slice(0, 40);
+}
+
 /** The fuzzer takes its plant on its command line, as its hub sets the plant for the devices it runs. */
 const withPlant = (p: Plant) => p.command[1] === "scripts/fuzz.ts" ? [...p.command, "--plant", p.plant] : p.command;
 
@@ -74,9 +80,11 @@ function run(p: Plant, planted: boolean): boolean | null {
   mkdirSync(dir, { recursive: true });
   // the plant's records apart from the runs' own, as its case fails on purpose
   writeFileSync(join(dir, `${p.level} ${p.plant}${planted ? "" : " unplanted"}.log`), `${cmd.join(" ")}\n${r.stdout}${r.stderr}`);
+  const out = `${r.stdout}${r.stderr}`, as = r.status !== 0 && p.expect.test(out);
+  if (r.status !== 0 && !(planted && as)) console.log(failedLines(out).map((l) => `  ${l}`).join("\n"));
   if (r.status === null) return null;
   if (!planted) return r.status === 0;
-  return r.status !== 0 && p.expect.test(`${r.stdout}${r.stderr}`) ? false : r.status === 0 ? true : null;
+  return as ? false : r.status === 0 ? true : null;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
