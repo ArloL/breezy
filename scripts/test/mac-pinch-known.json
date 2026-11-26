@@ -103,45 +103,13 @@
    "pinch-out-fast-6"
   ]
  },
- "bounded-904a866": {
+ "bounded-8623007": {
   "continuity": [
    "double-tap-10",
    "double-tap-11",
    "double-tap-7",
    "double-tap-8",
-   "double-tap-9",
-   "pinch-corner-4",
-   "pinch-corner-5",
-   "pinch-out-fast-13",
-   "pinch-out-fast-14",
-   "pinch-out-fast-15",
-   "pinch-out-fast-9"
-  ],
-  "follow": [
-   "lift-mid-band-17",
-   "lift-mid-band-18",
-   "lift-mid-band-19",
-   "pinch-corner-1",
-   "pinch-corner-2",
-   "pinch-corner-3",
-   "pinch-corner-4",
-   "pinch-corner-5",
-   "pinch-out-fast-10",
-   "pinch-out-fast-11",
-   "pinch-out-fast-12",
-   "pinch-out-fast-13",
-   "pinch-out-fast-14",
-   "pinch-out-fast-15",
-   "pinch-out-fast-6",
-   "pinch-out-fast-7",
-   "pinch-out-fast-8",
-   "pinch-out-fast-9",
-   "pinch-out-slow-1",
-   "pinch-out-slow-2",
-   "pinch-out-slow-3",
-   "pinch-out-slow-4",
-   "pinch-out-slow-5",
-   "pinch-pan-12"
+   "double-tap-9"
   ],
   "scrollers": [
    "lift-mid-band-17",
@@ -154,6 +122,12 @@
    "pinch-corner-3",
    "pinch-corner-4",
    "pinch-corner-5",
+   "pinch-in-past-max-1",
+   "pinch-in-past-max-2",
+   "pinch-in-past-max-3",
+   "pinch-in-past-max-4",
+   "pinch-in-past-max-5",
+   "pinch-in-past-max-6",
    "pinch-out-fast-10",
    "pinch-out-fast-11",
    "pinch-out-fast-12",
@@ -169,37 +143,17 @@
    "pinch-out-slow-3",
    "pinch-out-slow-4",
    "pinch-out-slow-5",
-   "pinch-pan-12"
+   "pinch-pan-12",
+   "pinch-pan-14",
+   "pinch-pan-15",
+   "pinch-pan-16"
   ],
   "flicker": [
    "pinch-corner-1",
    "pinch-corner-2",
    "pinch-corner-3",
    "pinch-corner-4",
-   "pinch-corner-5",
-   "pinch-out-fast-13",
-   "pinch-out-fast-15",
-   "pinch-out-fast-9"
-  ],
-  "curve": [
-   "pinch-corner-1",
-   "pinch-corner-2",
-   "pinch-corner-3",
-   "pinch-corner-4",
-   "pinch-corner-5",
-   "pinch-in-past-max-2",
-   "pinch-in-past-max-5",
-   "pinch-out-fast-10",
-   "pinch-out-slow-1",
-   "pinch-out-slow-2",
-   "pinch-out-slow-3",
-   "pinch-out-slow-4",
-   "pinch-out-slow-5"
-  ],
-  "coverage": [
-   "pinch-out-fast-13",
-   "pinch-out-fast-15",
-   "pinch-out-fast-9"
+   "pinch-corner-5"
   ]
  }
 }
