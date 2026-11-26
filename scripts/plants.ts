@@ -44,6 +44,9 @@ export const PLANTS: Plant[] = [
   },
   // the measure in turns with the same build unplanted, as the nightly measures it with a reference build
   { plant: "uncached-heights", class: "B6", level: "L7", command: ["node", "scripts/launch.ts"], expect: /to a drawn board .* WORSE/ },
+  // the Mac's SelfTest strokes, kept from the clean build and the planted one: the rules over what each drew
+  { plant: "cross-fade", class: "B8", level: "L7", command: test("scripts/test/mac-plants.test.ts"), expect: /✖ nothing cross-fades as the cards change/ },
+  { plant: "editor-shift", class: "B8", level: "L7", command: test("scripts/test/mac-plants.test.ts"), expect: /✖ a card's pixels hold as its editor opens/ },
   { plant: "half-uploaded", class: "B7", level: "L8", command: ["node", "scripts/deploy-check.ts"], expect: /app\.js is not as built/ },
 ];
 

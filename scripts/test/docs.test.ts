@@ -57,8 +57,8 @@ test("the matrix has a row per class and a valid cell per level", () => {
 });
 
 test("every plant the matrix names is planted in the source", () => {
-  // the app's code, or for a deploy, the check that serves the site as built
-  const source = [...files("web", ".ts"), ...files("BreezyKit/Sources", ".swift"), "scripts/deploy-check.ts"].map(read).join("\n");
+  // the apps' code, the Mac app's own among them, or for a deploy, the check that serves the site as built
+  const source = [...files("web", ".ts"), ...files("BreezyKit/Sources", ".swift"), ...files("Breezy", ".swift"), "scripts/deploy-check.ts"].map(read).join("\n");
   for (const [c, ...cells] of table(read("TESTING.md"), "## Matrix")) {
     for (const cell of cells.filter((x) => x.startsWith("plant: "))) {
       for (const name of cell.slice("plant: ".length).split(",").map((n) => n.trim())) {
