@@ -1,6 +1,7 @@
 import { planted } from "./sync/plant.ts";
 import * as R from "./rules.ts";
-import { CAMERA_SPRING, Camera, boardOf, clampZoom, extent, panLimits, revealing, seenFrom, takeIn } from "./camera.ts";
+import { CAMERA_SPRING, Camera, revealing } from "./camera.ts";
+import { BoardCamera } from "./board-camera.ts";
 import { animate, motionValue } from "./motion.ts";
 import { DomField, fillFront, frontPoint } from "./field.ts";
 import { Grid } from "./grid.ts";
@@ -20,7 +21,7 @@ export { MIN_ZOOM, MAX_ZOOM, clampZoom } from "./camera.ts";
 const SHEET = '<div class="sheet"><div class="front"></div><div class="back"><div class="heading"></div><div class="notes"></div></div><div class="ear"></div></div>';
 const PLACEHOLDER = "Double-tap to write on the back";
 // A wheel stream has no end to wait for: this long without an event ends it.
-export const WHEEL_REST = 120;
+export { WHEEL_REST } from "./board-camera.ts";
 // Layout moves settle like UIKit's default spring; a lift pops slightly, as a drag lift on iOS does.
 const SETTLE = { type: "spring", visualDuration: 0.35, bounce: 0 };
 const LIFT = { type: "spring", visualDuration: 0.25, bounce: 0.35 };
@@ -77,11 +78,17 @@ export class View {
   marqueeEl: HTMLElement;
   mFront: HTMLElement;
   mBack: HTMLElement;
+  /** The camera, a wheel's pan and the board's reach, which Node replays without a page. */
+  readonly core: BoardCamera;
   camera: Camera;
   wheel: WheelPan;
   /** What showed when the camera last rested, which the board takes in: Freeform's canvas grows to what it shows. */
-  seen: Rect | null = null;
-  wheelRest?: ReturnType<typeof setTimeout>;
+  get seen(): Rect | null {
+    return this.core.seen;
+  }
+  set seen(r: Rect | null) {
+    this.core.seen = r;
+  }
   surface: Surface;
   els: Map<string, Shown>;
   /** Each card turning: how far it is from its front, 0, to its back, 1; with reduced motion only its faces fade. */
@@ -108,12 +115,16 @@ export class View {
     m.innerHTML = `<div class="card">${SHEET}</div><div class="card turned">${SHEET}</div>`;
     [this.mFront, this.mBack] = m.children as HTMLCollectionOf<HTMLElement>;
     this.surface = new CameraSurface(root.querySelector<HTMLElement>(".world")!, new Grid(root.querySelector<HTMLCanvasElement>(".grid")!));
-    this.camera = new Camera((c) => this.apply(c));
-    this.camera.limits = (z) => this.limits(z);
-    this.wheel = new WheelPan(this.camera, (z) => this.limits(z), () => this.stage());
-    this.camera.onRest = () => {
-      if (!this.wheel.active) this.rest();
-    };
+    this.core = new BoardCamera({
+      board: () => this.model.board, rectOf: (c) => this.rectOf(c), stage: () => this.stage(), apply: (c) => this.apply(c),
+      rested: () => {
+        this.surface.rested();
+        this.drawGrid();
+      },
+      reducedMotion: () => matchMedia("(prefers-reduced-motion: reduce)").matches,
+    });
+    this.camera = this.core.camera;
+    this.wheel = this.core.wheel;
     this.els = new Map();
     this.turns = new Map();
     this.sizes = new Map();
@@ -183,25 +194,20 @@ export class View {
   }
 
   toWorld(p: Point): Point {
-    const { x, y, zoom } = this.cam;
-    return { x: (p.x - x) / zoom, y: (p.y - y) / zoom };
+    return this.core.toWorld(p);
   }
 
   toScreen(p: Point): Point {
-    const { x, y, zoom } = this.cam;
-    return { x: p.x * zoom + x, y: p.y * zoom + y };
+    return this.core.toScreen(p);
   }
 
   get cam(): Cam {
-    return this.camera.cam;
+    return this.core.cam;
   }
 
   /** Moves the camera at once, or with a spring that a touch can catch. Gestures pass zooms past the limits on purpose. */
   setCamera(cam: Cam, animate = false) {
-    if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) this.camera.springTo({ ...cam, zoom: clampZoom(cam.zoom) });
-    else this.camera.set(animate ? { ...cam, zoom: clampZoom(cam.zoom) } : cam);
-    // what the app moves to is where the camera rests; a gesture's moves are not
-    if (animate && !this.camera.moving) this.rest();
+    this.core.setCamera(cam, animate);
   }
 
   apply(cam: Cam) {
@@ -241,47 +247,37 @@ export class View {
 
   /** As far as the cards and lanes, the margin, and what showed when the camera last rested. */
   board(): Rect {
-    const b = this.model.board;
-    return boardOf(extent([...b.cards.map((c) => this.rectOf(c)), ...b.lanes]), this.seen);
+    return this.core.board();
   }
 
   /** The board takes in what shows now, and only that, as Freeform's canvas does when a scroll ends. */
   rest() {
-    this.seen = seenFrom(this.cam, this.stage());
-    this.surface.rested();
-    this.drawGrid();
+    this.core.rest();
   }
 
   /** Where a pan begun now may reach. A bounce it catches is not taken in: the pan picks the stretch up. */
   hold(): Limits {
-    return this.limits(this.cam.zoom);
+    return this.core.hold();
   }
 
   /** A zoom grows the board to what it shows, so zooming out never shows its edge. */
   takeIn(cam: Cam = this.cam) {
-    this.seen = takeIn(this.seen, seenFrom(cam, this.stage()));
+    this.core.takeIn(cam);
   }
 
   /** Where a pan may reach at `zoom`: the board over the whole screen. */
   limits(zoom: number): Limits {
-    return panLimits(this.board(), zoom, this.stage());
+    return this.core.limits(zoom);
   }
 
   /** Zooms keeping the world point under screen point `c` in place. */
   zoomAround(c: Point, zoom: number, animate = false) {
-    const z = clampZoom(zoom);
-    const w = this.toWorld(c);
-    this.wheel.end();
-    const to = { x: c.x - w.x * z, y: c.y - w.y * z, zoom: z };
-    this.takeIn(to);
-    this.setCamera(to, animate);
+    this.core.zoomAround(c, zoom, animate);
   }
 
   /** A wheel's pan: past the board's edge it stretches, and rebounds when momentum reaches it or the finger stops. */
   wheelPan(by: Point) {
-    this.wheel.scroll(by, performance.now());
-    clearTimeout(this.wheelRest);
-    this.wheelRest = setTimeout(() => this.wheel.idle(), WHEEL_REST);
+    this.core.wheelPan(by);
   }
 
   centre(): Point {
