@@ -2,8 +2,10 @@
 // docs/superpowers/specs/2026-11-11-breezy-native-reference-2-design.md.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FIELDS, MAC_FIELDS, column, frames } from "../frames/track.ts";
-import { continuity, coverage, curve, edgePops, flicker, follow, pops, scrollers } from "../frames/rules.ts";
+import { readdirSync } from "node:fs";
+import { FIELDS, MAC_FIELDS, WEB_FIELDS, column, frames } from "../frames/track.ts";
+import { chrome, continuity, coverage, curve, edgePops, flicker, follow, pops, scrollers } from "../frames/rules.ts";
+import { check, REPLAYED, track as read } from "../frames/check.ts";
 import type { FrameTrack, Recording } from "../../web/flight.ts";
 
 type Row = Partial<Record<string, number | null>>;
@@ -238,4 +240,33 @@ test("frames reads a recording's track, and column names a missing field in its 
 test("the fields are the ones scripts/frames/fields.json lists, every platform's first", () => {
   assert.deepEqual(FIELDS.slice(0, 4), ["t", "zoom", "camX", "camY"]);
   assert.ok(MAC_FIELDS.includes("grey"));
+});
+
+/** A web track: every platform's fields, then the web's, the Mac's absent. */
+function webTrack(rows: Row[]): FrameTrack {
+  const fields = [...FIELDS, ...WEB_FIELDS], base: Row = { ...BASE, coverTop: 0, grid: 0 };
+  return { fields, rows: rows.map((r, i) => fields.map((f) => (f === "t" ? (r.t ?? i * 16) : f in r ? r[f]! : (base[f] ?? null)))) };
+}
+
+test("check reads a web track", () => {
+  assert.deepEqual(check(webTrack([{}, {}])), []);
+});
+
+test("chrome finds the board over the top bar", () => {
+  const f = chrome(webTrack([{ coverTop: 0 }, { coverTop: 1 }, { coverTop: 1 }, { coverTop: 0 }]));
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.equal(f[0].rule, "chrome");
+  assert.deepEqual([f[0].from, f[0].to], [16, 32]);
+});
+
+test("the grid falling short for a frame is a flicker", () => {
+  const f = check(webTrack([{ grid: 0 }, { grid: 40 }, { grid: 0 }]));
+  assert.deepEqual(f.map((x) => x.rule), ["flicker"], JSON.stringify(f));
+});
+
+test("AppKit's replays still pass every rule", () => {
+  const dir = new URL("./fixtures/mac-pinch/", import.meta.url).pathname;
+  for (const s of readdirSync(dir + "reference-replay")) {
+    assert.deepEqual(check(read(`${dir}reference-replay/${s}`), read(`${dir}reference/${s}`), REPLAYED), [], s);
+  }
 });

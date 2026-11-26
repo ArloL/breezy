@@ -5,7 +5,7 @@ import { column } from "./track.ts";
 import type { FrameTrack } from "../../web/flight.ts";
 
 export interface Finding {
-  rule: "follow" | "coverage" | "continuity" | "flicker" | "scrollers" | "curve" | "fades" | "editor";
+  rule: "follow" | "coverage" | "continuity" | "flicker" | "scrollers" | "curve" | "fades" | "editor" | "chrome";
   /** The first and last frame's `t`, in ms. */
   from: number;
   to: number;
@@ -270,3 +270,10 @@ export function editorHolds(t: FrameTrack, max = 10): Finding[] {
     say: `${c} pixels of the card's ${back[i] ? "back" : "front"} changed as its editor opened at ${z[i]} in ${dark[i] ? "dark" : "light"}` }] : []);
 }
 
+
+/** The chrome is never covered by the board: no frame where the board paints over the web's top bar, as native
+ * panning's pinch overlay did on iOS (11a483a). */
+export function chrome(t: FrameTrack): Finding[] {
+  const c = maybe(t, "coverTop").map(num);
+  return runs(column(t, "t"), c.map((v) => v > 0), "chrome", (a, b) => `the board painted over the top bar for ${b - a + 1} frame${b > a ? "s" : ""}`);
+}
