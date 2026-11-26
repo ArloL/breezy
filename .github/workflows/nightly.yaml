@@ -51,8 +51,8 @@ jobs:
   desktop:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'desktop' }}
     runs-on: macos-latest
-    # the strokes' 12 minutes over what it took before
-    timeout-minutes: 87
+    # the strokes' 32 minutes over what it took before
+    timeout-minutes: 107
     permissions:
       contents: read
     # every night films the browsers and keeps a failing case's films, unless dispatched with none: a desktop night with
@@ -132,20 +132,20 @@ jobs:
         if-no-files-found: ignore
         name: plants-L6
         path: build/plants
-    # the owner's 41 strokes as synthetic input, a browser to a process side by side, each line marked with its
-    # browser as it comes, each replay's frames kept (scenarios/strokes.e2e.ts); last, so that no other step waits on it
+    # the owner's 41 strokes as synthetic input, a browser at a time, as Chromium side by side with the others drew at
+    # 21 fps and took its input up to 7.5 times as long; each line marked with its browser, each replay's frames and
+    # findings kept (scenarios/strokes.e2e.ts), against CI's own ratchet; last, so that no other step waits on it
     - name: The owner's strokes in Chromium, WebKit and Firefox
       if: ${{ !cancelled() }}
-      timeout-minutes: 12
+      # a report until two runs agree with CI's ratchet, scenarios/strokes-known/ci (ruled 2026-11-26)
+      continue-on-error: true
+      timeout-minutes: 32
       run: |
         mkdir -p build/strokes
-        pids=()
-        for b in chromium webkit firefox; do
-          (STROKES_DUMP=build/strokes/frames STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee "build/strokes/$b.txt" | sed "s/^/$b: /") &
-          pids+=("$!")
-        done
         failed=0
-        for p in "${pids[@]}"; do wait "$p" || failed=1; done
+        for b in chromium webkit firefox; do
+          STROKES_DUMP=build/strokes/frames STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee "build/strokes/$b.txt" | sed "s/^/$b: /" || failed=1
+        done
         exit "$failed"
     - if: ${{ always() }}
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

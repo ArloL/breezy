@@ -54,3 +54,9 @@ export function judged(m: Record<string, string[]>, o: { strokes: string[]; know
       .filter(([, s]) => s.length),
   );
 }
+
+/** How often `t`'s browser drew, in ms: the median time between its rows (the owner's Mac 8, CI's runner 17 and more). */
+export function frameMs(t: FrameTrack): number {
+  const d = t.rows.slice(1).map((r, i) => (r[0] ?? 0) - (t.rows[i]![0] ?? 0)).sort((a, b) => a - b);
+  return d.length ? d[(d.length - 1) >> 1]! : 0;
+}
