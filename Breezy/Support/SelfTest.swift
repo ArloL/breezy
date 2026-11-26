@@ -506,7 +506,17 @@ extension SelfTest {
         shot("pulled-" + way.replacingOccurrences(of: " ", with: "-"))
         scroll(.ended, 0)
         d.later(1.5) {
-          if c.bounds != before { finish(name, "the pull \(way) left the board at \(c.bounds), was \(before); \(MainActor.assumeIsolated { evidence(since: began) })") }
+          // zoomed out, AppKit's own bounce stops up to 10 px short of the edge (a stock NSScrollView: 4 px at 50 % on
+          // 1x, 4 px at 25 % on 2x) and the rest takes in what shows: the board may grow at the pulled edge, to the
+          // view's whole point, which a spring zoom's step may have left a pixel further
+          let b = c.bounds, s = c.showing, px = 1 / (d.window.backingScaleFactor * sv.magnification), short = 12 * px
+          let gap = down ? before.minY - b.minY : before.minX - b.minX
+          let leftShort = (0...short).contains(gap) && abs((down ? s.minY : s.minX) - (down ? b.minY : b.minX)) <= px + 1
+            && (down ? b.minX == before.minX && b.width == before.width && b.maxY == before.maxY
+                     : b.minY == before.minY && b.height == before.height && b.maxX == before.maxX)
+          if b != before && !leftShort {
+            finish(name, "the pull \(way) left the board at \(b), was \(before), the view at \(s); \(MainActor.assumeIsolated { evidence(since: began) })")
+          }
           then()
         }
       }
@@ -569,9 +579,11 @@ extension SelfTest {
         w.setFrame(NSRect(x: frame.minX, y: frame.minY - 300, width: frame.width + 400, height: frame.height + 300), display: true)
         // at once: the board under all the view shows, no edge, and the view where it was; at rest, the board exactly
         let when = "the window grown at the bottom right at \(Int(zoom * 100)) %", grid = d.wc.grid
-        if !c.bounds.insetBy(dx: -0.01, dy: -0.01).contains(c.showing) { finish(name, "\(when): the view shows \(c.showing) past \(c.bounds)") }
+        // AppKit puts the view on whole pixels, 4 pt apart at 25 % on 1x, where the board's edge may fall between two
+        let px = 1 / (w.backingScaleFactor * sv.magnification) + 0.01
+        if !c.bounds.insetBy(dx: -px, dy: -px).contains(c.showing) { finish(name, "\(when): the view shows \(c.showing) past \(c.bounds)") }
         if !grid.paperFrame.insetBy(dx: -0.5, dy: -0.5).contains(grid.convert(clip.bounds, from: clip)) { finish(name, "\(when): the edge shows") }
-        if c.showing.origin != at { finish(name, "\(when): the view moved from \(at) to \(c.showing.origin)") }
+        if abs(c.showing.minX - at.x) > px || abs(c.showing.minY - at.y) > px { finish(name, "\(when): the view moved from \(at) to \(c.showing.origin)") }
         d.later(0.3) {
           bounded(when)
           w.setFrame(frame, display: true)
