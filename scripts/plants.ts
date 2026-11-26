@@ -18,6 +18,8 @@ export interface Plant {
   expect: RegExp;
   /** What the run needs set, over what the job sets. */
   env?: Record<string, string>;
+  /** The nightly job that runs it, when not its level's: --where names it, and a run without --where leaves it. */
+  where?: string;
 }
 
 const test = (...args: string[]) => ["node", "--test", "--test-force-exit", ...args];
@@ -48,6 +50,13 @@ export const PLANTS: Plant[] = [
   { plant: "cross-fade", class: "B8", level: "L7", command: test("scripts/test/mac-plants.test.ts"), expect: /✖ nothing cross-fades as the cards change/ },
   { plant: "editor-shift", class: "B8", level: "L7", command: test("scripts/test/mac-plants.test.ts"), expect: /✖ a card's pixels hold as its editor opens/ },
   { plant: "half-uploaded", class: "B7", level: "L8", command: ["node", "scripts/deploy-check.ts"], expect: /app\.js is not as built/ },
+  // not past bugs: what the feel levels are for (TESTING.md), planted 2026-11-26 when CI's level 3 against AppKit,
+  // and level 2, missed a native board's camera read short of its scroll, and level 3 against AppKit a slow zoom
+  { plant: "zoom-slow", class: "B6", level: "L1", command: test("web/test/feel-levels.test.ts"), expect: /✖ each level calibrates/ },
+  {
+    plant: "native-scroll-scale", class: "B6", level: "L6", where: "strokes", env: { STROKES_BROWSERS: "firefox" },
+    command: test("scenarios/strokes.e2e.ts"), expect: /✖ firefox: each stroke moves as Firefox's real-input capture/,
+  },
 ];
 
 /** The fuzzer takes its plant on its command line, as its hub sets the plant for the devices it runs. */
@@ -71,10 +80,10 @@ function run(p: Plant, planted: boolean): boolean | null {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { values } = parseArgs({ options: { level: { type: "string" } } });
+  const { values } = parseArgs({ options: { level: { type: "string" }, where: { type: "string" } } });
   const levels = values.level?.split(",");
   let bad = 0;
-  for (const p of PLANTS.filter((p) => !levels || levels.includes(p.level))) {
+  for (const p of PLANTS.filter((p) => (!levels || levels.includes(p.level)) && p.where === values.where)) {
     const clean = run(p, false), planted = clean ? run(p, true) : null;
     const verdict = !clean ? "FAILS WITHOUT IT" : planted === false ? "caught" : planted === true ? "SURVIVED" : "FAILED OTHERWISE";
     if (verdict !== "caught") bad++;

@@ -1,3 +1,4 @@
+import { planted } from "./sync/plant.ts";
 import { APPKIT_REBOUND, TRACKPAD_BAND, banded, inside, unbanded } from "./camera.ts";
 import type { Camera, Limits } from "./camera.ts";
 import type { Area } from "./view.ts";
@@ -40,7 +41,7 @@ const KEEP = 1500;
 export function wheelOnCamera(view: { cam: { zoom: number }; zoomAround(c: { x: number; y: number }, zoom: number): void; wheelPan(by: { x: number; y: number }): void },
   e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "metaKey" | "clientX" | "clientY">) {
   const a = wheelAction(e);
-  if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
+  if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * (planted("zoom-slow") ? 1 + (a.zoom - 1) * 0.9 : a.zoom));
   else view.wheelPan(a.pan!);
 }
 
