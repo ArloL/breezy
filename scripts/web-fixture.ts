@@ -2,7 +2,9 @@
 // off, and keeps each page's frames for the rules over frames (docs/superpowers/plans/2026-11-26-breezy-feel-levels.md,
 // Task 3), as scripts/frames-fixture.ts does for the Mac app:
 //
-//   node scripts/web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--smoke] [--repeats 1]
+//   node scripts/web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--list a,b] [--smoke] [--repeats 1]
+//
+// --list captures just those strokes again, as a calibration that failed names them (web/test/feel-levels.test.ts).
 //
 // The site is built and served here. Each stroke opens the reference's empty board where the stroke began, in a view of
 // the reference's size, as Breezy/Support/Replay.swift places it, and is posted as fresh events by
@@ -67,7 +69,7 @@ async function main() {
   const build = arg("--build"), pan = arg("--pan") ?? "native";
   if (!build || !["native", "camera"].includes(pan)) throw new Error("usage: web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--smoke] [--repeats 1]");
   const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "", repeats = Number(arg("--repeats") ?? 1);
-  const smoke = process.argv.includes("--smoke");
+  const smoke = process.argv.includes("--smoke"), list = arg("--list")?.split(",");
   setTimeout(() => { console.error("the replays ran past 45 minutes"); process.exit(1); }, 45 * 60_000).unref();
 
   const { firefox } = await import("playwright-core");
@@ -104,7 +106,7 @@ async function main() {
   };
   const small = (t: FrameTrack): FrameTrack => ({ fields: t.fields, rows: t.rows.map((r) => r.map((v) => (v == null ? v : Math.round(v * 1e4) / 1e4))) });
 
-  const names = readdirSync(strokes).filter((f) => f.endsWith(".json") && f.startsWith(only) && (!smoke || SMOKE.includes(f.replace(".json", "")))).sort();
+  const names = readdirSync(strokes).filter((f) => f.endsWith(".json") && f.startsWith(only) && (!smoke || SMOKE.includes(f.replace(".json", ""))) && (!list || list.includes(f.replace(".json", "")))).sort();
   const spread: Record<string, number> = {};
   try {
     for (const name of names) {
