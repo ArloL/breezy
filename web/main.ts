@@ -137,7 +137,8 @@ if (devFlight) {
   const who = `${/Firefox/.test(ua) ? "firefox" : /Edg\//.test(ua) ? "edge" : /Chrome/.test(ua) ? "chrome" : /Safari/.test(ua) ? "safari" : "browser"} ${params.get("who")?.replace(/[^\w-]/g, "") || Math.random().toString(36).slice(2, 6)}`;
   let sent = "";
   setInterval(() => {
-    const r = app.flight.recording(), at = `${r.entries.length} ${r.entries.at(-1)?.[0]}`;
+    // its frames too, as a stroke's last frames come after its last entry
+    const r = app.flight.recording(), at = `${r.entries.length} ${r.entries.at(-1)?.[0]} ${r.frames?.rows.at(-1)?.[0]}`;
     if (at === sent) return;
     sent = at;
     fetch(`${devFlight}?who=${encodeURIComponent(who)}`, { method: "POST", body: JSON.stringify(r) }).catch(() => {});

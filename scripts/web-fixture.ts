@@ -78,10 +78,12 @@ for (const name of readdirSync(strokes).filter((f) => f.endsWith(".json") && f.s
     await sleep(500);
     const said = execFileSync(poster, [join(strokes, name), String(dx), String(dy)], { encoding: "utf8", timeout: 60_000 }).trim();
     const posted = Date.now();
-    // a stroke rests a second after its last event, and the page posts every few seconds
+    // the page posts every 5 s while its recording changes: once a whole 6 s passes with no post after the stroke and
+    // its rest, the file holds all of it
     let r: Recording | null = null;
-    for (const until = posted + 15_000; Date.now() < until; await sleep(300)) {
-      if (statSync(flight).mtimeMs > posted + 1500 && (r = read())?.frames) break;
+    for (const until = posted + 30_000; Date.now() < until; await sleep(300)) {
+      const at = statSync(flight).mtimeMs;
+      if (at > posted - 5000 && Date.now() - Math.max(at, posted + 1500) > 6000 && (r = read())?.frames) break;
     }
     if (!r?.frames) throw new Error(`${name}: no frames posted after the stroke`);
     const dir = n === 1 ? join(repo, "scripts/test/fixtures/web-pinch", build) : join(repo, "build/web-pinch", `${build}-${n}`);

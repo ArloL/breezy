@@ -1,0 +1,23 @@
+{
+ "firefox-989de3c": {
+  "curve": [
+   "pinch-in-past-max-1",
+   "pinch-in-past-max-2",
+   "pinch-in-past-max-3",
+   "pinch-in-past-max-4",
+   "pinch-in-past-max-5",
+   "pinch-out-fast-10",
+   "pinch-out-fast-13",
+   "pinch-out-fast-6",
+   "pinch-out-fast-7",
+   "pinch-out-fast-8",
+   "pinch-out-slow-2",
+   "pinch-out-slow-3",
+   "pinch-out-slow-4",
+   "pinch-out-slow-5",
+   "pinch-pan-14",
+   "pinch-pan-15",
+   "pinch-pan-16"
+  ]
+ }
+}

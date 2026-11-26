@@ -130,3 +130,15 @@ The owner: "start with the things I tell you look off — if the idea can't pinp
 In the app, the replays' lowest zoom was 0.2296, 0.2271 and 0.2239 against the recordings' 0.2296, 0.2274 and 0.2235. All three settled at 0.25, as recorded, within 1, 31 and 25 ms of the recordings' settle times. Aligned on the first frame the zoom left 100 %, and allowing one display frame of timing either way, the curves stay within 0.009, 0.011 and 0.011. Without that allowance, the largest gap is 0.05–0.075, in the first 56 ms, where a single magnify event moves the zoom 9 %.
 
 **Verdict.** A posted pinch reaches the app as `NSEvent`s of type magnify with the recorded values and phases, but `NSScrollView` zooms by none of them, by every route tried. Pinches are therefore replayed in the app, through `NSEvent(cgEvent:)` and `window.sendEvent`: in Breezy through the Debug control port (`Breezy/Support/Control.swift`), and in the reference app through its own. Fixtures are made from Debug builds. The window server's own handling of a pinch is not covered by a replay; the owner's hand covers it. The evidence is in `build/native-reference-2/spike/`.
+
+**The owner's strokes, posted into Firefox** (2026-11-26, Firefox 161 on the owner's MacBook, the dev server on localhost, native panning; the take-5 strokes; throwaway posters, the kept one `scripts/post-stroke.swift`). Each stroke's events were posted at the HID tap at their recorded times, moved from the reference's window onto Firefox's, the cursor warped to each first:
+
+| Route | Pan (`pinch-pan-13`, 96 scrolls) | Pinch out (`pinch-out-slow-1`, 87 magnify events) |
+|---|---|---|
+| The recorded `CGEvent`s, as recorded | none reach the page | not tried |
+| The same, their window (fields 91, 92) and target process cleared | none reach the page | not tried |
+| Fresh events made from each one's fields | all reach it: 130 and −117 pt posted, 130 and −117 in the page's frames | all reach it, as ⌃-wheel: zoom 1.0 → 0.25, as AppKit's 0.999 → 0.243 → 0.250; magnification −2.125 of −2.160 |
+
+The session's process is trusted to post (`AXIsProcessTrusted`); freshly made scroll events at the same place reach the page too, so the recorded events carry something else that routes them to the reference app.
+
+**Verdict.** Both pans and pinches replay into Firefox, as fresh events made from the recorded ones; `scripts/web-fixture.ts` does so for each of the owner's strokes. Firefox applies a pan's deltas one to one, where AppKit runs its own shorter coast (159 pt across against Firefox's 195 for the same deltas), as phase 1 found. Replayed, the pinch out found one thing of the web app's own: a ⌃-wheel pinch's frames held no place, which `follow` read as a 682 pt slip, fixed in #315.
