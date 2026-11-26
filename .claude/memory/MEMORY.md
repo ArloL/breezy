@@ -2,4 +2,8 @@
 - [Trackpad edge findings](trackpad-edge-findings.md) — what real trackpad streams showed (momentum vs slow drag, tails, rebound); read build/flight/ first
 - [AppKit edge findings](appkit-edge-findings.md) — AppKit's band ~8× stiffer than WheelPan's, own short coast; Firefox native matches stretch; replay setup quirks
 - [iOS native scroll quirks](ios-native-scroll-quirks.md) — what iOS WebKit does to native panning + zoom on top; taken pans unstoppable but by an overlay
-- [CI probe economy](ci-probe-economy.md) — name the question; a finished step's log often answers; cancel a session to read it
+- [CI probe economy](ci-probe-economy.md) — name the question; a finished step's log often answers; cancel to read it; one step's question gets a job on its own runner
+- [Ratchet compares all rules](frames-ratchet-all-rules.md) — before mac-pinch-known.json takes a build, diff every rule against main's
+- [Watcher shell pitfalls](watcher-shell-pitfalls.md) — zsh doesn't split $var lists; gh hints on stderr break jq; check a watcher's first poll
+- [CI step pipefail](ci-step-pipefail.md) — a run step without shell: has no pipefail; a piped test's red reads green
+- [CI headless frame rates](ci-headless-frame-rates.md) — CI's Firefox/WebKit 60 Hz, Chromium ~21 fps; the Mac's 120 Hz ratchets don't carry to CI

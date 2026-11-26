@@ -11,6 +11,9 @@ Measured 2026-11-10, macOS 27.0.1, Firefox 159, MacBook trackpad:
 - AppKit runs its own coast and stops short of the momentum deltas (545 pt of deltas moved 261); browsers and WheelPan apply them 1:1. A stock NSScrollView does the same, so it isn't the reference's doing.
 - Firefox's native scrolling matches AppKit's stretch within ~15 % and holds it under a resting finger; flick impacts match neither.
 - Setup: NSScrollView takes a gesture's events after the first on a background thread (responsive scrolling); override scrollWheel to see them. A held finger sends no events; Firefox and AppKit merge events (check delta sums, not counts); a browser's deltaX = −scrollingDeltaX.
+- AppKit zooms a pinch about the cursor, not its events' location; replayed NSEvents have no window (location on screen). RawReplay warps the cursor per event (2026-11-24).
+- Zoomed out, AppKit's bounce springs back short of the edge and stays: 4 px at 25–35 % on 2x, 4–10 px below 100 % on 1x (CI's runners are 1x). Reproduce CI's 1x here: copy the .app, add NSHighResolutionCapable false to its Info.plist, `codesign --force --deep --sign -` (2026-11-26).
+- A probe NSScrollView ignores directly called scrollWheel(with:) unless a subclass overrides it (responsive scrolling).
 - Accessibility and Screen Recording are granted to Visual Studio Code (the host app), so the replay helper and screencapture run from the session itself.
 
 **Why:** these took several failed batches to find; they decide the next step for the trackpad feel.
