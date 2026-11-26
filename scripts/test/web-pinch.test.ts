@@ -6,9 +6,9 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { check, REPLAYED, track } from "../frames/check.ts";
 
-/** Firefox's own replay error: its three replays of each stroke parted from one another's zoom by up to 0.204, on
- * pinch-out-slow-4, and slipped the board from under the fingers by up to 0.3 pt; AppKit's replays' stand otherwise. */
-export const FIREFOX = { ...REPLAYED, curve: 0.204 };
+/** Firefox's own replay error, per stroke: how far its three replays of the stroke parted from one another's zoom, in
+ * <build>-spread.json beside the build's fixtures, and never under AppKit's replays' own 0.12; AppKit's otherwise. */
+const tolerance = (build: string, stroke: string, spread: Record<string, number>) => ({ ...REPLAYED, curve: Math.max(REPLAYED.curve, spread[stroke] ?? 0) });
 
 const dir = new URL("./fixtures/", import.meta.url).pathname;
 const KNOWN: Record<string, Record<string, string[]>> = JSON.parse(readFileSync(new URL("./web-pinch-known.json", import.meta.url), "utf8"));
@@ -16,9 +16,10 @@ const KNOWN: Record<string, Record<string, string[]>> = JSON.parse(readFileSync(
 for (const build of Object.keys(KNOWN))
   test(`${build}: finds only what is known`, () => {
     const found: Record<string, string[]> = {};
+    const spread: Record<string, number> = JSON.parse(readFileSync(`${dir}web-pinch/${build}-spread.json`, "utf8"));
     for (const f of readdirSync(`${dir}web-pinch/${build}`).sort()) {
       const s = f.replace(".json", "");
-      for (const x of check(track(`${dir}web-pinch/${build}/${f}`), track(`${dir}mac-pinch/reference-replay/${f}`), FIREFOX)) {
+      for (const x of check(track(`${dir}web-pinch/${build}/${f}`), track(`${dir}mac-pinch/reference-replay/${f}`), tolerance(build, s, spread))) {
         if (!(found[x.rule] ??= []).includes(s)) found[x.rule].push(s);
       }
     }

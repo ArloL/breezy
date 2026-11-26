@@ -250,7 +250,9 @@ export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number
     const [u0, a0] = p[j - 1], [u1, a1] = p[j];
     return a0 + ((a1 - a0) * (u - u0)) / (u1 - u0);
   };
-  const end = Math.min(pa.at(-1)![0], pb.at(-1)![0]), times: number[] = [], bad: boolean[] = [], gaps: number[] = [];
+  // to the later end, the other held at its last frame: a recorder writes no frame while the view is still, and a
+  // track that ends early, as a page that never saw the gesture, is still and not done
+  const end = Math.max(pa.at(-1)![0], pb.at(-1)![0]), times: number[] = [], bad: boolean[] = [], gaps: number[] = [];
   for (let u = 0; u <= end; u += 8) { times.push(u + a0); gaps.push(Math.abs(at(pa, u) - at(pb, u))); bad.push(gaps.at(-1)! > tol); }
   return runs(times, bad, "curve", (a, b) => `${field} parted from the reference's by up to ${Math.max(...gaps.slice(a, b + 1)).toFixed(3)}, past ${tol}`);
 }
