@@ -39,6 +39,18 @@ public struct BoardBounds: Equatable, Sendable {
   /// A zoom shows `shown`: the board grows to it, so that zooming out never shows its edge.
   public mutating func takeIn(_ shown: Rect) { seen = Self.takeIn(seen, shown) }
 
+  /// How much further, in whole points, a board grown or shrunk `d` points at its left or top grows there for the view
+  /// it moves under to move whole pixels, `pixelsPerPoint` of them a board point: else AppKit snaps the view onto its
+  /// pixels after, and mid-pinch the board slipped from under the fingers by what it snapped. None found in 512 pt: 0.
+  public static func onPixels(_ d: Double, pixelsPerPoint q: Double) -> Double {
+    guard d != 0, q > 0 else { return 0 }
+    for e in 0..<512 {
+      let px = (d + Double(e)) * q
+      if abs(px - px.rounded()) < 0.02 { return Double(e) }
+    }
+    return 0
+  }
+
   /// The board round `content`, out to whole points, which a view's frame keeps exactly.
   public func board(_ content: Rect) -> Rect { Self.board(content, seen: seen).outward }
 }

@@ -247,8 +247,18 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   /// and its scroll position moves by as much in the same pass, so that nothing on screen moves; returns how far.
   @discardableResult
   func fitBoard() -> CGVector {
-    let b = reachedBoard(), old = bounds
+    var b = reachedBoard()
+    let old = bounds
     guard b != old else { return .zero }
+    // while zooming, grown or shrunk at its left or top by whole pixels too, which AppKit then leaves where they are
+    if old != .zero, let sv = enclosingScrollView as? BoardScrollView, sv.zooming, let w = window {
+      let q = Double(w.backingScaleFactor * sv.magnification)
+      let ex = BoardBounds.onPixels(old.minX - b.minX, pixelsPerPoint: q), ey = BoardBounds.onPixels(old.minY - b.minY, pixelsPerPoint: q)
+      if ex > 0 || ey > 0 {
+        reach.takeIn(Rect(x: b.minX - ex, y: b.minY - ey, w: 1, h: 1))
+        b = reachedBoard()
+      }
+    }
     rebasing = true
     defer { rebasing = false }
     let d = old == .zero ? .zero : CGVector(dx: old.minX - b.minX, dy: old.minY - b.minY)
