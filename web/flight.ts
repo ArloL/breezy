@@ -44,25 +44,52 @@ export const thrown = (e: unknown): { message: string; where: string | null } =>
   where: /([\w.-]+\.[jt]s:\d+)/.exec(String((e as Error)?.stack ?? "").split("\n").slice(1).join("\n"))?.[1] ?? null,
 });
 
+/** Whether a page turned recording off, for what recording costs to be measured against it (scripts/launch.ts). */
+export const recordingOff = () => !!(globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight;
+
 export class Flight {
+  /** What a frame holds, in order, as scripts/frames/fields.json lists them: every platform's, then the web's. */
+  static readonly frameFields: readonly string[] = [
+    "t", "zoom", "camX", "camY", "viewW", "viewH", "boardX", "boardY", "boardW", "boardH", "px", "py", "f1x", "f1y", "f2x", "f2y",
+    "wheelDX", "wheelDY", "wheelPhase", "momentumPhase", "magnify", "gesture", "coverTop", "grid",
+  ];
   private readonly now: () => number;
   private readonly ring: Entry[] = [];
   private readonly size: number;
   private readonly origin: number;
+  private readonly frameMs: number;
   private next = 0;
   private dropped = 0;
   private about: { [k: string]: Value } | null = null;
+  private frameRows: (number | null)[][] = [];
+  private frameHead = 0;
 
-  constructor({ now = () => performance.now(), wall = () => Date.now(), size = 4000 }: { now?: () => number; wall?: () => number; size?: number } = {}) {
+  constructor({ now = () => performance.now(), wall = () => Date.now(), size = 4000, frameMs = 30_000 }:
+    { now?: () => number; wall?: () => number; size?: number; frameMs?: number } = {}) {
     this.now = now;
     this.size = size;
+    this.frameMs = frameMs;
     this.origin = wall() - now();
+  }
+
+  /** Keeps a frame of every field after `t`, which it stamps on the entries' clock; frames older than `frameMs` go. A
+   * frame of another length is not kept. */
+  frame(values: (number | null)[]) {
+    if (recordingOff() || values.length !== Flight.frameFields.length - 1) return;
+    const t = tenth(this.now());
+    this.frameRows.push([t, ...values]);
+    while (this.frameHead < this.frameRows.length && this.frameRows[this.frameHead]![0]! < t - this.frameMs) this.frameHead++;
+    // compacts now and then, rather than shifting the array on every frame
+    if (this.frameHead > 4096) {
+      this.frameRows = this.frameRows.slice(this.frameHead);
+      this.frameHead = 0;
+    }
   }
 
   /** Keeps `data` as it is now; whatever cannot be read is noted as such, as a note must never break the app. */
   note(kind: Kind, what: string, data?: { [k: string]: Value }) {
     // a page measured against itself without recording, for what recording costs (scripts/launch.ts)
-    if ((globalThis as { __breezyNoFlight?: boolean }).__breezyNoFlight) return;
+    if (recordingOff()) return;
     let kept: { [k: string]: Value } | undefined;
     try {
       kept = data && JSON.parse(JSON.stringify(data));
@@ -84,6 +111,8 @@ export class Flight {
 
   recording(): Recording {
     const entries = this.ring.length < this.size ? [...this.ring] : [...this.ring.slice(this.next), ...this.ring.slice(0, this.next)];
-    return { schema: 1, origin: this.origin, dropped: this.dropped, context: this.about, entries };
+    const rows = this.frameRows.slice(this.frameHead);
+    const frames = rows.length ? { frames: { fields: [...Flight.frameFields], rows } } : {};
+    return { schema: 1, origin: this.origin, dropped: this.dropped, context: this.about, entries, ...frames };
   }
 }
