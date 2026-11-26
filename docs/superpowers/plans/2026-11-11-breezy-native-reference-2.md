@@ -220,7 +220,7 @@ A session with the owner, on this Mac.
 
 ---
 
-## Step 2: the web app (outline; planned in detail once step 1 merges)
+## Step 2: the web app (planned in detail in `2026-11-26-breezy-native-reference-2-web.md`; the outline it started from)
 
 - `web/flight.ts` keeps a frame track as Task 3 does, from the camera's frame loop: the same `FIELDS`, with fingers from pointer events. The web's platform fields are `coverTop` (whether the board covers the top bar), and `grid`, the dot canvas's rect against the view.
 - Report a Problem gains "That Looked Off", sending reason `looked-off` with frames (Task 4's server side).

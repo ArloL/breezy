@@ -2,12 +2,15 @@
 import { readFileSync } from "node:fs";
 import type { FrameTrack, Recording } from "../../web/flight.ts";
 
-const LISTED: { common: string[]; mac: string[] } = JSON.parse(readFileSync(new URL("./fields.json", import.meta.url), "utf8"));
+const LISTED: { common: string[]; mac: string[]; web: string[] } = JSON.parse(readFileSync(new URL("./fields.json", import.meta.url), "utf8"));
 
 /** What every platform writes, in order: the time, the camera, the view and the board, the input. */
 export const FIELDS: readonly string[] = LISTED.common;
 /** What the Mac app writes after them: its scrollers' knobs, and the view past the board's edge as drawn. */
 export const MAC_FIELDS: readonly string[] = LISTED.mac;
+/** What the web app writes after them: whether the board paints over the top bar (1) or not (0), and how far, in view
+ * pt, the dot grid falls short of the view, as the Mac's grey. */
+export const WEB_FIELDS: readonly string[] = LISTED.web;
 
 export function column(t: FrameTrack, name: string): (number | null)[] {
   const i = t.fields.indexOf(name);
