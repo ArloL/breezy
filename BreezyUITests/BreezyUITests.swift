@@ -98,4 +98,27 @@ final class BreezyUITests: XCTestCase {
     XCTAssertTrue(app.wait(for: .notRunning, timeout: 90))
     XCTAssertEqual(try String(contentsOf: out, encoding: .utf8), "PASS bounded-board")
   }
+
+  /// The knobs measure the board its cards make, not the document, so dragging one and clicking a track scroll over that
+  /// board: the knob dragged to the right end shows the board's right edge, and a click in the track left of it pages back.
+  func testTheScrollersScrollTheBoard() {
+    open(#"""
+    {"format": 1, "lanes": [],
+     "cards": [{"id": "a", "x": 0, "y": 0, "w": 240, "text": "Left", "color": 1},
+               {"id": "b", "x": 2400, "y": 0, "w": 240, "text": "Right", "color": 2}]}
+    """#, ["-AppleShowScrollBars", "Always"])
+    XCTAssertTrue(app.scrollBars.firstMatch.waitForExistence(timeout: 2))
+    let bar = app.scrollBars.allElementsBoundByIndex.first { $0.frame.width > $0.frame.height }!
+    func value() -> Double { (bar.value as? NSNumber)?.doubleValue ?? Double(bar.value as? String ?? "") ?? -1 }
+    let right = app.groups.matching(identifier: "card").matching(NSPredicate(format: "label == 'Right'")).firstMatch
+    let before = right.frame.minX
+    // the track's point at the knob's value is on the knob, however long the knob
+    bar.coordinate(withNormalizedOffset: CGVector(dx: value(), dy: 0.5))
+      .click(forDuration: 0.1, thenDragTo: bar.coordinate(withNormalizedOffset: CGVector(dx: 1.2, dy: 0.5)))
+    let dragged = right.frame.minX
+    XCTAssertLessThan(dragged, before - 100, "the knob dragged right moved the card from \(before) to \(dragged)")
+    XCTAssertEqual(value(), 1, accuracy: 0.02)
+    bar.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).click()
+    XCTAssertGreaterThan(right.frame.minX, dragged + 100, "a click in the track left of the knob left the card at \(right.frame.minX)")
+  }
 }

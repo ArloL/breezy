@@ -71,6 +71,54 @@ final class BoardScrollView: NSScrollView {
   /// Whether the view moves of itself, on a spring.
   var animating: Bool { spring != nil || pan != nil }
 
+  // MARK: scrollers over the steady board
+
+  /// The scrollers measure the view against the board its cards make, not the document, which grows for each zoom and
+  /// lets that go at rest: AppKit's knobs, over the document, changed size as it did, at a steady zoom.
+  override func reflectScrolledClipView(_ cliView: NSClipView) {
+    super.reflectScrolledClipView(cliView)
+    steadyKnobs()
+  }
+
+  override func tile() {
+    super.tile()
+    steadyKnobs()
+  }
+
+  private func steadyKnobs() {
+    guard let canvas = documentView as? CanvasView else { return }
+    let b = canvas.steadyBoard, v = documentVisibleRect
+    func set(_ s: NSScroller?, _ board: (CGFloat, CGFloat), _ view: (CGFloat, CGFloat)) {
+      guard let s else { return }
+      let (b0, bw) = board, (v0, vw) = view
+      s.knobProportion = bw > vw ? vw / bw : 1
+      s.doubleValue = bw > vw ? Double(min(1, max(0, (v0 - b0) / (bw - vw)))) : 0
+      if s.action != #selector(scrolled(_:)) { (s.target, s.action) = (self, #selector(scrolled(_:))) }
+    }
+    set(horizontalScroller, (b.minX, b.width), (v.minX, v.width))
+    set(verticalScroller, (b.minY, b.height), (v.minY, v.height))
+  }
+
+  /// A knob dragged or a scroller's track clicked, over the steady board as the knobs show it.
+  @objc private func scrolled(_ s: NSScroller) {
+    guard let canvas = documentView as? CanvasView else { return }
+    let b = canvas.steadyBoard, v = documentVisibleRect, across = s === horizontalScroller
+    let (b0, bw, v0, vw) = across ? (b.minX, b.width, v.minX, v.width) : (b.minY, b.height, v.minY, v.height)
+    var to = v0
+    switch s.hitPart {
+    case .knob, .knobSlot: to = b0 + CGFloat(s.doubleValue) * max(0, bw - vw)
+    case .decrementPage: to = v0 - vw * 0.9
+    case .incrementPage: to = v0 + vw * 0.9
+    default: return
+    }
+    stopSpring()
+    stopPan()
+    var at = v.origin
+    if across { at.x = to } else { at.y = to }
+    contentView.scroll(to: clip(at))
+    reflectScrolledClipView(contentView)
+  }
+
   /// From the clip view's points to the document's.
   private var offset: CGVector {
     guard let d = documentView else { return .zero }
