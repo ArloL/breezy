@@ -149,9 +149,11 @@ export class WheelFrames {
     this.pinching = pinching;
   }
 
-  take(e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "metaKey">) {
+  take(e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "metaKey" | "clientX" | "clientY">) {
     const a = wheelAction(e), kind = a.zoom ? "pinch" : "pan";
     if (kind === "pinch" && this.pinching()) return;
+    // where the wheel is, which a pinch zooms about: no mouse move tells it when a trackpad's cursor did not move
+    this.frames.pointer(-1, e.clientX, e.clientY, false);
     const first = this.stream !== kind;
     if (first) this.end();
     this.stream = kind;
