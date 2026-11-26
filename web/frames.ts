@@ -81,7 +81,8 @@ export class FrameRecorder {
   /** A pinch's scale changed by `by` (scale / last − 1), as AppKit's magnification. */
   magnify(by: number, phase: "began" | "changed" | "ended") {
     this.magnified += by;
-    if (phase === "began") this.gesture = 1;
+    // a new pinch's begin outweighs the last one's end still waiting for a row, as on the Mac: it goes on
+    if (phase === "began") (this.gesture = 1), (this.endPending = false);
     else if (phase === "ended") {
       if (this.gesture === 1) this.endPending = true;
       else this.gesture = 3;
@@ -116,7 +117,7 @@ export class FrameRecorder {
     if (moving) this.still = 0;
     this.lastShown = shownKey;
     this.lastInput = inputKey;
-    this.wheelAt = { dx: 0, dy: 0, phase: w.phase === ENDED || w.phase === CANCELLED ? 0 : w.phase, momentum: w.momentum === ENDED ? 0 : w.momentum };
+    this.wheelAt = { dx: 0, dy: 0, phase: w.phase === ENDED || w.phase === CANCELLED ? 0 : w.phase, momentum: w.momentum === ENDED || w.momentum === CANCELLED ? 0 : w.momentum };
     this.magnified = 0;
     if (this.gesture === 3) this.gesture = 0;
     else if (this.gesture === 1) this.gesture = this.endPending ? 3 : 2;
