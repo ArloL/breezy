@@ -279,3 +279,14 @@ test("curve holds a track still past its last frame, to the reference's end, as 
   assert.equal(f.length, 1, JSON.stringify(f));
   assert.match(f[0].say, /up to 0\.5/);
 });
+
+test("curve with a frame's slack takes a step a frame late as on time, and a real gap still as one", () => {
+  // the same zoom rising 0.1 a frame, one track 16 ms behind the other: 0.2 apart at each instant, on the same path
+  const ahead = track(range(1, 2, 11).map((z, i) => ({ t: i * 16, zoom: z, gesture: i === 0 ? 1 : 2 })));
+  const behind = track([{ t: 0, zoom: 1, gesture: 1 }, ...range(1, 2, 11).map((z, i) => ({ t: (i + 1) * 16, zoom: z, gesture: 2 }))]);
+  assert.equal(curve(behind, ahead, "zoom", 0.05).length, 1);
+  assert.deepEqual(curve(behind, ahead, "zoom", 0.05, 16), []);
+  // a track that tops out at 1.5 is apart however late it is
+  const short = track(range(1, 1.5, 11).map((z, i) => ({ t: i * 16, zoom: z, gesture: i === 0 ? 1 : 2 })));
+  assert.equal(curve(short, ahead, "zoom", 0.05, 16).length, 1);
+});

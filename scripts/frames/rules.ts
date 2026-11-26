@@ -240,7 +240,7 @@ function startOf(t: FrameTrack): number {
 
 /** `field` over time as the reference's, from each one's gesture start, within `tol`, every 8 ms both cover, read on a
  * straight line between frames. */
-export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number): Finding[] {
+export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number, slackMs = 0): Finding[] {
   const a0 = startOf(t), b0 = startOf(ref);
   const pa = column(t, "t").map((u, i) => [num(u) - a0, num(column(t, field)[i])]), pb = column(ref, "t").map((u, i) => [num(u) - b0, num(column(ref, field)[i])]);
   // on a straight line between frames: a display link skips frames where nothing redraws, 100 ms and more
@@ -253,7 +253,15 @@ export function curve(t: FrameTrack, ref: FrameTrack, field: string, tol: number
   // to the later end, the other held at its last frame: a recorder writes no frame while the view is still, and a
   // track that ends early, as a page that never saw the gesture, is still and not done
   const end = Math.max(pa.at(-1)![0], pb.at(-1)![0]), times: number[] = [], bad: boolean[] = [], gaps: number[] = [];
-  for (let u = 0; u <= end; u += 8) { times.push(u + a0); gaps.push(Math.abs(at(pa, u) - at(pb, u))); bad.push(gaps.at(-1)! > tol); }
+  // with `slackMs`, how far from the reference's values within that much either way: a replay's input, sent from
+  // outside the browser, comes a frame early or late, which on a fast zoom reads as a gap of 0.1 and more
+  const off = (u: number) => {
+    const a = at(pa, u);
+    let lo = Infinity, hi = -Infinity;
+    for (let d = -slackMs; d <= slackMs; d += 4) { const b = at(pb, u + d); lo = Math.min(lo, b); hi = Math.max(hi, b); }
+    return a < lo ? lo - a : a > hi ? a - hi : 0;
+  };
+  for (let u = 0; u <= end; u += 8) { times.push(u + a0); gaps.push(off(u)); bad.push(gaps.at(-1)! > tol); }
   return runs(times, bad, "curve", (a, b) => `${field} parted from the reference's by up to ${Math.max(...gaps.slice(a, b + 1)).toFixed(3)}, past ${tol}`);
 }
 

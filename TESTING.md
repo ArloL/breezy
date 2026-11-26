@@ -55,6 +55,17 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 `docs/superpowers/specs/2026-10-11-breezy-testability-design.md` says how scenarios drive every kind of device, `docs/platform-expectations.md` which platform input is tested where, and `docs/quality-goals.md` what all of it protects.
 
+### Feel, at four levels
+
+The owner's 41 reference strokes are judged by the rules over frames (`scripts/frames/`) against AppKit's replay of each, at four levels, each held to the one above it. The cheaper levels are trusted only while they match real input for the same stroke in the same panning mode, within that stroke's repeat spread (`web/test/feel-levels.test.ts`, and level 3's calibration in `scenarios/strokes.e2e.ts`).
+
+| Level | What runs | When | Holds to |
+|---|---|---|---|
+| Frozen tracks | `scripts/test/mac-pinch.test.ts` and `scripts/test/web-pinch.test.ts`, over recorded fixtures | every push | — |
+| The web core in Node | `web/test/web-core-strokes.test.ts`: each camera-mode capture replayed through `BoardCamera` on a fake clock, in a fifth of a second | every push | real input, camera mode, exactly |
+| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | nightly | real input, native, within a frame |
+| Real input | `scripts/web-fixture.ts`: the strokes posted as OS events into a Firefox Playwright launches, about 3 minutes a pass | by hand on the owner's Mac, when strokes are recorded or a calibration drifts (`--list`) | AppKit's reference |
+
 ## The gate and the nightly
 
 The checks on a pull request are the gate: every job of `.github/workflows/main.yaml` is required, it is done within ten minutes, and it is red only for a bug. It holds the type check, the unit tests, the hub's cases and the conformance test, fuzz seeds 1–10, the platform replays, the Mac app's tests, and the smoke cases: the few marked `smoke` in `scenarios/cases.ts` (`scenarios/smoke.ts`, held to five to eight by `scenarios/smoke.test.ts`), in Chromium with the Mac app watching and with Chrome on the Android emulator acting, each run once. A smoke case that fails is fixed, or loses its mark; nothing is run again into green, and nothing is quarantined. The iPhone is never in the gate, and no real-device job joins it beyond the smoke cases: when they all gated, every change took 8–15 h of CI re-runs to merge.

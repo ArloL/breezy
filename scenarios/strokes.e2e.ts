@@ -108,6 +108,8 @@ for (const name of names)
   describe(name, () => {
     let page: Page;
     const found: Record<string, string[]> = {}, zoomed: string[] = [], failed: string[] = [], borderline: string[] = [];
+    // level 3 calibrated against level 4: Firefox's replay of a stroke against Firefox's real-input capture of it
+    const drifted: string[] = [];
     const add = (rule: string, s: string) => { if (!(found[rule] ??= []).includes(s)) found[rule].push(s); };
     test(`${name} opens`, async () => {
       const b = await kinds[name].launch();
@@ -118,8 +120,20 @@ for (const name of names)
       test(`${name}: ${s}`, async () => {
         failed.push(s);
         const capture = track(`${captures}/${s}.json`), out = await playCapture(page, capture);
+        // STROKES_DUMP=<dir> keeps each replay's frames, to see what a drift or a finding is
+        if (process.env.STROKES_DUMP) {
+          mkdirSync(`${process.env.STROKES_DUMP}/${name}`, { recursive: true });
+          writeFileSync(`${process.env.STROKES_DUMP}/${name}/${s}.json`, JSON.stringify(out) + "\n");
+        }
         if (new Set(out.rows.map((r) => r[out.fields.indexOf("zoom")])).size > 1) zoomed.push(s);
         const span = inputSpan(capture), took = inputSpan(out), ratio = span > 0 ? took / span : 1;
+        if (name === "firefox" && ratio <= SLOW) {
+          // a frame's slack either way, as input sent from outside the browser comes a frame early or late
+          const own = Math.max(0, ...curve(out, capture, "zoom", 0, 16).map((f) => Number(/up to ([0-9.]+)/.exec(f.say)?.[1] ?? 0)));
+          const tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
+          if (process.env.STROKES_GAPS) console.log(`calibration ${s} ${own.toFixed(3)} of ${tol}`);
+          if (own > tol * (1 + BAND)) drifted.push(`${s} ${own.toFixed(3)} past ${tol}`);
+        }
         if (Math.abs(ratio / SLOW - 1) <= BAND) borderline.push(s);
         if (ratio > SLOW) return void (add("slow", s), failed.pop());
         const ref = track(`${fixtures}mac-pinch/reference-replay/${s}.json`), tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
@@ -127,6 +141,10 @@ for (const name of names)
         if (Math.abs(gap / tol - 1) <= BAND) borderline.push(s);
         for (const x of check(out, ref, { ...REPLAYED, curve: tol })) add(x.rule, s);
         failed.pop();
+      });
+    if (name === "firefox")
+      test("firefox: each stroke moves as Firefox's real-input capture of it did (level 3 calibrated against level 4)", () => {
+        assert.deepEqual(drifted, [], "synthetic input moved otherwise than real input: the fake is wrong, or the capture is stale");
       });
     test(`${name}: every rule against AppKit's replay, as strokes-known/${name}.json holds`, () => {
       assert.deepEqual(failed, [], `${failed.join(", ")} did not play`);
