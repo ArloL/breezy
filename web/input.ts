@@ -353,6 +353,7 @@ export class Input {
   pinchCancel() {
     if (this.native) return;
     this.app.flight.note("input", "pinch cancel");
+    this.app.frames.magnify(0, "ended");
     this.app.view.setCamera(this.pinchBase!.cam);
     this.pinchBase = null;
   }
@@ -361,18 +362,23 @@ export class Input {
     this.app.flight.note("input", "zoom drag start", { x: Math.round(p.x), y: Math.round(p.y) });
     this.stopCoast();
     this.pinchBase = { cam: { ...this.app.view.cam }, c: p, scale: 1 };
+    this.app.frames.magnify(0, "began");
   }
 
   /** Down zooms in, up zooms out, as in Maps; the point first touched stays put. */
   zoomDrag(dy: number) {
     const { c, cam } = this.pinchBase!;
     // within the limits, as the browser's content cannot stretch past them
-    if (this.native) return this.app.view.zoomAround(c, cam.zoom * 2 ** (dy / ZOOM_DRAG));
-    this.pinch(c, 2 ** (dy / ZOOM_DRAG));
+    const scale = 2 ** (dy / ZOOM_DRAG);
+    if (!this.native) return this.pinch(c, scale);
+    this.app.frames.magnify(scale / this.pinchBase!.scale - 1, "changed");
+    this.pinchBase!.scale = scale;
+    this.app.view.zoomAround(c, cam.zoom * scale);
   }
 
   zoomDragEnd() {
     this.app.flight.note("input", "zoom drag end");
+    this.app.frames.magnify(0, "ended");
     const c = this.pinchBase?.c;
     this.pinchBase = null;
     if (c) this.app.view.camera.settle(c);
@@ -381,6 +387,7 @@ export class Input {
   zoomDragCancel() {
     this.app.flight.note("input", "zoom drag cancel");
     if (!this.native) return this.pinchCancel();
+    this.app.frames.magnify(0, "ended");
     this.app.view.setCamera(this.pinchBase!.cam);
     this.pinchBase = null;
   }

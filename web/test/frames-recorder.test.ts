@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Flight } from "../flight.ts";
-import { FrameRecorder, type FrameSource } from "../frames.ts";
+import { FrameRecorder, WheelFrames, type FrameSource } from "../frames.ts";
 import type { Cam } from "../types.ts";
 
 function setup() {
@@ -97,7 +97,7 @@ test("a hidden page keeps no loop, and wakes on input", () => {
   r.wake();
   assert.equal(queue.size, 0);
   setHidden(false);
-  r.pointer(1, 10, 10, false);
+  r.pointer(1, 10, 10, true);
   assert.equal(queue.size, 1);
   tick();
   assert.equal(rows().length, 1);
@@ -145,4 +145,52 @@ test("a cancelled coast is not held", () => {
   state.cam = { x: -5, y: 0, zoom: 1 };
   tick();
   assert.deepEqual(col("momentumPhase"), [16, 0]);
+});
+
+test("a mouse moving over the board starts no loop", () => {
+  const { r, queue } = setup();
+  r.pointer(1, 10, 10, false);
+  assert.equal(queue.size, 0);
+});
+
+/** WheelFrames on the recorder, its timers by hand. */
+function wheels(pinching = () => false) {
+  const s = setup();
+  let fire: (() => void) | null = null;
+  const w = new WheelFrames(s.r, { rest: 120, setTimer: (f) => ((fire = f), 1), clearTimer: () => (fire = null), pinching });
+  const ev = (deltaY: number, mods: { ctrlKey?: boolean; deltaMode?: number } = {}) => ({ deltaX: 0, deltaY, deltaMode: 0, ctrlKey: false, metaKey: false, ...mods });
+  return { ...s, w, ev, rest: () => fire?.() };
+}
+
+test("a wheel pan turning into a ⌃-wheel pinch ends the pan's stream first", () => {
+  const { w, ev, tick, col } = wheels();
+  w.take(ev(10));
+  tick();
+  w.take(ev(5, { ctrlKey: true }));
+  tick(2);
+  assert.ok(col("wheelPhase").includes(8), `phases ${col("wheelPhase")}`);
+  assert.deepEqual(col("gesture").slice(1, 3), [1, 2]);
+});
+
+test("a wheel's lines are points, as the app pans by them", () => {
+  const { w, ev, tick, col } = wheels();
+  w.take(ev(3, { deltaMode: 1 }));
+  tick();
+  assert.ok(Math.abs(col("wheelDY")[0]!) > 3 * 10, `wheelDY ${col("wheelDY")[0]} for 3 lines`);
+});
+
+test("a ⌃-wheel while Safari's own pinch is on is not a second pinch", () => {
+  const { w, ev, tick, col } = wheels(() => true);
+  w.take(ev(5, { ctrlKey: true }));
+  tick();
+  assert.deepEqual(col("gesture"), []);
+});
+
+test("a wheel stream ends after it rests", () => {
+  const { w, ev, tick, col, rest } = wheels();
+  w.take(ev(10));
+  tick();
+  rest();
+  tick();
+  assert.deepEqual(col("wheelPhase").slice(0, 2), [1, 8]);
 });

@@ -14,6 +14,7 @@ import { ownBoards } from "./owner.ts";
 import { loadState, saveState } from "./sync/idb.ts";
 import { ask } from "./sheet.ts";
 import { View, WHEEL_REST } from "./view.ts";
+import { WheelFrames } from "./frames.ts";
 import { UI } from "./ui.ts";
 import { Presence } from "./presence.ts";
 import { panMode, storedPan, storePan } from "./pan-mode.ts";
@@ -198,22 +199,9 @@ document.getElementById("keys")!.addEventListener("mousedown", (e) => e.preventD
 
 // each burst of wheel events as it arrives, before anything acts on it: a slow drag in Firefox once left no stream
 let burst = 0;
-// a wheel's deltas for the frames, in NSEvent's phases as a stream begins, goes on and ends; a ⌃-wheel, as Chrome and
-// Firefox send a trackpad's pinch, is a magnification
-let wheelEnd: ReturnType<typeof setTimeout> | undefined, wheeling: "pan" | "pinch" | null = null;
-addEventListener("wheel", (e) => {
-  const kind = e.ctrlKey || e.metaKey ? "pinch" : "pan", first = wheeling !== kind;
-  if (first && wheeling === "pinch") app.frames.magnify(0, "ended");
-  wheeling = kind;
-  if (kind === "pinch") app.frames.magnify((wheelAction(e).zoom ?? 1) - 1, first ? "began" : "changed");
-  else app.frames.wheel(e.deltaX, e.deltaY, first ? 1 : 4, 0);
-  clearTimeout(wheelEnd);
-  wheelEnd = setTimeout(() => {
-    if (wheeling === "pinch") app.frames.magnify(0, "ended");
-    else app.frames.wheel(0, 0, 8, 0);
-    wheeling = null;
-  }, WHEEL_REST);
-}, { capture: true, passive: true });
+// a wheel's deltas or a ⌃-wheel's pinch for the frames, every one, a native board's that the browser scrolls too
+const wheelFrames = new WheelFrames(app.frames, { rest: WHEEL_REST, pinching: () => pinch !== null });
+addEventListener("wheel", (e) => wheelFrames.take(e), { capture: true, passive: true });
 addEventListener("wheel", (e) => {
   const now = performance.now();
   if (now - burst > 300) {

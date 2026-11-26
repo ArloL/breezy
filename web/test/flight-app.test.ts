@@ -327,3 +327,34 @@ test("a pinch keeps frames in the recording", async () => {
   assert.ok(new Set(col("zoom")).size > 1, `zoom ${col("zoom")}`);
   for (const g of [1, 2, 3]) assert.ok(col("gesture").includes(g), `gesture ${col("gesture")}`);
 });
+
+const gestures = (app: App) => {
+  const t = app.flight.recording().frames!;
+  return t.rows.map((r) => r[t.fields.indexOf("gesture")]);
+};
+
+test("a zoom drag ends its gesture in the frames", async () => {
+  const app = phone();
+  app.input.zoomDragStart({ x: 100, y: 300 });
+  for (const dy of [20, 40, 60]) {
+    app.input.zoomDrag(dy);
+    await sleep(20);
+  }
+  app.input.zoomDragEnd();
+  await still(app);
+  await sleep(100);
+  const g = gestures(app);
+  assert.ok(g.includes(1) && g.includes(3) && g.at(-1) === 0, `gesture ${g}`);
+});
+
+test("a cancelled pinch ends its gesture in the frames", async () => {
+  const app = phone();
+  app.input.pinchStart({ x: 100, y: 300 });
+  app.input.pinch({ x: 100, y: 300 }, 1.2);
+  await sleep(20);
+  app.input.pinchCancel();
+  await still(app);
+  await sleep(100);
+  const g = gestures(app);
+  assert.ok(g.includes(3) && g.at(-1) === 0, `gesture ${g}`);
+});

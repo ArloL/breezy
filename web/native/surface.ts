@@ -108,6 +108,7 @@ export class NativeSurface implements Surface {
   }
 
   dispose() {
+    if (this.pinch) this.view.onMagnify(0, "ended");
     if (this.pinch?.overlaid) this.home.replaceWith(this.content);
     this.overlay?.remove();
     this.board.classList.remove("pinching");

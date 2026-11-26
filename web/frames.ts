@@ -3,6 +3,7 @@
 // only by a CSS transform until it ends, so no loop of the app's own runs every frame
 // (docs/superpowers/specs/2026-11-11-breezy-native-reference-2-design.md).
 import { Flight, recordingOff } from "./flight.ts";
+import { wheelAction } from "./wheel.ts";
 import type { Cam, Rect } from "./types.ts";
 
 /** What the page shows, as drawn: the camera with a native pinch's transform composed in, the view's size, the board's
@@ -68,7 +69,8 @@ export class FrameRecorder {
       else this.touches.set(id, [x, y]);
     }
     if (x !== null && y !== null) this.pointerAt = [x, y];
-    this.wake();
+    // a mouse moving over the board is no gesture, as the Mac keeps none: where it is rides along with the next frame
+    if (touch) this.wake();
   }
 
   /** A wheel event's deltas as the browser gives them, and its phases as WheelPan guesses them, in NSEvent's codes. */
@@ -125,3 +127,45 @@ export class FrameRecorder {
     this.loop = this.raf(() => this.tick());
   }
 }
+
+/** A wheel event's place in the frames: a pan's deltas in points, or a ⌃-wheel, as Chrome and Firefox send a trackpad's
+ * pinch, as a magnification; each a stream that begins, goes on, and ends once it has rested `rest` ms, the one ending as
+ * the other begins. A ⌃-wheel while `pinching`, Safari's own gesture events under way, is not a second pinch. */
+export class WheelFrames {
+  private readonly frames: FrameRecorder;
+  private readonly rest: number;
+  private readonly setTimer: (f: () => void, ms: number) => unknown;
+  private readonly clearTimer: (id: unknown) => void;
+  private readonly pinching: () => boolean;
+  private stream: "pan" | "pinch" | null = null;
+  private timer: unknown;
+
+  constructor(frames: FrameRecorder, { rest = 120, setTimer = (f, ms) => setTimeout(f, ms), clearTimer = (id) => clearTimeout(id as ReturnType<typeof setTimeout>), pinching = () => false }:
+    { rest?: number; setTimer?: (f: () => void, ms: number) => unknown; clearTimer?: (id: unknown) => void; pinching?: () => boolean } = {}) {
+    this.frames = frames;
+    this.rest = rest;
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
+    this.pinching = pinching;
+  }
+
+  take(e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "metaKey">) {
+    const a = wheelAction(e), kind = a.zoom ? "pinch" : "pan";
+    if (kind === "pinch" && this.pinching()) return;
+    const first = this.stream !== kind;
+    if (first) this.end();
+    this.stream = kind;
+    // the app pans by points: a browser's deltas the app's way round, for the recorder to turn AppKit's
+    if (a.zoom) this.frames.magnify(a.zoom - 1, first ? "began" : "changed");
+    else this.frames.wheel(-a.pan!.x, -a.pan!.y, first ? 1 : 4, 0);
+    this.clearTimer(this.timer);
+    this.timer = this.setTimer(() => this.end(), this.rest);
+  }
+
+  private end() {
+    if (this.stream === "pinch") this.frames.magnify(0, "ended");
+    else if (this.stream === "pan") this.frames.wheel(0, 0, 8, 0);
+    this.stream = null;
+  }
+}
+
