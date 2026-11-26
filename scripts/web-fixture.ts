@@ -47,6 +47,20 @@ export function strokeOf(t: FrameTrack, from: number): FrameTrack {
   return { fields: t.fields, rows: i <= 0 ? t.rows : t.rows.slice(i - 1) };
 }
 
+/** Whether a stroke the poster `said` it posted scrolls or pinches of reached no frame of `t` from `from` on: the page
+ * never got them, a failed replay. A two-finger double tap, which no page is handed, is not: that it did nothing is
+ * what the capture shows. */
+export function missed(t: FrameTrack, from: number, said: string): boolean {
+  if (!/scroll=|gesture 8=/.test(said)) return false;
+  const i = (k: string) => t.fields.indexOf(k);
+  return !t.rows.some((r) => (r[0] ?? 0) >= from && ["wheelDX", "wheelDY", "magnify", "gesture"].some((k) => i(k) >= 0 && (r[i(k)] ?? 0) !== 0));
+}
+
+/** A run's spreads over the strokes it replayed, with the others' kept: a run of a few left the rest's tolerance at 0.12. */
+export function mergeSpread(old: Record<string, number>, now: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.entries({ ...old, ...now }).sort(([a], [b]) => a.localeCompare(b)));
+}
+
 async function main() {
   const repo = new URL("..", import.meta.url).pathname;
   const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -72,14 +86,21 @@ async function main() {
   // Playwright's own folder, as the owner's Firefox has the same name
   // Playwright's own folder, as the owner's Firefox has the same name; of its processes, the one with a window
   let pid = "";
-  const front = () => {
-    for (const p of pid ? [pid] : execFileSync("pgrep", ["-f", "ms-playwright/firefox"], { encoding: "utf8" }).trim().split("\n")) {
+  // and only once its page has the focus: another Playwright Firefox, a run's leftover, takes being fronted without
+  // complaint, and the strokes would go to whatever window is under them
+  const front = async () => {
+    const pids = pid ? [pid] : execFileSync("pgrep", ["-f", "ms-playwright/firefox"], { encoding: "utf8" }).trim().split("\n");
+    for (const p of pids) {
       try {
         execFileSync("osascript", ["-e", `tell application "System Events" to set frontmost of (first process whose unix id is ${p}) to true`], { timeout: 10_000, stdio: "ignore" });
-        return void (pid = p);
-      } catch {}
+      } catch {
+        continue;
+      }
+      await sleep(300);
+      if (await page.evaluate(() => document.hasFocus())) return void (pid = p);
     }
-    throw new Error("no window of Playwright's Firefox to bring to the front");
+    pid = "";
+    throw new Error("could not bring Playwright's Firefox to the front with its page focused: close any other Playwright Firefox");
   };
   const small = (t: FrameTrack): FrameTrack => ({ fields: t.fields, rows: t.rows.map((r) => r.map((v) => (v == null ? v : Math.round(v * 1e4) / 1e4))) });
 
@@ -92,8 +113,7 @@ async function main() {
         const c = startCam(s);
         await page.goto(`http://localhost:58571/?reference=${c.x},${c.y},${c.zoom}&pan=${pan}`);
         await page.waitForFunction(() => (globalThis as { breezyFlight?: unknown }).breezyFlight, null, { timeout: 15_000 });
-        front();
-        await sleep(400);
+        await front();
         const inner = await page.evaluate(() => ({ x: (window as unknown as { mozInnerScreenX: number }).mozInnerScreenX, y: (window as unknown as { mozInnerScreenY: number }).mozInnerScreenY }));
         const { dx, dy } = offsetOf(s.window ?? [0, 0, 0, REFERENCE_STAGE_H], inner);
         const began = await page.evaluate(() => performance.now());
@@ -107,6 +127,8 @@ async function main() {
           else if (Date.now() - since > 1500) break;
         }
         if (!t) throw new Error(`${name}: the page kept no frames`);
+        if (Date.now() - since <= 1500) throw new Error(`${name}: the view never stood still in 20 s`);
+        if (missed(t, began, said)) throw new Error(`${name}: ${said}, and no frame after it took any: the page never got the stroke`);
         const dir = n === 1 ? join(repo, "scripts/test/fixtures/web-pinch", `${build}-${pan}`) : join(repo, "build/web-pinch", `${build}-${pan}-${n}`);
         mkdirSync(dir, { recursive: true });
         t = strokeOf(t, began);
@@ -117,7 +139,8 @@ async function main() {
       const up = (say: string) => Number(/up to ([0-9.]+)/.exec(say)?.[1] ?? 0);
       if (kept.length >= 3) spread[name.replace(".json", "")] = Math.round(Math.max(0, ...kept.slice(1).flatMap((k) => curve(k, kept[0], "zoom", 0).map((f) => up(f.say)))) * 1000) / 1000;
     }
-    if (Object.keys(spread).length) writeFileSync(join(repo, "scripts/test/fixtures/web-pinch", `${build}-${pan}-spread.json`), JSON.stringify(spread, null, 1) + "\n");
+    const sp = join(repo, "scripts/test/fixtures/web-pinch", `${build}-${pan}-spread.json`);
+    if (Object.keys(spread).length) writeFileSync(sp, JSON.stringify(mergeSpread(existsSync(sp) ? JSON.parse(readFileSync(sp, "utf8")) : {}, spread), null, 1) + "\n");
   } finally {
     await browser.close();
     server.close();
