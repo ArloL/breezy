@@ -8,7 +8,7 @@ export type Command =
 
 export type Typing = "card" | "lane" | "field" | null;
 
-export type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing" | "keyCode">;
+export type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing" | "keyCode"> & { repeat?: boolean };
 
 /** What `perform` uses of the app. */
 export interface KeyApp {
@@ -50,8 +50,9 @@ export function command(e: KeyEvent, { mac, typing }: { mac: boolean; typing: Ty
   const mod = mac ? e.metaKey : e.ctrlKey;
   const other = mac ? e.ctrlKey : e.metaKey;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  // ⌥⌘L, as the Mac app's Help ▸ That Looked Off, wherever the keyboard is: by its place, as ⌥L types ¬
-  if (mod && e.altKey && !other && !e.shiftKey && e.code === "KeyL") return "looked-off";
+  // ⌥⌘L, as the Mac app's Help ▸ That Looked Off, wherever the keyboard is: by its place, as ⌥L types ¬; elsewhere an
+  // l too, as Windows hands AltGr to the page as Ctrl and Alt, and AltGr+L types ł; and once, not as the key repeats
+  if (mod && e.altKey && !other && !e.shiftKey && e.code === "KeyL" && (mac || k === "l")) return e.repeat ? null : "looked-off";
   if (mod && !e.altKey && !other) {
     const cmd = modified(k, e.shiftKey);
     if (!cmd) return null;

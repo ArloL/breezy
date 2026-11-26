@@ -93,3 +93,12 @@ test("That Looked Off sends what the app recorded", () => {
   perform(app, "looked-off", {} as Parameters<typeof perform>[2]);
   assert.equal(sent, 1);
 });
+
+test("AltGr+L types ł into a card off the Mac, not That Looked Off", () => {
+  // Windows hands AltGr to the page as Ctrl and Alt: on Polish, Czech, Slovak and Hungarian keyboards it types ł
+  assert.equal(key("ł", { ctrlKey: true, altKey: true, code: "KeyL" }, { mac: false, typing: "card" }), null);
+});
+
+test("⌥⌘L held down sends once, not at the keyboard's repeat rate", () => {
+  assert.equal(key("¬", { metaKey: true, altKey: true, code: "KeyL", repeat: true }), null);
+});
