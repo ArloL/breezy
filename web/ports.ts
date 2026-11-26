@@ -32,6 +32,7 @@ export interface Field {
 export type ViewPort = Pick<View,
   | "cam" | "camera" | "heightOf" | "frontHeight" | "ready" | "area" | "onCamera" | "onRender" | "shown" | "els"
   | "invalidate" | "render" | "setCamera" | "toWorld" | "toScreen" | "rectOf" | "centre" | "zoomAround" | "limits" | "hold" | "takeIn" | "stage" | "wheelPan" | "centreOn"
+  | "board" | "shownCam" | "coverTop" | "gridShort" | "onMagnify"
   | "reveal" | "caretRect" | "topOf" | "editorOf" | "titleOf" | "animateTurn">;
 
 /** What the app uses of the bars, menus and find around the board. */

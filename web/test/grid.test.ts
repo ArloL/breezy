@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dotLines, outside } from "../grid.ts";
+import { dotLines, outside, shortOf } from "../grid.ts";
 import { GRID } from "../rules.ts";
 
 test("dots sit on whole device pixels, within half of one of the grid's cell centres", () => {
@@ -42,4 +42,12 @@ test("past the board's edge is the outside, in up to four strips that cover it o
     { x: 0, y: 50, w: 100, h: 500 },
     { x: 700, y: 50, w: 100, h: 500 },
   ]);
+});
+
+test("the grid's shortfall", () => {
+  // drawn for a window 40 pt narrower than it now is, before the resize observer redrew it
+  assert.equal(shortOf(1240, 800, 1200 * 2, 800 * 2, 2), 40);
+  assert.equal(shortOf(1200, 800, 1200 * 2, 800 * 2, 2), 0);
+  // a fraction of a pixel from rounding the bitmap is no shortfall
+  assert.equal(shortOf(1200.4, 800, 2400, 1600, 2), 0);
 });

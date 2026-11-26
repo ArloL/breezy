@@ -13,6 +13,12 @@ export interface Surface {
   /** The board has taken in what shows. */
   rested(): void;
   dispose(): void;
+  /** The camera as drawn, which a native pinch's transform moves ahead of `cam`. */
+  shownCam(cam: Cam): Cam;
+  /** Whether the board paints over the top bar. */
+  coverTop(): boolean;
+  /** How far the dot grid as drawn falls short of the view, in CSS px. */
+  gridShort(): number;
 }
 
 /** The camera moves the world layer by a transform. */
@@ -38,6 +44,18 @@ export class CameraSurface implements Surface {
   }
 
   rested() {}
+
+  shownCam(cam: Cam): Cam {
+    return cam;
+  }
+
+  coverTop() {
+    return false;
+  }
+
+  gridShort() {
+    return this.grid.short();
+  }
 
   dispose() {}
 }

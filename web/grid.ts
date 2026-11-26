@@ -24,6 +24,12 @@ export function dotLines({ x, y, zoom }: Cam, dpr: number, width: number, height
 }
 
 /** What of a `width` × `height` screen lies past `board`, on screen: strips above, below, left and right of it. */
+/** How far, in CSS px, a grid drawn `bitmapW` × `bitmapH` device px at `dpr` falls short of a view `cssW` × `cssH`: its
+ * furthest side, to whole pixels, as a bitmap rounded to device pixels is no shortfall. */
+export function shortOf(cssW: number, cssH: number, bitmapW: number, bitmapH: number, dpr: number): number {
+  return Math.max(0, Math.round(cssW - bitmapW / dpr), Math.round(cssH - bitmapH / dpr));
+}
+
 export function outside(board: Rect, width: number, height: number): Rect[] {
   const top = Math.min(height, Math.max(0, board.y)), bottom = Math.max(top, Math.min(height, board.y + board.h));
   const left = Math.min(width, Math.max(0, board.x)), right = Math.max(left, Math.min(width, board.x + board.w));
@@ -76,6 +82,11 @@ export class Grid {
   }
 
   /** Dots on `board`, a screen rect; past its edge, only the outside's colour. */
+  /** How far the grid as drawn falls short of the window it fills, before its resize observer redraws it. */
+  short(): number {
+    return shortOf(innerWidth, innerHeight, this.canvas.width, this.canvas.height, this.dpr || 1);
+  }
+
   draw(cam: Cam, board: Rect = ALL) {
     this.cam = cam;
     this.board = board;

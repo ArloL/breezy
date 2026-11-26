@@ -311,3 +311,19 @@ test("cut during a drag does nothing", () => {
   assert.equal(app.model.board.cards.length, 1);
   assert.ok(app.model.inGesture);
 });
+
+test("a pinch keeps frames in the recording", async () => {
+  const app = phone();
+  app.input.pinchStart({ x: 100, y: 300 });
+  for (const s of [1.1, 1.2, 1.3]) {
+    app.input.pinch({ x: 100, y: 300 }, s);
+    await sleep(20);
+  }
+  app.input.pinchEnd({ x: 0, y: 0 });
+  await still(app);
+  await sleep(100);
+  const t = app.flight.recording().frames!;
+  const col = (f: string) => t.rows.map((r) => r[t.fields.indexOf(f)]);
+  assert.ok(new Set(col("zoom")).size > 1, `zoom ${col("zoom")}`);
+  for (const g of [1, 2, 3]) assert.ok(col("gesture").includes(g), `gesture ${col("gesture")}`);
+});
