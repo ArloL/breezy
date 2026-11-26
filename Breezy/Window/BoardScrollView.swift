@@ -18,6 +18,8 @@ final class BoardScrollView: NSScrollView {
   var live: Bool { scrolling || magnifying }
   /// Called as a gesture ends, for the board to rest once the view is still.
   var onGestureEnd: (() -> Void)?
+  /// Called as a pinch begins, before AppKit's first step of it.
+  var onPinchBegin: (() -> Void)?
   private var settingMagnification = 0
 
   override init(frame: NSRect) {
@@ -34,6 +36,7 @@ final class BoardScrollView: NSScrollView {
           guard let self else { return }
           self[keyPath: flag] = now
           if !now { self.onGestureEnd?() }
+          if now && name == Self.willStartLiveMagnifyNotification { self.onPinchBegin?() }
         }
       }
     }

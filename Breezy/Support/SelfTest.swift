@@ -547,6 +547,10 @@ extension SelfTest {
     let sv = d.wc.scrollView, clip = sv.contentView, c = d.canvas, nc = NotificationCenter.default
     func pinch(_ deltas: [Double], at p: NSPoint, then next: @escaping () -> Void) {
       var events: [(Int64, Double)] = [(1, 0)] + deltas.map { (2, $0) } + [(4, 0)]
+      // AppKit zooms a pinch about the cursor
+      let screen = d.window.convertPoint(toScreen: p)
+      CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: (NSScreen.screens.first?.frame.height ?? 0) - screen.y))
+      let held = c.convert(p, from: nil)
       func step() {
         guard !events.isEmpty else { return d.later(0.8, next) }
         let (phase, m) = events.removeFirst()
@@ -558,6 +562,9 @@ extension SelfTest {
           if !c.bounds.insetBy(dx: -px, dy: -px).contains(c.showing) {
             finish(name, "pinching \(m < 0 ? "out" : "in") at \(sv.magnification), the view shows \(c.showing) past the board \(c.bounds)")
           }
+          // and the board point under the fingers stays there, as the board grows under it
+          let under = c.convert(p, from: nil), slip = hypot(under.x - held.x, under.y - held.y) * sv.magnification
+          if slip > 1 { finish(name, "pinching \(m < 0 ? "out" : "in") at \(sv.magnification), the board slipped \(slip) pt from under the fingers") }
           step()
         }
       }
