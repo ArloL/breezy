@@ -51,3 +51,14 @@ private func cases() throws -> BoardCases { try JSONDecoder().decode(BoardCases.
   b.rest(Rect(x: -600, y: -400, w: 1200, h: 800))
   #expect(b.board(content) == Rect(x: -1194, y: -1194, w: 240 + 2388, h: 48 + 2388))
 }
+
+@Test func aBoardGrownAtItsLeftOrTopMovesTheViewByWholePixels() {
+  // at 25 % on 1x a pixel is 4 pt: grown 3 pt, it grows 1 more, else AppKit snaps the view a quarter pixel back
+  #expect(BoardBounds.onPixels(3, pixelsPerPoint: 0.25) == 1)
+  #expect(BoardBounds.onPixels(8, pixelsPerPoint: 0.25) == 0)
+  #expect(BoardBounds.onPixels(-3, pixelsPerPoint: 0.25) == 3)
+  // at 25.31 % on 2x, 0.5062 pixels a point: the least growth on whole pixels and points
+  let e = BoardBounds.onPixels(1, pixelsPerPoint: 0.5062)
+  #expect(e >= 0 && e == e.rounded() && abs(((1 + e) * 0.5062) - ((1 + e) * 0.5062).rounded()) < 0.02)
+  #expect(BoardBounds.onPixels(0, pixelsPerPoint: 0.5062) == 0)
+}
