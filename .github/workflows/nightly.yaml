@@ -51,7 +51,7 @@ jobs:
   desktop:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'desktop' }}
     runs-on: macos-latest
-    # the strokes' 32 minutes over what it took before
+    # the strokes' 32 minutes over what it took before, as they took 9 with Chromium
     timeout-minutes: 107
     permissions:
       contents: read
@@ -132,10 +132,11 @@ jobs:
         if-no-files-found: ignore
         name: plants-L6
         path: build/plants
-    # the owner's 41 strokes as synthetic input, a browser at a time, as Chromium side by side with the others drew at
-    # 21 fps and took its input up to 7.5 times as long; each line marked with its browser, each replay's frames and
-    # findings kept (scenarios/strokes.e2e.ts), against CI's own ratchet; last, so that no other step waits on it
-    - name: The owner's strokes in Chromium, WebKit and Firefox
+    # the owner's 41 strokes as synthetic input in WebKit and Firefox, a browser at a time; not Chromium, which on this
+    # runner drew at 27 fps alone (21 beside the others) and took 21 of the 41 too slowly to judge, so it runs on the
+    # owner's Mac; each line marked with its browser, each replay's frames and findings kept (scenarios/strokes.e2e.ts),
+    # against CI's own ratchet; last, so that no other step waits on it
+    - name: The owner's strokes in WebKit and Firefox
       if: ${{ !cancelled() }}
       # a report until two runs agree with CI's ratchet, scenarios/strokes-known/ci (ruled 2026-11-26)
       continue-on-error: true
@@ -143,7 +144,7 @@ jobs:
       run: |
         mkdir -p build/strokes
         failed=0
-        for b in chromium webkit firefox; do
+        for b in webkit firefox; do
           STROKES_DUMP=build/strokes/frames STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee "build/strokes/$b.txt" | sed "s/^/$b: /" || failed=1
         done
         exit "$failed"
