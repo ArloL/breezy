@@ -11,6 +11,11 @@ on:
   - cron: "13 23 9 * *"
 permissions: {}
 
+# a step's pipeline is red when any command in it is (scripts/test/workflows.test.ts)
+defaults:
+  run:
+    shell: bash -e -o pipefail {0}
+
 jobs:
   debug:
     runs-on: ubuntu-slim

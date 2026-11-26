@@ -41,6 +41,11 @@ permissions: {}
 env:
   SCENARIO_VIDEO: ${{ inputs.video == 'failures' && '1' || inputs.video == 'all' && 'all' || '' }}
 
+# a step's pipeline is red when any command in it is (scripts/test/workflows.test.ts)
+defaults:
+  run:
+    shell: bash -e -o pipefail {0}
+
 jobs:
   # every case on the desktop browsers and the Mac app, each kind acting once and watching once; the Mac acts here alone
   desktop:
@@ -128,7 +133,7 @@ jobs:
         name: plants-L6
         path: build/plants
     # the owner's 41 strokes as synthetic input, a browser to a process side by side, each line marked with its
-    # browser as it comes (scenarios/strokes.e2e.ts); last, so that no other step waits on it
+    # browser as it comes, each replay's frames kept (scenarios/strokes.e2e.ts); last, so that no other step waits on it
     - name: The owner's strokes in Chromium, WebKit and Firefox
       if: ${{ !cancelled() }}
       timeout-minutes: 12
@@ -136,7 +141,7 @@ jobs:
         mkdir -p build/strokes
         pids=()
         for b in chromium webkit firefox; do
-          (STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee "build/strokes/$b.txt" | sed "s/^/$b: /") &
+          (STROKES_DUMP=build/strokes/frames STROKES_BROWSERS=$b node --test --test-force-exit scenarios/strokes.e2e.ts 2>&1 | tee "build/strokes/$b.txt" | sed "s/^/$b: /") &
           pids+=("$!")
         done
         failed=0
