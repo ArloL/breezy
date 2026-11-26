@@ -217,6 +217,19 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     return fitBoard()
   }
 
+  /// A pinch begins: the board grows at once to all it could show, zoomed out about the cursor, where AppKit zooms a
+  /// pinch, to a little past the least zoom, where AppKit's band stretches it. Grown at its top or left mid-pinch, the
+  /// board left the view at its edge, and AppKit's next step slipped it up to 15 pt from under the fingers.
+  func reachPinch() {
+    guard !rebasing, let sv = enclosingScrollView, let w = window else { return }
+    let p = convert(w.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil), s = showing
+    let k = sv.magnification / (sv.minMagnification * 0.9)
+    guard k > 1 else { return }
+    let r = NSRect(x: p.x + (s.minX - p.x) * k, y: p.y + (s.minY - p.y) * k, width: s.width * k, height: s.height * k)
+    reach.takeIn(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
+    fitBoard()
+  }
+
   /// A board smaller than the view, which no zoom should leave, or a zoom showing past the board: a pinch's steps
   /// propose the clip view an origin of 0, 0 and put it past the board's top left after. It takes in what shows at once,
   /// where a pan could not reach the rest of it.

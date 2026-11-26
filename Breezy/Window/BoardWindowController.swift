@@ -71,6 +71,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.contentView.postsBoundsChangedNotifications = true
     // a rest that fell due during the gesture waited for its end
     scrollView.onGestureEnd = { [weak self] in self?.restLater() }
+    scrollView.onPinchBegin = { [weak self] in self?.canvas.reachPinch() }
     NotificationCenter.default.addObserver(
       self, selector: #selector(viewMoved), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
     for v in [canvas, grid] as [NSView] {
