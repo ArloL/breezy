@@ -65,6 +65,6 @@ export function stressBoard(): Board {
 /** `?reference=x,y`: an empty board at zoom 1 with the camera there, as the reference app shows AppKit's
  * (scripts/replay.ts); null without one. */
 export function referenceStart(search: string): Cam | null {
-  const m = /^(-?[\d.]+),(-?[\d.]+)$/.exec(new URLSearchParams(search).get("reference") ?? "");
-  return m ? { x: Number(m[1]), y: Number(m[2]), zoom: 1 } : null;
+  const m = /^(-?[\d.]+),(-?[\d.]+)(?:,([\d.]+))?$/.exec(new URLSearchParams(search).get("reference") ?? "");
+  return m ? { x: Number(m[1]), y: Number(m[2]), zoom: m[3] ? Number(m[3]) : 1 } : null;
 }
