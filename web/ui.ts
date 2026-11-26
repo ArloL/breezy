@@ -121,6 +121,7 @@ export class UI {
       case "join": this.closeMenu(); return app.library?.join();
       case "your-name": this.closeMenu(); return app.library?.askName();
       case "report": this.closeMenu(); return app.library?.reportProblem();
+      case "looked-off": this.closeMenu(); return app.library?.lookedOff();
       case "share": this.closeMenu(); return app.library?.share();
       case "new-card": this.closeMenu(); return app.newCard(app.view.toWorld(app.view.centre()));
       case "new-lane": this.closeMenu(); return app.newLane();

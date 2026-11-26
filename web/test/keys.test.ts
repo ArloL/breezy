@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { command, keyName } from "../keys.ts";
+import { command, keyName, perform } from "../keys.ts";
 import type { KeyEvent, Typing } from "../keys.ts";
 
 const key = (k: string, mods: Partial<KeyEvent> = {}, ctx: { mac?: boolean; typing?: Typing } = {}) =>
@@ -77,4 +77,19 @@ test("keys an input method is composing with are left to it", () => {
 test("the recorder keeps a named key, and only that a typing key was pressed", () => {
   for (const k of ["Backspace", "Delete", "Escape", "Tab", "ArrowLeft", "F12"]) assert.equal(keyName(k), k);
   for (const k of ["d", "A", "é", "😀", "👩‍💻", " ", "=", "Ω"]) assert.equal(keyName(k), "char");
+});
+
+test("⌥⌘L is That Looked Off on the Mac, Ctrl+Alt+L elsewhere, by the key's place as ⌥L types ¬", () => {
+  assert.equal(key("¬", { metaKey: true, altKey: true, code: "KeyL" }), "looked-off");
+  assert.equal(key("l", { ctrlKey: true, altKey: true, code: "KeyL" }, { mac: false }), "looked-off");
+  assert.equal(key("l", { ctrlKey: true, altKey: true, code: "KeyL" }), null);
+  assert.equal(key("¬", { metaKey: true, altKey: true, code: "KeyL" }, { typing: "card" }), "looked-off");
+  assert.equal(key("l", { metaKey: true, altKey: true, shiftKey: true, code: "KeyL" }), null);
+});
+
+test("That Looked Off sends what the app recorded", () => {
+  let sent = 0;
+  const app = { library: { lookedOff: async () => (sent++, true) } } as unknown as Parameters<typeof perform>[0];
+  perform(app, "looked-off", {} as Parameters<typeof perform>[2]);
+  assert.equal(sent, 1);
 });
