@@ -43,6 +43,8 @@ export function replayCapture(capture: FrameTrack, { stage }: { stage?: { w: num
   for (let k = 0; now <= end; ) {
     for (; k < inputs.length && inputs[k]!.at <= now; k++) {
       const r = inputs[k]!.r, m = v(r, "magnify"), at = { clientX: v(r, "px"), clientY: v(r, "py") };
+      // a frame's magnification is its steps' (zoom − 1) summed: past −1 no step gives it, and the camera would go NaN
+      if (1 + m <= 0) throw new Error(`magnification ${m} at ${inputs[k]!.at} ms: no one ⌃-wheel step zooms by that`);
       // a magnification of m is the ⌃-wheel step wheelAction zooms by 1 + m
       const e = m
         ? { deltaX: 0, deltaY: -Math.log(1 + m) / ZOOM_PER_PT, deltaMode: 0, ctrlKey: true, metaKey: false, ...at }

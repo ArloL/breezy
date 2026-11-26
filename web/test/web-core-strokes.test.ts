@@ -35,3 +35,9 @@ for (const build of Object.keys(KNOWN))
     }
     assert.deepEqual(found, KNOWN[build], "a finding gone is a fix: take it out of web-core-strokes-known.json; a new one is a regression");
   });
+
+test("a frame's magnification no one ⌃-wheel step can give fails the replay, rather than turn the camera to NaN", () => {
+  const fields = ["t", "zoom", "camX", "camY", "viewW", "viewH", "px", "py", "wheelDX", "wheelDY", "magnify"];
+  const rows = [[0, 1, -300, -200, 1495, 932, 700, 400, 0, 0, 0], [8, 1, -300, -200, 1495, 932, 700, 400, 0, 0, -1.1]];
+  assert.throws(() => replayCapture({ fields, rows } as FrameTrack), /magnification -1\.1 at 8 ms/);
+});
