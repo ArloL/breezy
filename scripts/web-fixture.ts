@@ -2,7 +2,7 @@
 // off, and keeps each page's frames for the rules over frames (docs/superpowers/plans/2026-11-26-breezy-feel-levels.md,
 // Task 3), as scripts/frames-fixture.ts does for the Mac app:
 //
-//   node scripts/web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--list a,b] [--smoke] [--repeats 1]
+//   node scripts/web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--list a,b] [--smoke] [--wide] [--repeats 1]
 //
 // --list captures just those strokes again, as a calibration that failed names them (web/test/feel-levels.test.ts).
 //
@@ -70,6 +70,8 @@ async function main() {
   if (!build || !["native", "camera"].includes(pan)) throw new Error("usage: web-fixture.ts --build <name> [--pan native|camera] [--strokes <dir>] [--only <prefix>] [--smoke] [--repeats 1]");
   const strokes = arg("--strokes") ?? join(repo, "build/reference-strokes/take-5"), only = arg("--only") ?? "", repeats = Number(arg("--repeats") ?? 1);
   const smoke = process.argv.includes("--smoke"), list = arg("--list")?.split(",");
+  // --wide: a board as wide as the reference app's, for pans that travel past an empty board's edge (web/sample.ts)
+  const wide = process.argv.includes("--wide") ? "&wide" : "";
   setTimeout(() => { console.error("the replays ran past 45 minutes"); process.exit(1); }, 45 * 60_000).unref();
 
   const { firefox } = await import("playwright-core");
@@ -113,7 +115,7 @@ async function main() {
       const s: Stroke = JSON.parse(readFileSync(join(strokes, name), "utf8")), kept: FrameTrack[] = [];
       for (let n = 1; n <= repeats; n++) {
         const c = startCam(s);
-        await page.goto(`http://localhost:58571/?reference=${c.x},${c.y},${c.zoom}&pan=${pan}`);
+        await page.goto(`http://localhost:58571/?reference=${c.x},${c.y},${c.zoom}&pan=${pan}${wide}`);
         await page.waitForFunction(() => (globalThis as { breezyFlight?: unknown }).breezyFlight, null, { timeout: 15_000 });
         await front();
         const inner = await page.evaluate(() => ({ x: (window as unknown as { mozInnerScreenX: number }).mozInnerScreenX, y: (window as unknown as { mozInnerScreenY: number }).mozInnerScreenY }));

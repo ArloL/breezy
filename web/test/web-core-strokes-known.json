@@ -75,6 +75,24 @@
    "pinch-out-fast-7",
    "pinch-out-fast-8",
    "pinch-out-fast-9"
+  ],
+  "path": [
+   "pinch-pan-13"
+  ]
+ },
+ "pans-2ba8656-camera": {
+  "path": [
+   "pan-diagonal-1",
+   "pan-diagonal-2",
+   "pan-diagonal-4",
+   "pan-flick-1",
+   "pan-flick-2",
+   "pan-flick-3",
+   "pan-flick-4",
+   "pan-flick-5",
+   "pan-straight-1",
+   "pan-straight-3",
+   "pan-straight-4"
   ]
  }
 }

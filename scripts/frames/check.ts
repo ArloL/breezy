@@ -7,12 +7,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { FrameTrack } from "../../web/flight.ts";
-import { chrome, continuity, coverage, curve, edgePops, fades, flicker, follow, scrollers, type Finding } from "./rules.ts";
+import { chrome, continuity, coverage, curve, edgePops, fades, flicker, follow, path, scrollers, type Finding } from "./rules.ts";
 
 /** A replay's own error: AppKit's replays of the owner's strokes slipped the board up to 0.8 pt from under the fingers,
  * parted from the owner's zoom by up to 0.113, on fast pinches, and leapt past the board's corner 30 pt a frame further. */
-export const REPLAYED = { follow: 1.5, curve: 0.12, edge: 40 };
-export const RECORDED = { follow: 0.5, curve: 0.05, edge: 20 };
+// path: a pan's travel against AppKit's, in view pt; AppKit's own replays of the owner's pans came within 21 pt of
+// them, its flicks' coasts within 12 %, which a stroke's own tolerance takes (scripts/test/mac-pans.test.ts)
+export const REPLAYED = { follow: 1.5, curve: 0.12, edge: 40, path: 20 };
+export const RECORDED = { follow: 0.5, curve: 0.05, edge: 20, path: 10 };
 
 /** A recording's frames, or a bare frame track as the fixtures keep it. */
 export const track = (path: string): FrameTrack => {
@@ -27,7 +29,7 @@ export function check(t: FrameTrack, ref?: FrameTrack, tol = RECORDED): Finding[
   const flickers = ["zoom", "grey", "grid", "viewW", "viewH", "boardW", "boardH"].filter(has);
   return [...follow(t, tol.follow), ...coverage(t, ref), ...continuity(t), ...flicker(t, flickers),
     ...edgePops(t, ref, tol.edge), ...(has("knobH") ? scrollers(t) : []), ...(has("fading") ? fades(t) : []),
-    ...(has("coverTop") ? chrome(t) : []), ...(ref ? curve(t, ref, "zoom", tol.curve) : [])];
+    ...(has("coverTop") ? chrome(t) : []), ...(ref ? [...curve(t, ref, "zoom", tol.curve), ...path(t, ref, tol.path)] : [])];
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

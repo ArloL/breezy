@@ -232,6 +232,9 @@ final class Reference: NSObject, NSApplicationDelegate {
     scroll.allowsMagnification = true
     scroll.minMagnification = 0.25
     scroll.maxMagnification = 2
+    // a board pans every way, as Breezy's does (#327): AppKit takes a scroll along the axis it starts on only, by
+    // default, which a diagonal recorded here would have held to; the owner's 41 strokes were recorded before this
+    scroll.usesPredominantAxisScrolling = false
     scroll.backgroundColor = NSColor(red: 0x1c / 255, green: 0x1c / 255, blue: 0x1e / 255, alpha: 1)
     scroll.documentView = Self.zoomBoard()
     window.contentView = scroll

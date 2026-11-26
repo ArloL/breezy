@@ -1,6 +1,7 @@
 // Level 2's replay: a stroke as a browser handed it to the page, one capture row's input at a time, through the web core
 // on a fake clock, as the page takes a wheel in camera mode (web/main.ts, wheelOnCamera), and the frames that kept.
 import { BoardCamera } from "../../board-camera.ts";
+import { referenceBoard } from "../../sample.ts";
 import { Flight } from "../../flight.ts";
 import { FrameRecorder, WheelFrames } from "../../frames.ts";
 import { wheelOnCamera, ZOOM_PER_PT } from "../../wheel.ts";
@@ -12,7 +13,9 @@ const AFTER = 1500;
 /** Replays `capture`'s input at its rows' times, 120 frames a second, on the empty reference board where its first
  * row's camera was, and gives the frames the recorder kept. A row's wheel deltas are one wheel event, AppKit's way
  * round as the frames hold them; its magnification one ⌃-wheel step of as much; its place the pointer's. */
-export function replayCapture(capture: FrameTrack, { stage }: { stage?: { w: number; h: number } } = {}): FrameTrack {
+export function replayCapture(capture: FrameTrack, { stage, wide = false }: { stage?: { w: number; h: number }; wide?: boolean } = {}): FrameTrack {
+  // the page's reference board, wide as the reference app's for the pans (web/sample.ts)
+  const board = referenceBoard(wide ? "?wide" : "");
   const col = (k: string) => capture.fields.indexOf(k), v = (r: (number | null)[], k: string) => (col(k) >= 0 ? r[col(k)] ?? 0 : 0);
   const first = capture.rows[0]!, z0 = v(first, "zoom") || 1;
   const size = stage ?? { w: v(first, "viewW") || 1495, h: v(first, "viewH") || 932 };
@@ -26,7 +29,7 @@ export function replayCapture(capture: FrameTrack, { stage }: { stage?: { w: num
     clearTimer: (i: unknown) => { const k = timers.findIndex((t) => t.id === i); if (k >= 0) timers.splice(k, 1); },
   };
   const core = new BoardCamera({
-    board: () => ({ cards: [], lanes: [] }), rectOf: () => ({ x: 0, y: 0, w: 0, h: 0 }),
+    board: () => board, rectOf: () => ({ x: 0, y: 0, w: 0, h: 0 }),
     stage: () => ({ left: 0, top: 0, right: size.w, bottom: size.h }), apply: () => recorder.wake(), rested: () => {}, clock,
   });
   const flight = new Flight({ now: () => now });

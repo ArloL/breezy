@@ -62,6 +62,15 @@ export function stressBoard(): Board {
   return { cards, lanes };
 }
 
+/** The reference page's board: empty, or with `&wide` two small lanes at its far corners, making it as wide as the
+ * reference app's 40,032 pt board less the margin, so that a pan or a flick travels thousands of points before its edge,
+ * as in AppKit's, and the board's centre stays where the empty one's is (scripts/web-fixture.ts --wide). */
+export function referenceBoard(search: string): Board {
+  if (!new URLSearchParams(search).has("wide")) return { cards: [], lanes: [] };
+  const half = 40032 / 2 - 1194, side = 24;
+  return { cards: [], lanes: [{ id: "far-top-left", x: -half, y: -half, w: side, h: side, title: "" }, { id: "far-bottom-right", x: half - side, y: half - side, w: side, h: side, title: "" }] };
+}
+
 /** `?reference=x,y`: an empty board at zoom 1 with the camera there, as the reference app shows AppKit's
  * (scripts/replay.ts); null without one. */
 export function referenceStart(search: string): Cam | null {

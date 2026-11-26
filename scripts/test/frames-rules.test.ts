@@ -4,8 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { FIELDS, MAC_FIELDS, WEB_FIELDS, column, frames } from "../frames/track.ts";
-import { chrome, continuity, coverage, curve, edgePops, flicker, follow, pops, scrollers } from "../frames/rules.ts";
+import { chrome, continuity, coverage, curve, edgePops, flicker, follow, path, pops, scrollers } from "../frames/rules.ts";
 import { check, REPLAYED, track as read } from "../frames/check.ts";
+import { pathTolerance } from "../frames/sets.ts";
 import type { FrameTrack, Recording } from "../../web/flight.ts";
 
 type Row = Partial<Record<string, number | null>>;
@@ -289,4 +290,22 @@ test("curve with a frame's slack takes a step a frame late as on time, and a rea
   // a track that tops out at 1.5 is apart however late it is
   const short = track(range(1, 1.5, 11).map((z, i) => ({ t: i * 16, zoom: z, gesture: i === 0 ? 1 : 2 })));
   assert.equal(curve(short, ahead, "zoom", 0.05, 16).length, 1);
+});
+
+test("path finds a pan that travels otherwise than AppKit's, as a diagonal locked to one axis, and leaves a pinch to the zoom's rules", () => {
+  const fx = new URL("./fixtures/mac-pans/", import.meta.url).pathname;
+  const mac = read(`${fx}main-2ba8656/pan-diagonal-2.json`), ref = read(`${fx}reference-replay/pan-diagonal-2.json`);
+  const tol = pathTolerance(fx, "pan-diagonal-2");
+  assert.deepEqual(path(mac, ref, tol), []);
+  // the build before #327: AppKit held the pan to the axis it started on, the other still
+  const x = mac.fields.indexOf("camX"), x0 = mac.rows[0]![x];
+  const locked = { fields: mac.fields, rows: mac.rows.map((r) => r.map((v, i) => (i === x ? x0 : v))) };
+  assert.equal(path(locked, ref, tol).length, 1);
+  assert.match(path(locked, ref, tol)[0]!.say, /travelled/);
+  // a board that opened at another zoom before the stroke, as the Mac app's fitted to its window at 25 %, is judged still
+  const z = locked.fields.indexOf("zoom"), opened = { fields: locked.fields, rows: [locked.rows[0]!.map((v, i) => (i === z ? 0.25 : v)), ...locked.rows] };
+  assert.equal(path(opened, ref, tol).length, 1);
+  // a pinch's view travels with its zoom: path leaves it alone
+  const pinch = track(range(1, 2, 11).map((z, i) => ({ t: i * 16, zoom: z, camX: i * 30, camY: 0, magnify: 0.1, gesture: i === 0 ? 1 : 2 })));
+  assert.deepEqual(path(pinch, track(range(1, 2, 11).map((z, i) => ({ t: i * 16, zoom: z, camX: 0, camY: 0, magnify: 0.1, gesture: i === 0 ? 1 : 2 }))), 20), []);
 });
