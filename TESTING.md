@@ -57,13 +57,13 @@ Drawn from the fixes in Breezy's history; `docs/escapes.md` lists them by class.
 
 ### Feel, at four levels
 
-The owner's 41 reference strokes are judged by the rules over frames (`scripts/frames/`) against AppKit's replay of each, at four levels, each held to the one above it. The cheaper levels are trusted only while they match real input for the same stroke in the same panning mode, within that stroke's repeat spread (`web/test/feel-levels.test.ts`, and level 3's calibration in `scenarios/strokes.e2e.ts`).
+The owner's 41 reference strokes are judged by the rules over frames (`scripts/frames/`) against AppKit's replay of each, at four levels, each held to the one above it. The cheaper levels are trusted only while they match real input for the same stroke in the same panning mode: their zoom within 0.12, or the stroke's repeat spread where that is wider (3 of the 41), and their rest within a point or two (`web/test/feel-levels.test.ts`, and level 3's calibration in `scenarios/strokes.e2e.ts`). The captures are of one build, so the web core in Node finds a change to the replay or to the web's zoom and pan paths since then, not a browser's own change, which only a new capture shows.
 
 | Level | What runs | When | Holds to |
 |---|---|---|---|
 | Frozen tracks | `scripts/test/mac-pinch.test.ts` and `scripts/test/web-pinch.test.ts`, over recorded fixtures | every push | — |
-| The web core in Node | `web/test/web-core-strokes.test.ts`: each camera-mode capture replayed through `BoardCamera` on a fake clock, in a fifth of a second | every push | real input, camera mode, exactly |
-| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | nightly | real input, native, within a frame |
+| The web core in Node | `web/test/web-core-strokes.test.ts`: each camera-mode capture replayed through `BoardCamera` on a fake clock, in a fifth of a second | every push | real input, camera mode: zoom within 0.12, rest within 1 pt |
+| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | nightly | Firefox's real input, native: zoom within 0.12 allowing two frames' timing, rest within 2 pt |
 | Real input | `scripts/web-fixture.ts`: the strokes posted as OS events into a Firefox Playwright launches, about 3 minutes a pass | by hand on the owner's Mac, when strokes are recorded or a calibration drifts (`--list`) | AppKit's reference |
 
 ## The gate and the nightly
