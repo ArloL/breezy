@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bugs the convergence fuzzer plants to show it finds them (scripts/fuzz.ts --plant NAME); nothing else sets this.
+/// Past bugs put back by name to show a level finds them (TESTING.md, "Adding a plant"); BREEZY_PLANT names one.
 let plantedBug = ProcessInfo.processInfo.environment["BREEZY_PLANT"]
 
-func planted(_ name: String) -> Bool { plantedBug == name }
+public func planted(_ name: String) -> Bool { plantedBug == name }

@@ -1,4 +1,5 @@
 import AppKit
+import BreezyKit
 
 /// Holds the card layers above the lanes. It takes no clicks: the canvas handles them all.
 final class CardHostView: NSView {
@@ -8,7 +9,7 @@ final class CardHostView: NSView {
     super.init(frame: frame)
     layer = CALayer()
     // a layer-hosting view's layer animates implicitly: adding a card would cross-fade the board
-    layer!.actions = ["sublayers": NSNull()]
+    if !planted("cross-fade") { layer!.actions = ["sublayers": NSNull()] }
     wantsLayer = true
   }
 
