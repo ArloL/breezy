@@ -58,6 +58,7 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     scrollView.contentView.drawsBackground = false
     scrollView.documentView = canvas
     scrollView.frames = FrameRecorder(scrollView: scrollView, flight: canvas.core.flight)
+    scrollView.frames?.fading = { [weak canvas] in Double(canvas?.host.layer?.animationKeys()?.count ?? 0) }
     let root = NSView()
     grid.autoresizingMask = [.width, .height]
     scrollView.autoresizingMask = [.width, .height]

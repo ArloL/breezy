@@ -38,6 +38,7 @@ enum SelfTest {
     case "gesture-marks": MainActor.assumeIsolated { gestureMarks(d) }
     case "bounded-board": boundedBoard(d)
     case "bounded-rests": MainActor.assumeIsolated { boundedRests(d) }
+    case "fades": MainActor.assumeIsolated { fades(d) }
     default: finish(name, "unknown check")
     }
   }
@@ -300,8 +301,17 @@ extension SelfTest {
     skipUnlessVisible(name, d)
     var steps: [(zoom: CGFloat, dark: Bool, back: Bool)] = []
     for zoom in [0.89, 1, 1.3] as [CGFloat] { for dark in [false, true] { for back in [false, true] { steps.append((zoom, dark, back)) } } }
+    // every step's count, with -BreezyCaptureOut <json> kept as the plant editor-shift's capture
+    // (scripts/test/mac-plants.test.ts), and the first that changed failing the test
+    var rows: [[Double]] = [], failure: String?
     func next() {
-      guard let (zoom, dark, back) = steps.popLast() else { finish(name, nil) }
+      guard let (zoom, dark, back) = steps.popLast() else {
+        if let out = UserDefaults.standard.string(forKey: "BreezyCaptureOut") {
+          let capture: [String: Any] = ["fields": ["zoom", "dark", "back", "changed"], "rows": rows]
+          try? JSONSerialization.data(withJSONObject: capture).write(to: URL(fileURLWithPath: out))
+        }
+        finish(name, failure)
+      }
       NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
       d.canvas.turn(back ? "a" : nil)
       d.wc.place(origin: NSPoint(x: -40, y: -40), zoom: zoom)
@@ -316,7 +326,8 @@ extension SelfTest {
           let r = d.canvas.doc(d.canvas.drawnRect(d.board.card("a")!)).insetBy(dx: 2, dy: 2)
           let n = d.differing(before, during, in: r)
           let side = back ? "back" : "front"
-          if n > 10 { finish(name, "\(n) pixels of the \(side) change when it is edited at \(zoom) in \(dark ? "dark" : "light")") }
+          rows.append([Double(zoom), dark ? 1 : 0, back ? 1 : 0, Double(n)])
+          if n > 10 && failure == nil { failure = "\(n) pixels of the \(side) change when it is edited at \(zoom) in \(dark ? "dark" : "light")" }
           next()
         }
       }
@@ -933,4 +944,36 @@ extension SelfTest {
 
 private extension NSRect {
   var center: NSPoint { NSPoint(x: midX, y: midY) }
+}
+
+extension SelfTest {
+  /// Nothing on the board cross-fades as its cards change: a card added, turned and back, and deleted, none animates the
+  /// cards' host layer, as AppKit's implicit actions did, fading the whole board in from its last frame (5c41379). The
+  /// frames keep it, and -BreezyRecordingOut <json> keeps them, for the plant's fixture (scripts/test/mac-plants.test.ts).
+  @MainActor fileprivate static func fades(_ d: Driver) {
+    let name = "fades", c = d.canvas
+    let steps: [(String, () -> Void)] = [
+      ("adding a card", { d.model.perform("New") { $0.cards.append(Card(id: "new", x: 0, y: 240, w: 240, text: "New")) } }),
+      ("turning a card", { c.turn("a") }),
+      ("turning it back", { c.turn(nil) }),
+      ("deleting a card", { d.model.perform("Delete") { $0.cards.removeAll { $0.id == "b" } } }),
+    ]
+    func run(_ i: Int) {
+      guard i < steps.count else { return done() }
+      steps[i].1()
+      d.later(0.8) { run(i + 1) }
+    }
+    func done() {
+      let r = c.core.flight.recording(), f = Flight.frameFields, k = f.firstIndex(of: "fading")!
+      if let out = UserDefaults.standard.string(forKey: "BreezyRecordingOut") {
+        try? JSONEncoder().encode(r).write(to: URL(fileURLWithPath: out))
+      }
+      let rows = r.frames?.rows ?? []
+      if rows.count < steps.count { finish(name, "the frames kept \(rows.count) rows over \(steps.count) changes to the cards") }
+      let fading = rows.filter { ($0[k] ?? 0) > 0 }
+      if !fading.isEmpty { finish(name, "the cards' host layer animated in \(fading.count) of \(rows.count) frames: the board cross-faded") }
+      finish(name, nil)
+    }
+    d.later(0.5) { run(0) }
+  }
 }

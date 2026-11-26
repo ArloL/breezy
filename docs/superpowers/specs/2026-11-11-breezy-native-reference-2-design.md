@@ -106,7 +106,7 @@ The owner: "start with the things I tell you look off — if the idea can't pinp
 
 - **A pinch posted as a `CGEvent`.** AppKit may not run its live magnification for a posted gesture. The spike records the owner's pinch with an event tap, saves each event whole (`CGEvent` data), and posts it back into the reference app; the replay must match the recorded curve. If it doesn't, the pinch is replayed into the app's own event handling (`NSEvent(cgEvent:)` sent to the window), which skips the window server; say so in the results.
 - **Frames on a slow phone.** Recording every frame in Safari on the iPhone 13 mini must not cost the launch measure or a dropped frame.
-- **Flicker from layer state or pixels.** Whether reading each layer's presentation values per frame finds the Mac's cross-fade plant, or only pixels do.
+- **Flicker from layer state or pixels.** Whether reading each layer's presentation values per frame finds the Mac's cross-fade plant, or only pixels do. Settled 2026-11-26: layer state alone finds it. The frames' `fading`, the animations on the cards' host layer, reads 0 on every frame of the clean build's card added, turned and deleted, and is set on 6 of 13 frames with `cross-fade` planted. A card's text moving as its editor opens (`editor-shift`) is a pixel or less, which no layer or geometry field shows: the edit-in-place self-test's capture finds it, 2,835 to 5,558 of the card's pixels changing at 89 % and 130 %, against at most 2 on the clean build.
 
 ## Left to the builder
 

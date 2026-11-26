@@ -330,6 +330,8 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
   // MARK: rendering
 
   private func boardChanged(from before: Board) {
+    // the cards change with no view moving: the frames keep what that draws
+    (enclosingScrollView as? BoardScrollView)?.frames?.wake()
     if before.cards.count != board.cards.count || !zip(before.cards, board.cards).allSatisfy({ $0.id == $1.id }) {
       let now = Set(board.cards.map(\.id)), then = Set(before.cards.map(\.id))
       appearing = now.subtracting(then)

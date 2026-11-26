@@ -11,6 +11,9 @@ import BreezyKit
   /// How far, in view pt, what is drawn reaches short of the view: grey where no board is drawn. Main's grid fills the
   /// whole view, so 0 unless the window says otherwise.
   var drawnShort: () -> Double = { 0 }
+  /// How many animations run on the board's cards' host layer: none but a plant's, as AppKit left the layer's implicit
+  /// actions on, and adding a card cross-faded the whole board (5c41379).
+  var fading: () -> Double = { 0 }
   private var link: CADisplayLink?
   private var lastShown: [Double?]?
   private var lastInput: [Double]?
@@ -83,7 +86,8 @@ import BreezyKit
 
   @objc private func moved() { wake() }
 
-  private func wake() {
+  /// Keeps frames again: as the view moves or input comes, and as the board's cards change, which moves no view.
+  func wake() {
     stillFrames = 0
     guard link == nil, let sv = scrollView else { return }
     let l = sv.displayLink(target: self, selector: #selector(tick))
@@ -99,7 +103,7 @@ import BreezyKit
     let moving = shown != lastShown || wheel.dx != 0 || wheel.dy != 0 || magnify != 0 || input != lastInput
     lastInput = input
     if moving || stillFrames == 0 {
-      flight.frame(Array(shown.prefix(11)) + [nil, nil, nil, nil] + input.map { Optional($0) } + Array(shown.suffix(5)))
+      flight.frame(Array(shown.prefix(11)) + [nil, nil, nil, nil] + input.map { Optional($0) } + Array(shown.suffix(6)))
       if !moving { stillFrames = 1 }
     } else {
       stillFrames += 1
@@ -129,6 +133,6 @@ import BreezyKit
     let b = doc.bounds
     let geometry: [Double?] = [z, cam.x, cam.y, clip.frame.width, clip.frame.height, b.minX, b.minY, b.width, b.height, px, py]
     let h = sv.horizontalScroller, v = sv.verticalScroller
-    return geometry + [h.map { Double($0.knobProportion) }, v.map { Double($0.knobProportion) }, h.map { $0.doubleValue }, v.map { $0.doubleValue }, drawnShort()]
+    return geometry + [h.map { Double($0.knobProportion) }, v.map { Double($0.knobProportion) }, h.map { $0.doubleValue }, v.map { $0.doubleValue }, drawnShort(), fading()]
   }
 }
