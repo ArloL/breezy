@@ -1,7 +1,7 @@
 // How level 3 turns a capture's rows into the browser input it can send in time (scenarios/strokes-play.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inputSpan, judged, merge } from "./strokes-play.ts";
+import { frameMs, inputSpan, judged, merge } from "./strokes-play.ts";
 
 const fields = ["t", "px", "py", "wheelDX", "wheelDY", "magnify"];
 
@@ -31,4 +31,9 @@ test("a stroke too slow to judge on either run is left out of the comparison, an
   const found = { slow: ["b"], curve: ["a", "c", "d"] }, known = { slow: ["c"], curve: ["a", "b"], follow: ["c"] };
   assert.deepEqual(judged(found, { strokes, known, borderline: ["d"] }), { curve: ["a"] });
   assert.deepEqual(judged(known, { strokes, known: found, borderline: ["d"] }), { curve: ["a"] });
+});
+
+test("a track's frame is the median time between its rows, as a browser at 60 Hz draws every 17 ms", () => {
+  assert.equal(frameMs({ fields: ["t"], rows: [[0], [8], [16], [40]] }), 8);
+  assert.equal(frameMs({ fields: ["t"], rows: [[0], [17], [33], [50], [67]] }), 17);
 });

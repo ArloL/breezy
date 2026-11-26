@@ -63,7 +63,7 @@ The owner's 41 reference strokes are judged by the rules over frames (`scripts/f
 |---|---|---|---|
 | Frozen tracks | `scripts/test/mac-pinch.test.ts` and `scripts/test/web-pinch.test.ts`, over recorded fixtures | every push | — |
 | The web core in Node | `web/test/web-core-strokes.test.ts`: each camera-mode capture replayed through `BoardCamera` on a fake clock, in a fifth of a second | every push | real input, camera mode: zoom within 0.12, rest within 1 pt |
-| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | nightly | Firefox's real input, native: zoom within 0.12 allowing two frames' timing, rest within 2 pt |
+| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | nightly, each kind of machine against its own ratchet (`scenarios/strokes-known/mac`, `ci`) | Firefox's real input, native: zoom within 0.12 allowing two of the browser's own frames' timing, rest within 2 pt |
 | Real input | `scripts/web-fixture.ts`: the strokes posted as OS events into a Firefox Playwright launches, about 3 minutes a pass | by hand on the owner's Mac, when strokes are recorded or a calibration drifts (`--list`) | AppKit's reference |
 
 ## The gate and the nightly

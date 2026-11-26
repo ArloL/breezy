@@ -1,10 +1,10 @@
 // Level 3 (docs/superpowers/plans/2026-11-26-breezy-feel-levels.md, Task 2): the owner's 41 reference strokes, as Firefox
 // handed each to the page with native panning (scripts/web-fixture.ts's captures), played into headless Chromium,
 // WebKit and Firefox as wheel and ⌃-wheel input at their times, and judged by every rule against AppKit's replay of the
-// stroke. A stroke whose input the browser took more than 10 % longer to take than the capture's is not judged, as
+// stroke, each kind of machine against its own ratchet. A stroke whose input the browser took more than 10 % longer to take than the capture's is not judged, as
 // its zoom would read late, and is listed as `slow`; such a stroke on either side is left out of the comparison, as a
 // slower runner has more, so long as half the strokes are judged. Each browser's findings are held in
-// strokes-known/<browser>.json, a ratchet: a finding gone is a fix, a new one a regression. Run with
+// strokes-known/<mac|ci>/<browser>.json, a ratchet: a finding gone is a fix, a new one a regression. Run with
 //   node --test scenarios/strokes.e2e.ts
 // STROKES_BROWSERS=chromium,firefox picks browsers; STROKES_SMOKE=1 plays one stroke of each kind; STROKES_WRITE=1
 // writes the browsers' findings as known; STROKES_DUMP=<dir> keeps each replay's frames.
@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { chromium, firefox, webkit, type Browser, type Page } from "playwright-core";
 import { buildSite, serveStatic } from "./browser.ts";
 import { exitsAfter } from "./exit.ts";
-import { inputSpan, judged, merge } from "./strokes-play.ts";
+import { frameMs, inputSpan, judged, merge } from "./strokes-play.ts";
 import { check, REPLAYED, track } from "../scripts/frames/check.ts";
 import { restGap, zoomGap } from "../scripts/frames/gaps.ts";
 import { strokeOf } from "../scripts/web-fixture.ts";
@@ -29,7 +29,10 @@ const SLOW = 1.1;
 const BAND = 0.15;
 const SMOKE = ["double-tap-7", "lift-mid-band-17", "pinch-corner-1", "pinch-in-past-max-1", "pinch-out-fast-6", "pinch-out-slow-1", "pinch-pan-12"];
 const fixtures = new URL("../scripts/test/fixtures/", import.meta.url).pathname, captures = `${fixtures}web-pinch/${BUILD}`;
-const knownDir = new URL("./strokes-known/", import.meta.url).pathname;
+// a ratchet for each kind of machine, as CI's runner draws at 60 Hz and less where the owner's Mac draws at 120, and a
+// fast pinch's zoom a frame later reads as 0.12 and more of zoom
+const RUNNER = process.env.CI ? "ci" : "mac";
+const knownDir = new URL(`./strokes-known/${RUNNER}/`, import.meta.url).pathname;
 const spread: Record<string, number> = JSON.parse(readFileSync(`${captures}-spread.json`, "utf8"));
 const smoke = !!process.env.STROKES_SMOKE;
 const strokes = readdirSync(captures).map((f) => f.replace(".json", "")).filter((s) => !smoke || SMOKE.includes(s)).sort();
@@ -129,9 +132,10 @@ for (const name of names)
         if (new Set(out.rows.map((r) => r[out.fields.indexOf("zoom")])).size > 1) zoomed.push(s);
         const span = inputSpan(capture), took = inputSpan(out), ratio = span > 0 ? took / span : 1;
         if (name === "firefox" && ratio <= SLOW) {
-          // two frames' slack either way: input sent from outside the browser lands up to ~10 ms off its frame, past
-          // one 8 ms frame, which on the fastest pinches in read as 0.19 of zoom with none, 0.13 with one, 0.07 with two
-          const own = zoomGap(out, capture, 16), tol = Math.max(REPLAYED.curve, spread[s] ?? 0), rest = restGap(out, capture);
+          // two of the browser's own frames either way: input sent from outside the browser lands up to a frame and a
+          // half off its frame, which on the fastest pinches in read as 0.19 of zoom with no slack, 0.07 with two
+          // frames, on the Mac's 8 ms frames as on CI's 17
+          const own = zoomGap(out, capture, 2 * frameMs(out)), tol = Math.max(REPLAYED.curve, spread[s] ?? 0), rest = restGap(out, capture);
           if (process.env.STROKES_GAPS) console.log(`calibration ${s} zoom ${own.toFixed(3)} of ${tol}, rest ${rest.toFixed(1)} pt`);
           if (own > tol) drifted.push(`${s} zoom ${own.toFixed(3)} past ${tol}`);
           // Firefox came to rest within 0.6 pt of its captures
@@ -148,12 +152,14 @@ for (const name of names)
       test("firefox: each stroke moves as Firefox's real-input capture of it did (level 3 calibrated against level 4)", () => {
         assert.deepEqual(drifted, [], "synthetic input moved otherwise than real input: the fake is wrong, or the capture is stale");
       });
-    test(`${name}: every rule against AppKit's replay, as strokes-known/${name}.json holds`, () => {
+    test(`${name}: every rule against AppKit's replay, as strokes-known/${RUNNER}/${name}.json holds`, () => {
       assert.deepEqual(failed, [], `${failed.join(", ")} did not play`);
       // every stroke with a pinch the browser took in time zoomed: one that did not is a browser taking no ⌃-wheel
       const missed = strokes.filter((s) => hasPinch(track(`${captures}/${s}.json`)) && !zoomed.includes(s) && !found.slow?.includes(s));
       assert.deepEqual(missed, [], `${name} took no synthetic pinch on ${missed.join(", ")}`);
       const file = `${knownDir}${name}.json`;
+      // beside the frames, the findings as a ratchet would hold them, to take CI's from its artifact
+      if (process.env.STROKES_DUMP && !smoke) writeFileSync(`${process.env.STROKES_DUMP}/${name}-known.json`, JSON.stringify(found, null, 1) + "\n");
       if (process.env.STROKES_WRITE && !smoke) {
         mkdirSync(knownDir, { recursive: true });
         writeFileSync(file, JSON.stringify(found, null, 1) + "\n");
@@ -162,7 +168,7 @@ for (const name of names)
       const slow = found.slow?.length ?? 0;
       assert.ok(slow <= strokes.length / 2, `${name} took ${slow} of ${strokes.length} strokes too slowly to judge`);
       const o = (k: Record<string, string[]>) => ({ strokes, known: k, borderline });
-      assert.deepEqual(judged(found, o(known)), judged(known, o(found)), `a finding gone is a fix: take it out of strokes-known/${name}.json; a new one is a regression (unjudged: too slow ${[...new Set([...(found.slow ?? []), ...(known.slow ?? [])])].join(", ") || "none"}; borderline ${borderline.join(", ") || "none"})`);
+      assert.deepEqual(judged(found, o(known)), judged(known, o(found)), `a finding gone is a fix: take it out of strokes-known/${RUNNER}/${name}.json; a new one is a regression (unjudged: too slow ${[...new Set([...(found.slow ?? []), ...(known.slow ?? [])])].join(", ") || "none"}; borderline ${borderline.join(", ") || "none"})`);
     });
   });
 
