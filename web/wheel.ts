@@ -7,7 +7,7 @@ import type { Value } from "./flight.ts";
 export const LINE = 16;
 const PAGE = 800;
 // A pinch's deltas are a few points each; a mouse wheel's notch can be 100. One notch zooms about 1.25×, as ⌘+ does.
-const ZOOM_PER_PT = 0.01;
+export const ZOOM_PER_PT = 0.01;
 const MAX_ZOOM_DELTA = 25;
 
 /** What a wheel event does: a pinch (⌃, as browsers send it) or ⌘-scroll zooms about the pointer; any other scroll pans. */
@@ -35,6 +35,15 @@ const STOPPED_AFTER = 100;
 const KEEP = 1500;
 
 /** A wheel stream as the flight recorder keeps it: times from its first event, in ms; deltas and cameras in points. */
+/** A wheel event on a camera board, as the page takes it: a ⌃-wheel zooms about the pointer, any other pans; one function
+ * for the page and for Node's replays of the owner's strokes (web/test/helpers/stroke-replay.ts). */
+export function wheelOnCamera(view: { cam: { zoom: number }; zoomAround(c: { x: number; y: number }, zoom: number): void; wheelPan(by: { x: number; y: number }): void },
+  e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "metaKey" | "clientX" | "clientY">) {
+  const a = wheelAction(e);
+  if (a.zoom) view.zoomAround({ x: e.clientX, y: e.clientY }, view.cam.zoom * a.zoom);
+  else view.wheelPan(a.pan!);
+}
+
 export interface Stream {
   [k: string]: Value;
   /** When its first event came, on the page's clock. */
