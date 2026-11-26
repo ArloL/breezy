@@ -19,13 +19,14 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: "The part to run: all, desktop, android, ios, or the measures (feel, bench, launch, fuzz)"
+        description: "The part to run: all, desktop, android, ios, the browsers' strokes, or the measures (feel, bench, launch, fuzz)"
         type: choice
         options:
         - all
         - desktop
         - android
         - ios
+        - strokes
         - measures
         default: all
       video:
@@ -51,8 +52,7 @@ jobs:
   desktop:
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'desktop' }}
     runs-on: macos-latest
-    # the strokes' 32 minutes over what it took before, as they took 9 with Chromium
-    timeout-minutes: 107
+    timeout-minutes: 75
     permissions:
       contents: read
     # every night films the browsers and keeps a failing case's films, unless dispatched with none: a desktop night with
@@ -132,12 +132,37 @@ jobs:
         if-no-files-found: ignore
         name: plants-L6
         path: build/plants
+  # the owner's strokes in the browsers (level 3, TESTING.md), a job of their own: about 12 minutes, where the desktop
+  # job's devices take 40, so that a question about them alone is asked with only=strokes
+  strokes:
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'strokes' }}
+    # the desktop job's runner, whose own ratchet scenarios/strokes-known/ci is
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Keep the servers' ports free
+      run: scripts/reserve-ports.sh
+    - name: Turn Spotlight off
+      run: sudo mdutil -a -i off || echo "::warning::Spotlight stays on"
+    - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+    - name: Install the web toolchain
+      run: npm ci
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        path: ~/Library/Caches/ms-playwright
+    - name: Install WebKit and Firefox
+      run: npx playwright-core install webkit firefox
     # the owner's 41 strokes as synthetic input in WebKit and Firefox, a browser at a time; not Chromium, which on this
     # runner drew at 27 fps alone (21 beside the others) and took 21 of the 41 too slowly to judge, so it runs on the
     # owner's Mac; each line marked with its browser, each replay's frames and findings kept (scenarios/strokes.e2e.ts),
-    # against CI's own ratchet; last, so that no other step waits on it
+    # against CI's own ratchet
     - name: The owner's strokes in WebKit and Firefox
-      if: ${{ !cancelled() }}
       # a report until two runs agree with CI's ratchet, scenarios/strokes-known/ci (ruled 2026-11-26)
       continue-on-error: true
       timeout-minutes: 32
@@ -597,6 +622,7 @@ jobs:
   summary:
     needs:
     - desktop
+    - strokes
     - android
     - ios
     - feel
