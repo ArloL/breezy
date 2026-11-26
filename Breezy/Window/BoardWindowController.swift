@@ -136,7 +136,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     // a zoom step moves the bounds more than once; the cards follow once, when the frame is laid out
     canvas.needsLayout = true
     window?.invalidateRestorableState()
-    DispatchQueue.main.async { [weak self] in self?.canvas.coverView() }
+    // while zooming at once, or the frame drawn in between shows the board's edge
+    if scrollView.zooming { canvas.coverView() } else { DispatchQueue.main.async { [weak self] in self?.canvas.coverView() } }
     restLater()
   }
 

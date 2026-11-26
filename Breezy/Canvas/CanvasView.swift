@@ -217,11 +217,14 @@ final class CanvasView: NSView, NSTextViewDelegate, NSTextFieldDelegate {
     return fitBoard()
   }
 
-  /// A board smaller than the view, which no zoom should leave, as a pinch's own steps can skip the clip view: it takes
-  /// in what shows at once, where a pan could not reach the rest of it.
+  /// A board smaller than the view, which no zoom should leave, or a zoom showing past the board: a pinch's steps
+  /// propose the clip view an origin of 0, 0 and put it past the board's top left after. It takes in what shows at once,
+  /// where a pan could not reach the rest of it.
   func coverView() {
-    guard !rebasing, let clip = enclosingScrollView?.contentView else { return }
-    guard frame.width < clip.bounds.width - 0.5 || frame.height < clip.bounds.height - 0.5 else { return }
+    guard !rebasing, let sv = enclosingScrollView as? BoardScrollView else { return }
+    let clip = sv.contentView
+    let smaller = frame.width < clip.bounds.width - 0.5 || frame.height < clip.bounds.height - 0.5
+    guard smaller || sv.zooming && !bounds.insetBy(dx: -0.01, dy: -0.01).contains(showing) else { return }
     let r = showing
     reach.takeIn(Rect(x: r.minX, y: r.minY, w: r.width, h: r.height))
     fitBoard()

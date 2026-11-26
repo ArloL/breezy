@@ -551,7 +551,15 @@ extension SelfTest {
         guard !events.isEmpty else { return d.later(0.8, next) }
         let (phase, m) = events.removeFirst()
         sv.magnify(with: magnifyEvent(phase, m, at: p, in: d.window))
-        d.later(0.016, step)
+        d.later(0.016) {
+          // the board under the view at every step, not only at rest: AppKit puts the view past the board's top left
+          // while it proposes the clip view an origin of 0, 0
+          let px = 1 / (d.window.backingScaleFactor * sv.magnification) + 0.01
+          if !c.bounds.insetBy(dx: -px, dy: -px).contains(c.showing) {
+            finish(name, "pinching \(m < 0 ? "out" : "in") at \(sv.magnification), the view shows \(c.showing) past the board \(c.bounds)")
+          }
+          step()
+        }
       }
       step()
     }
