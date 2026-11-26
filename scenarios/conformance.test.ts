@@ -18,6 +18,16 @@ test("a recording is held to web/flight.ts's shape", () => {
   assert.equal(misshapen({ ...r, entries: [[5, "input", "press"], [4, "input", "release"]] }), "entry 1's t 4 after 5");
 });
 
+test("a recording's frames are held to web/flight.ts's shape too", () => {
+  const f = new Flight({ now: () => 0, wall: () => 0 });
+  f.note("input", "press", { x: 1, y: 2, clicks: 1 });
+  f.frame(Flight.frameFields.slice(1).map(() => 0));
+  const r = f.recording();
+  assert.equal(misshapen(r), null);
+  assert.equal(misshapen({ ...r, frames: { fields: ["t"], rows: [["x"]] } }), "frame 0 not numbers or nulls");
+  assert.equal(misshapen({ ...r, frames: { fields: ["t", "zoom"], rows: [[0]] } }), "frame 0 not as long as the fields");
+});
+
 const laneAndCards: Steps = async (d, made) => {
   made.push(await d.addLane(144, 360));
   made.push(await d.addCard(600, 72));

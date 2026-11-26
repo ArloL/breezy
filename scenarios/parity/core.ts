@@ -41,8 +41,17 @@ const isObject = (v: unknown) => typeof v === "object" && v !== null && !Array.i
 export function misshapen(r: unknown): string | null {
   if (!isObject(r)) return "not an object";
   const o = r as Record<string, unknown>;
-  const keys = Object.keys(o).sort().join(",");
-  if (keys !== "context,dropped,entries,origin,schema") return `keys ${keys}`;
+  // frames only while there are some, as flight.ts leaves them out of a recording without
+  const keys = Object.keys(o).filter((k) => k !== "frames").sort().join(",");
+  if (keys !== "context,dropped,entries,origin,schema") return `keys ${Object.keys(o).sort().join(",")}`;
+  if ("frames" in o) {
+    const f = o.frames as { fields?: unknown; rows?: unknown };
+    if (!isObject(f) || !Array.isArray(f.fields) || !f.fields.every((x) => typeof x === "string") || !Array.isArray(f.rows)) return "frames not fields and rows";
+    for (const [i, row] of (f.rows as unknown[]).entries()) {
+      if (!Array.isArray(row) || !row.every((v) => v === null || typeof v === "number")) return `frame ${i} not numbers or nulls`;
+      if (row.length !== f.fields.length) return `frame ${i} not as long as the fields`;
+    }
+  }
   if (o.schema !== 1) return `schema ${String(o.schema)}`;
   if (typeof o.origin !== "number" || !Number.isFinite(o.origin)) return `origin ${String(o.origin)}`;
   if (!Number.isInteger(o.dropped) || (o.dropped as number) < 0) return `dropped ${String(o.dropped)}`;
