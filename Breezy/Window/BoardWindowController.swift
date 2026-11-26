@@ -54,6 +54,8 @@ final class BoardWindowController: NSWindowController, NSWindowDelegate, NSToolb
     // AppKit's own rubber band, at the board's edge
     scrollView.horizontalScrollElasticity = .allowed
     scrollView.verticalScrollElasticity = .allowed
+    // a board pans every way, as the web's does: AppKit takes a scroll along the axis it starts on only, by default
+    scrollView.usesPredominantAxisScrolling = false
     scrollView.drawsBackground = false
     scrollView.contentView.drawsBackground = false
     scrollView.documentView = canvas
