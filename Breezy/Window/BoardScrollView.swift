@@ -36,7 +36,8 @@ final class BoardScrollView: NSScrollView {
           guard let self else { return }
           self[keyPath: flag] = now
           if !now { self.onGestureEnd?() }
-          if now && name == Self.willStartLiveMagnifyNotification { self.onPinchBegin?() }
+          // a two-finger double tap, which AppKit animates as a zoom in, needs no more board
+          if now && name == Self.willStartLiveMagnifyNotification && !self.tapped { self.onPinchBegin?() }
         }
       }
     }
@@ -90,12 +91,17 @@ final class BoardScrollView: NSScrollView {
   override func magnify(with event: NSEvent) {
     stopSpring()
     stopPan()
+    tapped = false
     super.magnify(with: event)
   }
+
+  /// Whether the last of the trackpad's zooms was a two-finger double tap, not a pinch.
+  private var tapped = false
 
   override func smartMagnify(with event: NSEvent) {
     stopSpring()
     stopPan()
+    tapped = true
     super.smartMagnify(with: event)
   }
 
