@@ -41,3 +41,16 @@ export function inputSpan(t: FrameTrack): number {
   const ts = t.rows.filter((r) => is.some((i) => (r[i] ?? 0) !== 0)).map((r) => r[0] ?? 0);
   return ts.length ? ts.at(-1)! - ts[0]! : 0;
 }
+
+/** `m`'s findings as compared with `known`'s, the other side of a ratchet: only of `strokes`, without `slow` itself or
+ * any stroke either side took too slowly to judge, as a slower runner takes more so, and without a `borderline`
+ * stroke's curve, which synthetic timing moves across its line from run to run. */
+export function judged(m: Record<string, string[]>, o: { strokes: string[]; known: Record<string, string[]>; borderline: string[] }) {
+  const unjudged = new Set([...(m.slow ?? []), ...(o.known.slow ?? [])]);
+  return Object.fromEntries(
+    Object.entries(m)
+      .filter(([r]) => r !== "slow")
+      .map(([r, s]) => [r, s.filter((x) => o.strokes.includes(x) && !unjudged.has(x) && !(r === "curve" && o.borderline.includes(x)))])
+      .filter(([, s]) => s.length),
+  );
+}

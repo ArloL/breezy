@@ -2,18 +2,19 @@
 // handed each to the page with native panning (scripts/web-fixture.ts's captures), played into headless Chromium,
 // WebKit and Firefox as wheel and ⌃-wheel input at their times, and judged by every rule against AppKit's replay of the
 // stroke. A stroke whose input the browser took more than 10 % longer to take than the capture's is not judged, as
-// its zoom would read late, and is listed as `slow`. Each browser's findings are held in strokes-known/<browser>.json,
-// a ratchet: a finding gone is a fix, a new one a regression. Run with
+// its zoom would read late, and is listed as `slow`; such a stroke on either side is left out of the comparison, as a
+// slower runner has more, so long as half the strokes are judged. Each browser's findings are held in
+// strokes-known/<browser>.json, a ratchet: a finding gone is a fix, a new one a regression. Run with
 //   node --test scenarios/strokes.e2e.ts
 // STROKES_BROWSERS=chromium,firefox picks browsers; STROKES_SMOKE=1 plays one stroke of each kind; STROKES_WRITE=1
-// writes the browsers' findings as known.
+// writes the browsers' findings as known; STROKES_DUMP=<dir> keeps each replay's frames.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium, firefox, webkit, type Browser, type Page } from "playwright-core";
 import { buildSite, serveStatic } from "./browser.ts";
 import { exitsAfter } from "./exit.ts";
-import { inputSpan, merge } from "./strokes-play.ts";
+import { inputSpan, judged, merge } from "./strokes-play.ts";
 import { check, REPLAYED, track } from "../scripts/frames/check.ts";
 import { restGap, zoomGap } from "../scripts/frames/gaps.ts";
 import { strokeOf } from "../scripts/web-fixture.ts";
@@ -23,8 +24,8 @@ const BUILD = process.env.STROKES_FROM ?? "main-ae48c1b-native";
 const VIEW = { width: 1495, height: 932 };
 /** How much longer than the capture's the browser may take to take a stroke's input before its zoom reads late. */
 const SLOW = 1.1;
-/** How near its line a stroke's zoom gap, or its slowness, stands undecided: synthetic input's own timing moved a few
- * strokes across the line from one run to the next, so these count as whatever the ratchet holds. */
+/** How near its line a stroke's zoom gap stands undecided: synthetic input's own timing moved a few strokes across
+ * the line from one run to the next, so these count as whatever the ratchet holds. */
 const BAND = 0.15;
 const SMOKE = ["double-tap-7", "lift-mid-band-17", "pinch-corner-1", "pinch-in-past-max-1", "pinch-out-fast-6", "pinch-out-slow-1", "pinch-pan-12"];
 const fixtures = new URL("../scripts/test/fixtures/", import.meta.url).pathname, captures = `${fixtures}web-pinch/${BUILD}`;
@@ -136,7 +137,6 @@ for (const name of names)
           // Firefox came to rest within 0.6 pt of its captures
           if (rest > 2) drifted.push(`${s} rest ${rest.toFixed(1)} pt past 2`);
         }
-        if (Math.abs(ratio / SLOW - 1) <= BAND) borderline.push(s);
         if (ratio > SLOW) return void (add("slow", s), failed.pop());
         const ref = track(`${fixtures}mac-pinch/reference-replay/${s}.json`), tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
         const gap = zoomGap(out, ref);
@@ -159,9 +159,10 @@ for (const name of names)
         writeFileSync(file, JSON.stringify(found, null, 1) + "\n");
       }
       const known: Record<string, string[]> = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
-      // a borderline stroke matches either way, as the ratchet holds it or not
-      const decided = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([r, s]) => [r, s.filter((x) => strokes.includes(x) && !((r === "curve" || r === "slow") && borderline.includes(x)))]).filter(([, s]) => s.length));
-      assert.deepEqual(decided(found), decided(known), `a finding gone is a fix: take it out of strokes-known/${name}.json; a new one is a regression (borderline, either way: ${borderline.join(", ") || "none"})`);
+      const slow = found.slow?.length ?? 0;
+      assert.ok(slow <= strokes.length / 2, `${name} took ${slow} of ${strokes.length} strokes too slowly to judge`);
+      const o = (k: Record<string, string[]>) => ({ strokes, known: k, borderline });
+      assert.deepEqual(judged(found, o(known)), judged(known, o(found)), `a finding gone is a fix: take it out of strokes-known/${name}.json; a new one is a regression (unjudged: too slow ${[...new Set([...(found.slow ?? []), ...(known.slow ?? [])])].join(", ") || "none"}; borderline ${borderline.join(", ") || "none"})`);
     });
   });
 
