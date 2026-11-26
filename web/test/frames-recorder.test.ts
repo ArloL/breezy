@@ -124,3 +124,25 @@ test("the top bar covered and the grid short reach the frames", () => {
   tick();
   assert.deepEqual([col("coverTop")[0], col("grid")[0]], [1, 40]);
 });
+
+test("a pinch begun as the last ended, in one frame, keeps its own begin", () => {
+  const { r, state, tick, col } = setup();
+  r.magnify(0, "began");
+  r.magnify(0, "ended");
+  r.magnify(0, "began");
+  for (let i = 1; i <= 3; i++) {
+    state.cam = { x: 0, y: 0, zoom: 1 + i * 0.1 };
+    tick();
+  }
+  // the second pinch goes on: no end, and no gesture-less frame, while it does
+  assert.deepEqual(col("gesture"), [1, 2, 2]);
+});
+
+test("a cancelled coast is not held", () => {
+  const { r, state, tick, col } = setup();
+  r.wheel(0, 0, 0, 16);
+  tick();
+  state.cam = { x: -5, y: 0, zoom: 1 };
+  tick();
+  assert.deepEqual(col("momentumPhase"), [16, 0]);
+});
