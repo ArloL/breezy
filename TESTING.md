@@ -63,8 +63,10 @@ The owner's 41 reference strokes are judged by the rules over frames (`scripts/f
 |---|---|---|---|
 | Frozen tracks | `scripts/test/mac-pinch.test.ts` and `scripts/test/web-pinch.test.ts`, over recorded fixtures | every push | — |
 | The web core in Node | `web/test/web-core-strokes.test.ts`: each camera-mode capture replayed through `BoardCamera` on a fake clock, in a fifth of a second | every push | real input, camera mode: zoom within 0.12, rest within 1 pt |
-| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | nightly in WebKit and Firefox, Chromium on the owner's Mac, each kind of machine against its own ratchet (`scenarios/strokes-known/mac`, `ci`) | Firefox's real input, native: zoom within 0.12 allowing two of the browser's own frames' timing, rest within 2 pt |
+| Browsers | `scenarios/strokes.e2e.ts`: Chromium, WebKit and Firefox headless, native panning, synthetic input on the capture's schedule | against AppKit on the owner's Mac (`scenarios/strokes-known/mac`); nightly, Firefox against its own real-input captures only | Firefox's real input, native: zoom within 0.12 allowing two of the browser's own frames' timing, rest within 2 pt |
 | Real input | `scripts/web-fixture.ts`: the strokes posted as OS events into a Firefox Playwright launches, about 3 minutes a pass | by hand on the owner's Mac, when strokes are recorded or a calibration drifts (`--list`) | AppKit's reference |
+
+The comparison with AppKit tells feel work on the Mac where the web parts from AppKit; it is no regression check on CI, where a different stroke crossed its line each run, and where, planted, a zoom 10 % slow went unseen against AppKit, most strokes already apart from it. Firefox against its own captures caught that and a camera read 5 % short of the native scroll (`zoom-slow`, `native-scroll-scale`). No level sees a native pan that never settles (planted and missed 2026-11-26): none of the 41 strokes ends a native pan past the board's edge, which a stroke recorded for it would.
 
 ## The gate and the nightly
 
@@ -97,7 +99,7 @@ Every run keeps what each device's app recorded (`web/flight.ts`, and in the sam
 | B3 | plant: lost-release | plant: stale-hover | claimed | — | — | claimed | claimed | — |
 | B4 | plant: merge-local | — | claimed | plant: pushed-skip, merge-local | — | claimed | — | — |
 | B5 | plant: half-deploy | — | — | claimed | — | plant: no-snapshot | claimed | — |
-| B6 | — | — | — | — | — | — | plant: uncached-heights | — |
+| B6 | plant: zoom-slow | — | — | — | — | plant: native-scroll-scale | plant: uncached-heights | — |
 | B7 | — | — | — | — | — | — | — | plant: half-uploaded |
 | B8 | — | — | — | — | — | — | plant: cross-fade, editor-shift | — |
 
