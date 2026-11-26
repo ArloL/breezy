@@ -155,5 +155,24 @@
    "pinch-corner-4",
    "pinch-corner-5"
   ]
+ },
+ "bounded-12eb874": {
+  "continuity": [
+   "double-tap-10",
+   "double-tap-11",
+   "double-tap-7",
+   "double-tap-8",
+   "double-tap-9"
+  ],
+  "flicker": [
+   "pinch-corner-1",
+   "pinch-corner-2",
+   "pinch-corner-3",
+   "pinch-corner-4",
+   "pinch-corner-5"
+  ],
+  "curve": [
+   "pinch-out-fast-7"
+  ]
  }
 }
