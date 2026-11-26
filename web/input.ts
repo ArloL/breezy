@@ -39,6 +39,8 @@ interface PinchBase {
   c: Point;
   last?: Point;
   past?: boolean;
+  /** The pinch's last scale, for the frames' magnification, as AppKit's, step by step. */
+  scale: number;
 }
 
 /** Turns gestures into camera moves and board changes. */
@@ -314,7 +316,8 @@ export class Input {
     if (this.native) return;
     this.app.flight.note("input", "pinch start", { x: Math.round(c.x), y: Math.round(c.y) });
     this.stopCoast();
-    this.pinchBase = { cam: { ...this.app.view.cam }, c, last: c };
+    this.pinchBase = { cam: { ...this.app.view.cam }, c, last: c, scale: 1 };
+    this.app.frames.magnify(0, "began");
   }
 
   /** Zooms and pans together: the world point first under the fingers stays under them; past a limit, it stretches. */
@@ -329,6 +332,8 @@ export class Input {
     const wx = (c0.x - cam.x) / cam.zoom;
     const wy = (c0.y - cam.y) / cam.zoom;
     this.pinchBase!.last = c;
+    this.app.frames.magnify(scale / this.pinchBase!.scale - 1, "changed");
+    this.pinchBase!.scale = scale;
     const { view } = this.app;
     // a pinch takes the board with it, as Freeform's does: its edge never shows
     view.setCamera({ zoom, x: c.x - wx * zoom, y: c.y - wy * zoom });
@@ -339,6 +344,7 @@ export class Input {
   pinchEnd(v: Point) {
     if (this.native) return;
     this.app.flight.note("input", "pinch end");
+    this.app.frames.magnify(0, "ended");
     const c = this.pinchBase?.last;
     this.pinchBase = null;
     if (c) this.app.view.camera.settle(c, v);
@@ -354,7 +360,7 @@ export class Input {
   zoomDragStart(p: Point) {
     this.app.flight.note("input", "zoom drag start", { x: Math.round(p.x), y: Math.round(p.y) });
     this.stopCoast();
-    this.pinchBase = { cam: { ...this.app.view.cam }, c: p };
+    this.pinchBase = { cam: { ...this.app.view.cam }, c: p, scale: 1 };
   }
 
   /** Down zooms in, up zooms out, as in Maps; the point first touched stays put. */

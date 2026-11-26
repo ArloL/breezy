@@ -6,6 +6,7 @@ import type { Person } from "./presence.ts";
 import type { Library } from "./library.ts";
 import type { Board, Clip, Lane, Point, Rect } from "./types.ts";
 import { box, Flight, type Value } from "./flight.ts";
+import { FrameRecorder } from "./frames.ts";
 
 /** The card being edited, which side of it, and the undo step the edit records. */
 export interface Editing {
@@ -53,6 +54,8 @@ export class App {
   space: SpacePort | undefined;
   /** What it saw and decided, for whoever debugs it. */
   readonly flight = new Flight();
+  /** The last seconds of frames, in the flight's recording. */
+  readonly frames: FrameRecorder;
   /** The last reveal noted, to note the next only when it decides otherwise. */
   private revealed = "";
 
@@ -69,7 +72,17 @@ export class App {
     this.ui = ports.ui(this);
     this.input = new Input(this);
     this.view.area = () => this.ui.area();
+    const v = this.view;
+    this.frames = new FrameRecorder(this.flight, {
+      cam: () => v.shownCam(),
+      stage: () => { const a = v.stage(); return { w: a.right - a.left, h: a.bottom - a.top }; },
+      board: () => v.board(),
+      coverTop: () => v.coverTop(),
+      gridShort: () => v.gridShort(),
+    });
+    v.onMagnify = (by, phase) => this.frames.magnify(by, phase);
     this.view.onCamera = () => {
+      this.frames.wake();
       this.ui.updateZoom();
       this.presence.place();
       if (this.state.turned) this.view.invalidate();

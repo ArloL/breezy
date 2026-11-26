@@ -13,7 +13,7 @@ import { Library } from "./library.ts";
 import { ownBoards } from "./owner.ts";
 import { loadState, saveState } from "./sync/idb.ts";
 import { ask } from "./sheet.ts";
-import { View } from "./view.ts";
+import { View, WHEEL_REST } from "./view.ts";
 import { UI } from "./ui.ts";
 import { Presence } from "./presence.ts";
 import { panMode, storedPan, storePan } from "./pan-mode.ts";
@@ -149,6 +149,11 @@ const mouse = new Mouse(app);
 const editor = (e: Event) => (e.target as Element).closest?.('[contenteditable="plaintext-only"]');
 /** A mouse press that began on the board, not in an editor, though its double-click may have opened one under it. */
 let boardClick = false;
+// what the frames keep of the pointers: every finger, and where a mouse is
+const touch = (e: PointerEvent) => e.pointerType !== "mouse";
+board.addEventListener("pointerdown", (e) => app.frames.pointer(e.pointerId, e.clientX, e.clientY, touch(e)), { capture: true, passive: true });
+addEventListener("pointermove", (e) => app.frames.pointer(e.pointerId, e.clientX, e.clientY, touch(e)), { capture: true, passive: true });
+for (const ended of ["pointerup", "pointercancel"]) addEventListener(ended, (e) => app.frames.pointer((e as PointerEvent).pointerId, null, null, touch(e as PointerEvent)), { capture: true, passive: true });
 board.addEventListener("pointerdown", (e) => {
   boardClick = e.pointerType === "mouse" && !editor(e);
   if (editor(e)) return;
@@ -193,6 +198,22 @@ document.getElementById("keys")!.addEventListener("mousedown", (e) => e.preventD
 
 // each burst of wheel events as it arrives, before anything acts on it: a slow drag in Firefox once left no stream
 let burst = 0;
+// a wheel's deltas for the frames, in NSEvent's phases as a stream begins, goes on and ends; a ⌃-wheel, as Chrome and
+// Firefox send a trackpad's pinch, is a magnification
+let wheelEnd: ReturnType<typeof setTimeout> | undefined, wheeling: "pan" | "pinch" | null = null;
+addEventListener("wheel", (e) => {
+  const kind = e.ctrlKey || e.metaKey ? "pinch" : "pan", first = wheeling !== kind;
+  if (first && wheeling === "pinch") app.frames.magnify(0, "ended");
+  wheeling = kind;
+  if (kind === "pinch") app.frames.magnify((wheelAction(e).zoom ?? 1) - 1, first ? "began" : "changed");
+  else app.frames.wheel(e.deltaX, e.deltaY, first ? 1 : 4, 0);
+  clearTimeout(wheelEnd);
+  wheelEnd = setTimeout(() => {
+    if (wheeling === "pinch") app.frames.magnify(0, "ended");
+    else app.frames.wheel(0, 0, 8, 0);
+    wheeling = null;
+  }, WHEEL_REST);
+}, { capture: true, passive: true });
 addEventListener("wheel", (e) => {
   const now = performance.now();
   if (now - burst > 300) {
@@ -259,7 +280,7 @@ if (pan === "native") board.addEventListener("scroll", () => app.input.drag && a
 // iOS can hide the page mid-gesture, as when swiping home, without a pointercancel.
 document.addEventListener("visibilitychange", () => document.hidden && gestures.cancelAll());
 // Safari reports a trackpad pinch as gesture events, their scale counting from the pinch's start; a touch pinch comes as pointers.
-let pinch: number | null = null;
+let pinch: number | null = null, pinchScale = 1;
 // a touch pinch's own, which in native mode the touches pinch: Breezy holds no pointers on a native pan, and these zoomed
 // under it
 const touchGestures = pan === "native" && matchMedia("(pointer: coarse)").matches;
@@ -267,13 +288,22 @@ document.addEventListener("gesturestart", (e) => {
   e.preventDefault();
   if (touchGestures) return;
   if (!gestures.points.size) pinch = app.view.cam.zoom;
+  if (pinch !== null) {
+    pinchScale = 1;
+    app.frames.magnify(0, "began");
+  }
 });
 document.addEventListener("gesturechange", (e) => {
   e.preventDefault();
-  if (pinch !== null) app.view.zoomAround({ x: e.clientX, y: e.clientY }, pinch * e.scale);
+  if (pinch === null) return;
+  app.frames.pointer(-1, e.clientX, e.clientY, false);
+  app.frames.magnify(e.scale / pinchScale - 1, "changed");
+  pinchScale = e.scale;
+  app.view.zoomAround({ x: e.clientX, y: e.clientY }, pinch * e.scale);
 });
 document.addEventListener("gestureend", (e) => {
   e.preventDefault();
+  if (pinch !== null) app.frames.magnify(0, "ended");
   pinch = null;
 });
 

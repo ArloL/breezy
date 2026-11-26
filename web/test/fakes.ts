@@ -131,6 +131,7 @@ export class FakeView implements ViewPort {
   area = () => this.screenArea();
   onCamera = () => {};
   onRender = () => {};
+  onMagnify = (_by: number, _phase: "began" | "changed" | "ended") => {};
   shown: () => Board;
   heightOf = (id: string) => fakeHeight(R.card(this.shown(), id)?.text);
 
@@ -199,6 +200,22 @@ export class FakeView implements ViewPort {
   }
 
   takeIn() {}
+
+  board(): Rect {
+    return { x: -1194, y: -1194, w: 4000, h: 4000 };
+  }
+
+  shownCam(): Cam {
+    return this.cam;
+  }
+
+  coverTop() {
+    return false;
+  }
+
+  gridShort() {
+    return 0;
+  }
 
   stage() {
     return this.area();

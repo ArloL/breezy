@@ -20,7 +20,7 @@ export { MIN_ZOOM, MAX_ZOOM, clampZoom } from "./camera.ts";
 const SHEET = '<div class="sheet"><div class="front"></div><div class="back"><div class="heading"></div><div class="notes"></div></div><div class="ear"></div></div>';
 const PLACEHOLDER = "Double-tap to write on the back";
 // A wheel stream has no end to wait for: this long without an event ends it.
-const WHEEL_REST = 120;
+export const WHEEL_REST = 120;
 // Layout moves settle like UIKit's default spring; a lift pops slightly, as a drag lift on iOS does.
 const SETTLE = { type: "spring", visualDuration: 0.35, bounce: 0 };
 const LIFT = { type: "spring", visualDuration: 0.25, bounce: 0.35 };
@@ -92,6 +92,8 @@ export class View {
   area: () => Area;
   onCamera: () => void;
   onRender: () => void;
+  /** A pinch the view itself takes, as native panning's, changed its scale by `by` (scale / last − 1). */
+  onMagnify: (by: number, phase: "began" | "changed" | "ended") => void;
   shown: () => Board;
   heightOf: HeightOf;
 
@@ -120,6 +122,7 @@ export class View {
     this.area = () => ({ top: 0, bottom: innerHeight, left: 0, right: innerWidth });
     this.onCamera = () => {};
     this.onRender = () => {};
+    this.onMagnify = () => {};
     /** The board as drawn: the model's, with others' live edits over it. */
     this.shown = () => this.model.board;
     this.heightOf = (id) => {
@@ -216,6 +219,19 @@ export class View {
 
   drawGrid() {
     this.surface.drawGrid(this.cam, this.board());
+  }
+
+  /** The camera as drawn, a native pinch's transform composed in. */
+  shownCam(): Cam {
+    return this.surface.shownCam(this.cam);
+  }
+
+  coverTop(): boolean {
+    return this.surface.coverTop();
+  }
+
+  gridShort(): number {
+    return this.surface.gridShort();
   }
 
   /** The board's element, under the bars too, which the board's edge stops at. */

@@ -5,6 +5,7 @@ import { centre, item, type Box, type Device, type Editor, type Frame } from "./
 import { LANE_H, LANE_W } from "../web/rules.ts";
 import { readClip } from "../web/clip.ts";
 import type { Point } from "../web/types.ts";
+import { FIELDS } from "../scripts/frames/track.ts";
 
 export interface Stage {
   devices: Device[];
@@ -1222,6 +1223,14 @@ export const cases: Case[] = [
       // finger's move at a time, so the middle wobbles between them and the release may coast a little
       const w0 = (m.x - before.x) / before.zoom, w1 = (m.x - camera.x) / camera.zoom;
       assert.ok(Math.abs(w1 - w0) < 4, `world x ${w1} under the middle, was ${w0}`);
+      // frames are kept on every device that records: the pinch's, its zoom changing, in the shared fields
+      const r = await a.flight();
+      if (r) {
+        assert.ok(r.frames?.rows.length, "frames are kept: the recording has none");
+        const t = r.frames!, zooms = new Set(t.rows.map((row) => row[t.fields.indexOf("zoom")]));
+        assert.deepEqual(t.fields.slice(0, 22), FIELDS, "frames are kept: not in the shared fields");
+        assert.ok(zooms.size > 1, `frames are kept: the zoom stayed ${[...zooms]}`);
+      }
     },
   },
 ];

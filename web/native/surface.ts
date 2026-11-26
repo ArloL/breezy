@@ -23,6 +23,9 @@ interface Pinch {
   board: Rect;
   /** The content moved out of the scroll container, from a pan the browser would not let go of. */
   overlaid: boolean;
+  /** Where the pinch last drew: its zoom and its fingers' middle, which the frames read as the camera. */
+  zoom: number;
+  mid: Point;
 }
 
 /**
@@ -83,6 +86,23 @@ export class NativeSurface implements Surface {
   /** The grid is a pattern in the content, and scrolls with it. */
   drawGrid() {}
 
+  shownCam(cam: Cam): Cam {
+    const p = this.pinch;
+    return p ? pinchCamera(p.anchor, p.zoom, p.mid) : cam;
+  }
+
+  /** Whether the content, lifted to the overlay for a pinch, paints over the top bar: only from after it in the page. */
+  coverTop(): boolean {
+    const top = document.getElementById("top");
+    if (!this.pinch?.overlaid || !this.overlay || !top) return false;
+    return !(this.overlay.compareDocumentPosition(top) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }
+
+  /** The grid's canvas shows only while pinching, standing in for the content's pattern. */
+  gridShort(): number {
+    return this.pinch ? this.grid.short() : 0;
+  }
+
   rested() {
     this.lay(this.view.cam);
   }
@@ -113,7 +133,8 @@ export class NativeSurface implements Surface {
   pinchStart(mid: Point, kind: "own" | "taken") {
     const s = this.shown ?? this.layout(this.view.cam.zoom), at = this.at();
     this.pinching = true;
-    this.pinch = { anchor: this.view.toWorld(mid), z0: s.zoom, board: s.board, overlaid: false };
+    this.pinch = { anchor: this.view.toWorld(mid), z0: s.zoom, board: s.board, overlaid: false, zoom: s.zoom, mid };
+    this.view.onMagnify(0, "began");
     this.board.classList.add("pinching");
     this.flight.note("input", "native pinch start", { scroll: [r(at.x), r(at.y)], zoom: s.zoom, kind });
     if (kind === "taken") this.lift(at);
@@ -126,6 +147,10 @@ export class NativeSurface implements Surface {
     if (!p) return;
     this.content.style.transform = pinchTransform(p.anchor, p.board, p.z0, zoom, mid, p.overlaid ? { x: 0, y: 0 } : this.at());
     this.grid.draw(pinchCamera(p.anchor, zoom, mid));
+    const by = zoom / p.zoom - 1;
+    p.zoom = zoom;
+    p.mid = mid;
+    this.view.onMagnify(by, "changed");
   }
 
   /** The pinch ends at `zoom`, its fingers' middle last at `mid`: laid out once, and the board takes in what shows. */
@@ -139,6 +164,7 @@ export class NativeSurface implements Surface {
     this.pinching = false;
     this.userScrolled = false;
     this.view.setCamera(pinchCamera(p.anchor, zoom, mid));
+    this.view.onMagnify(0, "ended");
     this.settle();
     const at = this.at();
     this.flight.note("input", "native pinch end", { how, zoom, scroll: [r(at.x), r(at.y)] });
