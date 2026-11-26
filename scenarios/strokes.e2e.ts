@@ -15,7 +15,7 @@ import { buildSite, serveStatic } from "./browser.ts";
 import { exitsAfter } from "./exit.ts";
 import { inputSpan, merge } from "./strokes-play.ts";
 import { check, REPLAYED, track } from "../scripts/frames/check.ts";
-import { curve } from "../scripts/frames/rules.ts";
+import { restGap, zoomGap } from "../scripts/frames/gaps.ts";
 import { strokeOf } from "../scripts/web-fixture.ts";
 import type { FrameTrack, Recording } from "../web/flight.ts";
 
@@ -128,16 +128,18 @@ for (const name of names)
         if (new Set(out.rows.map((r) => r[out.fields.indexOf("zoom")])).size > 1) zoomed.push(s);
         const span = inputSpan(capture), took = inputSpan(out), ratio = span > 0 ? took / span : 1;
         if (name === "firefox" && ratio <= SLOW) {
-          // a frame's slack either way, as input sent from outside the browser comes a frame early or late
-          const own = Math.max(0, ...curve(out, capture, "zoom", 0, 16).map((f) => Number(/up to ([0-9.]+)/.exec(f.say)?.[1] ?? 0)));
-          const tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
-          if (process.env.STROKES_GAPS) console.log(`calibration ${s} ${own.toFixed(3)} of ${tol}`);
-          if (own > tol * (1 + BAND)) drifted.push(`${s} ${own.toFixed(3)} past ${tol}`);
+          // two frames' slack either way: input sent from outside the browser lands up to ~10 ms off its frame, past
+          // one 8 ms frame, which on the fastest pinches in read as 0.19 of zoom with none, 0.13 with one, 0.07 with two
+          const own = zoomGap(out, capture, 16), tol = Math.max(REPLAYED.curve, spread[s] ?? 0), rest = restGap(out, capture);
+          if (process.env.STROKES_GAPS) console.log(`calibration ${s} zoom ${own.toFixed(3)} of ${tol}, rest ${rest.toFixed(1)} pt`);
+          if (own > tol) drifted.push(`${s} zoom ${own.toFixed(3)} past ${tol}`);
+          // Firefox came to rest within 0.6 pt of its captures
+          if (rest > 2) drifted.push(`${s} rest ${rest.toFixed(1)} pt past 2`);
         }
         if (Math.abs(ratio / SLOW - 1) <= BAND) borderline.push(s);
         if (ratio > SLOW) return void (add("slow", s), failed.pop());
         const ref = track(`${fixtures}mac-pinch/reference-replay/${s}.json`), tol = Math.max(REPLAYED.curve, spread[s] ?? 0);
-        const gap = Math.max(0, ...curve(out, ref, "zoom", 0).map((f) => Number(/up to ([0-9.]+)/.exec(f.say)?.[1] ?? 0)));
+        const gap = zoomGap(out, ref);
         if (Math.abs(gap / tol - 1) <= BAND) borderline.push(s);
         for (const x of check(out, ref, { ...REPLAYED, curve: tol })) add(x.rule, s);
         failed.pop();
